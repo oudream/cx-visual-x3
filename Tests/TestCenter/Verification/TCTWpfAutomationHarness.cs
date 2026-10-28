@@ -258,8 +258,24 @@ namespace CxVisual.TestCenter.UI
                     if (!rendered) Thread.Sleep(100);
                 }
                 TraceUiStage("Connector / schema cards rendered=" + rendered);
-                if (!rendered) throw new InvalidOperationException(
-                    "当前通道专属FCM Schema编辑器未渲染（含WPF布局等待）");
+                if (!rendered)
+                {
+                    string detail="";
+                    window.Dispatcher.Invoke(new Action(() => {
+                        System.Windows.Controls.TabControl tabs =
+                            window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                        TCTManualModuleFrame frame = tabs.Items
+                            .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                            .OfType<TCTManualModuleFrame>()
+                            .Single(candidate => candidate.ActiveModuleId == moduleId);
+                        detail="Page="+frame.SelectedModulePage+
+                            " VisibleEditors="+frame.VisibleSchemaEditorCount+
+                            " HasConfig="+frame.HasOpenedConfiguration;
+                    }));
+                    throw new InvalidOperationException(
+                        "当前通道专属FCM Schema编辑器未渲染（含WPF布局等待）；"+
+                        detail+" AutomationCards="+(cards!=null));
+                }
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;

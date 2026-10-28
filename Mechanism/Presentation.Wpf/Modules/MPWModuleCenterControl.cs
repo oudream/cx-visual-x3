@@ -44,6 +44,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly TextBlock _source=new TextBlock {TextWrapping=TextWrapping.Wrap};
         private readonly TextBlock _detail=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(6)};
         private readonly WrapPanel _kinds=new WrapPanel();
+        private readonly ColumnDefinition _catalogColumn=new ColumnDefinition {Width=new GridLength(220)};
+        private readonly DockPanel _catalogPane=new DockPanel {Margin=new Thickness(0,2,9,0)};
         private MPWModuleCapabilityView[] _catalog=new MPWModuleCapabilityView[0];
         private MFMModuleKind? _kind;
         private string _sourceName="暂无能力目录";
@@ -52,6 +54,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public ContentControl EditorHost {get{return _editor;}}
         public object HeaderContent {get{return _header.Content;}set{_header.Content=value;}}
         public int VisibleCapabilityCount {get{return _list.Items.Count;}}
+        /// <summary>Restore full-width FCM editing in TestCenter when no live catalog is wired.</summary>
+        public bool ConfigurationOnly {
+            get {return _catalogPane.Visibility==Visibility.Collapsed;}
+            set {
+                _catalogPane.Visibility=value?Visibility.Collapsed:Visibility.Visible;
+                _catalogColumn.Width=value?new GridLength(0):new GridLength(220);
+            }
+        }
         public MPWModuleCenterControl()
         {
             AutomationProperties.SetAutomationId(this,"MPW.ModuleCenter");
@@ -79,9 +89,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             head.Children.Add(_kinds);head.Children.Add(_header);
             DockPanel.SetDock(head,Dock.Top);root.Children.Add(head);
             var grid=new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(220)});
+            grid.ColumnDefinitions.Add(_catalogColumn);
             grid.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(1,GridUnitType.Star)});
-            var left=new DockPanel {Margin=new Thickness(0,2,9,0)};
+            var left=_catalogPane;
             var filter=new StackPanel();
             filter.Children.Add(new TextBlock {Text="能力发现 / 搜索",FontWeight=FontWeights.SemiBold});
             filter.Children.Add(_search);

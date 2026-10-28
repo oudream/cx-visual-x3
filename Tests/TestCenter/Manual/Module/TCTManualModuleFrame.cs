@@ -192,6 +192,9 @@ namespace CxVisual.TestCenter.UI
             picker.Children.Add(_moduleId);
             header.Children.Add(picker);header.Children.Add(_status);
             _center.HeaderContent=header;
+            // Preserve the full-width professional FCM editor tested by the original UIA.
+            // The same shared MPW center has catalog mode in Studio.
+            _center.ConfigurationOnly=true;
             Content=_center;
             _editorHost.Content=new TextBlock{
                 Text="右侧操作中心 → 创建 / 打开模块配置",
