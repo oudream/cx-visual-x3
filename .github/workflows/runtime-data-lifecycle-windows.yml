@@ -1,0 +1,75 @@
+name: CxVisual MDS RuntimeData Lifecycle Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Mechanism/Data/RuntimeData/**'
+      - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
+      - 'Tests/ArchitectureSmoke/Runtime/Data/**'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/TestCenter/Automated/Cases/TCTRuntimeDataUsabilityCases.cs'
+      - 'Tests/TestCenter/Manual/RuntimeData/**'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'DOCS/Architecture/CxVisual_数据与交互体系#2运行时数据体系——完整设计与验收_V3.0.md'
+      - '.github/workflows/runtime-data-lifecycle-windows.yml'
+jobs:
+  mds-lifecycle:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore Studio and TestCenter pinned packages
+        shell: pwsh
+        run: |
+          $m = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $m .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter restore failed' }
+          & $m .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Studio restore failed' }
+      - name: Full Windows .NET48 Release x64 build
+        shell: pwsh
+        run: |
+          $m = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $m .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'MDS lifecycle build failed' }
+      - name: Run real MDS lifecycle, storage, hardening, compiler
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-lifecycle
+          if ($LASTEXITCODE -ne 0) { throw 'MDS lifecycle architecture tests failed' }
+      - name: Run two isolated TestCenter lifecycle cases
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\Output\Release\x64\CxVisual.TestCenter.exe').Path
+          foreach ($id in @('TCT.MDS.030', 'TCT.MDS.031')) {
+            $report = Join-Path (Get-Location) ("Output/Release/x64/" + $id + ".junit.xml")
+            $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $id + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "TestCenter $id failed: $($p.ExitCode)" }
+            [xml]$xml = Get-Content -LiteralPath $report -Raw
+            if ([int]$xml.testsuite.tests -ne 1 -or [int]$xml.testsuite.failures -ne 0 -or [int]$xml.testsuite.errors -ne 0) {
+              throw "TestCenter $id returned non-passing JUnit"
+            }
+          }
+          Write-Host 'PASS TCT.MDS.030/031'
+      - name: Run real STA WPF lifecycle workspace
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\Output\Release\x64\CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--data-lifecycle-ui-smoke') -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path $env:TEMP 'CxVisual-Data-Lifecycle-WPF-Error.txt'
+            if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+            throw 'MDS five-dimension real WPF UI failure'
+          }
+          Write-Host 'PASS MDS lifecycle five-dimension WPF workspace'
+      - name: Save MDS lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxvisual-mds-lifecycle-evidence
+          path: |
+            Output/Release/x64/TCT.MDS.*.junit.xml
+          if-no-files-found: warn
