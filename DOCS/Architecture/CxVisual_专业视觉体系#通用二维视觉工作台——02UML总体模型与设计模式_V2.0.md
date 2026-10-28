@@ -948,3 +948,192 @@ stateDiagram-v2
 | 24—26 工作台/跨专业/质量 | P01—P03/DP01—DP02/X03—X07 | Studio、MPW、FLD及专业边界 | UI独立Runtime、Trace与现场证据 |
 
 **模式准则**：State针对真实多阶段工具，Observer针对会话/结果状态，Command复用MEM/MTC，Composite复用MRC，Strategy仅在真实替代算法出现后引入，AOP围绕Run/节点边界贯穿版本、耗时、资源、权限和错误；一律禁止为了UML好看而增加空接口。
+
+## 13. 三条核心契约的交叉UML：数据、能力、结果（Y01—Y04）
+
+> **交叉定型草案**。本节在33张现有UML后增加Y01—Y04四张审查图；Y为专业架构关系投影，不是新项目/新类批准清单。E标识真实源码，P标识目标角色。以03§9数据契约、05§11能力端口契约、06§10结果契约为优先细节；原C05/C06/C07中的候选名仅用作旧提案对照。新类或API一律先审核现有Owner。
+
+### Y01 单张像素、采集帧、序列和数据产物
+
+~~~mermaid
+classDiagram
+  class FIMImageBuffer {
+    <<E_pixel>>
+    +Width
+    +Height
+    +Stride
+    +PixelFormat
+  }
+  class FIMPixelSpacing {
+    <<E_calibration_value>>
+    +MillimetersPerPixelX
+    +MillimetersPerPixelY
+  }
+  class ImageFrameEnvelope {
+    <<P_frame_role>>
+    +SourceId
+    +SourceGeneration
+    +FrameId
+    +CapturedAtUtc
+  }
+  class ImageSetIndex {
+    <<P_dataset_role>>
+    +DatasetId
+    +Revision
+  }
+  class ImageArtifactRef {
+    <<P_asset_role>>
+    +ArtifactId
+    +SchemaVersion
+    +Hash
+  }
+  class MVIImageSession {
+    <<E_view>>
+    +Original
+    +Result
+  }
+  ImageSetIndex o-- ImageFrameEnvelope
+  ImageFrameEnvelope ..> ImageArtifactRef : references
+  ImageFrameEnvelope ..> FIMPixelSpacing : optional
+  ImageArtifactRef ..> FIMImageBuffer : resolves
+  MVIImageSession ..> FIMImageBuffer : current selection
+~~~
+
+**关系判断**：PixelBuffer不等于来源身份；Frame Envelope不等于可随便长期保留的指针；ImageSet保存引用与顺序；Artifact是运行/存储产物；Viewer双槽仅当前显示。C#需要什么实际类通过FDT/MDS/资源Owner复用审查决定。FIM公共API防御复制已存在，不可画出当前不存在的零拷贝公开租约。
+
+### Y02 专业TypeId到MRK CLR端口的显式映射
+
+~~~mermaid
+flowchart LR
+  subgraph Engineering["工程期 E"]
+    Type["MPMTypeDescriptor<br/>TypeId/SchemaVersion/Property/Port"]
+    Cap["MOCCapabilityDescriptor<br/>Id/Version/Ports"]
+    Content["MEMContent / MOLWiringDefinition"]
+  end
+  subgraph Compile["编译与执行 E"]
+    Compiler["MOCEngineeringCompiler"]
+    Plan["MOCCompiledPlan / MRKExecutionPlan"]
+    Port["MRKExecutionInput/Output<br/>CLR ValueType"]
+    Data["MDSDataContext / FDTDataAdapter"]
+  end
+  subgraph Vision["专业语义补充 P"]
+    Check["ImageFormat/MaskSpace/<br/>Calibration/Units/Ownership"]
+    Alg["FIM/PVC Operation"]
+  end
+  Type --> Content
+  Cap --> Content
+  Content --> Compiler
+  Compiler --> Plan
+  Plan --> Port
+  Port --> Data
+  Check -. "TypeId to CLR and professional validation" .-> Compiler
+  Data --> Alg
+~~~
+
+**两种类型契约不可混为一谈**：工程端口的TypeId是字符串，执行端口的ValueType是CLR Type；MPMValue仅支持工程标量/资源引用，不是运行期图像Heap。MOC目录发现与RuntimeAvailable不等于功能真实可用；需要Resolver、版本及图像/ROI专业规则共同校验。不得用VisionTypedPort重建MPC，也不能把MRK CLR检查当成Mask坐标安全检查。
+
+### Y03 Run结果组合、显示投影与正式工程三类对象
+
+~~~mermaid
+classDiagram
+  class CxVisionInspectionResult {
+    <<E_limited>>
+    +ConfigRevision
+    +Regions
+  }
+  class VisionRunRecord {
+    <<P_result>>
+    +RunId
+    +Status
+    +InputRefs
+    +DefinitionRevision
+  }
+  class VisionResultItem {
+    <<P_result_value>>
+    +ItemId
+    +Kind
+    +SourceRef
+    +OutputPort
+  }
+  class VisionReviewRecord {
+    <<P_derivative>>
+    +ReviewId
+    +OriginalRunId
+  }
+  class MVIImageOverlayItem {
+    <<E_view>>
+    +Id
+    +Layer
+  }
+  class MEMEngineeringSession {
+    <<E_engineering>>
+    +Edit()
+    +Undo()
+    +Redo()
+  }
+  class MRCVisualItem {
+    <<E_engineering>>
+  }
+  VisionRunRecord o-- VisionResultItem : read only
+  VisionReviewRecord --> VisionRunRecord : append review
+  VisionResultItem ..> CxVisionInspectionResult : may adapt
+  VisionResultItem ..> MVIImageOverlayItem : render projection
+  MEMEngineeringSession --> MRCVisualItem : authoritative
+  MVIImageOverlayItem ..> MRCVisualItem : explicit promote
+~~~
+
+**生命周期**：运行Result不能被Viewer选中/拖动而直接修改；人工复核生成派生记录；正式工程标注只经MEM事务更新。待实现的VisionRunRecord/ResultItem是专业角色，必须优先审既有专业检测结果、FDT适配及Artifact Owner，不为每个Kind建立独立一套历史数据库。
+
+### Y04 统一纵向用例：图像、Flow、结果、工程复核
+
+~~~mermaid
+sequenceDiagram
+  actor U as 工程师
+  participant I as Image/FrameRef
+  participant E as MEMContent+MOL
+  participant C as MOC
+  participant R as MRK/MDS
+  participant P as PVC/FIM
+  participant V as Vision Result
+  participant W as MVI/MPW
+  U->>I: 选择Gray16及ROI
+  I-->>U: SourceRef/Format/Calibration
+  U->>E: 配置增强/阈值/区域/测量节点
+  E->>C: 校验类型与参数/编译固定Revision
+  C-->>R: ExecutionPlan和SourceMap
+  R->>P: 逐节点专业算法
+  P-->>R: Image/Mask/Regions/Measurement
+  alt 类型、预算及结果完整
+    R-->>V: 具名输出/RunId/Trace
+    V-->>W: 按SourceRef投影结果
+    W-->>U: 多视图/表格/分析图
+  else 失败、取消或过期
+    R-->>U: Status/Error/Trace/Abort
+  end
+  opt 工程师明确保存ROI
+    U->>E: 授权编辑/事务/新Revision
+  end
+~~~
+
+**真实实施前的四项反证**：类型映射和参数非法时不能运行；切图后旧Run不能覆盖新显示；结果类型或坐标缺失时不得投影另一张图；未经用户授权不能修改正式MEM工程资源。这些条件由03§9 DC、05§11 ALG、06§10 RES及Testing最终追踪。
+
+### 13.1 旧候选对象的收敛原则
+
+| 旧候选对象 | 优先替代或归宿 | 是否还批准新类 |
+|---|---|---|
+| VisionPipelineDefinition | MEMContent+MOLWiringDefinition | 否；除非发现无法通过Aspect/Type扩展表达的专业配置需求 |
+| VisionTypedPort、VisionParameterSchema | MPCPortDescriptor、MPMTypeDescriptor/Property、MRKExecutionInput/Output | 默认否；只补充专业Format/Coordinate校验 |
+| VisionOperationDescriptor | MOCCapabilityDescriptor、MPM类型及专业Provider | 先复用，仍不足则按两用例评审 |
+| VisionRunResult/ResultItem | 专业多类型运行结果语义 + FDT/MDS/Artifact复用 | P待定，允许必要专业聚合，不得建第二DataHeap |
+| VisionSceneProjection | MVI/MPW及工作台选择投影职责 | 先以现有对象组合，避免无消费的Facade |
+| FrameRef/ImageSet/MaskRef | 数据资产引用/专业Frame元数据 | P待定；先查实际来源/生命周期及所有权 |
+
+### 13.2 模型评审结论必须按证据分级
+
+- **图已能表达**：只说明责任关系清晰，是架构设计。
+- **类型Owner已核对**：需指出对应真实.cs文件、程序集DAG和依赖方向。
+- **合同可编译**：有使用真实类型的编译示例及真实Windows构建SHA。
+- **行为可验收**：同样本数值结果、异步/异常/内存反证和WPF/API闭环。
+- **生产可信**：现场相机/探测器、SDK和持续运行的HIL记录。
+
+当前Y01—Y04完成的是前两级的架构分析输入，候选部分仍属P。不能把37张图解释为37个可运行类或260项功能已交付。
