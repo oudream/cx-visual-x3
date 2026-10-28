@@ -119,3 +119,30 @@ sequenceDiagram
 | D07-10 | 专业相机、X-Ray、网络/共享内存等真实硬件HIL和许可证 |
 
 不把工具类或架构类图中的部署箭头当成任何已完成的现场验证。
+
+## 10. 现有平台运行机制的边界与帧流差距（深化）
+
+Vision专业运行须复用**MOCCompiledPlan、MRKExecutionPlan/Ports、MDSDataContext、FDTDataAdapterRegistry、MDSDataBudget、MDSBoundedByteStream、F19**，不新增GraphExecutor、通用Worker调度器或第二DataStack。已存在的CxVisionDataFlow可直接构造MRK CPU检测Plan，但这不代表正式VisionPipeline已从MEMContent/MOL定义通过MOC完整编译。
+
+两条必须写实的限制：①MDSBoundedByteStream是byte[]有界块（且块长有实现限制），不包含相机FrameId/时间戳/帧租约/Drop-NoDrop/重连，因此不是完整工业帧流。②MDSDataBudget的RetainedBytes覆盖已提交托管载荷，不能代表解码副本、GPU纹理和SDK临时工作区的总占用。需要利用现有机制补专业帧语义与独立资源计量，而非替代基础Owner。
+
+~~~mermaid
+sequenceDiagram
+  participant A as Automation Source
+  participant Q as 有界专业帧队列
+  participant R as MRK Vision执行
+  participant D as MDS数据
+  participant V as 结果与Trace
+  A->>Q: FrameRef+Lease
+  alt 容量可用
+    Q->>R: Frame及来源/版本
+    R->>D: 安全捕获输入和预算
+    R-->>D: Commit或Abort输出
+    D-->>V: RunId/Result/ArtifactRef
+    R-->>Q: 释放Lease
+  else 满载/断开
+    Q-->>A: 背压或明确Drop策略
+  end
+~~~
+
+Studio退出后，独立Runtime仍使用Pin的已发布Plan执行；软件发布收据不等于设备安全互锁、硬实时控制或真正HIL验证。
