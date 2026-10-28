@@ -4,15 +4,18 @@ on:
   push:
     branches: [master]
     paths:
-      - 'Tests/TestCenter/**'
-      - 'Professional/Vision/**'
-      - 'Mechanism/**'
-      - 'Foundation/**'
-      - 'Applications/Studio/**'
+      - 'Tests/TestCenter/Manual/Module/**'
+      - 'Tests/TestCenter/Verification/TCTCpuComputeUiSmoke.cs'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Professional/Vision/CxVisionRawCpuRunner.cs'
+      - 'Professional/Vision/CxVisionThresholdProvider.cs'
+      - 'Professional/Vision/CxVisual.Professional.Vision.csproj'
+      - 'Applications/Studio/StudioShell.ModuleCenter.cs'
       - '.github/workflows/testcenter-compute-cpu-ui-windows.yml'
 concurrency:
   group: testcenter-compute-cpu-uia-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   compute-cpu-uia:
     runs-on: windows-2022
