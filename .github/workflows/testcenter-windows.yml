@@ -84,6 +84,23 @@ jobs:
           New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
           & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Verify real MDS five-dimension lifecycle WPF operations
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--data-lifecycle-ui-smoke') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 45 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw 'MDS lifecycle WPF smoke timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Data-Lifecycle-WPF-Error.txt'
+              if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+              throw "MDS lifecycle WPF smoke returned $($p.ExitCode)"
+          }
+          Write-Host 'PASS MDS lifecycle: five policies, combined config, real WPF buttons and protected reclaim'
       - name: Verify developer catalog and stable Case/Definition identities
         shell: powershell
         run: |
