@@ -12,6 +12,9 @@ using System.Windows.Media;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Professional.Vision;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Visual;
 using Microsoft.Win32;
@@ -49,6 +52,16 @@ namespace CxVisual.TestCenter.UI
             Width=82,Text="65535",Margin=new Thickness(3) };
         private readonly TextBox _growTolerance=new TextBox {
             Width=60,Text="1",Margin=new Thickness(3) };
+        private readonly TextBox _cpuThreshold = new TextBox { Width = 82,
+            Text = "10", Margin = new Thickness(3) };
+        private readonly TextBox _cpuMinArea = new TextBox { Width = 70,
+            Text = "2", Margin = new Thickness(3) };
+        private CancellationTokenSource _cpuRunCancellation;
+        private FIMImageBuffer _cpuSourceImage;
+        private string _cpuSourceId;
+        private CxVisionRunSummary _cpuEvidence;
+        public CxVisionRunSummary CpuEvidence { get { return _cpuEvidence; } }
+
         private readonly CheckBox _growEightConnected=new CheckBox {
             Content="八邻域",IsChecked=false,Margin=new Thickness(5) };
 
@@ -134,6 +147,14 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.Session.Changed += (sender,args) =>
             {
+                if (!ReferenceEquals(_cpuSourceImage, _viewer.Session.Original))
+                {
+                    CancelCpuVision();
+                    _cpuSourceImage = _viewer.Session.Original;
+                    _cpuSourceId = _cpuSourceImage == null ? null :
+                        "testcenter.imaging/" + Guid.NewGuid().ToString("N");
+                    _cpuEvidence = null;
+                }
                 CancelAnalysis();
                 FIMImageBuffer current = _viewer.ActiveImage;
                 if (!ReferenceEquals(current, _plottedSource))
@@ -157,6 +178,102 @@ namespace CxVisual.TestCenter.UI
                     ShowLineProfile();
                 if (StateChanged != null) StateChanged();
             };
+        }
+
+        private void CancelCpuVision()
+        {
+            // 当前运行会在自身finally中释放CTS，取消函数不提前Dispose。
+            CancellationTokenSource old = _cpuRunCancellation;
+            _cpuRunCancellation = null;
+            if (old != null) old.Cancel();
+        }
+
+        /// <summary>
+        /// 真实FIM输入→既有MRK CPU专业检测→正式Image/Mask结果→同一MPW/MVI。
+        /// 不额外建立图像会话、结果历史、数据堆或调度器。
+        /// </summary>
+        private async void RunCpuVision()
+        {
+            CancellationTokenSource request = null;
+            try
+            {
+                FIMImageBuffer original = _viewer.Session.Original;
+                if (original == null) throw new InvalidOperationException("请先打开原图。");
+                CxVisionPixelDepth depth = CxVisionImageInterop.GetPixelDepth(original);
+                int threshold, minArea;
+                if (!int.TryParse(_cpuThreshold.Text, NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out threshold) || threshold < 0 ||
+                    threshold > (depth == CxVisionPixelDepth.Bits8 ? 255 : 65535))
+                    throw new ArgumentException("检测阈值必须在当前位深的合法范围内。");
+                if (!int.TryParse(_cpuMinArea.Text, NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out minArea) || minArea < 1 ||
+                    minArea > 10000000)
+                    throw new ArgumentException("最小区域面积须在1到10000000像素之间。");
+                var options = new CxVisionInspectionOptions {
+                    PixelDepth = depth, GrayThreshold = threshold,
+                    MinDefectArea = minArea, MaxDefectArea = 10000000,
+                    UseAi = false
+                };
+                string issue = CxVisionInspectionOptions.Validate(options);
+                if (!string.IsNullOrEmpty(issue)) throw new ArgumentException(issue);
+                CancelCpuVision();
+                _cpuEvidence = null;
+                request = new CancellationTokenSource();
+                _cpuRunCancellation = request;
+                string sourceId = _cpuSourceId;
+                long version = _viewer.Session.SourceVersion;
+                CancellationToken token = request.Token;
+                Show("正在使用现有MRK运行CPU视觉检测（真实处理图、阈值Mask与区域）…");
+                CxVisionRunSummary evidence = await Task.Run(async () =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    var inputs = CxVisionImageInterop.ToCpuInspectionInputs(original, depth);
+                    var plan = CxVisionDataFlow.CreateCpuInspectionPlanWithArtifacts(options);
+                    var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
+                    try
+                    {
+                        MRKFlowHandle handle = engine.StartFlow(plan, inputs);
+                        using (token.Register(() => handle.RequestCancel()))
+                        {
+                            MRKFlowResult result = await handle.Completion.ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            if (result.State != MRKFlowState.Completed)
+                                throw new InvalidOperationException("MRK运行失败：" + result.State +
+                                    (result.Error == null ? "" : " / " + result.Error.Message));
+                            return CxVisionRunSummary.FromCpuFlow(result, sourceId);
+                        }
+                    }
+                    finally { await engine.StopAsync().ConfigureAwait(false); }
+                }, token);
+                if (token.IsCancellationRequested ||
+                    !ReferenceEquals(request, _cpuRunCancellation) ||
+                    !ReferenceEquals(original, _viewer.Session.Original) ||
+                    sourceId != _cpuSourceId || version != _viewer.Session.SourceVersion)
+                    return;
+                CxVisionResultItem mask = evidence.Items.Single(i =>
+                    i.Kind == CxVisionResultKind.Mask);
+                if (mask.SourceId != sourceId || mask.RunId != evidence.RunId ||
+                    mask.Image == null || mask.Image.PixelFormat != FIMPixelFormat.Gray8 ||
+                    mask.Image.Width != original.Width || mask.Image.Height != original.Height)
+                    throw new InvalidOperationException("运行结果来源或掩码坐标与当前原图不匹配。");
+                _viewer.ShowResult(mask.Image);
+                _cpuEvidence = evidence;
+                var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
+                Show("真实CPU检测完成：阈值命中=" +
+                    evidence.Items.Single(i => i.Name == "阈值命中像素数").IntegerValue +
+                    " px；面积规则保留=" + accepted.Length + "区域；Run=" +
+                    evidence.RunId.ToString("N") + "。结果图是阈值Mask，原图未修改。");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception error) { Show("CPU视觉检测失败：" + error.Message); }
+            finally
+            {
+                if (request != null)
+                {
+                    if (ReferenceEquals(_cpuRunCancellation, request)) _cpuRunCancellation = null;
+                    request.Dispose();
+                }
+            }
         }
 
         private static string ToolTitle(MVIImageToolMode mode)
