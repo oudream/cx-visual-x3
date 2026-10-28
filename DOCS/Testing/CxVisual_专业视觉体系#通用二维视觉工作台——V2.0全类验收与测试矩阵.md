@@ -98,3 +98,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ## 8. 验收执行顺序
 
 ①先审源码与Owner/ReferTo → ②针对该能力写数值/反例 → ③实现真实API → ④接WPF用户操作或无界面调用 → ⑤Windows .NET48 x64专项/全回归 → ⑥记录SHA/错误/性能 → ⑦专业同样本与设备HIL（适用时）。不能把“UML图写好”当作G2，也不能把“CI成功”当作完整260项FieldPassed。
+
+## 9. 先行架构评审的四道Gate与反证（2026-10-28）
+
+| Gate | 必须完成的设计证据 | 后续代码正反验收 |
+|---|---|---|
+| A 核心对象/Owner | 00§11和02 X01—X04；MEM/MOL/MPM/MOC/MRK/MDS唯一权威 | 不存在第二持久Graph/History/DataStack；依赖DAG合格 |
+| B 数据/交互 | ImageBuffer与CxVisionGrayFrame关系、SourceRef/ROI/Viewport | Gray8/16与Stride/单位/双Pane；切图后旧结果拒绝 |
+| C 算法/结果/工程 | MPM端口→MOC编译→MRK/MDS执行→RunResult→MEM显式工程提交 | 类型非法、取消/失败/空、历史Run稳定、Undo/Save/Open |
+| D 批量实时/跨专业 | FrameLease/字节预算/DropNoDrop、Provider版本/权限、Inspection契约 | 帧队列压力、设备异常、SDK/GPU/内存泄漏与HIL |
+
+**状态严格区分**：图和合同形成只意味着架构设计可审，不意味着新类型存在、编译或现场通过。本轮架构修订未执行Windows CI，也未运行新的专业算法测试。后续实际测试须逐V2D-XX.YY填SHA、样本规格、反例和运行证据。
