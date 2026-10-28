@@ -106,3 +106,16 @@ sequenceDiagram
 | D06-09 | 历史工程资源Schema迁移与缺资源显式提示 |
 
 **本版为设计与候选对象裁决，不等于二维ROI已经持久工程集成通过。**
+
+## 9. 结果、临时叠加、工程资源的不可混写规则（深化）
+
+Vision的正式结果体系应按**RunId→具名ResultItem→SourceRef/ArtifactRef→类型/单位/质量/Trace**组织；成功无缺陷与失败、取消、过期应区分。现有CxVisionInspectionResult只覆盖部分专业CPU检测，不是全类结果模型。VisionRunRecord/ResultItem仍属专业语义**P候选**，应优先组合/判别Kind并复用FDT/MDS的真实数据适配与容量机制，不预先批准深继承类树。
+
+| 身份 | 唯一Owner | 变更方式 |
+|---|---|---|
+| ResultItemId/RunId | 专业运行结果 | 一次Run完成后不原地覆写；重跑新RunId |
+| MVIImageOverlayItem.Id | 临时图像会话 | 选择/显示/临时编辑，可清空，不是工程Undo |
+| MEM/MRC StableId/Revision | 工程Session | 用户明确Promote→MTC事务→Undo/Redo/Save/Open |
+| ReviewRecordId/OriginalRunId | 派生人工复核 | 保留原始检测事实/审核人/时间/审计 |
+
+最重要的纵向验收：算法Run产生Image/Mask/Geometry/Measure多结果→结果表定位图窗→修改临时显示不改变Result→明确保存ROI→MEM撤销/重做/保存重开→旧Run证据仍可追溯。
