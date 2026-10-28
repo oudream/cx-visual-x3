@@ -85,3 +85,10 @@ Connectivity装配复用F17凭据/类型校验，Protocol能力兼容仍由原Ow
 UDP独立接收、同步发送、有界数据报与来源/代次的正式增量见[UDP实施验收](../Implementation/CxVisual_F17_Channel_UDP独立接收与组播_实施与验收_V1.0.md)。保留UDP固有丢包语义，不把池等待宣称为端到端可靠背压。
 
 NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离和终止元数据额度增量见[管道实施](../Implementation/CxVisual_F17_NamedPipe独立接收与跨进程大数据_实施验收_V1.0.md)及[验收矩阵](../Testing/CxVisual_F17_NamedPipe跨进程大数据_验收矩阵_V1.0.md)。本轮还使TCP/UDP/管道在首次空闲故障之前登记接收线程身份，终止通知等待统一携带停止Token。
+
+## 7. P0重连事件回调停止可靠性（2026-10-28）
+
+- **对应14能力第9项「可靠容错」及第7项「超时取消」的局部完成证据**：恢复控制器同步事件 `AttemptFailed` / `Reconnected` 回调中再次执行 `StopAsync` / `Dispose`，旧版本可能等待其自身执行的任务而死锁。
+- 现已在既有 `FTRReconnectController` 内进行修复：回调内仅取消并延后完成任务/取消源清理；回调外仍严格等待；旧代尚未完全停止时不得重启维护。没有重发协议或业务命令，也没有建立第二个Transport Runtime。
+- **固定源码验证**：回归提交 `4d9976ee74560115dfcbcd6e76a7205c33372e5a`，Windows F17 [#40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715) success，日志包含 `F17.RECONNECT_PASS ... callback-safe stop`、`F17.UML_CORE_PASS` 和双向各2GiB完整性结果。
+- **剩余缺口不变**：其它Channel跨会话恢复、断网/崩溃、HTTP/WS慢客户端、SharedMemory不确定槽位、24h长稳、跨PC/HIL、所有端点并发取消场景仍属待验收。此项不得计为14项整体完成。

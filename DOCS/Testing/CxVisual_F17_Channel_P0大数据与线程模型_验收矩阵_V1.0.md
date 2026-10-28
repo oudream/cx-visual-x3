@@ -53,3 +53,11 @@
 ## 完整目标尚未验收
 
 24小时及更长持续负载、工业网络丢包/断网、多机网卡与组播环境、真实RS232/485/PLC/采集设备HIL、所有通道独立接收与有效预算、HTTP/WS Server、SharedMemory、Custom Provider、自动重连/心跳/保活及全部TestCenter手动操作仍按完整审计继续。不以2GiB软件样本替代这些门禁。新增TLS/证书/认证暂缓，现有安全保护保留。
+
+## P0-RC-01 恢复事件回调内停止/释放（2026-10-28 补充）
+
+| 用例 | 入口 | 验收要求 | 证据 |
+|---|---|---|---|
+| F17-P0-RC-01 | `FTRReconnectControllerTests.StopWithinRecoveryCallbacks`，由 `--channel-transport` 调用 | 失败事件内同步 `StopAsync` 不发生自等待死锁；成功事件内同步 `Dispose` 亦不死锁；外部停止实际等待任务资源清理；停止后没有新一轮自动连接 | [F17 Windows #40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715) success，固定SHA `4d9976ee`，日志 `F17.RECONNECT_PASS ... callback-safe stop` |
+
+涉及 `FTRReconnectController.cs`，未修改 Protocol/Connector/MDS/MRK 或业务执行语义。此专项回归不覆盖强杀进程、24h长稳、现场网络或PLC设备。
