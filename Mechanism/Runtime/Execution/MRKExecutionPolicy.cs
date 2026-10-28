@@ -100,7 +100,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         (RetryCondition != null && !RetryCondition(ex)))
                         throw;
                     // 每次重试都是新逻辑尝试；旧PendingOutput和Local不得延续。
-                    MDSDataContext managed = context.Data as MDSDataContext;
+                    MDSDataContext managed = context == null ? null :
+                        context.Data as MDSDataContext;
                     if (managed != null) managed.PrepareRetry();
                     if (RetryDelay > TimeSpan.Zero)
                         await Task.Delay(RetryDelay, cancellation).ConfigureAwait(false);

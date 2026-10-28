@@ -11,6 +11,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             RetryRequiresExplicitIdempotency();
+            DirectNullContextRetryRemainsUsable();
             BoundedRetryAndFaultPropagation();
             CooperativeTimeoutDoesNotPrematurelyAdvance();
             NonCooperativeTimeoutRemainsUnknownAndKeepsResources();
@@ -120,6 +121,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("运行策略等待超时");
             task.GetAwaiter().GetResult();
         }
+        /// <summary>兼容独立执行策略直接传入null上下文；重试仍须正常返回。</summary>
+        private static void DirectNullContextRetryRemainsUsable()
+        {
+            int attempts = 0;
+            var policy = new MRKExecutionPolicy(maxAttempts: 2, idempotent: true);
+            object result = Await(policy.ExecuteAsync(null, (ctx, ct) =>
+            {
+                Check(ctx == null, "独立策略调用不得凭空创建Invocation");
+                if (Interlocked.Increment(ref attempts) == 1)
+                    throw new InvalidOperationException("expected.transient");
+                return Task.FromResult((object)42);
+            }, CancellationToken.None));
+            Check((int)result == 42 && attempts == 2,
+                "直接ExecuteAsync(null)的Retry被Attempt上下文增强破坏");
+        }
+
         private static void RetryRequiresExplicitIdempotency()
         {
             bool invalid = false;
