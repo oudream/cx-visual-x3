@@ -30,6 +30,8 @@ namespace CxVisual.Foundation.Transport
         private SemaphoreSlim _slots;
         private Task _accept;
         private long _next;
+        private readonly AsyncLocal<bool> _inReceiveCallback=new AsyncLocal<bool>();
+        protected override bool IsAdditionalTransportThread { get { return _inReceiveCallback.Value; } }
         public event Action<FTRHttpRequestInfo> RequestReceived;
         public FTRHttpServerChannel(FTRChannelConfiguration configuration)
             : base((configuration ?? throw new ArgumentNullException("configuration")).Id)
@@ -94,13 +96,18 @@ namespace CxVisual.Foundation.Transport
                     }
                     payload=memory.ToArray();
                 }
-                Action<FTRHttpRequestInfo> observer=RequestReceived;
-                if(observer!=null)
-                    foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
-                        try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
-                            context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
-                        catch(Exception error){RecordReceiveError(error);}
-                ReceiveFrom(pending.Address,payload);
+                _inReceiveCallback.Value=true;
+                try
+                {
+                    Action<FTRHttpRequestInfo> observer=RequestReceived;
+                    if(observer!=null)
+                        foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
+                            try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
+                                context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
+                            catch(Exception error){RecordReceiveError(error);}
+                    ReceiveFrom(pending.Address,payload);
+                }
+                finally { _inReceiveCallback.Value=false; }
                 Task done=await Task.WhenAny(pending.Response.Task,Task.Delay(_config.ResponseTimeoutMs,cancellation)).ConfigureAwait(false);
                 if(done!=pending.Response.Task) throw new TimeoutException("HTTP业务响应未在期限内提交");
                 Reply response=await pending.Response.Task.ConfigureAwait(false);

@@ -17,6 +17,8 @@ namespace CxVisual.Foundation.Transport
             internal FTRSubChannelAddress Address;
             internal readonly SemaphoreSlim SendGate=new SemaphoreSlim(1,1);
         }
+        private readonly AsyncLocal<bool> _inReceiveCallback=new AsyncLocal<bool>();
+        protected override bool IsAdditionalTransportThread {get{return _inReceiveCallback.Value;}}
         private readonly FTRWebSocketServerChannelConfiguration _config;
         private readonly object _gate=new object();
         private readonly Dictionary<string,Peer> _clients=new Dictionary<string,Peer>(StringComparer.Ordinal);
@@ -97,7 +99,9 @@ namespace CxVisual.Foundation.Transport
                         incoming.Write(buffer,0,result.Count);
                         if(result.EndOfMessage)
                         {
-                            ReceiveFrom(peer.Address,incoming.ToArray());
+                            _inReceiveCallback.Value=true;
+                            try{ReceiveFrom(peer.Address,incoming.ToArray());}
+                            finally{_inReceiveCallback.Value=false;}
                             incoming.SetLength(0);
                         }
                     }

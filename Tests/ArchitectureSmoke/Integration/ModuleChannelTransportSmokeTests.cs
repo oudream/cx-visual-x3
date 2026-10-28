@@ -316,13 +316,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MaxClients=2,MaxRequestBytes=1024,MaxResponseBytes=1024,ResponseTimeoutMs=3000
             };
             var channel=new FTRHttpServerChannel(config);
-            int methodCount=0;FTRSubChannelAddress first=null;
+            int methodCount=0;FTRSubChannelAddress first=null;int closeRejected=0;
             channel.RequestReceived += info => {
                 Check(info.Method=="POST" && info.Path=="/" && info.ContentBytes==3,
                     "HTTP请求方法、路径及正文应正确传递");
                 Interlocked.Increment(ref methodCount);
             };
             channel.Received += received => {
+                try{channel.Close();}catch(InvalidOperationException){Interlocked.Exchange(ref closeRejected,1);}
                 first=received.Address;
                 channel.Send(new byte[]{9,8,7},0,3,received.Address,CancellationToken.None);
             };
@@ -337,7 +338,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(response.IsSuccessStatusCode && reply.SequenceEqual(new byte[]{9,8,7}),
                         "HTTP Server真实HttpListener应返回原始响应字节");
                 }
-                Check(methodCount==1 && first!=null && first.HasSubChannel,"HTTP请求必须有独立SubChannel");
+                Check(methodCount==1 && first!=null && first.HasSubChannel && closeRejected==1,
+                    "HTTP请求必须有独立SubChannel且回调内禁止自等待关闭");
                 bool oldRejected=false;
                 try{channel.Send(new byte[]{1},0,1,first,CancellationToken.None);}
                 catch(InvalidOperationException){oldRejected=true;}
@@ -359,8 +361,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(var server=new FTRWebSocketServerChannel(config))
             using(var client=new System.Net.WebSockets.ClientWebSocket())
             {
-                FTRSubChannelAddress address=null;
+                FTRSubChannelAddress address=null;int closeRejected=0;
                 server.Received += data => {
+                    try{server.Close();}catch(InvalidOperationException){Interlocked.Exchange(ref closeRejected,1);}
                     address=data.Address;
                     server.Send(new byte[]{7,8,9},0,3,data.Address,CancellationToken.None);
                 };
@@ -375,7 +378,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(reply.MessageType==System.Net.WebSockets.WebSocketMessageType.Binary &&
                     reply.EndOfMessage && reply.Count==3 && buffer[0]==7 && buffer[1]==8 && buffer[2]==9,
                     "WebSocket Server必须真正完成RFC6455握手与双向二进制收发");
-                Check(address!=null && address.HasSubChannel,"WebSocket Server请求地址必须有Generation");
+                Check(address!=null && address.HasSubChannel && closeRejected==1,
+                    "WebSocket Server请求地址必须有Generation并禁止回调自身Close");
                 server.Close();
                 }
                 Check(server.SnapshotSubChannels().Length==0,"WebSocket Server停止后必须移除所有真实对端");
