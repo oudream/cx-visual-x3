@@ -32,7 +32,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {if(channel.State!=FTRChannelState.Closed)channel.Close();}
         public static void Run()
         {
-            ConfigRoundtrip();AsyncSendAdmission();DuplexBulk();RetainedBackpressure();MultiPeerThreadBudget();
+            ConfigRoundtrip();AsyncSendAdmission();AsyncSliceSnapshot();DuplexBulk();RetainedBackpressure();MultiPeerThreadBudget();
             StopAndObserverIsolation();SynchronousOrderAndAsyncSnapshot();LifecycleAndCallbackClose();IdleTimeouts();HalfCloseTailDelivery();
             Console.WriteLine("F17.BULK PASS: 40MiB full-duplex integrity, pooled leases, bounded slow consumer, fixed multi-peer threads, stop and config");
         }
@@ -95,6 +95,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "oversized async snapshot escaped budget or released credits incorrectly");
             }
         }
+        private static void AsyncSliceSnapshot()
+        {
+            using(var channel=new AdmissionChannel())
+            {
+                channel.Open();
+                var address=new FTRSubChannelAddress(channel.Id);
+                byte[] source={0,11,12,13,14,0};
+                Task pending=channel.SendAsync(source,1,4,address,CancellationToken.None);
+                Array.Clear(source,0,source.Length);
+                Check(channel.Captured.SequenceEqual(new byte[]{11,12,13,14}) &&
+                    channel.Diagnostics.PendingSendBytes==4,
+                    "异步切片发送只应借用调用方一次并在返回前取得独立快照");
+                channel.Release.SetResult(true);
+                pending.GetAwaiter().GetResult();
+                Check(channel.Diagnostics.SentBytes==4 && channel.Diagnostics.PendingSendBytes==0 &&
+                    channel.Diagnostics.PendingSends==0,
+                    "异步切片预算/诊断按有效长度结算而非整个源数组长度");
+                channel.Close();
+            }
+        }
+
         private static void DuplexBulk(int blocks=640,int timeoutMilliseconds=20000)
         {
             const int block=65536;long total=(long)block*blocks;
