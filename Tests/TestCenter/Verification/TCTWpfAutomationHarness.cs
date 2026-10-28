@@ -226,6 +226,20 @@ namespace CxVisual.TestCenter.UI
                 if (!opened) Thread.Sleep(100);
             }
             if (!opened) throw new InvalidOperationException("FCM/MPW typed module editor did not load: " + kind);
+            // Actual UI Automation click, not direct WPF state manipulation: the common
+            // MPW module center must expose its declared-capability pane and restore
+            // full-width FCM editor without changing the current module draft.
+            AutomationElement toggle = Find(root, "TCT.Module.ToggleCapabilities");
+            InvokePattern toggleAction = toggle.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (toggleAction == null)
+                throw new InvalidOperationException("MPW共享模块能力目录开关不支持InvokePattern");
+            toggleAction.Invoke();
+            window.Dispatcher.Invoke(new Action(() => window.UpdateLayout()));
+            AutomationElement catalog = Find(root, "MPW.ModuleCenter.Capabilities");
+            if (catalog.Current.IsOffscreen || catalog.Current.BoundingRectangle.IsEmpty)
+                throw new InvalidOperationException("共享模块能力目录展开后不可见");
+            toggleAction.Invoke();
+            window.Dispatcher.Invoke(new Action(() => window.UpdateLayout()));
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / opened config");
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
             {
