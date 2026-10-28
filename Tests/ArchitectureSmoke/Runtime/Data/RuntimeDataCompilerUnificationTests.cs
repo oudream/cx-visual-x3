@@ -56,6 +56,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(blueprint.TryGet("simple", out definition) &&
                 definition.ReclaimCommittedWhenConsumersSettle,
                 "代码编排一行启用回收策略必须进入正式只读编译定义");
+            MRKCompileResult compiled = new MRKExecutionPlanCompiler().Compile(
+                "external-compile", new[] { new MRKStepCompileRequest("producer", "Emit") },
+                blueprint, reclaimCommittedWhenConsumersSettle: true);
+            Check(compiled.Succeeded &&
+                compiled.Plan.ReclaimCommittedWhenConsumersSettle,
+                "外部工程编排与代码便捷入口共用同一MRK计划的静态回收合同");
             MRKDevelopmentRuntime runtime = blueprint.BuildForDevelopment(new FCRWorkerOptions(2, 8));
             try
             {
