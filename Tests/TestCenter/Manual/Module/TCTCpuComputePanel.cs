@@ -149,8 +149,8 @@ namespace CxVisual.TestCenter.UI
         }
         private void RequireFormalCompute(string id)
         {
-            var section=_service.ForScope("module",id)
-                .OpenExisting<PVCComputeModuleConfiguration>();
+            var section=_service.OpenExisting<PVCComputeModuleConfiguration>(new FCMConfigIdentity(
+                    "CxVisual.Module.Compute","module",id));
             PVCComputeModuleConfiguration config;
             using(var capture=section.CaptureForTask("cpu-panel-config"))
                 config=capture.Get();
@@ -195,8 +195,8 @@ namespace CxVisual.TestCenter.UI
             {
                 string id=RequireScope();
                 RequireFormalCompute(id);
-                var vision=_service.ForScope("module",id)
-                    .OpenExisting<CxVisionInspectionOptions>();
+                var vision=_service.OpenExisting<CxVisionInspectionOptions>(new FCMConfigIdentity(
+                        "Vision.Inspection","module",id));
                 _provider=CxVisionThresholdProvider.FromEffectiveConfiguration(vision);
                 string version;
                 if(!_provider.TryGetCapabilityVersion(
