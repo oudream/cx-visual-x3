@@ -117,3 +117,19 @@
 | 低复制兼容 | `ReceiveBytes/ReceiveFrom`新增Count重载 | HTTP/WS直接借用MemoryStream有效切片，Received独立快照在额度内，原接口不变 |
 
 本轮旧版本Windows CI [#40664424966](https://github.com/oudream/cx-visual-x3/actions/runs/40664424966)、[#40664609330](https://github.com/oudream/cx-visual-x3/actions/runs/40664609330)、[#40664714152](https://github.com/oudream/cx-visual-x3/actions/runs/40664714152) 因WS测试低估消息交付时峰值而失败；后续调整测试额度、移除整消息ToArray复制、增加接收上下文额度。新版须按固定SHA Windows CI验证后方能改为通过。当前尚无24h、跨PC、工业硬件及FTR→MPA→MDS端到端内存峰值SLA证据。
+
+
+## V3.1 长驻Channel、便利API和子端错误追踪验收补充（2026-10-28）
+
+| 场景 | 实码/提交 | 正反断言 | 当前证据 |
+|---|---|---|---|
+| 消息观察者隔离 | `FTRChannelBase.ReceiveBytes`，`652d30c6` | 一个Received订阅抛错后其余订阅仍收到消息，故障记Observer而非物理故障 | [F17 #40672585446](https://github.com/oudream/cx-visual-x3/actions/runs/40672585446) success，仅证实此固定源码及此前门禁 |
+| 长驻便利接口 | `FTRChannelConvenienceTests`，`cdc7d7a`—`350bab0` | 单端快捷发送、Observer令牌幂等解除、跨Open/Close订阅、MultiPeer必须带子ID、旧Generation回包拒绝 | 源码已提交，包含测试的固定SHA Windows CI待验收 |
+| 低复制便利订阅 | `FTRChannelConvenience.SubscribeBuffers/SubscribeBuffersFrom`，`1ce4f2f` | 不创建新物理Reader，保留租约回调期借用与跨线程Retain/Dispose纪律 | 源码已提交，新固定SHA CI待验收 |
+| 长驻TCP真实回环 | `FTRPersistentChannelTests`，`d298ec1`、`247fb07` | 原TCP Client/Server对象四次重开、Session更新、双向收发、子ID、后台线程停止、Retain跨Close、释放后BorrowedBuffers为0 | 新固定SHA Windows CI待验收 |
+| HTTP便利回复 | `FTRMultiClientBudgetTests.HttpConcurrentResponses`，`bf52ca2` | 两个请求直接用`ReplyAsync(packet,...)`，保留原请求Address、预算、响应数据完整性 | 新固定SHA Windows CI待验收 |
+| 客户端级故障定位 | `FTRFailureInfo.Address` + TCP/Pipe/HTTP/WS错误路径，`f90bc0c`、`ee7f7d5`、`9262eb4` | WS超限故障必须给出Kind=ResourceExhausted、Scope=SubChannel及非空完整Address/Generation | 新固定SHA Windows CI待验收 |
+
+原F17完整`--channel-transport`仍同时执行UML、协议集成、SharedMemory崩溃回归、真实HTTP/WS双端预算和TCP/NamedPipe容量测试；`--channel-bulk-long`独立双向各2GiB。新便捷层不会代替Connection/Protocol/MDS各自Owner、也不会推断远端业务已确认。
+
+**现场缺口持续保留**：所有15类型参数生效矩阵、HTTP/WS峰值内存与GC/CPU SLA、CT/X-Ray到专业DataHandle低复制闭环、24小时和跨PC真实设备及断线竞争测试。代码已提交并不等于全部验收通过。
