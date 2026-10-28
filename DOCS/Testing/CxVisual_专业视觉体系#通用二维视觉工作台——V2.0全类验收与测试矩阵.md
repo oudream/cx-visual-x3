@@ -258,3 +258,8 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | CI-UX-17 | [Imaging #40687637635](https://github.com/oudream/cx-visual-x3/actions/runs/40687637635) / [TestCenter #40687637624](https://github.com/oudream/cx-visual-x3/actions/runs/40687637624)，固定SHA`e77cae8d91d14f2f54358c3c912dc93605029745`；先前92986dc的Windows失败是测试局部重名CS0128，已改源码，不等于已重新运行通过 | 初次登记queued/in_progress |
 
 只改变展示/交互；不把Gamma、亮度、ROI自动取窗结果当成原始像素或算法Artifact。Windows截图、实际鼠标拖动和高位深大图性能仍需另证。
+
+### 17.1 CI已执行结果补记
+
+固定`e77cae8d91d14f2f54358c3c912dc93605029745`的 [Imaging Windows #40687637635](https://github.com/oudream/cx-visual-x3/actions/runs/40687637635) 结论**success**，Windows构建/WPF ImageViewer/png roundtrip/FIM MVI/default/3D slice全部job步骤通过；UI-UX-07～11有此固定SHA的自动测试证据，UI-UX-12原色板对话框仍需现场人工选择确认。
+最新Owner修复提交[4d6c558](https://github.com/oudream/cx-visual-x3/commit/4d6c558cddf78e8c9af367e27aca731b03bf59aa)绑定ColorDialog到真实WPF窗口，触发[Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944)和[TestCenter #40687957971](https://github.com/oudream/cx-visual-x3/actions/runs/40687957971)，待实际结束后再更新此固定SHA结论。工业长时、大图P95和人工拖拉手感仍独立验收。
