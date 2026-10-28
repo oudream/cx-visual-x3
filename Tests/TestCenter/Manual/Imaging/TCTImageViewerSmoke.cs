@@ -321,7 +321,9 @@ namespace CxVisual.TestCenter.UI
                    windowEnabled.IsChecked!=true)
                     throw new InvalidOperationException("窗宽数值没有同步真实滑条或手动显示");
                 centerSlider.Value=6;
-                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                centerSlider.RaiseEvent(new System.Windows.Controls.Primitives.DragCompletedEventArgs(
+                    0,0,false) {
+                    RoutedEvent=System.Windows.Controls.Primitives.Thumb.DragCompletedEvent });
                 if(frame.Viewer.DisplayState.WindowCenter!=6 ||
                    windowCenter.Text!="6")
                     throw new InvalidOperationException("窗位滑条没有更新数值或显示状态");
@@ -355,6 +357,17 @@ namespace CxVisual.TestCenter.UI
                     Math.Abs(frame.Viewer.DisplayState.Brightness-26.0/255)>1e-10 ||
                     frame.Viewer.DisplayState.Contrast!=1.5)
                     throw new InvalidOperationException("WPF Gamma/亮度/对比度未实际提交");
+                Slider sliderGamma=FindControl<Slider>(frame,"TCT.Imaging.Slider.Gamma");
+                if(sliderGamma==null)
+                    throw new InvalidOperationException("Gamma WPF滑条不可见");
+                sliderGamma.Value=2.5;
+                sliderGamma.RaiseEvent(new System.Windows.Controls.Primitives.DragCompletedEventArgs(
+                    0,0,false) {
+                    RoutedEvent=System.Windows.Controls.Primitives.Thumb.DragCompletedEvent });
+                if(Math.Abs(frame.Viewer.DisplayState.Gamma-2.5)>1e-10 ||
+                   gammaField.Text!="2.5")
+                    throw new InvalidOperationException("Gamma滑条拖动松开未更新图像与输入框");
+                // 后续非法输入保留最新合法的Gamma=2.5，而不是恢复过期状态。
                 frame.Viewer.SavePng(file);
                 var enhancedPreview=MPWImageViewerControl.ReadImageFile(file);
                 if(enhancedPreview.GetGrayValue(1,2)==originalMappedValue)
@@ -364,7 +377,7 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("反色勾选后未应用实际显示状态");
                 gammaField.Text="invalid";
                 applyGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.Viewer.DisplayState.Gamma!=2 ||
+                if(frame.Viewer.DisplayState.Gamma!=2.5 ||
                    !AutomationProperties.GetHelpText(applyGray).Contains("Gamma"))
                     throw new InvalidOperationException("非法灰阶输入未保留原状态或缺少错误提示");
                 resetGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
