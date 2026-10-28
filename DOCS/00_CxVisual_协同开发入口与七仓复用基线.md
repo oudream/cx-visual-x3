@@ -268,3 +268,10 @@
 - [V2.0全类验收与测试矩阵](Testing/CxVisual_专业视觉体系%23通用二维视觉工作台——V2.0全类验收与测试矩阵.md)：G0—G6证据级别、26类矩阵、8个端到端Case、数值/WPF/性能/SDK现场测试门禁。
 
 **约束及现况：** 以最新master/真实源码/匹配SHA的Windows CI判断完成度；FIM/MVI/MPW/PVC仍为图像与专业Owner，MEM/MRC/MTC唯一工程与Undo，MOC编译，MRK/MDS/F19执行和运行数据，FLD诊断；不可从V2.0 UML候选推断类型已存在。DOCS/02—04大型XLSX需在具体Owner/API新建前核对相关Sheet。优先闭合图像→算法→结构化结果→工程/运行的实际端到端证据。
+
+### 二维工作台V2.0总体架构深化（2026-10-28）
+
+- 在既有11份V2.0设计文档内完成深化，不另建工作台框架；[00总纲§11](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——00总体架构与设计总纲_V2.0.md)明确四逻辑平面、12项裁决及四道设计Gate。
+- [02 UML§11—12](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——02UML总体模型与设计模式_V2.0.md)在26张初始关键图之后新增X01—X07七张真实Owner锚点UML（合计33张），细化MEM/MOL/MPM/MOC/MRK/MDS与FIM/PVC/MVI/MPW的唯一真源。
+- 01全类目录和03—08专题及实施、测试台账同步记录候选复用裁决；原VisionPipelineDefinition、VisionTypedPort、VisionRunResult等概念并非已批准公开类。专业Pipeline优先采用MEMContent+MOL，MRK/MDS复用，不建第二工程/执行/数据机制。
+- **本阶段是设计深化**，并未据此实现260项、修改业务算法代码或执行本轮Windows CI；真实功能进展始终按最新源码与匹配SHA验收。
