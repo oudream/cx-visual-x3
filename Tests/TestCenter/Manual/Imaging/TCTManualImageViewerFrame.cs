@@ -76,7 +76,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _displayContrast = new TextBox { Width = 58, Text = "1", Margin = new Thickness(2) };
         private readonly CheckBox _displayInverted = new CheckBox { Content = "反色", Margin = new Thickness(3),
             VerticalAlignment = VerticalAlignment.Center };
-        private readonly CheckBox _autoContrast = new CheckBox { Content = "自动对比度", Margin = new Thickness(3),
+        private readonly CheckBox _autoContrast = new CheckBox { Content = "自动灰度拉伸", Margin = new Thickness(3),
             VerticalAlignment = VerticalAlignment.Center };
         private readonly ComboBox _imageTool = new ComboBox {
             MinWidth = 144, Margin = new Thickness(3) };
@@ -167,6 +167,7 @@ namespace CxVisual.TestCenter.UI
                         _cpuSourceImage!=null &&
                         _cpuSourceImage.PixelFormat==FIMPixelFormat.GrayFloat32 ? "1" : "65535";
                     _windowMode.Text="当前显示：自动窗宽/窗位（手动范围已按新图像位深更新）";
+                    SyncWindowControlsForImage(_cpuSourceImage);
                     SyncDisplayInputFields();
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
@@ -564,6 +565,24 @@ namespace CxVisual.TestCenter.UI
             if(!_viewer.Overlays.Replace(changed))
                 throw new InvalidOperationException("所选对象已删除。");
             Show("已修改选中对象颜色："+item.Kind+" · "+item.Id);
+        }
+
+        /// <summary>复用成熟WinForms的系统颜色对话框，只修改选中MVI图元；取消则不提交。</summary>
+        private void ChooseOverlayColor()
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if(item.IsLocked)
+                throw new InvalidOperationException("选中对象已锁定，请先解锁。");
+            using(var dialog=new System.Windows.Forms.ColorDialog {
+                Color=System.Drawing.Color.FromArgb(item.Argb),
+                FullOpen=true,AllowFullOpen=true,AnyColor=true })
+            {
+                if(dialog.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;
+                // Windows色板不控制Alpha，保留原有透明度。
+                Color color=Color.FromArgb((byte)((uint)item.Argb>>24),
+                    dialog.Color.R,dialog.Color.G,dialog.Color.B);
+                SetSelectedOverlayColor(color);
+            }
         }
 
         private void ToggleSelectedOverlayLock()
@@ -1115,46 +1134,169 @@ namespace CxVisual.TestCenter.UI
             Show("归一化结果已生成（原图保留）");
         }
 
+        private void SyncWindowControlsForImage(FIMImageBuffer image)
+        {
+            _windowLimit=image==null ? 65535 :
+                image.PixelFormat==FIMPixelFormat.Gray8 ? 255 :
+                image.PixelFormat==FIMPixelFormat.GrayFloat32 ? 1 : 65535;
+            _syncingWindowControls=true;
+            try
+            {
+                _windowWidthInput.Text=_windowLimit.ToString("0.###",CultureInfo.InvariantCulture);
+                _windowCenterInput.Text=(_windowLimit/2).ToString("0.###",CultureInfo.InvariantCulture);
+                _windowEnabled.IsChecked=false;
+                if(_windowWidthSlider!=null)
+                {
+                    _windowWidthSlider.Maximum=_windowLimit;
+                    _windowWidthSlider.Minimum=Math.Min(1,_windowLimit);
+                    _windowWidthSlider.Value=_windowLimit;
+                }
+                if(_windowCenterSlider!=null)
+                {
+                    _windowCenterSlider.Maximum=_windowLimit;
+                    _windowCenterSlider.Value=_windowLimit/2;
+                }
+            }
+            finally { _syncingWindowControls=false; }
+        }
+        private void SyncWindowLimitsFromCenterWidth()
+        {
+            double width,center;
+            if(!double.TryParse(_windowWidthInput.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out width) ||
+               !double.TryParse(_windowCenterInput.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out center) ||
+               double.IsNaN(width)||double.IsInfinity(width)||
+               double.IsNaN(center)||double.IsInfinity(center)||width<=0)return;
+            _low.Text=(center-width/2).ToString("0.###",CultureInfo.InvariantCulture);
+            _high.Text=(center+width/2).ToString("0.###",CultureInfo.InvariantCulture);
+        }
         private void Window()
         {
             FIMImageBuffer source=_viewer.ActiveImage;
-            if(source==null)throw new InvalidOperationException("请先打开图像，再调整窗宽窗位。");
+            if(source==null)throw new InvalidOperationException("请先打开灰度图像。");
             if(source.PixelFormat==FIMPixelFormat.Bgr24 ||
                source.PixelFormat==FIMPixelFormat.Bgra32)
-                throw new NotSupportedException("彩色图不支持单通道窗宽窗位，请使用灰阶页亮度/对比度。");
-            double low,high;
-            if(!double.TryParse(_low.Text,NumberStyles.Float,
-                   CultureInfo.InvariantCulture,out low) ||
-               !double.TryParse(_high.Text,NumberStyles.Float,
-                   CultureInfo.InvariantCulture,out high) ||
-               double.IsNaN(low) || double.IsInfinity(low) ||
-               double.IsNaN(high) || double.IsInfinity(high) || high<=low)
-                throw new ArgumentException("窗上下限必须是有限数字，且上限大于下限。");
-            _viewer.SetDisplayWindow(low,high);
-            _windowMode.Text="当前显示：手动窗范围 ["+
-                low.ToString("0.###",CultureInfo.InvariantCulture)+", "+
-                high.ToString("0.###",CultureInfo.InvariantCulture)+"]";
-            Show("已应用手动窗位/窗宽；原始像素不变。");
+                throw new NotSupportedException("彩色图不支持单通道窗宽窗位。");
+            double width,center;
+            if(!double.TryParse(_windowWidthInput.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out width) ||
+               !double.TryParse(_windowCenterInput.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out center) ||
+               double.IsNaN(width)||double.IsInfinity(width)||width<=0||
+               double.IsNaN(center)||double.IsInfinity(center)||
+               double.IsInfinity(center-width/2)||double.IsInfinity(center+width/2))
+                throw new ArgumentException("窗宽/窗位必须是有限数字，且窗宽大于0。");
+            _viewer.SetDisplayWindow(center-width/2,center+width/2);
+            _syncingWindowControls=true;
+            try
+            {
+                _windowEnabled.IsChecked=true;
+                if(_windowWidthSlider!=null)
+                    _windowWidthSlider.Value=Math.Max(_windowWidthSlider.Minimum,
+                        Math.Min(_windowWidthSlider.Maximum,width));
+                if(_windowCenterSlider!=null)
+                    _windowCenterSlider.Value=Math.Max(_windowCenterSlider.Minimum,
+                        Math.Min(_windowCenterSlider.Maximum,center));
+            }
+            finally { _syncingWindowControls=false; }
+            SyncWindowLimitsFromCenterWidth();
+            _windowMode.Text="手动窗宽 "+width.ToString("0.###",CultureInfo.InvariantCulture)+
+                " / 窗位 "+center.ToString("0.###",CultureInfo.InvariantCulture);
+            Show("已更新窗宽/窗位显示映射；原始像素未修改。");
         }
-        private void ApplyWindowFromInput()
+        private void ApplyWindowFromSlider()
         {
+            if(_syncingWindowControls)return;
             try { Window(); }
             catch(Exception error) { Show("窗宽窗位错误："+error.Message); }
+        }
+        private void ApplyWindowFromLimits()
+        {
+            double low,high;
+            if(!double.TryParse(_low.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out low)||
+               !double.TryParse(_high.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out high)||
+               double.IsNaN(low)||double.IsNaN(high)||
+               double.IsInfinity(low)||double.IsInfinity(high)||high<=low)
+                throw new ArgumentException("窗上下限必须是有限数字，且上限大于下限。");
+            _windowWidthInput.Text=(high-low).ToString("R",CultureInfo.InvariantCulture);
+            _windowCenterInput.Text=(low+(high-low)/2).ToString("R",CultureInfo.InvariantCulture);
+            Window();
+        }
+        private void ResetWindowOnly()
+        {
+            if(_viewer.ActiveImage!=null)
+            {
+                _viewer.SetDisplayWindow(null,null);
+                _viewer.DisplayState.SetAutoContrast(false);
+            }
+            _syncingWindowControls=true;
+            _syncingDisplayInputs=true;
+            try
+            {
+                _windowEnabled.IsChecked=false;
+                _autoContrast.IsChecked=false;
+            }
+            finally { _syncingWindowControls=false;_syncingDisplayInputs=false; }
+            _windowMode.Text="当前显示：自动窗宽/窗位（原始位深范围）";
+            Show("已恢复自动窗范围，原始像素未修改。");
         }
         private void AutoWindow()
         {
             FIMImageBuffer source=_viewer.ActiveImage;
-            if(source==null)throw new InvalidOperationException("请先打开图像。");
+            if(source==null)throw new InvalidOperationException("请先打开灰度图像。");
             if(source.PixelFormat==FIMPixelFormat.Bgr24 ||
                source.PixelFormat==FIMPixelFormat.Bgra32)
-                throw new NotSupportedException("彩色图请使用灰阶页自动对比度。");
+                throw new NotSupportedException("彩色图请使用灰阶页的自动灰度拉伸。");
+            if(_windowRoi.IsChecked==true)
+            {
+                FIMPixelRegion? region=_viewer.SelectedRegion;
+                MVIImageOverlayItem selected=null;
+                if(_viewer.SelectedOverlayId.HasValue)
+                {
+                    selected=_viewer.Overlays.Find(_viewer.SelectedOverlayId.Value);
+                    if(selected!=null && selected.IsAreaRoi)
+                    {
+                        if(!selected.IsVisible || !_viewer.Overlays.IsLayerVisible(selected.Layer))
+                            throw new InvalidOperationException("选中ROI当前不可见，请先显示图层。");
+                        int left=Math.Max(0,(int)Math.Floor(selected.Bounds.Left));
+                        int top=Math.Max(0,(int)Math.Floor(selected.Bounds.Top));
+                        int right=Math.Min(source.Width-1,(int)Math.Ceiling(selected.Bounds.Right)-1);
+                        int bottom=Math.Min(source.Height-1,(int)Math.Ceiling(selected.Bounds.Bottom)-1);
+                        if(left>right||top>bottom)
+                            throw new InvalidOperationException("ROI不包含有效图像像素。");
+                        region=new FIMPixelRegion(left,top,right,bottom);
+                    }
+                    else selected=null;
+                }
+                if(!region.HasValue)
+                    throw new InvalidOperationException("请先框选ROI，或选择一个可见的面积ROI。");
+                FIMImageStatistics stats=selected==null ?
+                    FIMImageAnalyzer.Calculate(source,region) :
+                    FIMImageAnalyzer.AnalyzeMasked(source,64,region.Value,
+                        (x,y)=>selected.ContainsRoiPixelCenter(x,y)).Statistics;
+                double high=stats.Max>stats.Min ? stats.Max : stats.Min+1;
+                _windowWidthInput.Text=(high-stats.Min).ToString("R",CultureInfo.InvariantCulture);
+                _windowCenterInput.Text=(stats.Min+(high-stats.Min)/2)
+                    .ToString("R",CultureInfo.InvariantCulture);
+                Window();
+                _windowMode.Text="框选自动取窗："+stats.PixelCount+" 像素，灰度 ["+
+                    stats.Min.ToString("0.###",CultureInfo.InvariantCulture)+","+
+                    stats.Max.ToString("0.###",CultureInfo.InvariantCulture)+"]";
+                return;
+            }
             _viewer.SetDisplayWindow(null,null);
             _viewer.DisplayState.SetAutoContrast(true);
+            _syncingWindowControls=true;
             _syncingDisplayInputs=true;
-            try { _autoContrast.IsChecked=true; }
-            finally { _syncingDisplayInputs=false; }
-            _windowMode.Text="当前显示：按图像实际灰度范围自动对比（不改变原始像素）";
-            Show("已启用自动灰度范围显示；原图不变。");
+            try
+            {
+                _windowEnabled.IsChecked=false;
+                _autoContrast.IsChecked=true;
+            }
+            finally { _syncingWindowControls=false;_syncingDisplayInputs=false; }
+            _windowMode.Text="当前显示：按全图实际灰度范围自动拉伸";
+            Show("已根据原图实际灰度自动取窗；原始像素不变。");
         }
 
         private void ApplyPixelSpacing()
@@ -1185,7 +1327,7 @@ namespace CxVisual.TestCenter.UI
             {
                 MVIImageDisplayState state=_viewer.DisplayState;
                 _displayGamma.Text=state.Gamma.ToString("0.###",CultureInfo.InvariantCulture);
-                _displayBrightness.Text=state.Brightness.ToString("0.###",CultureInfo.InvariantCulture);
+                _displayBrightness.Text=(state.Brightness*255).ToString("0",CultureInfo.InvariantCulture);
                 _displayContrast.Text=state.Contrast.ToString("0.###",CultureInfo.InvariantCulture);
                 _displayInverted.IsChecked=state.IsInverted;
                 _autoContrast.IsChecked=state.IsAutoContrast;
@@ -1199,7 +1341,7 @@ namespace CxVisual.TestCenter.UI
             if (_viewer.ActiveImage==null)
                 throw new InvalidOperationException("请先打开图像，再调整灰阶显示。");
             double gamma = FloatParameter(_displayGamma, "Gamma");
-            double brightness = FloatParameter(_displayBrightness, "亮度");
+            double brightness = FloatParameter(_displayBrightness, "亮度")/255.0;
             double contrast = FloatParameter(_displayContrast, "对比度");
             MVIImageDisplayState display = _viewer.DisplayState;
             // 所有参数先验证，避免半途异常导致部分值已经生效。
@@ -1221,6 +1363,8 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 _viewer.DisplayState.Reset();
+                _windowEnabled.IsChecked=false;
+                _windowRoi.IsChecked=false;
                 _displayGamma.Text="1";
                 _displayBrightness.Text="0";
                 _displayContrast.Text="1";
@@ -1229,6 +1373,7 @@ namespace CxVisual.TestCenter.UI
                 SyncGraySliders();
             }
             finally { _syncingDisplayInputs=false; }
+            SyncWindowControlsForImage(_viewer.Session.Original);
             _windowMode.Text="当前显示：自动窗宽/窗位；灰阶参数为默认值";
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
