@@ -577,6 +577,27 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
+        /// <summary>无须预先选中图元；与原WinForms一致，配置整层默认色与现有未锁定对象。</summary>
+        private void ChooseOverlayLayerColor(MVIImageOverlayLayer layer)
+        {
+            int argb=_viewer.GetOverlayLayerColor(layer);
+            using(var dialog=new System.Windows.Forms.ColorDialog {
+                Color=System.Drawing.Color.FromArgb(argb),
+                FullOpen=true,AllowFullOpen=true,AnyColor=true })
+            {
+                if(dialog.ShowDialog(new ColorDialogOwner(System.Windows.Window.GetWindow(this)))!=
+                    System.Windows.Forms.DialogResult.OK)return;
+                int chosen=unchecked((int)(0xff000000u|
+                    ((uint)dialog.Color.R<<16)|((uint)dialog.Color.G<<8)|dialog.Color.B));
+                _viewer.SetOverlayLayerColor(layer,chosen);
+                Button pick;
+                if(_layerColorButtons.TryGetValue(layer,out pick))
+                    pick.Background=new SolidColorBrush(Color.FromRgb(
+                        dialog.Color.R,dialog.Color.G,dialog.Color.B));
+                Show(layer+"图层颜色已更新；既有未锁定图元与后续默认绘制同步。");
+            }
+        }
+
         /// <summary>复用成熟WinForms的系统颜色对话框，只修改选中MVI图元；取消则不提交。</summary>
         private void ChooseOverlayColor()
         {
