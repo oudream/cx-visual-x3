@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -27,6 +28,41 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
         private uint _orientationVao,_orientationVbo;
+        private uint _surfaceVao,_surfaceVbo;
+        private float[] _surfaceVertices=new float[0];
+        public int SurfacePreviewPointCount {get{return _surfaceVertices.Length/3;}}
+        /// <summary>点位置仅供GPU显示，原始精确Surface结果仍由CT3D负责。</summary>
+        public void SetSurfacePoints(IReadOnlyList<Vector3> points)
+        {
+            if(points==null)throw new ArgumentNullException("points");
+            if(points.Count>12000)throw new ArgumentOutOfRangeException("points","请先抽样显示点。");
+            float[] vertices=new float[checked(points.Count*3)];
+            for(int i=0;i<points.Count;i++)
+            {
+                Vector3 p=points[i];
+                if(float.IsNaN(p.X)||float.IsNaN(p.Y)||float.IsNaN(p.Z)||
+                   float.IsInfinity(p.X)||float.IsInfinity(p.Y)||float.IsInfinity(p.Z)||
+                   Math.Abs(p.X)>.50001||Math.Abs(p.Y)>.50001||Math.Abs(p.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("points","Surface显示点须在当前标准化体空间中。");
+                vertices[i*3]=p.X;vertices[i*3+1]=p.Y;vertices[i*3+2]=p.Z;
+            }
+            _surfaceVertices=vertices;
+            if(IsAvailable)
+            {
+                MakeCurrent();UploadSurfacePoints();
+                RequestRender();
+            }
+        }
+        public void ClearSurfacePoints()
+        {
+            SetSurfacePoints(new Vector3[0]);
+        }
+        private void UploadSurfacePoints()
+        {
+            if(_gl==null || _surfaceVbo==0)return;
+            _gl.BindBuffer(0x8892,_surfaceVbo);
+            UploadFloats(_surfaceVertices);
+        }
         private bool _showOrientation=true;
         private uint _obliqueTexture;
         private byte[] _obliquePixels;
@@ -110,6 +146,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             long count = checked((long)width * height * depth);
             if (voxels.LongLength != count || rgbaTransfer.Length != 1024 || gradientOpacity.Length != 256)
                 throw new ArgumentException("体数据或传递函数LUT长度不正确。");
+            // 新源体积必须显式清除旧专业结果，禁止显示过期Surface。
+            _surfaceVertices=new float[0];
             _voxels = voxels; _width = width; _height = height; _depth = depth;
             float totalX = width * spacingX, totalY = height * spacingY, totalZ = depth * spacingZ;
             float largest = Math.Max(totalX, Math.Max(totalY, totalZ));
@@ -299,6 +337,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UploadFloats(MPWVolumeGeometry.CubeLines);
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
+                _gl.GenVertexArrays(1,out _surfaceVao);
+                _gl.GenBuffers(1,out _surfaceVbo);
+                _gl.BindVertexArray(_surfaceVao);
+                _gl.BindBuffer(0x8892,_surfaceVbo);
+                UploadSurfacePoints();
+                _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
+                _gl.EnableVertexAttribArray(0);
                 // 旧版右下方的XYZ方向标：绘制在同一个真实GL framebuffer内。
                 // HwndHost存在Airspace限制，不能用WPF覆盖子窗口来冒充方向标。
                 _gl.GenVertexArrays(1,out _orientationVao);
@@ -368,10 +413,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_sliceVbo != 0) _gl.DeleteBuffers(1,ref _sliceVbo);
                 if (_lineVbo != 0) _gl.DeleteBuffers(1,ref _lineVbo);
                 if (_orientationVbo != 0) _gl.DeleteBuffers(1,ref _orientationVbo);
+                if (_surfaceVbo != 0) _gl.DeleteBuffers(1,ref _surfaceVbo);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
                 if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
                 if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
                 if (_orientationVao != 0) _gl.DeleteVertexArrays(1,ref _orientationVao);
+                if (_surfaceVao != 0) _gl.DeleteVertexArrays(1,ref _surfaceVao);
             }
             wglMakeCurrent(IntPtr.Zero,IntPtr.Zero);
             wglDeleteContext(_context); _context = IntPtr.Zero; IsAvailable = false;
@@ -379,6 +426,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _sliceShader = _lineShader = _sliceVao = _sliceVbo = _lineVao = _lineVbo = 0;
             _obliqueTexture=0;
             _orientationVao=_orientationVbo=0;
+            _surfaceVao=_surfaceVbo=0;
             _gl = null;
         }
 
@@ -604,6 +652,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 Vec3("lineColor",.82f,.88f,.95f);
                 _gl.BindVertexArray(_lineVao);
                 _gl.DrawArrays(0x0001,0,MPWVolumeGeometry.CubeLines.Length/3);
+            }
+            // 真实GL framebuffer中的专业Surface点层，避免HwndHost airspace导致WPF伪叠加。
+            if(_surfaceVertices.Length!=0 && _surfaceVao!=0)
+            {
+                UseShaderProgram(_lineShader);
+                Matrix("mvp",mvp);
+                Vec3("lineColor",1f,.78f,.2f);
+                _gl.BindVertexArray(_surfaceVao);
+                glPointSize(4f);
+                _gl.DrawArrays(0x0000,0,_surfaceVertices.Length/3); // GL_POINTS
             }
             if(_showOrientation)DrawOrientationIndicator(w,h);
             SwapBuffers(_dc);
@@ -842,6 +900,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("opengl32.dll")] private static extern void glClearColor(float r,float g,float b,float a);
         [DllImport("opengl32.dll")] private static extern void glClear(uint flags);
         [DllImport("opengl32.dll")] private static extern void glViewport(int x,int y,int w,int h);
+        [DllImport("opengl32.dll")] private static extern void glPointSize(float size);
         [DllImport("opengl32.dll")] private static extern void glGetIntegerv(uint name,out int value);
         [DllImport("opengl32.dll")] private static extern void glReadPixels(int x,int y,int width,int height,uint format,uint pixelType,IntPtr output);
         [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string module);
