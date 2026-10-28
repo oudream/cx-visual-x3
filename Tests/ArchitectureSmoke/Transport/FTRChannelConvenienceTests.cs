@@ -219,6 +219,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.SendToAsync(replacement,new byte[]{13}).GetAwaiter().GetResult();
                     Check(replacement.Equals(server.LastDestination) &&
                         server.LastPayload.SequenceEqual(new byte[]{13}),"新代次定向发送须工作");
+                    // 已取消的定向发送/回复不能到达物理Peer，也不能污染上一条发送证据。
+                    using(var cancelled=new CancellationTokenSource())
+                    {
+                        cancelled.Cancel();
+                        bool sendCancelled=false,replyCancelled=false;
+                        try {server.SendToAsync(replacement,new byte[]{14},cancelled.Token)
+                            .GetAwaiter().GetResult();}
+                        catch(OperationCanceledException) {sendCancelled=true;}
+                        try {server.ReplyAsync(
+                            new FTRChannelReceiveContext(replacement,new byte[]{1}),
+                            new byte[]{15},cancelled.Token).GetAwaiter().GetResult();}
+                        catch(OperationCanceledException) {replyCancelled=true;}
+                        Check(sendCancelled && replyCancelled &&
+                            replacement.Equals(server.LastDestination) &&
+                            server.LastPayload.SequenceEqual(new byte[]{13}),
+                            "预取消的异步定向发送和回复不得产生任何物理发送");
+                    }
                     server.Close();
                 }
                 finally {filtered.Dispose();observation.Dispose();}
