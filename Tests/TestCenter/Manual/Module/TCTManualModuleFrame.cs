@@ -386,6 +386,10 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 MHSConfigCommitResult commit = await _saveDraft(CancellationToken.None);
+                // Refresh the read-only capability declaration from this actual MHS draft
+                // after committing; do not leave stale names in the shared MPW list.
+                if (commit.Success && _refreshDeclaredCapabilities != null)
+                    _refreshDeclaredCapabilities();
                 UpdateStatus(commit.Success
                     ? "配置已保存为 " + commit.Revision + " · " + _versions() +
                       "。未自动装配或启动模块。"
