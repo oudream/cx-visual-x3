@@ -132,6 +132,7 @@ namespace CxVisual.Foundation.Geometry
             var indices=new List<int>(triangleIndices);
             _vertices=positions.AsReadOnly();
             _indices=indices.AsReadOnly();
+            var referencedVertices=new bool[positions.Count];
             var normals=new double[checked(positions.Count*3)];
             var edges=new Dictionary<ulong,EdgeCount>();
             var vertexFans=new List<VertexLink>[positions.Count];
@@ -155,6 +156,9 @@ namespace CxVisual.Foundation.Geometry
                 if(a<0||b<0||c<0||a>=positions.Count||b>=positions.Count||
                     c>=positions.Count||a==b||b==c||c==a)
                     throw new ArgumentException("网格含无效、重复或越界三角面顶点。","triangleIndices");
+                referencedVertices[a]=true;
+                referencedVertices[b]=true;
+                referencedVertices[c]=true;
                 FGEPoint3D p=positions[a],q=positions[b],r=positions[c];
                 double ux=q.X-p.X,uy=q.Y-p.Y,uz=q.Z-p.Z;
                 double vx=r.X-p.X,vy=r.Y-p.Y,vz=r.Z-p.Z;
@@ -180,6 +184,10 @@ namespace CxVisual.Foundation.Geometry
                     +ay*((q.Z-anchor.Z)*(r.X-anchor.X)-(q.X-anchor.X)*(r.Z-anchor.Z))
                     +az*((q.X-anchor.X)*(r.Y-anchor.Y)-(q.Y-anchor.Y)*(r.X-anchor.X));
             }
+            // 孤立顶点会污染包围盒及ROI，并产生不可解释的零法向。
+            for(int i=0;i<referencedVertices.Length;i++)
+                if(!referencedVertices[i])
+                    throw new ArgumentException("网格包含未被任何三角面引用的孤立顶点。","vertices");
             if(double.IsNaN(area)||double.IsInfinity(area)||double.IsNaN(volume6)||double.IsInfinity(volume6))
                 throw new ArgumentOutOfRangeException("vertices","网格面积或体积发生数值溢出。");
             SurfaceArea=area;

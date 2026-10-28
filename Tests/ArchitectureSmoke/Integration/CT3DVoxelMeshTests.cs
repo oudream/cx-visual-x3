@@ -216,6 +216,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch(ArgumentException){invalid=true;}
             Check(invalid,"FGE必须拒绝零面积三角形");
+            bool isolatedRejected=false;
+            try
+            {
+                new FGETriangleMesh3D(
+                    new[]{new FGEPoint3D(0,0,0),new FGEPoint3D(1,0,0),
+                        new FGEPoint3D(0,1,0),new FGEPoint3D(999,999,999)},
+                    new[]{0,1,2});
+            }
+            catch(ArgumentException){isolatedRejected=true;}
+            Check(isolatedRejected,"FGE必须拒绝污染包围盒及ROI的孤立顶点");
             var open=new FGETriangleMesh3D(
                 new[]{new FGEPoint3D(0,0,0),new FGEPoint3D(1,0,0),
                     new FGEPoint3D(0,1,0)},new[]{0,1,2});
