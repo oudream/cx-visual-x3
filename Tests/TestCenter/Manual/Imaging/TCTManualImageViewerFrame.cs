@@ -320,7 +320,7 @@ namespace CxVisual.TestCenter.UI
                 {
                     token.ThrowIfCancellationRequested();
                     var inputs = CxVisionImageInterop.ToCpuInspectionInputs(original, depth);
-                    var plan = CxVisionDataFlow.CreateCpuInspectionPlanWithArtifacts(options);
+                    var plan = CxVisionDataFlow.CreateCpuInspectionPlanWithMeasuredArtifacts(options);
                     var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
                     try
                     {
