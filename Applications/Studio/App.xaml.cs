@@ -13,14 +13,19 @@ namespace CxVisual.Studio
             base.OnStartup(e);
             MainWindow window = new MainWindow();
             MainWindow = window;
-            bool testing = e.Args.Contains("--shell-self-test", StringComparer.OrdinalIgnoreCase);
+            bool cpuOnly = e.Args.Contains("--module-center-cpu-self-test",
+                StringComparer.OrdinalIgnoreCase);
+            bool testing = cpuOnly ||
+                e.Args.Contains("--shell-self-test", StringComparer.OrdinalIgnoreCase);
             if (!testing) { window.Show(); return; }
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             window.Show();
             window.Dispatcher.BeginInvoke(new Action(() =>
             {
                 string report = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "StudioShellSelfTest.txt");
-                bool success = StudioShellSelfTests.Run(window, report);
+                bool success = cpuOnly?
+                    StudioShellSelfTests.RunCpuVisionOnly(report):
+                    StudioShellSelfTests.Run(window, report);
                 window.Close();
                 Shutdown(success ? 0 : 1);
             }), DispatcherPriority.ApplicationIdle);
