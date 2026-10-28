@@ -51,7 +51,7 @@ namespace CxVisual.Foundation.Transport
             if (state != FTRChannelState.Faulted) return;
             lock (_gate)
             {
-                if (!_active) return;
+                if (!_active || (_runner != null && !_runner.IsCompleted)) return;
                 _attempts=0;_lastError=null;_exhausted=false;
                 ScheduleLocked();
             }
@@ -60,7 +60,19 @@ namespace CxVisual.Foundation.Transport
         {
             if (!_active || _exhausted || (_runner != null && !_runner.IsCompleted)) return;
             CancellationToken token=_stop.Token;
-            _runner=Task.Run(() => RecoverAsync(token));
+            Task running=Task.Run(() => RecoverAsync(token));
+            _runner=running;
+            // 新故障若恰好发生在恢复成功的尾部，继续排队；不丢失Faulted状态。
+            running.ContinueWith(done =>
+            {
+                lock (_gate)
+                {
+                    if (!ReferenceEquals(_runner,done)) return;
+                    _runner=null;
+                    if (_active && !_exhausted && _channel.State == FTRChannelState.Faulted)
+                        ScheduleLocked();
+                }
+            },TaskScheduler.Default);
         }
         private async Task RecoverAsync(CancellationToken cancellation)
         {
