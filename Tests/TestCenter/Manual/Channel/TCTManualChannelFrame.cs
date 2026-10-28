@@ -434,7 +434,9 @@ namespace CxVisual.TestCenter.UI
             var d=h.Diagnostics;
             var q=d.ReceiveQueue;
             string failure=d.LastFailure==null ? "无" :
-                d.LastFailure.Kind+" / "+d.LastFailure.Stage+" / "+d.LastFailure.Scope;
+                d.LastFailure.Kind+" / "+d.LastFailure.Stage+" / "+d.LastFailure.Scope+
+                (d.LastFailure.Address==null ? "" :
+                    " / "+d.LastFailure.Address.ToString());
             _health.Text="State="+h.State+"  Session="+h.SessionId.ToString("N")+
                 "  Peers="+h.ActivePeers+
                 "  TX="+d.SentBytes+" B  RX="+d.ReceivedBytes+" B"+
