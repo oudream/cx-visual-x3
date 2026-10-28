@@ -15,6 +15,9 @@ namespace CxVisual.Foundation.Transport
         [FCMConfigItem("最大单消息字节",Order=12,Category="WebSocket Server",Unit="Bytes")]
         [Range(1,int.MaxValue)]
         public int MaxMessageBytes {get;set;}=4*1024*1024;
+        [FCMConfigItem("所有客户端合计在途缓冲额度",Order=13,Category="WebSocket Server",Unit="Bytes")]
+        [Range(1,int.MaxValue)]
+        public int TotalBufferedBytes {get;set;}=32*1024*1024;
         public override void Validate()
         {
             base.Validate();
@@ -22,7 +25,7 @@ namespace CxVisual.Foundation.Transport
             if(!Uri.TryCreate(Prefix,UriKind.Absolute,out uri) || uri.Scheme!="http" ||
                 (!uri.IsLoopback && uri.Host!="localhost") || !Prefix.EndsWith("/",StringComparison.Ordinal) ||
                 Prefix.Contains("*") || Prefix.Contains("+") || !string.IsNullOrEmpty(uri.UserInfo) ||
-                MaxClients<1 || MaxClients>1024 || MaxMessageBytes<1)
+                MaxClients<1 || MaxClients>1024 || MaxMessageBytes<1 || TotalBufferedBytes<1)
                 throw new ArgumentException("WebSocket Server只能使用本机显式HTTP Upgrade前缀及受限容量");
         }
     }

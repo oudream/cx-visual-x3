@@ -29,5 +29,10 @@ public sealed class FTRChannelDiagnosticsSnapshot
         public int PendingSendSnapshots {get;internal set;}
         public long PendingSendBytes {get;internal set;}
         public long RejectedSends {get;internal set;}
+        /// <summary>受FTR在途额度管理的HTTP/WS临时接收聚合及回复副本字节数。</summary>
+        public long BufferedPayloadBytes {get;internal set;}
+        public long PeakBufferedPayloadBytes {get;internal set;}
+        public long RejectedPayloadBuffers {get;internal set;}
+        public long PayloadBufferByteBudget {get;internal set;}
     }
 }

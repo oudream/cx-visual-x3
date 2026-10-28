@@ -23,6 +23,15 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         private FTRChannelState _state = FTRChannelState.Closed;
         private readonly FTRChannelDiagnostics _diagnostics=new FTRChannelDiagnostics();
         private FTRReceivePipeline _receivePipeline;
+        private FTRBufferedByteBudget _inFlightBudget;
+        internal FTRBufferedByteBudget InFlightBudget
+        {
+            get {return _inFlightBudget;}
+        }
+        protected void ConfigureInFlightBudget(int limit)
+        {
+            _inFlightBudget=new FTRBufferedByteBudget(limit);
+        }
         private bool _capturePayloadEvidence=true;
         private readonly object _disposeGate=new object();
         private bool _disposed;
@@ -50,6 +59,16 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 snapshot.ReceiveQueue=pipeline==null?null:pipeline.Snapshot();
                 lock(_gate){snapshot.PendingSends=_activeSends;snapshot.PendingSendSnapshots=_asyncSends;
                     snapshot.PendingSendBytes=_pendingSendBytes;snapshot.RejectedSends=_rejectedSends;}
+                FTRBufferedByteBudget budget=_inFlightBudget;
+                if(budget!=null)
+                {
+                    long used,peak,rejected,limit;
+                    budget.Snapshot(out used,out peak,out rejected,out limit);
+                    snapshot.BufferedPayloadBytes=used;
+                    snapshot.PeakBufferedPayloadBytes=peak;
+                    snapshot.RejectedPayloadBuffers=rejected;
+                    snapshot.PayloadBufferByteBudget=limit;
+                }
                 return snapshot;}
         }
         /// <summary>统一诊断视图；仅采样已有计数器与存活Peer，不增加接收者或定时线程。</summary>

@@ -18,6 +18,9 @@ namespace CxVisual.Foundation.Transport
         [FCMConfigItem("最大响应字节",Order=13,Category="HTTP Server",Unit="Bytes")]
         [Range(1,int.MaxValue)]
         public int MaxResponseBytes { get; set; } = 4*1024*1024;
+        [FCMConfigItem("多请求合计在途内存额度",Order=15,Category="HTTP Server",Unit="Bytes")]
+        [Range(1,int.MaxValue)]
+        public int TotalBufferedBytes {get;set;}=32*1024*1024;
         [FCMConfigItem("响应等待上限",Order=14,Category="HTTP Server",Unit="ms")]
         [Range(1,3600000)]
         public int ResponseTimeoutMs { get; set; } = 30000;
@@ -29,7 +32,8 @@ namespace CxVisual.Foundation.Transport
                 (!uri.IsLoopback && uri.Host!="localhost") || !Prefix.EndsWith("/",StringComparison.Ordinal) ||
                 Prefix.Contains("*") || Prefix.Contains("+") || !string.IsNullOrEmpty(uri.UserInfo) ||
                 MaxClients<1 || MaxClients>1024 || MaxRequestBytes<1 ||
-                MaxResponseBytes<1 || ResponseTimeoutMs<1 || ResponseTimeoutMs>3600000)
+                MaxResponseBytes<1 || TotalBufferedBytes<1 ||
+                ResponseTimeoutMs<1 || ResponseTimeoutMs>3600000)
                 throw new ArgumentException("HTTP Server须显式使用安全的本机http前缀及有限预算");
         }
     }
