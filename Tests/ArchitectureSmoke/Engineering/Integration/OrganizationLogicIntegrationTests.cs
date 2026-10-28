@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Orchestration;
@@ -2165,6 +2166,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "G06 MHS NextTask有效配置未能在任务边界生效");
                 var effectiveProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
                     config,sourceResolver);
+                // The same MHS Effective version must be readable through an
+                // authorized session. A module center must not bypass access controls.
+                string projectScope=session.Project.Id.ToString("N");
+                string sectionId=FCMConfigSchemaBuilder.Describe<CxVisionInspectionOptions>().SectionId;
+                var identity=new FCMConfigIdentity(sectionId,"project",projectScope);
+                var policyRead=new FCMConfigRolePolicy();
+                var principalRead=new FCMConfigPrincipal("g06-reader",new[]{"vision-reader"});
+                var authorized=configService.Authorize(principalRead,policyRead);
+                bool deniedBeforeGrant=false;
+                try { authorized.Open<CxVisionInspectionOptions>(identity); }
+                catch(UnauthorizedAccessException) { deniedBeforeGrant=true; }
+                Check(deniedBeforeGrant,"G06 unauthorized MHS Effective reader was allowed");
+                policyRead.Grant("vision-reader",FCMConfigAccessAction.Read,
+                    sectionId,"project",projectScope);
+                var authorizedSection=authorized.Open<CxVisionInspectionOptions>(identity);
+                var authorizedProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
+                    authorizedSection,sourceResolver);
+                string guardedVersion;
+                Check(authorizedProvider.TryGetCapabilityVersion(
+                    CxVisionThresholdProvider.CapabilityId,out guardedVersion)&&
+                    guardedVersion==effectiveProvider.ReleaseVersion,
+                    "G06 authorized CPU provider does not use the actual MHS Effective version");
+                policyRead.Revoke("vision-reader",FCMConfigAccessAction.Read,
+                    sectionId,"project",projectScope);
+                bool refusedAfterRevocation=false;
+                try { authorizedProvider.TryGetCapabilityVersion(
+                    CxVisionThresholdProvider.CapabilityId,out guardedVersion); }
+                catch(UnauthorizedAccessException) { refusedAfterRevocation=true; }
+                Check(refusedAfterRevocation,
+                    "G06 revoked config Reader could still publish a pinned provider");
+
                 long effectiveVersion=long.Parse(config.EffectiveVersion.Substring(1),
                     System.Globalization.CultureInfo.InvariantCulture);
                 Check(effectiveProvider.ConfigurationRevision==effectiveVersion&&
