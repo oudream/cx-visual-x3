@@ -212,6 +212,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidOperationException("Unload只适用于磁盘定位数据：" + name);
                 if (file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可卸载：" + name, name);
+                CheckLifecycleMutation(name);
                 file.Cache = null;
                 if (Budget != null) Budget.Release(file.CachedBytes);
                 file.CachedBytes = 0;
