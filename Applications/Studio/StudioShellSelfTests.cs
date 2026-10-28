@@ -98,6 +98,16 @@ namespace CxVisual.Studio
                         x.ModuleId=="studio.development.cpu.vision" &&
                         x.Resolved && !x.Demonstration),
                         "实际CPU专业算法未由唯一MOC/MFM关联为Compute");
+                    var cpuPorts=center.VisibleCapabilities.Single(x=>
+                        x.Id==CxVisionThresholdProvider.CapabilityId);
+                    Assert(cpuPorts.InputPorts.Count==3 &&
+                        cpuPorts.InputPorts.Any(x=>x.StartsWith("RawPixels : byte[]"))&&
+                        cpuPorts.InputPorts.Any(x=>x.StartsWith("Width : int"))&&
+                        cpuPorts.InputPorts.Any(x=>x.StartsWith("Height : int"))&&
+                        cpuPorts.InputPorts.All(x=>x.Contains("(必填)"))&&
+                        cpuPorts.OutputPorts.Count==0,
+                        "Studio未从真正MOC能力目录展示强类型算法端口");
+
                     Assert(center.VisibleCapabilities.Any(x=>!x.Kind.HasValue&&x.Demonstration),
                         "演示CPU流程不能被混入真实专业模块身份");
                     center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute);
