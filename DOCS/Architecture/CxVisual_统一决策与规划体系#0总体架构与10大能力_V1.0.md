@@ -1,6 +1,6 @@
 # CxVisual 统一决策与规划体系——总体架构与十项能力 V1.0
 
-> 名称：\`CxVisual.Mechanism.Decision\`；英文：Unified Decision & Planning System。
+> 名称：`CxVisual.Mechanism.Decision`；英文：Unified Decision & Planning System。
 > 状态：用户已决定名称和融合方向；**目标设计，非十项能力已实现说明**。
 > 三层：Core（定义）→ Decision（判断/决策/规划）→ Runtime（受控运行）。运行时数据 MDS、专业算法与实际设备动作保有唯一 Owner。
 > 决议：[Decision 项目融合与归属裁决](../Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md)。
@@ -9,7 +9,7 @@
 
 **Core** 描述“有什么、希望达到什么、允许/不允许什么”；**Decision** 根据定义与明确证据回答“能不能、该不该、怎样做更合理”；**Runtime** 在真实环境里受控加载、连接、执行、判断当前状态、结算和反馈。**三者不是所有调用必须经过的强制调用链**。
 
-\`\`\`text
+```text
 C# SDK 简单调用 ----------------------------> 专业 API / 可选 Runtime
 Studio / 工程 / 模板 / AI候选 ---> Core Snapshot ---> Decision
                                          |           |
@@ -19,7 +19,7 @@ Studio / 工程 / 模板 / AI候选 ---> Core Snapshot ---> Decision
                                                       |
                                                监控/Trace/实测反馈
                                                          └──> Decision（可选离线复评）
-\`\`\`
+```
 
 三个判断：
 1. **能不能做**：硬约束、类型、依赖、资源上限和安全前置；不能做则拒绝。
@@ -57,7 +57,7 @@ Studio / 工程 / 模板 / AI候选 ---> Core Snapshot ---> Decision
 
 ## 3. 方案决策的优先级（防止“优化出事故”）
 
-\`\`\`text
+```text
 定义与版本一致性
    ↓
 结构/类型/能力合法性
@@ -71,7 +71,7 @@ Studio / 工程 / 模板 / AI候选 ---> Core Snapshot ---> Decision
 选择 + 备选 + 必须满足的前置条件
    ↓
 Runtime 真实环境复核 + 授权执行
-\`\`\`
+```
 
 **硬约束永不因加权得分更高而被跳过**。候选不存在时返回不可行及原因，不强制选最优；结果必须支持“不知道/数据不足/需现场验证”。没有独立实证的“自动选最优算法”只能作为建议，不能作为事实。
 

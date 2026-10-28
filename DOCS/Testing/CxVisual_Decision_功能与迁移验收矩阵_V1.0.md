@@ -26,12 +26,12 @@
 
 | ID | 当前入口/用例 | 目标门禁 |
 |---|---|---|
-| R01 | \`OrganizationLogicIntegrationTests.G05aConditionalBranchesAndJoin\` | True/False仅选中一侧，Join只执行一次；错误条件拒绝 |
-| R02 | \`OrganizationLogicIntegrationTests.G06CpuVisionThroughMOC\` | 真实CPU视觉阈值Provider、byte[]数据、Width/Height缺失拒绝、SourceMap |
-| R03 | \`OrganizationLogicIntegrationTests.R05DynamicLoopAndExit\` | 100000最大迭代约束、实际220轮、无100000步展开、Break/Continue/Return |
-| R04 | \`V2ThreeLevelNamedData\` 等集成用例 | Top/Mid/Leaf命名端口数据隔离与失败不提交 |
-| R05 | \`G07ProjectReleaseLockAndAuthorization\` | 工程版本/能力版本/发布授权不跳过，活动Plan稳定 |
-| R06 | 现有 \`--organization\`、\`--organization-wpf\`、\`--concurrency\`、\`--command-center\` | C#与Studio/Runtime现有功能不回退 |
+| R01 | `OrganizationLogicIntegrationTests.G05aConditionalBranchesAndJoin` | True/False仅选中一侧，Join只执行一次；错误条件拒绝 |
+| R02 | `OrganizationLogicIntegrationTests.G06CpuVisionThroughMOC` | 真实CPU视觉阈值Provider、byte[]数据、Width/Height缺失拒绝、SourceMap |
+| R03 | `OrganizationLogicIntegrationTests.R05DynamicLoopAndExit` | 100000最大迭代约束、实际220轮、无100000步展开、Break/Continue/Return |
+| R04 | `V2ThreeLevelNamedData` 等集成用例 | Top/Mid/Leaf命名端口数据隔离与失败不提交 |
+| R05 | `G07ProjectReleaseLockAndAuthorization` | 工程版本/能力版本/发布授权不跳过，活动Plan稳定 |
+| R06 | 现有 `--organization`、`--organization-wpf`、`--concurrency`、`--command-center` | C#与Studio/Runtime现有功能不回退 |
 | R07 | 默认ArchitectureSmoke | 全平台未绕过其他Owner的任何失败；失败时定责、整改而非假通过 |
 
 用例方法/CLI名称来自当前已有源码和已有工作流入口；未来执行时按该SHA重新核实其存在，单独报告各类Windows测试结论。
@@ -48,7 +48,7 @@
 | M06 | Plan声明/运行绑定分离；Plan不可序列化Delegate/Worker/Handle | DTO序列化、指纹、版本、运行Loader测试 |
 | M07 | SourceMap、诊断码、版本ID/指纹保真 | 迁移前后对照及Trace回溯测试 |
 | M08 | C# SDK、Studio/TestCenter统一使用接口，不需三套规则 | 端到端操作/Debug和开发者API测试 |
-| M09 | 旧\`MOC*\`符号均有Owner/兼容/移除决策 | 逐文件迁移表、编译与消费者扫描 |
+| M09 | 旧`MOC*`符号均有Owner/兼容/移除决策 | 逐文件迁移表、编译与消费者扫描 |
 | M10 | 简单专业调用不强制经过Decision | 直接专业API/Runtime路径测试 |
 | M11 | Runtime加载时对真实环境、权限、能力/版本进行最终验证 | 虚拟环境错版本/资源不足/未授权拒绝 |
 | M12 | 回归无损/重试幂等、取消结算、活动Plan锁定 | 压力、并发与负例测试 |
@@ -71,7 +71,7 @@
 
 | 迁移阶段 | 必须执行 | 允许宣布的完成情况 |
 |---|---|---|
-| P0 基线 | 固定SHA、SLN和Owner扫描、原\`--organization\`/默认回归 | “现状已审计”，不等于融合 |
+| P0 基线 | 固定SHA、SLN和Owner扫描、原`--organization`/默认回归 | “现状已审计”，不等于融合 |
 | P1 纯合同/判定 | 编译+M01/M03/M06初步验证+D01/D02正反例 | “Decision合同已建立” |
 | P2 编译迁移 | 编译/组织、R01～R05、动态/嵌套/SourceMap | “静态编译职责已迁” |
 | P3 Runtime解耦 | M03～M12、版本校验、资源/异常/并发测试 | “依赖无环/Runtime可消费Decision” |
@@ -83,7 +83,7 @@
 ## 六、失败及证据处理
 
 - 仅设计说明不能写“通过”；GitHub Actions没有最终success不能声明完整CI通过。
-- Numercis/Channel等其他Owner的历史CI失败不自动归为Decision缺陷；但默认回归未绿时，必须说明影响并不得标全量验收成功。
-- 不因避免单一测试失败而跳过\`--organization\`、默认ArchitectureSmoke或硬约束负例。
+- Numerics/Channel等其他Owner的历史CI失败不自动归为Decision缺陷；但默认回归未绿时，必须说明影响并不得标全量验收成功。
+- 不因避免单一测试失败而跳过`--organization`、默认ArchitectureSmoke或硬约束负例。
 - 迁移存在中间提交时，每个步骤必须以其**准确SHA**单独报告，不能混用不同SHA的通过证据。
 - 实机PLC/X-Ray、跨进程发布、工业硬实时控制与安全联锁的验证必须单独标记“未验证”，不能用Virtual仿真冒称。

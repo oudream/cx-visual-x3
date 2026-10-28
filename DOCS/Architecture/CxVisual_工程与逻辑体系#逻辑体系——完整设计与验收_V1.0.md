@@ -1,6 +1,8 @@
 # CxVisual · 工程与逻辑体系 · 逻辑体系 — 完整设计与验收（初简版）
 
-> **2026-10-28 新架构裁决提示**：本文件为早期 Logic 独立工程的设计讨论记录，原物理项目归属建议已被 [Decision 融合与归属裁决](../Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md) 更新。最新正式目标是 Core 定义、Decision 判断/规划、Runtime 运行，\`Mechanism.Logic\` 与 \`Mechanism.Orchestration\` 合并改名；**当前源码仍未迁移**。本文保留以追溯历史与已做的原实现，不作为新增平行 Logic 工程依据。\n\n
+> **2026-10-28 新架构裁决提示**：本文件为早期 Logic 独立工程的设计讨论记录，原物理项目归属建议已被 [Decision 融合与归属裁决](../Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md) 更新。最新正式目标是 Core 定义、Decision 判断/规划、Runtime 运行，`Mechanism.Logic` 与 `Mechanism.Orchestration` 合并改名；**当前源码仍未迁移**。本文保留以追溯历史与已做的原实现，不作为新增平行 Logic 工程依据。
+
+
 > **版本**：V1.0（初简版 / 设计讨论稿）  
 > **日期**：2026-10-20  
 > **定位**：供后续细化、源码归位、验收设计使用；**不是完整规格，也不代表功能已经实现**。  
