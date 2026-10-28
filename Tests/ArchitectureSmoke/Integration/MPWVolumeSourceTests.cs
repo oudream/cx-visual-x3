@@ -1,5 +1,7 @@
 using System;
 using System.Reflection;
+using System.Collections.Generic;
+using CxVisual.Foundation.Volume;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
@@ -38,6 +40,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
                      "SetSceneOptions", "SetSlicePositions", "SetObliqueTexture", "CaptureFrame", "ResetCamera" })
                 Check(gpu.GetMethod(api, BindingFlags.Public | BindingFlags.Instance) != null,
                     "缺少体绘真实API："+api);
+            // 验证毫米坐标→GL标准化对象空间；不依赖GPU或专业算法UI。
+            FVOVolumeSpatialFrame frame=new FVOVolumeSpatialFrame(.5,1,2,10,20,30,
+                new double[]{0,-1,0,1,0,0,0,0,1},true);
+            var physical=new List<FVOPhysicalPoint3D>
+            {
+                frame.VoxelToPhysical(0,0,0),
+                frame.VoxelToPhysical(5,10,15),
+                frame.VoxelToPhysical(10,20,30)
+            };
+            var projected=MPWVolumeSurfaceProjection.Project(physical,frame,11,21,31);
+            Check(projected.Count==3 && Math.Abs(projected[0].X+.5)<.000001 &&
+                Math.Abs(projected[0].Y+.5)<.000001 &&
+                Math.Abs(projected[1].X)<.000001 &&
+                Math.Abs(projected[1].Y)<.000001 &&
+                Math.Abs(projected[2].Z-.5)<.000001,
+                "非等距/旋转的物理毫米Source经Frame逆变换投影到真实三维体空间");
+            bool invalidFrame=false;
+            try
+            {
+                MPWVolumeSurfaceProjection.Project(new []{
+                    new FVOPhysicalPoint3D(5000,5000,5000)},frame,11,21,31);
+            }
+            catch(ArgumentOutOfRangeException){invalidFrame=true;}
+            Check(invalidFrame,"体外专业Surface点不允许误叠加到当前Volume");
+            var many=new List<FVOPhysicalPoint3D>();
+            for(int i=0;i<100;i++)many.Add(physical[1]);
+            Check(MPWVolumeSurfaceProjection.Project(many,frame,11,21,31,7).Count<=7,
+                "大点集只进行有界显示抽样，不更改专业真值");
+            Check(gpu.GetMethod("SetSurfacePoints")!=null &&
+                gpu.GetMethod("ClearSurfacePoints")!=null,
+                "专业Surface须进入真实HwndHost/GL framebuffer，而不是WPF伪覆盖");
             // 正式MPW调度器不需要模拟GPU成功即可验证失效合并与代次。
             Dispatcher dispatcher=Dispatcher.CurrentDispatcher;
             int count=0;
