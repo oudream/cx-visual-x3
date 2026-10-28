@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using AvalonDock.Layout;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Presentation.Wpf.RuntimeData;
 
 namespace CxVisual.Studio
@@ -10,6 +11,20 @@ namespace CxVisual.Studio
     {
         private MDSDataHeap _studioRuntimeDataHeap;
         private bool _studioRuntimeDataPoliciesEditable;
+        private MHSConfigSection<MDSDataLifecycleEngineeringOptions> _studioRuntimeEngineering;
+        private bool _studioRuntimeEngineeringEditable;
+
+        /// <summary>工程策略从原MHS Service注入，Studio仅投影Saved/Effective，不创建第二工程仓库。</summary>
+        public void AttachStudioRuntimeDataEngineering(
+            MHSConfigSection<MDSDataLifecycleEngineeringOptions> section,
+            bool allowEngineeringChanges = false)
+        {
+            _studioRuntimeEngineering = section ?? throw new ArgumentNullException("section");
+            _studioRuntimeEngineeringEditable = allowEngineeringChanges;
+            LayoutDocument doc = FindStudioContent("doc.runtime-data") as LayoutDocument;
+            var view = doc == null ? null : doc.Content as MPWDataLifecycleWorkspaceControl;
+            if (view != null) view.BindEngineering(section, allowEngineeringChanges);
+        }
 
         /// <summary>绑定真正的MRK/MDS运行Heap，Studio只负责展示，绝不拥有或关闭该Heap。</summary>
         public void AttachStudioRuntimeDataHeap(MDSDataHeap heap,
@@ -35,6 +50,8 @@ namespace CxVisual.Studio
             var view = new MPWDataLifecycleWorkspaceControl();
             if (_studioRuntimeDataHeap != null)
                 view.Bind(_studioRuntimeDataHeap, _studioRuntimeDataPoliciesEditable);
+            if (_studioRuntimeEngineering != null)
+                view.BindEngineering(_studioRuntimeEngineering, _studioRuntimeEngineeringEditable);
             return view;
         }
 
