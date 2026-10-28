@@ -838,7 +838,7 @@ sequenceDiagram
 | 09 | 动画/时序 | R28、R54–56 | MVI/MPW/MEM | MPW/Volume/Views/MPWVolumeSliceSceneControl.cs | 相机E；完整动画P | 关键帧/时间轴/装配动画/视频与重开 |
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
 | 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、CT3DVoxelBoundaryMeshExtractor.cs | 原值离散点及体素外露面E；早期UInt16 Mesh --volume T | 亚体素等值面、材料边界与工业真值 |
-| 12 | 点云/网格 | R31 | FGE/CT3D | FGE/Meshes/FGETriangleMesh3D.cs；CT3D/Analysis/CT3DVoxelBoundaryMeshExtractor.cs | 真实双精度共享顶点/索引Mesh、法向、封闭/非流形/体积E；固定SHA UInt16真值T | 亚体素、修补/简化/LOD、真实GPU面片与精度实测 |
+| 12 | 点云/网格 | R31 | FGE/CT3D | FGE/Meshes/FGETriangleMesh3D.cs；CT3D/Analysis/CT3DVoxelBoundaryMeshExtractor.cs | 真实双精度共享顶点/索引Mesh、法向、边/顶点bow-tie非流形、带符号体积E；固定SHA UInt16真值T | 亚体素、修补/简化/LOD、真实GPU面片与精度实测 |
 | 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、FNU/LinearAlgebra/FNULinearAlgebra.cs | SVD球拟合/残差E；其他专业拟合P | 约束/鲁棒/退化、工业标准件残差与不确定度 |
 | 14 | 几何配准 | R33、R48 | CT3D/FGE/FNU | FNU/LinearAlgebra/FNULinearAlgebra.cs | 基础数值E；ICP P | 变换已知真值/坐标链/收敛残差 |
 | 15 | 尺寸测量 | R34、R51 | CT3D/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 球径毫米初步数值E；完整工业计量P | 基准/标定/精度/不确定度与量具对照 |
@@ -868,6 +868,9 @@ sequenceDiagram
 ---
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
+
+> **2026-10-28 V02质量边界加固**：FGE的`IsClosedOrientedManifold`现在纳入`NonManifoldVertexCount`（两个封闭壳仅共享单顶点的bow-tie不再误判合法）；CT3D几何条件要求闭合、正有向体积和来源标定，Mesh及球表面共同拒绝Float32 RAW中的NaN/Infinity。新增bow-tie/开放面和Float32异常负例；**新增用例为已提交、待对应Windows自动化证据，不能沿用旧版PASS**。详见现有V02实施记录。该工作不表示自交检测、亚体素界面、真实GPU或工业精度已完成。
+
 
 > **2026-10-28 三维Mesh V02源码与验收**：FGE正式新增`FGETriangleMesh3D`（双精度顶点、索引、法向、面积、封闭/非流形统计、带符号/绝对体积），CT3D`CT3DVoxelBoundaryMeshExtractor`从FVO UInt16/Byte/Float32原值租约生成共享角点六邻域三角面；MPW采用体素角点物理投影，WPF索引Mesh和GL三角VBO分别实际绘制，MVI登记Mesh可视引用。**已固定验证**：`f7a9c771` Windows Imaging run `40681318710`的Release x64、`--volume`及该次UInt16方块面积24/体积8、镜像/拓扑负例测试通过；之后追加的各向异性、带符号体积、WPF/GL Mesh渲染与工作台入口**须依各SHA后续工作流升级证据**。完整状态见`DOCS/Implementation/CxVisual_通用三维视觉工作台#V02原值三角Mesh与拓扑质量闭环_V1.0.md`，未宣称亚体素表面、CAD、工业计量和真实GPU像素已验收。
 
