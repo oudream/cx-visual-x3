@@ -342,6 +342,36 @@ namespace CxVisual.TestCenter.UI
                 if(!ReferenceEquals(frame.Viewer.Session.Result,selectedMask) ||
                     frame.CpuEvidence==null)
                     throw new InvalidOperationException("选中区域证据时不应改写图像结果或丢失Run");
+                // 复用已存在的FIM.MaskContours：实际点击按钮，从本次MRK
+                // ThresholdMask抽取原图格点轮廓，并验证带符号面积等于像素面积。
+                outputTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                Button cpuContour=FindControl<Button>(frame,"TCT.Imaging.ExtractMaskContours");
+                if(cpuContour==null)
+                    throw new InvalidOperationException("专业Mask无法访问现有真实轮廓分析操作");
+                int contoursBefore=frame.Viewer.Overlays.Items.Count;
+                cpuContour.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var contourWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.Viewer.Overlays.Items.Count==contoursBefore &&
+                    contourWait.ElapsedMilliseconds<15000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var contours=frame.Viewer.Overlays.Items
+                    .Where(i=>i.Kind==MVIImageOverlayKind.PolygonAnnotation).ToArray();
+                if(contours.Length!=1 ||
+                    Math.Abs(FIMImageMaskContours.SignedArea(contours[0].Points)-7)>1e-9 ||
+                    frame.CpuEvidence==null ||
+                    !ReferenceEquals(frame.Viewer.Session.Result,selectedMask) ||
+                    frame.Viewer.Session.Original.PixelFormat!=FIMPixelFormat.Gray16)
+                    throw new InvalidOperationException(
+                        "真实CPU Mask→FIM轮廓→像素面积7链路错误或破坏原图");
+                frame.Viewer.ClearOverlays();
                 // 旧运行证据不得留在下一张图的工作台状态。
                 frame.SetOriginal(image);
                 if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null ||
