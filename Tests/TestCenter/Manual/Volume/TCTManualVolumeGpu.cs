@@ -96,26 +96,30 @@ namespace CxVisual.TestCenter.UI
         {
             if(transferChanged)_gpuTransferDirty=true;
             if (_volume == null) return;
-            _gpuSettings.Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
-                CT3DRenderingPresetKind.SlicerLikeGrayscale);
-            _gpuSettings.VolumeOpacity=(float)_gpuOpacity.Value;
-            _gpuSettings.Sampling.StepScale=(float)_gpuStep.Value;
-            _gpuSettings.Sampling.EnableJitter=_gpuJitter.IsChecked==true;
-            _gpuSettings.Material.Ambient=(float)_gpuAmbient.Value;
-            _gpuSettings.Material.Diffuse=(float)_gpuDiffuse.Value;
-            _gpuSettings.Material.Specular=(float)_gpuSpecular.Value;
-            _gpuSettings.Material.SpecularPower=(float)_gpuShine.Value;
-            _gpuSettings.Intensity.AutoRange=_gpuAutoRange.IsChecked==true;
-            _gpuSettings.TransferFunctions.UseColor=_gpuColor.IsChecked==true;
-            _gpuSettings.TransferFunctions.UseScalarOpacity=_gpuScalar.IsChecked==true;
-            _gpuSettings.TransferFunctions.UseGradientOpacity=_gpuGradient.IsChecked==true;
-            _gpuSettings.TransferFunctions.UseThreshold=_gpuUseThreshold.IsChecked==true;
-            _gpuSettings.TransferFunctions.Threshold=(float)_gpuThreshold.Value;
-            _gpuSettings.ShowVolume = _gpuShowVolume.IsChecked==true;
-            _gpuSettings.ShowSlices = _gpuShowSlices.IsChecked==true;
-            _gpuSettings.ShowSliceTexture = _gpuShowSliceTexture.IsChecked==true;
-            _gpuSettings.ShowVolumeBounds = _gpuBounds.IsChecked==true;
-            _gpuSettings.SliceOpacity = (float)_gpuSliceOpacity.Value;
+            // 仅桥接现有MPW控件的原始输入；校验、写入、LUT失效均由CT3D负责。
+            bool lutChanged=_gpuSettings.ApplyParameters(new CT3DRenderingParameterValues {
+                Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
+                    CT3DRenderingPresetKind.SlicerLikeGrayscale),
+                VolumeOpacity=(float)_gpuOpacity.Value,
+                SamplingStepScale=(float)_gpuStep.Value,
+                SamplingJitter=_gpuJitter.IsChecked==true,
+                Ambient=(float)_gpuAmbient.Value,
+                Diffuse=(float)_gpuDiffuse.Value,
+                Specular=(float)_gpuSpecular.Value,
+                SpecularPower=(float)_gpuShine.Value,
+                AutoRange=_gpuAutoRange.IsChecked==true,
+                UseColor=_gpuColor.IsChecked==true,
+                UseScalarOpacity=_gpuScalar.IsChecked==true,
+                UseGradientOpacity=_gpuGradient.IsChecked==true,
+                UseThreshold=_gpuUseThreshold.IsChecked==true,
+                Threshold=(float)_gpuThreshold.Value,
+                ShowVolume=_gpuShowVolume.IsChecked==true,
+                ShowSlices=_gpuShowSlices.IsChecked==true,
+                ShowSliceTexture=_gpuShowSliceTexture.IsChecked==true,
+                ShowVolumeBounds=_gpuBounds.IsChecked==true,
+                SliceOpacity=(float)_gpuSliceOpacity.Value
+            });
+            if(lutChanged)_gpuTransferDirty=true;
             if (_gpu == null || !_gpu.IsAvailable) return;
             try
             {
