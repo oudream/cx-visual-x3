@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Mechanism.Presentation.Wpf;
@@ -413,6 +414,37 @@ namespace CxVisual.TestCenter.UI
                 frame.Execute("edit.redo");
                 if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
                     throw new InvalidOperationException("曲线转直线Redo未恢复段类型");
+                // 真实WPF键盘路由：N只预备新轮廓，若直接Enter，已完成的
+                // 第一轮廓仍须一次提交，不能留下永远无法收尾的空草稿。
+                frame.Execute("Path");
+                int pendingBefore=frame.Revision,pendingCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(150,500);
+                frame.Canvas.BeginDrawGesture(200,550);
+                PressKey(frame.Canvas,Key.N);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=pendingBefore)
+                    throw new InvalidOperationException("N准备轮廓修改了Revision或丢失Ghost");
+                PressKey(frame.Canvas,Key.Enter);
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=pendingBefore+1||
+                    frame.SceneCount!=pendingCount+1)
+                    throw new InvalidOperationException("N后空轮廓Enter没有完成合法Path");
+                var pendingPath=(MRCShapeElement)frame.FindObject(frame.SceneIds.Last());
+                if(pendingPath.Shape.Geometry.Commands.Count!=2||
+                    pendingPath.Shape.Geometry.FlattenContours().Count!=1)
+                    throw new InvalidOperationException("空的新轮廓不得生成多余MoveTo");
+                // N后只画一个新轮廓顶点时Enter必须拒绝；Esc彻底取消草稿。
+                frame.Execute("Path");
+                int invalidBefore=frame.Revision,invalidCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(150,500);
+                frame.Canvas.BeginDrawGesture(200,550);
+                PressKey(frame.Canvas,Key.N);
+                frame.Canvas.BeginDrawGesture(350,525);
+                PressKey(frame.Canvas,Key.Enter);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=invalidBefore)
+                    throw new InvalidOperationException("单点第二轮廓Enter不得部分提交");
+                PressKey(frame.Canvas,Key.Escape);
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=invalidBefore||
+                    frame.SceneCount!=invalidCount)
+                    throw new InvalidOperationException("多轮廓Esc取消残留Ghost或污染MEM");
                 // Path连续点绘按N新增第二个子轮廓，不应生成隐式跨轮廓连接。
                 frame.Execute("Path");
                 int multiBefore=frame.Revision;
@@ -484,6 +516,14 @@ namespace CxVisual.TestCenter.UI
                 window.Close();frame.OnWorkspaceClosed();
                 if(File.Exists(file))File.Delete(file);
             }
+        }
+        /// <summary>派发WPF真实KeyDown路由；不冒称OS硬件输入注入。</summary>
+        private static void PressKey(SceneView canvas,Key key)
+        {
+            PresentationSource source=PresentationSource.FromVisual(canvas);
+            if(source==null)throw new InvalidOperationException("WPF画布尚未连接到PresentationSource");
+            canvas.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,source,0,key)
+                {RoutedEvent=Keyboard.KeyDownEvent});
         }
         private static void CheckSelection(TCTManualGraphicsFrame frame,params Guid[] expected)
         {

@@ -214,7 +214,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             bool pointsMode=IsPointDrawTool(_drawTool);
             var points=new List<FGEPoint2D>(_drawPoints);
             if(!pointsMode)points.Add(new FGEPoint2D(_drawPointer.X,_drawPointer.Y));
-            if(_drawTool=="Path"&&_nextPathContour)return false;
+            // N只表示等待下一条轮廓的首点；如果直接按Enter或双击，
+            // 应完成此前合法轮廓，而不是强迫用户再画一条空轮廓。
             if(pointsMode&&points.Count<(_drawTool=="Polygon"?3:2))return false;
             bool multipleContours=pointsMode&&_drawTool=="Path"&&
                 _drawContourStarts.Count>0;
@@ -1373,6 +1374,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         foreach(FGEPoint2D pt in points)
                             dc.DrawEllipse(Brushes.White,new Pen(Brushes.DodgerBlue,1/_zoom),
                                 new Point(pt.X,pt.Y),3.5/_zoom,3.5/_zoom);
+                        if(_drawTool=="Path")
+                        {
+                            // 各轮廓起点用方形标记，与普通顶点区分；等待N后首点时
+                            // 仅显示指针提示，不与前一条轮廓生成任何Ghost连接线。
+                            var starts=new List<int>{0};starts.AddRange(_drawContourStarts);
+                            foreach(int start in starts)
+                            {
+                                FGEPoint2D origin=points[start];
+                                double radius=4.5/_zoom;
+                                dc.DrawRectangle(Brushes.AliceBlue,
+                                    new Pen(Brushes.DodgerBlue,1.5/_zoom),
+                                    new Rect(origin.X-radius,origin.Y-radius,
+                                        radius*2,radius*2));
+                            }
+                            if(_nextPathContour)
+                                dc.DrawEllipse(null,new Pen(Brushes.DeepSkyBlue,1.5/_zoom)
+                                    {DashStyle=DashStyles.Dash},_drawPointer,
+                                    5/_zoom,5/_zoom);
+                        }
                     }
                 }
                 else if(points.Count>=2)

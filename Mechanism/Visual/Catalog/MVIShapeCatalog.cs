@@ -109,11 +109,16 @@ namespace CxVisual.Mechanism.Visual
                     throw new ArgumentException("visual.draw.contour_minimum");
                 total+=contour.Count;
                 if(total>4096)throw new ArgumentException("visual.draw.point_count");
+                FGEPoint2D? previous=null;
                 foreach(FGEPoint2D point in contour)
                 {
                     if(double.IsNaN(point.X)||double.IsInfinity(point.X)||
                         double.IsNaN(point.Y)||double.IsInfinity(point.Y))
                         throw new ArgumentException("visual.draw.non_finite");
+                    // 鼠标端会合并同一点；其它调用者也不能向MEM写入退化线段。
+                    if(previous.HasValue&&previous.Value.DistanceTo(point)<1e-9)
+                        throw new ArgumentException("visual.draw.contour_duplicate");
+                    previous=point;
                     minX=Math.Min(minX,point.X);minY=Math.Min(minY,point.Y);
                 }
             }

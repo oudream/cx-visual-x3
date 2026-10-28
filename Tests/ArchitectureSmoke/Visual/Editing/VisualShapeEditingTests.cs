@@ -750,6 +750,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     outlines[0],new[]{new FGEPoint2D(15,15)}},out x,out y);}
             catch(ArgumentException){badContour=true;}
             Check(badContour,"Unfinished Path contour must not create any shape");
+            bool duplicateContour=false;
+            try{MVIShapeCatalog.CreateDrawnContours(new IReadOnlyList<FGEPoint2D>[]{
+                outlines[0],new[]{new FGEPoint2D(15,15),new FGEPoint2D(15,15)}},
+                out x,out y);}
+            catch(ArgumentException){duplicateContour=true;}
+            Check(duplicateContour,"Consecutive duplicate contour points must not enter MEM");
             bool rejected=false;
             try{MVIShapeCatalog.CreateDrawn(MRCShapeKind.Polygon,points.Take(2).ToArray(),
                 false,out x,out y);}
