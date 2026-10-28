@@ -29,6 +29,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(state.ObliqueSlice.AngleZDegrees == 45, "独立复制斜切定义");
                 Check(state.GetSliceViewport(FVOSlicePlane.XZ).MinA == 0, "视口互不污染");
                 Check(state.ShowCrosshair, "默认可见十字线");
+                // 统一三维Scene是资产/专业结果的只读投影，不是MEM工程资源的副本。
+                MVI3DSceneState scene3d=state.Scene3D;
+                int sceneEvents=0;
+                scene3d.Changed+=(sender,args)=>sceneEvents++;
+                Guid volumeRef=scene3d.Add(MVI3DSceneKind.Volume,
+                    "session:volume:one",1,"volume:physical-frame");
+                Guid resultRef=scene3d.Add(MVI3DSceneKind.Surface,
+                    "ct3d:surface:result-001",2,"volume:physical-frame",.7);
+                Check(scene3d.Count==2 && scene3d.Revision==2 && sceneEvents==2,
+                    "同一会话可引用多个专业对象但不复制数据与资源定义");
+                var beforeStyle=scene3d.Snapshot();
+                scene3d.SetOpacity(resultRef,.5);
+                scene3d.SetOpacity(resultRef,.5);
+                MVI3DSceneItem updated;
+                Check(scene3d.Revision==3 && scene3d.TryGet(resultRef,out updated) &&
+                      updated.Opacity==.5 && beforeStyle[1].Opacity==.7,
+                    "可视快照不可变、重复属性设置不得重复提升Revision");
+                scene3d.Select(resultRef);
+                scene3d.SetVisibility(resultRef,false);
+                Check(scene3d.SelectedId==null && scene3d.Revision==5 &&
+                      updated.Visible,
+                    "隐藏被选对象必须清除选择且旧快照保持不变");
+                bool hiddenRejected=false;
+                try {scene3d.Select(resultRef);}
+                catch(InvalidOperationException){hiddenRejected=true;}
+                Check(hiddenRejected,"隐藏对象必须拒绝拾取选择");
+                bool emptyRefRejected=false;
+                try {scene3d.Add(MVI3DSceneKind.Cad,"",0);}
+                catch(ArgumentException){emptyRefRejected=true;}
+                Check(emptyRefRejected,"Scene引用不能没有现存专业资源身份");
+                bool invalidOpacity=false;
+                try {scene3d.SetOpacity(volumeRef,double.NaN);}
+                catch(ArgumentOutOfRangeException){invalidOpacity=true;}
+                Check(invalidOpacity && scene3d.Revision==5,
+                    "非法透明度必须整体拒绝而不改变状态");
+                scene3d.Remove(resultRef);
+                Check(scene3d.Count==1,"移除专业结果仅解除Scene引用，不销毁资源");
+                scene3d.Clear();
+                Check(scene3d.Count==0 && scene3d.SelectedId==null,
+                    "会话清空不能创建第二套持久工程定义");
                 MVI3DCameraState camera=state.Camera;
                 long cameraRevision=camera.Revision;
                 int cameraEvents=0;
