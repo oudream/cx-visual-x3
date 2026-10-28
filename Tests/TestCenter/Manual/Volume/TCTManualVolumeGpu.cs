@@ -190,6 +190,7 @@ namespace CxVisual.TestCenter.UI
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture(),
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth);
                 if(SurfacePointsForPresentation!=null)gpu.SetSurfacePoints(SurfacePointsForPresentation);
+                if(MeshForPresentation!=null)gpu.SetSurfaceMesh(MeshForPresentation);
                 _gpuTransferDirty=false;
             });
         }
@@ -284,6 +285,7 @@ namespace CxVisual.TestCenter.UI
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture(),
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth);
                 if(SurfacePointsForPresentation!=null)_gpu.SetSurfacePoints(SurfacePointsForPresentation);
+                if(MeshForPresentation!=null)_gpu.SetSurfaceMesh(MeshForPresentation);
                 _gpuTransferDirty=false;
                 ApplyGpuUniforms();
             }
