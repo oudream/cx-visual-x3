@@ -1249,3 +1249,14 @@ try {
 - 已有固定SHA 41f450f4a79f 的 MDS生命周期Windows CI 为Success，涵盖此前Loop有界释放、Session结果TTL等已提交主线，后续工程配置/Studio/外部协议/专用SOAK均必须以自己的更新SHA重新验收。
 - MHS配置的新DataAnnotations编译引用在并行提交 eaa9f3453de4 补正；此前失败日志不能重复用作新版本状态。
 - 下一步仍需实现并实证：MOC/MEM自动选择不同数据的回收策略，动态Join非显式声明的引用追踪、真实外部Provider可恢复Lease及硬件完成源、CT Volume/ROI与GPU/SHM/SDK实机、安全压力、数小时或数天的p95/p99与峰值趋势、工程关闭重开和多项目兼容。
+
+
+### 19.3 工程Effective到Run安全绑定、UI真按钮与固定CI证据（2026-10-28）
+
+- **正式Host便捷接口**：MDSDataLifecycleEngineeringBinding.ApplyEffectiveForTask(section,heap,dataName,taskId,expectedEffectiveVersion)。内部调用现有MHSConfigSection.CaptureForTask，经MHS Effective完整验证后产生一次任务快照；可选期望版本不匹配则拒绝写入，不把Saved草稿直接套到进行中的Flow。返回真实Effective修订号供运行记录关联。调用方仍有责任在新Run/Task安全边界、选定MDS数据项执行，不创建第二工程真源。
+- **工程对照测试**：先提交MHS NextTask Saved，再批准Effective，关闭重开存储，验证非法组合拒绝；新Saved未批准时新Run仍使用旧Effective，批准新修订后携带旧版本的Run请求必须拒绝，正确新版本才应用到原MDS Heap。
+- **UI真实交互**：MPWDataLifecycleWorkspaceControl 的读写默认拒绝由TestCenter运行验证；授权后需点击实际WPF ApplyAll按钮，确认MDS原Heap策略变化，既有doc.runtime-data及doc.config承担不同职责。
+- **已通过固定源码**：[MDS Windows CI #40649876248](https://github.com/oudream/cx-visual-x3/actions/runs/40649876248) 对应 d465f51133f9，Release x64全解、RuntimeData生命周期/存储/编译、TestCenter TCT.MDS.030～033、真实WPF五维面板、20,000轮SOAK均Success。实测每秒约257,415次、p95 3.60µs、p99 20.10µs、逻辑峰值8,192B且释放后为0B、GC Gen0/1/2次数143/3/3。统计范围是该CI机器上的托管8KiB逻辑帧，不代表24小时实机CT/GPU/共享内存。
+- **最新增量尚需固定SHA**：上方新增的Effective版本冻结映射、真实Studio ApplyAll按钮测试，仍需等待其固定SHA Windows CI，不能引用较早绿色表示新代码已经通过。
+
+**仍未闭环**：GPU Fence/SDK完成回调/SHM跨进程ACK真实性与可恢复持久化、CT高负载ROI实机、完整动态Join未声明消费者自动追踪、MOC/MEM逐资源策略编译和长期RSS/VRAM峰值；若缺少设备，一律标HARDWARE_PENDING。
