@@ -36,8 +36,11 @@ namespace CxVisual.TestCenter.Cases
                         "活跃消费者不因TTL模拟到期而失去数据");
                     t.AssertEqual(3, heap.Get<byte[]>("Image").Length, "数据仍保持有效");
                 }
+                t.AssertEqual(0, heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(2)),
+                    "ConsumerBound仍开放新消费者时即使当前无人使用也不能回收");
+                heap.Lifecycle.CloseConsumerAdmission("Image");
                 t.AssertEqual(1, heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(2)),
-                    "无活跃消费者后到期释放");
+                    "关闭新消费者入口后到期可安全释放");
                 t.AssertEqual(false, heap.Contains("Image"), "回收必须实际影响原Heap");
             }
         }
