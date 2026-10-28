@@ -37,6 +37,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FlowResultExposesOnlyCommittedExports();
             ThreeLevelSubflowCommit();
             ExplicitInputCannotInheritParent();
+            RuntimeDataLifecyclePolicyTests.Run();
         }
 
         private static void Check(bool condition, string reason)
