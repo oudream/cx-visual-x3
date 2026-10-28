@@ -155,3 +155,19 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | 结构/回归 | Windows x64完整构建、Owner/DAG、二维WPF Viewer、`--imaging`、默认ArchitectureSmoke、三维WPF Viewer | 对应CI所有步骤success；并非新桥的WPF交互闭环 |
 
 **未验证/不可提升等级**：大图/32M性能与所有工作副本峰值、完整Frame/Mask/Artifact身份模型、SourceGeneration失效/设备Lease、通用VisionRunResult、正式工程Pipeline、专业SDK/AI推理、实时相机流、独立UI算法工作流及现场HIL。现有WPF回归只证明旧图窗未退化，**不是新专业输入桥接功能已经通过WPF人工操作**。不得按整个一级类V2D-02或V2D-20统一标为G4；仅上述受覆盖的细能力/案例有效。
+
+## 12. P1真实结果投影测试登记（2026-10-28）
+
+> 代码实施提交[0a5e658](https://github.com/oudream/cx-visual-x3/commit/0a5e658ccf96015e6c7eea77380e873e43d59058)，[Imaging Windows #40660774027](https://github.com/oudream/cx-visual-x3/actions/runs/40660774027)已触发，**本节首次登记时CI仍排队，未记通过**。明确按固定SHA复核并更新，不将测试文件存在冒充运行成功。
+
+| 关联V2D/反证 | 新增真实用例 `RuntimeVisionResultTests` | 预期 |
+|---|---|---|
+| V2D-21 / RES-01 | `RealMrkResultProjection` | 同一真实MRK FlowId生成检测摘要、阈值统计、Region、GraySum和FlowDecision五项；ItemId唯一 |
+| V2D-21 / RES-02 | `IndependentRunsAndStudioProjection` | 同源重跑产生不同Run/ItemId，旧数据不受新Run影响 |
+| V2D-21 / RES-03 | 所有结果项带SourceId与RunId；区域像素边界/面积 | 不继承可变`CxVisionDefectRegion`引用 |
+| V2D-21 / RES-04 | `EmptyAndFailedFlow` | 无缺陷返回合法空区域摘要，损坏RAW的MRK失败不允许产生正式结果 |
+| V2D-21 / RES-05 | 本次模型从MRK`GetCommittedOutput<T>`读取 | 不绕过已存在MDS/FDT提交屏障，集合只读 |
+| V2D-24 / API兼容 | `FromInspection`服务MOC编译后的Studio真实StepResult | 无GraySum/Passed来源时不伪造；真实MOC指纹与Provider版本从Studio传入 |
+| V2D-26 / 结构回归 | `--vision-results`、`--imaging`及默认ArchitectureSmoke、完整Windows构建及WPF | 需对应Actions结果；现场UI/性能待额外验证 |
+
+**尚未覆盖**：Image/Mask/Contour/Measurement/Report/AI等完整多类型Run，持久ArtifactRef，自动复核审计，配准坐标转换、异步旧结果过期策略，工业设备HIL及GPU/长时稳定性。已有四类Kind不能被宣传为完整26类能力已经交付。
