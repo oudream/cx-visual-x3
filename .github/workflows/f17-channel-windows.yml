@@ -57,7 +57,8 @@ jobs:
           if ($joined -notmatch 'CHANNEL.CONNECTOR: 15 built-in FTR kinds' -or
               $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback' -or
               $joined -notmatch 'F17.PIPE_BULK PASS' -or $joined -notmatch 'F17.PIPE_ADMISSION PASS' -or
-              $joined -notmatch 'F17.NOTIFICATION PASS') {
+              $joined -notmatch 'F17.NOTIFICATION PASS' -or
+              $joined -notmatch 'F17.RECONNECT_PASS') {
               throw "F17 Channel expected acceptance evidence not present"
           }
       - name: Run TCP and cross-process NamedPipe 2GiB-per-direction integrity and resource measurements

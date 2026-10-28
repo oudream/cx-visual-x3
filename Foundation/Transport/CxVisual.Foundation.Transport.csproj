@@ -65,6 +65,7 @@
     <Compile Include="Channels\Diagnostics\FTRChannelFrame.cs"/>
     <Compile Include="Channels\Diagnostics\FTRFrameDirection.cs"/>
     <Compile Include="Channels\IO\FTRChannelBase.cs"/>
+    <Compile Include="Channels\Reliability\FTRReconnectController.cs"/>
     <Compile Include="Channels\IO\FTRChannelReceiveContext.cs"/>
     <Compile Include="Channels\IO\FTRDatagram.cs"/>
     <Compile Include="Channels\IO\FTRMultiChannelBase.cs"/>
