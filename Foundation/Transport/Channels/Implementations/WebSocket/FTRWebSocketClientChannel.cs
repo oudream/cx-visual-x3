@@ -67,19 +67,37 @@ public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase, IFTRMessag
         public Task SendMessageAsync(byte[] bytes,FTRSubChannelAddress target,CancellationToken ct)
         {return SendAsync(bytes,target,ct);}
 
-        protected override async Task OnSendAsync(byte[] bytes, FTRSubChannelAddress target, CancellationToken ct)
+        // WebSocket只有异步底层API：同步Send阻塞等待整条消息；分片不能成为多条消息。
+        protected override void OnSendSynchronous(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress target,CancellationToken ct,int segmentBytes)
         {
-            if (target.HasSubChannel) throw new ArgumentException("WebSocket Client 不使用子通道");
+            if(target.HasSubChannel)throw new ArgumentException("WebSocket Client 不使用子通道");
+            WriteMessageAsync(bytes,offset,count,segmentBytes,ct).GetAwaiter().GetResult();
+        }
+        protected override Task OnSendAsync(byte[] bytes,FTRSubChannelAddress target,CancellationToken ct)
+        {
+            if(target.HasSubChannel)throw new ArgumentException("WebSocket Client 不使用子通道");
+            return WriteMessageAsync(bytes,0,bytes.Length,0,ct);
+        }
+        private async Task WriteMessageAsync(byte[] bytes,int offset,int count,int segmentBytes,CancellationToken ct)
+        {
             await _sendGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                ClientWebSocket socket = _socket;
-                if (socket == null || socket.State != WebSocketState.Open)
+                ClientWebSocket socket=_socket;
+                if(socket==null || socket.State!=WebSocketState.Open)
                     throw new IOException("WebSocket 尚未连接");
-                await socket.SendAsync(new ArraySegment<byte>(bytes),
-                    WebSocketMessageType.Binary, true, ct).ConfigureAwait(false);
+                int chunk=segmentBytes>0?segmentBytes:16384;
+                for(int sent=0;sent<count;)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    int n=Math.Min(chunk,count-sent);
+                    await socket.SendAsync(new ArraySegment<byte>(bytes,offset+sent,n),
+                        WebSocketMessageType.Binary,sent+n==count,ct).ConfigureAwait(false);
+                    sent+=n;
+                }
             }
-            finally { _sendGate.Release(); }
+            finally {_sendGate.Release();}
         }
 
         protected override async Task OnCloseAsync(CancellationToken ct)
