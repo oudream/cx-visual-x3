@@ -13,12 +13,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class MPWModuleCapabilityView
     {
         public MPWModuleCapabilityView(string id,string name,string category,
-            MFMModuleKind? kind,int version,bool resolved,bool demonstration)
+            MFMModuleKind? kind,int version,bool resolved,bool demonstration,string moduleId=null)
         {
             if(String.IsNullOrWhiteSpace(id)||String.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("module.capability.identity");
             Id=id;Name=name;Category=category??"";Kind=kind;
             Version=version;Resolved=resolved;Demonstration=demonstration;
+            ModuleId=String.IsNullOrWhiteSpace(moduleId)?null:moduleId.Trim();
         }
         public string Id {get;private set;}
         public string Name {get;private set;}
@@ -27,7 +28,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public int Version {get;private set;}
         public bool Resolved {get;private set;}
         public bool Demonstration {get;private set;}
-        public string Label {get{return Name+" · "+Id;}}
+        /// <summary>Explicit MFM association, null for an unbound capability.</summary>
+        public string ModuleId {get;private set;}
+        public string Label {get{return Name+" · "+Id+(ModuleId==null?"":" · "+ModuleId);}}
         public string Status {get{return Demonstration?"未绑定正式模块的演示Resolver，非设备就绪":
             Resolved?"运行解析存在，非授权确认":"未验证运行处理者";}}
     }
@@ -56,6 +59,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public ContentControl EditorHost {get{return _editor;}}
         public object HeaderContent {get{return _header.Content;}set{_header.Content=value;}}
         public int VisibleCapabilityCount {get{return _list.Items.Count;}}
+        /// <summary>UI-only read-only snapshot; no mutable registration or execution handle.</summary>
+        public IReadOnlyList<MPWModuleCapabilityView> VisibleCapabilities
+        {get{return _list.Items.Cast<MPWModuleCapabilityView>().ToArray();}}
         public string SearchText {get{return _search.Text;}set{_search.Text=value??"";}}
         public MFMModuleKind? SelectedKind {get{return _kind;}}
         /// <summary>Restore full-width FCM editing in TestCenter when no live catalog is wired.</summary>
@@ -120,7 +126,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 var item=_list.SelectedItem as MPWModuleCapabilityView;
                 _detail.Text=item==null?"请选择能力查看声明与运行解析信息。":
                     item.Name+" / V"+item.Version+" / "+item.Category+" · "+
-                    (item.Kind.HasValue?item.Kind.Value.ToString():"未归属五类正式模块")+" · "+item.Status+
+                    (item.Kind.HasValue?item.Kind.Value.ToString():"未归属五类正式模块")+" · "+
+                    (item.ModuleId??"无正式模块身份")+" · "+item.Status+
                     "。Declared、Supported、Available、Authorized需独立核验。";
             };
             SetCapabilities(null,"未注入运行能力；仅配置操作可用");
