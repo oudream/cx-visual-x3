@@ -223,7 +223,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     using(var cancelled=new CancellationTokenSource())
                     {
                         cancelled.Cancel();
-                        bool sendCancelled=false,replyCancelled=false;
+                        bool sendCancelled=false,replyCancelled=false,syncCancelled=false;
+                        try {server.SendTo(replacement,new byte[]{16},cancelled.Token);}
+                        catch(OperationCanceledException) {syncCancelled=true;}
                         try {server.SendToAsync(replacement,new byte[]{14},cancelled.Token)
                             .GetAwaiter().GetResult();}
                         catch(OperationCanceledException) {sendCancelled=true;}
@@ -231,7 +233,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             new FTRChannelReceiveContext(replacement,new byte[]{1}),
                             new byte[]{15},cancelled.Token).GetAwaiter().GetResult();}
                         catch(OperationCanceledException) {replyCancelled=true;}
-                        Check(sendCancelled && replyCancelled &&
+                        Check(syncCancelled && sendCancelled && replyCancelled &&
                             replacement.Equals(server.LastDestination) &&
                             server.LastPayload.SequenceEqual(new byte[]{13}),
                             "预取消的异步定向发送和回复不得产生任何物理发送");
