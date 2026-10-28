@@ -69,6 +69,8 @@
 | TestCenter/MVI | `TCTManualVolumeProfessional.AnalyzeCurrentMeshPlane`、`AnalyzeCurrentMeshPlaneTopZ` | 真正调用CT3D，登记MVI Measurement引用并显示误差。+Z端面为明确标识的快速示例，依据原始Frame选择网格端面，**不是通用三维ROI拾取**；重新提取Mesh或更换Volume时自动撤销依赖旧Mesh的平面结果 |
 | Headless/WPF | `CT3DVoxelMeshTests`、`TCTVolumeViewerSmoke` | 真实UInt16立方体顶端9点、法向/Z坐标和RMS、任意倾斜平面、共线、重复ROI、全立方体非平面拒绝、WPF真实窗口结果关联与Mesh更新失效 |
 
+**点到面偏差补充**：`CT3DPlaneFitResult.SignedDistanceMm(pointMm, pointFrame)` 与 `AbsoluteDistanceMm`现在提供同一`FVOVolumeSpatialFrame`内的点到局部平面距离（毫米），通过引用身份拒绝未经配准的跨Frame直接量测；有符号方向由PCA法向的规范化约定决定，**不等同CAD内外侧正负偏差或GD&T平面度**。Headless增补±1mm正负例、绝对距离及跨Frame拒绝；源码`24497fe2`及`3a27e161`的Windows CI待按对应SHA核实。
+
 **核心合同：** 平面拟合为最小正交距离（PCA/SVD，理论上平面点阵秩2），不是 `z=ax+by`，不依赖特定坐标轴或在FGE中内建毫米。CT3D把来源Frame与mm语义加在专业结果上；法向是**无向几何法向**，其符号按最大绝对分量为正进行确定性规范化，非自动外法线。平面质量只包含样本RMS/最大残差、条件数和法向/次切向奇异值比，真实设备不确定度、抽样策略、离群值与基准特征仍待专业验证。
 
 **证据划分**：FGE Mesh原有固定SHA Windows通过记录仍有效；本轮平面新源码提交`62e2f3e8`（FNU）、`77421a34`（CT3D）、`f5d228f6`（初版Headless测试）及后续WPF与回归修复`e2ae3798`，**必须以这些源码后续实际Windows Build/--volume/窗口级Job结果升级验收，不借用旧SHA成功结论**。曾在早期中间提交出现CS0819/CS0136，已在`e2ae3798`修复；真实GPU、CAD、GD&T仍未验。
