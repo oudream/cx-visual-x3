@@ -120,3 +120,16 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
   - `MatMulViewsInto(reused)`：2.6119 ms/op、32 B/op；`MatMulViews(allocating)`：2.4522 ms/op、32992 B/op，校验和相同。
 - 同 SHA 第二次运行观测：SumView(cursor) 0.3597 ms/op、GetFlat 0.6459 ms/op；MatMulViewsInto 2.7125 ms/op、allocating 2.6998 ms/op。**当前结论是游标求和在该环境更快，矩阵复用显著降低分配，但不能声称矩阵耗时也更快。**
 - 基准中数字是单 CI Runner 观测，不是可移植吞吐保证；跨CPU、p95、长稳、大数据物理内存仍未验证。F17故障需要由Transport唯一Owner专项处理，不在Numerics内绕过全量门禁。
+
+## 2026-10-28 F04正则化及F13非连续乘法复验
+
+| ID | 测试内容 | 固定SHA证据 |
+|---|---|---|
+| N39 | SVD岭正则化：对角2×2解析解、秩亏重复列、零设计矩阵；lambda=0/NaN/Infinity、输入长度错误和防修改 | `51136d0` [#40641679779](https://github.com/oudream/cx-visual-x3/actions/runs/40641679779)，Numerics专项 PASS |
+| N40 | 非连续行/列切片和转置View MatMul，独立Get2D点积参考，错误内维拒绝 | `11af443` [#40641789076](https://github.com/oudream/cx-visual-x3/actions/runs/40641789076)，Numerics专项 PASS |
+| N41 | 1×2欠定宽矩阵A=[1,1]、b=[2]、lambda=2，应返回[0.5,0.5]；原非正则LeastSquares仍拒绝欠定 | `418e766` [#40641947228](https://github.com/oudream/cx-visual-x3/actions/runs/40641947228)，Numerics专项 PASS |
+| N42 | 全方案构建及独立数值/性能 vs 整体ArchitectureSmoke | 上述三SHA的编译、Owner、Numerics专项和基准均PASS，但完整回归均在F17.PIPE_BULK退出失败，Workflow最终为failure |
+
+性能：`418e766`的Runner读数为MatMulViewsInto 0.8617 ms/op、32 B/op，MatMulViews分配0.7984 ms/op、32992 B/op；SumView游标0.1901ms/op、逐点索引参考0.3716ms/op。性能数据为同Runner测量，不是p95、跨机/现场结论。
+
+**注意：本次文档提交仅归档已验证代码SHA的证据，不可冒充文档提交自身的CI通过。F17问题由Transport所有者闭环，Numerics不绕过它。**

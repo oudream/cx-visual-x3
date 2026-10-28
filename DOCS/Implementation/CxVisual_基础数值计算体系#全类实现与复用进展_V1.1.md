@@ -154,7 +154,7 @@ double conditionNumber = solved.ConditionNumber;
 
 - 公开 `FNULinearAlgebra.RidgeLeastSquares(A,b,lambda)`：最小化 `||Ax-b||²+lambda||x||²`，要求有限且严格正的lambda，支持超定、方阵、秩亏及欠定问题。与原 `LeastSquares(A,b)` 严格满列秩并列，原签名/失败语义不变。
 - 使用 Math.NET 的SVD因子 `U,S,VT` 构造滤波 `s/(s²+lambda)`，避免正规方程放大病态与平方中间溢出；秩亏/零矩阵允许求解。原设计矩阵秩与条件数按真实SVD返回，秩亏报告正无穷。
-- 正反验收：对角矩阵独立解析解、秩亏列重复的解析解、零设计矩阵、参数非法和欠定矩阵拒绝、输入防修改。
+- 正反验收：对角矩阵独立解析解、秩亏列重复的解析解、零设计矩阵、参数非法、欠定宽矩阵正确求解及观测维度错误拒绝、输入防修改。
 - 单一lambda有物理单位（设计矩阵奇异值平方），此API不自动标准化特征或自动挑选正则化；大型/极端尺度与广泛数值稳定性测试仍待验证。
 - 同SHA Windows验收须在真实 Actions 日志核实，不能因已提交代码便标记通过。
 
@@ -164,4 +164,16 @@ double conditionNumber = solved.ConditionNumber;
 - 不改变 `MatMulViews` 与 `MatMulViewsInto` 的输出所有权、别名限制、零长度行为和Neumaier补偿求和。
 - 添加非连续双切片/转置的独立参考算法测试和尺寸不兼容反例。性能优劣依真实Windows基准，不能预先假定更快。
 
+### 欠定矩阵能力补充
+
 - 增补宽矩阵（1×2）的唯一带正则化解解析反例：`A=[1,1], b=[2], lambda=2`，系数应为[0.5,0.5]；无正则化的普通LeastSquares仍明确拒绝欠定系统。
+
+## 十七、F04岭正则化与F13视图物理游标同SHA验收（2026-10-28）
+
+| 代码SHA | Numerics实测状态 | 全量回归说明 |
+|---|---|---|
+| `51136d0` | [CI #40641679779](https://github.com/oudream/cx-visual-x3/actions/runs/40641679779)：全方案Build、Owner/DAG、--numerics、独立基准均通过；F04方阵、秩亏、零矩阵及正反合同均通过 | F17.PIPE_BULK失败，整体Workflow为failure |
+| `11af443` | [CI #40641789076](https://github.com/oudream/cx-visual-x3/actions/runs/40641789076)：上述专项全通过；F13切片/转置View MatMul物理游标与独立逐元素参考一致 | 同一F17.PIPE_BULK失败，整体Workflow为failure |
+| `418e766` | [CI #40641947228](https://github.com/oudream/cx-visual-x3/actions/runs/40641947228)：上述专项全通过；进一步增加1×2欠定宽矩阵岭正则化解析解 | 同一F17.PIPE_BULK失败，整体Workflow为failure |
+
+第三批Windows Runner单次观测：64×64的MatMulViewsInto(复用)约 **0.8617 ms/op、32 B/op**，MatMulViews(分配)约 **0.7984 ms/op、32992 B/op**；256×256 SumView游标约 **0.1901 ms/op**，逐点GetFlat参考约 **0.3716 ms/op**。仅为CI机观测，不能把跨运行差异直接当严格加速比，也未证明分配式矩阵乘法更慢。未触及其他Owner的F17源码，全平台回归仍需由Transport专项定位。
