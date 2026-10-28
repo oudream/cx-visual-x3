@@ -153,3 +153,20 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 | W-RUNTIME-01 | 真实有界帧身份、Backpressure与资源归还 | MDSBoundedByteStream的字节块接口无法单独承载Frame语义 |
 
 **未完成**：W-DATA/W-ALG/W-RES等为实施门禁而非已提交的C#功能；本轮文档更改没有运行Windows CI或实机。后续新增源代码必须在此表记录Owner、真实路径、对应版本、Commit SHA及数值/WPF/CI/SDK证据。
+
+## 12. P0 实际代码提交：FIM与Vision专业灰度帧安全互通（2026-10-28）
+
+> **固定代码证据SHA**：[`c424abcf004d670790a68d6c6c6976f175cf7b5b`](https://github.com/oudream/cx-visual-x3/commit/c424abcf004d670790a68d6c6c6976f175cf7b5b)。**固定Windows CI**：[Imaging Windows #40657978967](https://github.com/oudream/cx-visual-x3/actions/runs/40657978967)，job `imaging-foundation` 成功。其他Agent并行提交使master随后前进，本表证据**仅适用于c424abcf**，不是对未来HEAD的保证。
+
+| 文件（真实源码） | Owner/作用 | 本次实现/范围 |
+|---|---|---|
+| `Professional/Vision/CxVisionImageInterop.cs`（新） | PVC专业层，复用FIM与FDT | `GetPixelDepth`、`ToGrayFrame`、`ToImageBuffer`、`ToCpuInspectionInputs`；仅Gray8/16，去Stride Padding，16位小端，防御性复制和最大3200万像素约束 |
+| `Professional/Vision/CxVisual.Professional.Vision.csproj` | 既有专业项目 | 增加已有Foundation.Imaging的单向依赖及新文件编译项，没有新增csproj |
+| `Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionImageInteropTests.cs`（新） | 既有ArchitectureSmoke真实集成测试 | Gray8/16往返、非紧排Stride、输入副本、FDT缓冲隔离、Unsupported与Depth拒绝、FIM输入经现有MRK到PVC真实16位区域检测/GraySum |
+| `Tests/ArchitectureSmoke/Program.cs` | 已有测试入口 | 将新测试同时挂在`--imaging`和默认架构回归，不新增第二测试运行器 |
+
+**已验证**：该SHA完整Windows .NET Framework4.8 x64构建、Verify-Structure/Verify-OwnerDependencies、真实WPF二维图窗、`--imaging`及默认ArchitectureSmoke、WPF三维切片均在上述CI成功。新互通功能通过Foundation.Imaging→Professional.Vision→现有MRK/MDS安全输入→专业真实检测结果闭环；但未将新的ResultItem通用结果模型、MEM/MOL正式VisionPipeline、FrameRef/Stream或UI算法实验面板实现为源码。
+
+**复制与性能诚实记录**：FIMImageBuffer公共CopyPixels产生防御副本；CxVisionGrayFrame构造也复制ushort像素；ToCpuInspectionInputs通过FDTReadOnlyBuffer再次捕获紧排RAW。故此次交付并非零拷贝，内存/持续帧吞吐仍需单独压测。FIM的GrayFloat32/BGR/BGRA在本CPU灰度桥中被拒绝，不虚称专业运行可支持这些格式；不会因通用图像显示支持这些格式就暗中降位深。
+
+**后续第一步建议**：在不新增平行框架前提下，从已运行的真实MRK检测结果建立可追踪的专业Run/ResultItem最小语义，再评审并接入MPM/MOC工程Capability与WPF工作台。任何新合同仍需Owner审查及至少两真实消费方。
