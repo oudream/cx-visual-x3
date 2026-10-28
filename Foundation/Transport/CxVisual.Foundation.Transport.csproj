@@ -77,6 +77,7 @@
     <Compile Include="Channels\IO\FTRTransportThread.cs"/>
     <Compile Include="Channels\Diagnostics\FTRReceiveQueueSnapshot.cs"/>
     <Compile Include="Channels\IO\IFTRByteStream.cs"/>
+    <Compile Include="Channels\IO\FTRByteStreamAdapter.cs"/>
     <Compile Include="Channels\IO\IFTRChannelListener.cs"/>
     <Compile Include="Channels\IO\IFTRDatagramIO.cs"/>
     <Compile Include="Channels\Implementations\HTTP\FTRHttpClientChannel.cs"/>

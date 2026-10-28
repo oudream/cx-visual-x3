@@ -96,6 +96,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             LifecycleStateMachine();
             BoundedEvidence();
             TcpLoopback();
+            ByteStreamAdapterLoopback();
             ConnectorModbusTcpLoopback();
             UdpLoopback();
             HttpConfigurationSmoke();
@@ -786,6 +787,54 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 finally { client.Close(); server.Close(); }
             }
+        }
+
+
+        private static void ByteStreamAdapterLoopback()
+        {
+            int port=FreePort(false);
+            var config=new FTRTcpClientChannelConfiguration {Id="adapter-client",Host="127.0.0.1",Port=port};
+            using(var server=new FTRTcpServerChannel(new FTRTcpServerChannelConfiguration {
+                Id="adapter-server",Host="127.0.0.1",Port=port}))
+            using(var client=new FTRTcpClientChannel(config))
+            using(var arrived=new ManualResetEventSlim())
+            {
+                FTRSubChannelAddress destination=null;
+                byte[] sent=null;
+                server.Received += packet => {
+                    sent=packet.Data;
+                    destination=packet.Address;
+                    arrived.Set();
+                };
+                server.Open();client.Open();
+                using(var view=new FTRByteStreamAdapter(client,config.DescribeType(),queueCapacity:1))
+                {
+                    client.Send(new byte[]{88});
+                    Check(arrived.Wait(3000) && sent.SequenceEqual(new byte[]{88}),
+                        "TCP byte-stream view不得创建第二个物理读取者或影响原接收");
+                    server.Send(new byte[]{1,2,3,4},0,4,destination,CancellationToken.None);
+                    var bytes=new byte[7];
+                    using(var limit=new CancellationTokenSource(5000))
+                    {
+                        int n=view.ReadAsync(bytes,1,2,limit.Token).GetAwaiter().GetResult();
+                        int m=view.ReadAsync(bytes,3,3,limit.Token).GetAwaiter().GetResult();
+                        Check(n==2 && m==2 && bytes.Skip(1).Take(4).SequenceEqual(new byte[]{1,2,3,4}),
+                            "ByteStream视图必须保留TCP接收块中的未消费后缀并支持切片");
+                    }
+                    view.WriteAsync(new byte[]{99,6,7,98},1,2,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(SpinWait.SpinUntil(()=>sent!=null && sent.Length==2,3000) &&
+                        sent.SequenceEqual(new byte[]{6,7}),
+                        "ByteStream写入应通过原FTR Channel唯一发送路径及字节切片");
+                }
+                bool invalid=false;
+                try{new FTRByteStreamAdapter(client,new FTRChannelTypeDescriptor(
+                    "udp",FTRChannelTopology.SinglePeer,FTRIOCapabilities.Datagram));}
+                catch(ArgumentException){invalid=true;}
+                Check(invalid,"不得将Datagram数据报无边界地冒充ByteStream");
+                client.Close();server.Close();
+            }
+            Console.WriteLine("F17.BYTE_STREAM_ADAPTER PASS: bounded logical read, TCP fragments and single OS receive reader");
         }
 
         // 与纯 Virtual 请求测试互补：Connector + 正式 TCP Client / Server + Modbus Protocol。
