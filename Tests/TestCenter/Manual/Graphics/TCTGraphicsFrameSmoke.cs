@@ -572,22 +572,26 @@ namespace CxVisual.TestCenter.UI
                 if(!frame.Canvas.CompleteDrawGesture(2125,2100))
                     throw new InvalidOperationException("重叠选择前的底层矩形创建失败");
                 Guid lowerId=frame.SceneIds.Last();
-                frame.Canvas.BeginDrawGesture(2025,2025);
-                frame.Canvas.UpdateDrawGesture(2150,2125);
-                if(!frame.Canvas.CompleteDrawGesture(2150,2125))
+                // 两个空心矩形共用同一条描边，内部空白不得被误当作命中区域。
+                frame.Canvas.BeginDrawGesture(2000,2000);
+                frame.Canvas.UpdateDrawGesture(2125,2100);
+                if(!frame.Canvas.CompleteDrawGesture(2125,2100))
                     throw new InvalidOperationException("重叠选择前的顶层矩形创建失败");
                 Guid upperId=frame.SceneIds.Last();
                 frame.Execute("Select");
                 frame.SelectObjects();
                 int overlapRevision=frame.Revision,overlapCount=frame.SceneCount;
-                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                if(!frame.Canvas.SelectNextOverlappedAt(2050,2000))
                     throw new InvalidOperationException("重叠选择首击未找到图元");
                 CheckSelection(frame,upperId);
-                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                if(!frame.Canvas.SelectNextOverlappedAt(2050,2000))
                     throw new InvalidOperationException("重叠选择不能到达下层图元");
                 CheckSelection(frame,lowerId);
-                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                if(!frame.Canvas.SelectNextOverlappedAt(2050,2000))
                     throw new InvalidOperationException("重叠选择不能循环回顶层");
+                CheckSelection(frame,upperId);
+                if(frame.Canvas.SelectNextOverlappedAt(2050,2050))
+                    throw new InvalidOperationException("空心矩形内部不是有效描边，不应误命中");
                 CheckSelection(frame,upperId);
                 if(frame.Canvas.SelectNextOverlappedAt(5000,5000))
                     throw new InvalidOperationException("空白处不应轮换不存在的图元");
