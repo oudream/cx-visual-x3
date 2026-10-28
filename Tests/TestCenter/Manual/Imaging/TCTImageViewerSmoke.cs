@@ -311,10 +311,42 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.PixelFormat!=FIMPixelFormat.Gray16||
                     frame.Viewer.Session.Original.GetGrayValue(0,0)!=1)
                     throw new InvalidOperationException("点击专业CPU按钮未得到MRK真实Run、16位原图/阈值Mask和区域");
+                // 真正点击输出页多类型结果项，不借另一个Viewer或自己生成假图。
+                TabControl outputTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                outputTabs.SelectedIndex=4;
+                window.UpdateLayout();
+                ListBox cpuResults=FindControl<ListBox>(frame,"TCT.Imaging.CpuResultItems");
+                if(cpuResults==null || cpuResults.Items.Count!=evidence.Items.Count)
+                    throw new InvalidOperationException("CPU Run结果项未在WPF输出页显示");
+                var imageRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
+                    ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
+                    CxVisual.Professional.Vision.CxVisionResultKind.Image);
+                var maskRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
+                    ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
+                    CxVisual.Professional.Vision.CxVisionResultKind.Mask);
+                var regionRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
+                    ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
+                    CxVisual.Professional.Vision.CxVisionResultKind.Region);
+                cpuResults.SelectedItem=imageRow;
+                if(frame.Viewer.Session.Result==null ||
+                    frame.Viewer.Session.Result.PixelFormat!=FIMPixelFormat.Gray16 ||
+                    frame.Viewer.Session.Result.GetGrayValue(1,2)!=10 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
+                    throw new InvalidOperationException("点击Run处理图项未投影真实Gray16图像");
+                cpuResults.SelectedItem=maskRow;
+                FIMImageBuffer selectedMask=frame.Viewer.Session.Result;
+                if(selectedMask==null || selectedMask.PixelFormat!=FIMPixelFormat.Gray8 ||
+                    selectedMask.GetGrayValue(1,2)!=255)
+                    throw new InvalidOperationException("点击Run Mask项未切回真实二值掩码");
+                cpuResults.SelectedItem=regionRow;
+                if(!ReferenceEquals(frame.Viewer.Session.Result,selectedMask) ||
+                    frame.CpuEvidence==null)
+                    throw new InvalidOperationException("选中区域证据时不应改写图像结果或丢失Run");
                 // 旧运行证据不得留在下一张图的工作台状态。
                 frame.SetOriginal(image);
-                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null)
-                    throw new InvalidOperationException("重新打开原图后旧Vision Run和Mask没有清除");
+                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null ||
+                    cpuResults.Items.Count!=0)
+                    throw new InvalidOperationException("重新打开原图后旧Vision Run、Mask或浏览项没有清除");
                 cpuCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 // 真实变换页：矩形ROI中心种子 -> 后台生长 -> Gray8结果掩码和原像素反证。
                 frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
