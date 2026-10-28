@@ -121,3 +121,18 @@ sequenceDiagram
 | D08-09 | 嵌入客户WPF的ImageViewer与独立Vision宿主接口一致 |
 
 **当前状态**：已有真实TCT/MPW控件及部分Windows自动Smoke，但正式Studio Vision全面装配、可复用算法工作台和独立程序发布均待编码及严格验收。
+
+## 11. 工作台组合对象与一致选择上下文（深化）
+
+**工作台不等于ImageViewer**。正式Vision Workspace使用已有Studio Dock与MPW核心，组合工程资源树（MEM）、图像与临时工具（MVI/MPW）、专业算法能力/参数（MPM+PVC）、结果与图表（RunId+ResultItemId）、执行诊断（MRK/MDS/FLD）。它们以SourceRef/RunId/ResourceRef共享选择身份，不以彼此私有ViewModel互相写状态。
+
+| 选中对象 | 应出现的上下文操作 | 正式服务而非UI私有逻辑 |
+|---|---|---|
+| 图像或Frame | 查看、调窗、ROI、处理、源信息 | FIM数据/MVI坐标 |
+| ROI与标注 | 控制柄、分析、锁定、属性、正式保存 | MVI临时工具；正式编辑走MEM |
+| 算法Operation或节点 | 参数Schema、类型端口、能力检查、执行/取消 | MPM/MPC、MOC/MRK、PVC |
+| Pipeline资源 | 编辑、编译、调试、发布、版本 | MEMContent/MOL/MOC |
+| ResultItem | 定位、高亮、比较、复核、报告 | 专业Result/Artifact，不修改工程 |
+| 流与批任务 | 队列、吞吐、暂停/故障/取消 | MRK/MDS/Automation |
+
+开发者API必须与UI使用相同输入输出合同；无头运行不得依赖WPF Dispatcher。尚无充分需求时不应只为统一外观增加VisionWorkbenchController作为所有功能的超级门面。先以真实单图分析+多结果展示+无头同算法输出检验工作台装配。
