@@ -287,3 +287,10 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 源码提交：[404d9d3](https://github.com/oudream/cx-visual-x3/commit/404d9d39c9b653081292f331d0b5fc70ff9bd70c)、[dd5506f](https://github.com/oudream/cx-visual-x3/commit/dd5506fffa303804358ede9c6106f162c2bd5d3d)、[047a855](https://github.com/oudream/cx-visual-x3/commit/047a85587fac8f2830d1d9080047221a2f4c3791)、[f2d55bb](https://github.com/oudream/cx-visual-x3/commit/f2d55bbd612280e0fbabb1c64db0ca27d4127ea5)、[c25e50d](https://github.com/oudream/cx-visual-x3/commit/c25e50d96f91f20458a1dfb5db02835f0a89ecd0)、[a34e034](https://github.com/oudream/cx-visual-x3/commit/a34e03411fa715ff04a3c64e783ba7d30d97e0dd)、[5b34232](https://github.com/oudream/cx-visual-x3/commit/5b3423258a96db58f808e755c4338b45464414b0)。
 
 **新提交时尚未宣称Windows通过**；需检查固定SHA [Imaging #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846)、后续触发的TestCenter Windows任务和运行日志，不能继承旧版本success，未知则保留待验状态。
+
+### 18.1 已完成的固定SHA Windows验证
+
+`a34e03411fa715ff04a3c64e783ba7d30d97e0dd`：
+- [Imaging Windows #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846) **success**：Windows x64全Solution构建、Owner DAG、真实WPF Viewer/PNG、ArchitectureSmoke `--imaging`和默认回归、3D切片/截图上传均成功。新MRK测量步骤和无界面API正反数值用例实际随`--imaging`执行；本项可标G3/G4（该固定SHA及具体用例）。
+- [Unified Runtime Windows #40693675869](https://github.com/oudream/cx-visual-x3/actions/runs/40693675869) **success**：相同SHA，Windows全构建与Runtime专项。
+- TestCenter完整工作流是独立G4/G5验证门禁；[TestCenter #40693629251](https://github.com/oudream/cx-visual-x3/actions/runs/40693629251)属稍早`c25e50d`固定提交，首次登记in_progress；完成后需核查实际WPF UIA结果。人工颜色对话框、工业Frame/Artifact/四节点工程发布与HIL不得借此视为已过。
