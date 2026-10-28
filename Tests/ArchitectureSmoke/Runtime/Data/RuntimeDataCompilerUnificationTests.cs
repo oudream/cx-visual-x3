@@ -107,6 +107,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         ctx.CollectLoopOutputs<int>("loop", "measure", "Count");
                     Check(rows.Count == 4 && rows.Select(x => x.FrameKey).Distinct().Count() == 4,
                         "动态Join未能看到全部真实Invocation");
+                    if (retention != null && !retention.Retains("image"))
+                    {
+                        bool refused = false;
+                        try { ctx.CollectLoopOutputs<byte[]>("loop", "image", "Image"); }
+                        catch (InvalidOperationException error)
+                        { refused = error.Message.Contains("history_not_retained"); }
+                        Check(refused, "Join查询已声明放弃的历史应有明确诊断，不能返回旧缓冲");
+                    }
                     ctx.Data.Return("Total", rows.Sum(x => x.Value));
                     return Task.FromResult((object)true);
                 }, dataOutputs: Output("Total"))
