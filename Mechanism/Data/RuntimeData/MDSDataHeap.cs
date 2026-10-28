@@ -125,6 +125,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureOpen();
+                CheckLifecycleMutation(name);
                 MDSDataFileEntry file;
                 if (_files.TryGetValue(name, out file))
                 {
@@ -141,6 +142,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     _values.Remove(name);
                     if (Budget != null) Budget.Release(old.Bytes);
                 }
+                _lifecycles.Remove(name);
             }
         }
 
@@ -160,11 +162,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new KeyNotFoundException("需要覆盖的目标不存在：" + name);
                 if (file != null && file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可替换：" + name, name);
+                CheckLifecycleMutation(name);
                 long oldSize = old == null ? file.CachedBytes : old.Bytes;
                 if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
                 _files.Remove(name);
                 _values[name] = new MDSDataEntry(frozen, type, size);
                 if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
+                MDSDataLifecycleRecord record;
+                if (_lifecycles.TryGetValue(name, out record))
+                    _lifecycles[name] = new MDSDataLifecycleRecord(record.Policy);
             }
         }
 
@@ -220,6 +226,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 MDSDataFileEntry file;
                 if (_files.TryGetValue(name, out file) && file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "目标加载中：" + name, name);
+                CheckLifecycleMutation(name);
                 long size = Budget == null ? 0 : preparedBytes;
                 MDSDataEntry previous;
                 _values.TryGetValue(name, out previous);
@@ -228,6 +235,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _files.Remove(name);
                 _values[name] = new MDSDataEntry(safeOwnedValue, declaredType, size);
                 if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
+                _lifecycles.Remove(name);
             }
         }
 
@@ -315,6 +323,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                             "来源在复制或容量估算期间已经改变：" + sourceName, sourceName);
                     if (isFile && file.State == MDSDataLoadState.Loading)
                         throw new MDSDataException(MDSDataErrorCode.Busy, "来源文件加载中：" + sourceName, sourceName);
+                    CheckLifecycleMutation(sourceName, true, copy);
+                    if (target.HasLifecycleItem(targetName)) target.CheckLifecycleMutation(targetName);
                     MDSDataEntry replacedValue;
                     MDSDataFileEntry replacedFile;
                     target._values.TryGetValue(targetName, out replacedValue);
@@ -352,6 +362,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     }
                     if (!copy && Budget != null && !object.ReferenceEquals(Budget, target.Budget))
                         Budget.Release(originalSourceCharge);
+                    TransferLifecycleTo(target, sourceName, targetName, copy);
                 }
             }
         }
@@ -361,6 +372,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 if (_closed) return;
+                foreach (MDSDataLifecycleRecord state in _lifecycles.Values)
+                    if (state.Users != 0 || state.Holds != 0)
+                        throw new MDSDataException(MDSDataErrorCode.Busy,
+                            "存在活跃数据消费者或保留凭证，不能关闭Heap");
                 _closed = true;
                 long held = 0;
                 if (Budget != null)
@@ -371,6 +386,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 }
                 _values.Clear();
                 _files.Clear();
+                _lifecycles.Clear();
             }
         }
     }
