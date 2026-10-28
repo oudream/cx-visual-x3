@@ -213,7 +213,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var ttlEngine = new MRKExecutionEngine(new FCRWorkerOptions(1, 5));
             var ttl = new MRKRuntimeSession("short.retention", ttlEngine,
                 new MRKExecutionPlanSlot(plan, 2), resultRetention:
-                new MRKSessionResultRetentionOptions(2, 128, TimeSpan.FromMilliseconds(60)));
+                new MRKSessionResultRetentionOptions(2, 128, TimeSpan.FromSeconds(1)));
             ttl.Start();
             try
             {
@@ -221,7 +221,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(Wait(shortFlow.Completion).State == MRKFlowState.Completed &&
                     SpinWait.SpinUntil(() => ttl.Snapshot().RetainedResults == 1, 3000),
                     "TTL测试必须先完成真实Session保留");
-                Thread.Sleep(120);
+                Thread.Sleep(1200);
                 Check(ttl.SweepExpiredResults() == 1 &&
                     ttl.Snapshot().RetainedResults == 0,
                     "结果TTL到期应自动清除会话保留引用与计费");
