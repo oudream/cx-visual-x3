@@ -42,8 +42,8 @@ namespace CxVisual.Professional.CT3D
         public bool HasCalibratedClosedGeometry
         {
             get{return SpatialFrame.IsCalibrated && !TouchesVolumeBoundary &&
-                Mesh.IsClosedOrientedManifold && Mesh.SignedEnclosedVolume.HasValue &&
-                Mesh.SignedEnclosedVolume.Value>0;}
+                Mesh.IsClosedOrientedManifold && Mesh.ConnectedFaceComponentCount==1 &&
+                Mesh.SignedEnclosedVolume.HasValue && Mesh.SignedEnclosedVolume.Value>0;}
         }
     }
 
