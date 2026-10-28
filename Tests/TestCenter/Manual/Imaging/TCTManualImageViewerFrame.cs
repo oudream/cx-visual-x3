@@ -167,6 +167,7 @@ namespace CxVisual.TestCenter.UI
                         _cpuSourceImage!=null &&
                         _cpuSourceImage.PixelFormat==FIMPixelFormat.GrayFloat32 ? "1" : "65535";
                     _windowMode.Text="当前显示：自动窗宽/窗位（手动范围已按新图像位深更新）";
+                    SyncDisplayInputFields();
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
                     _cpuResultItems.Items.Clear();
@@ -1173,6 +1174,24 @@ namespace CxVisual.TestCenter.UI
             _viewer.PixelSpacing = null;
             _viewer.ShowPhysicalRulers = false;
             Show("恢复像素标尺；未标定不显示毫米尺寸");
+        }
+
+        /// <summary>原图重新载入后同步WPF控件与唯一MVI呈现状态，避免陈旧/非法文本误导操作。</summary>
+        private void SyncDisplayInputFields()
+        {
+            bool previous=_syncingDisplayInputs;
+            _syncingDisplayInputs=true;
+            try
+            {
+                MVIImageDisplayState state=_viewer.DisplayState;
+                _displayGamma.Text=state.Gamma.ToString("0.###",CultureInfo.InvariantCulture);
+                _displayBrightness.Text=state.Brightness.ToString("0.###",CultureInfo.InvariantCulture);
+                _displayContrast.Text=state.Contrast.ToString("0.###",CultureInfo.InvariantCulture);
+                _displayInverted.IsChecked=state.IsInverted;
+                _autoContrast.IsChecked=state.IsAutoContrast;
+                SyncGraySliders();
+            }
+            finally { _syncingDisplayInputs=previous; }
         }
 
         private void ApplyDisplay()
