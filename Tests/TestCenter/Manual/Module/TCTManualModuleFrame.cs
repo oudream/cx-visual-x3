@@ -30,6 +30,7 @@ namespace CxVisual.TestCenter.UI
             Margin = new Thickness(6, 0, 0, 0)
         };
         private readonly MPWModuleCenterControl _center=new MPWModuleCenterControl();
+        private readonly TCTCpuComputePanel _cpuPanel;
         private ContentControl _editorHost {get{return _center.EditorHost;}}
         private TabControl _pages {get{return _center.Pages;}}
         private Action<string[], string[]> _project;
@@ -76,6 +77,15 @@ namespace CxVisual.TestCenter.UI
                         "TCT.Module.Page."+page.Id);
                     _pages.Items.Add(tab);
                 }
+                if(kind==MFMModuleKind.Compute)
+                {
+                    var page=new MPWModuleCenterPage("cpu-test","CPU真实检测",new string[0]);
+                    var tab=new TabItem {Header=page.Label,Tag=page};
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,"MPWDocumentTabStyle");
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                        "TCT.Module.Page.cpu-test");
+                    _pages.Items.Add(tab);
+                }
                 _pages.SelectedIndex=0;
                 _center.SetSelectedKind(kind);
             }
@@ -111,7 +121,7 @@ namespace CxVisual.TestCenter.UI
         public bool HasUnsavedDraft { get { return _draftGuard != null && _draftGuard.HasUnsavedDraft; } }
         public string ActiveModuleId { get { return _activeId; } }
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
-        public bool IsBusy { get { return _opening || _busy; } }
+        public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning); } }
         public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
         // 只读当前正式MHS编辑草稿克隆，用于统一测试平台验证真实值与保存重开。
         public MCNConnectorConfiguration ConnectorDraftSnapshot()
@@ -162,6 +172,7 @@ namespace CxVisual.TestCenter.UI
             string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CxVisual", "TestCenter", "ModuleConfigurations");
             _service = new MHSConfigService(root);
+            _cpuPanel=new TCTCpuComputePanel(_service,()=>HasUnsavedDraft);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
             _service.RegisterAssembly(typeof(MFMDriverModuleConfiguration).Assembly);
@@ -340,8 +351,14 @@ namespace CxVisual.TestCenter.UI
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;
-            _project = (fields, categories) =>
-                next.ConfigureWorkspaceProjection(fields, categories, true);
+            _project = (fields, categories) => {
+                if(kind==MFMModuleKind.Compute&&SelectedModulePage=="cpu-test")
+                    _editorHost.Content=_cpuPanel;
+                else {
+                    _editorHost.Content=next;
+                    next.ConfigureWorkspaceProjection(fields,categories,true);
+                }
+            };
             _visibleSchemaEditors = () => next.VisibleWorkspaceEditorCount;
             _saveDraft = token => next.SaveDraftAsync(token);
             _applySaved = boundary => next.ApplySaved(boundary);
@@ -360,6 +377,7 @@ namespace CxVisual.TestCenter.UI
                     "。尚未做设备连接和 MRK 运行验证。";
             };
             _activeId = id; _activeKind = kind;
+            _cpuPanel.Bind(kind==MFMModuleKind.Compute?id:null);
             _refreshDeclaredCapabilities=() => {
                 // A declaration projection is not an MOC Provider, Ready or authorization fact.
                 // The authoritative MFM descriptor is derived from the real FCM draft.
@@ -455,6 +473,7 @@ namespace CxVisual.TestCenter.UI
 
         public void OnWorkspaceClosed()
         {
+            _cpuPanel.Stop();
             if (_activeEditor != null) _activeEditor.Dispose();
             _editorHost.Content = null;
             _activeEditor = null; _draftGuard = null; _validate = null;
