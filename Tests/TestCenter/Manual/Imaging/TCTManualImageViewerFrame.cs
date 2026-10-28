@@ -535,6 +535,11 @@ namespace CxVisual.TestCenter.UI
 
         public void SetOriginal(FIMImageBuffer image)
         {
+            // 外部重新加载同一个FIM引用也代表新的Viewer源代次。
+            // 不允许上一Run绑定相同引用而绕过新原图的证据清理。
+            CancelCpuVision();
+            _cpuSourceImage = null;
+            _cpuEvidence = null;
             _viewer.ShowOriginal(image);
             Show("图像已从内存加载：" + image.Width + "×" + image.Height + " · " + image.PixelFormat);
         }
