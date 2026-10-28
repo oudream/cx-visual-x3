@@ -372,6 +372,53 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "真实CPU Mask→FIM轮廓→像素面积7链路错误或破坏原图");
                 frame.Viewer.ClearOverlays();
+                // 修改参数必须清空属于旧Run的显示槽和证据；无效参数不能重用旧结果。
+                cpuThreshold.Text="70000";
+                if(frame.CpuEvidence!=null || cpuResults.Items.Count!=0 ||
+                    frame.Viewer.Session.Result!=null ||
+                    frame.Viewer.Session.ActiveSlot!=MVIImageSlot.Original ||
+                    !ReferenceEquals(frame.Viewer.Session.Original,image))
+                    throw new InvalidOperationException("CPU参数修改未取消旧Run或清理仅属于CPU的结果槽");
+                cpuRun.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null)
+                    throw new InvalidOperationException("超出Gray16范围的参数竟然重新发布旧CPU结果");
+                // 同一原图的新参数必须产生新的MRK RunId和6像素Mask，不能复用7像素结果。
+                cpuThreshold.Text="11";
+                cpuRun.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var rerunWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && rerunWait.ElapsedMilliseconds<15000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var secondRun=frame.CpuEvidence;
+                if(secondRun==null || secondRun.RunId==evidence.RunId ||
+                    secondRun.Items.Single(i=>i.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Region).Region.PixelArea!=6 ||
+                    frame.Viewer.Session.Result==null ||
+                    frame.Viewer.Session.Result.GetGrayValue(1,2)!=0 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
+                    throw new InvalidOperationException("CPU参数重新运行未产生新Run/6像素掩码或改写了原图");
+                // 任务尚在进行时修改参数，旧Run即使晚到也不得回写。
+                cpuRun.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                cpuThreshold.Text="12";
+                var invalidatedWait=System.Diagnostics.Stopwatch.StartNew();
+                while(invalidatedWait.ElapsedMilliseconds<200)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null ||
+                    cpuResults.Items.Count!=0)
+                    throw new InvalidOperationException("CPU参数变动后晚到的Run污染当前图像或结果项");
                 // 旧运行证据不得留在下一张图的工作台状态。
                 frame.SetOriginal(image);
                 if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null ||

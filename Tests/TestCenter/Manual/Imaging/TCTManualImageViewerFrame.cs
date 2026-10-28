@@ -123,6 +123,8 @@ namespace CxVisual.TestCenter.UI
         {
             BuildWorkbenchLayout();
             _cpuResultItems.SelectionChanged += (sender,args) => SelectCpuResultItem();
+            _cpuThreshold.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
+            _cpuMinArea.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
@@ -236,6 +238,24 @@ namespace CxVisual.TestCenter.UI
                 "；Run=" + run.RunId.ToString("N") + "；ItemId=" + item.ItemId);
         }
 
+        /// <summary>
+        /// 任一CPU参数变化即失效当前Run的投影和进行中的任务。
+        /// 只清理本工作台拥有的结果槽，不影响其它算法结果或原图/ROI。
+        /// </summary>
+        private void InvalidateCpuVisionParameters()
+        {
+            if (_cpuRunCancellation == null && _cpuEvidence == null) return;
+            FIMImageBuffer ownedResult = _cpuDisplayedMask;
+            CancelCpuVision();
+            _cpuEvidence = null;
+            _cpuDisplayedMask = null;
+            _cpuResultItems.Items.Clear();
+            if (ownedResult != null &&
+                ReferenceEquals(_viewer.Session.Result, ownedResult))
+                _viewer.Session.ClearResult();
+            Show("CPU检测参数已变化；旧Run及进行中任务失效，请重新运行。");
+        }
+
         private void CancelCpuVision()
         {
             // 当前运行会在自身finally中释放CTS，取消函数不提前Dispose。
@@ -272,9 +292,15 @@ namespace CxVisual.TestCenter.UI
                 };
                 string issue = CxVisionInspectionOptions.Validate(options);
                 if (!string.IsNullOrEmpty(issue)) throw new ArgumentException(issue);
+                // 新Run不能在运行期间继续把上一次CPU Mask显示为本次结果。
+                FIMImageBuffer previousCpuResult = _cpuDisplayedMask;
                 CancelCpuVision();
                 _cpuEvidence = null;
+                _cpuDisplayedMask = null;
                 _cpuResultItems.Items.Clear();
+                if (previousCpuResult != null &&
+                    ReferenceEquals(_viewer.Session.Result, previousCpuResult))
+                    _viewer.Session.ClearResult();
                 request = new CancellationTokenSource();
                 _cpuRunCancellation = request;
                 string sourceId = _cpuSourceId;

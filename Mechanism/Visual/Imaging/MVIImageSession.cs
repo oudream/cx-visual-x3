@@ -97,6 +97,27 @@ namespace CxVisual.Mechanism.Visual
             return version;
         }
 
+        /// <summary>
+        /// 清理当前派生结果而保留原图和已有ROI/标注。重复清理不改变源代次。
+        /// 结果槽被清理后自动回到原图，旧异步结果可借SourceVersion拒绝回写。
+        /// </summary>
+        public bool ClearResult()
+        {
+            bool changed;
+            lock (_gate)
+            {
+                changed = _result != null;
+                if (changed)
+                {
+                    _result = null;
+                    _active = MVIImageSlot.Original;
+                    checked { ++_sourceVersion; }
+                }
+            }
+            if (changed) RaiseChanged();
+            return changed;
+        }
+
         public void Select(MVIImageSlot slot)
         {
             bool changed;
