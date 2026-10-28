@@ -125,8 +125,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var open=new FGETriangleMesh3D(
                 new[]{new FGEPoint3D(0,0,0),new FGEPoint3D(1,0,0),
                     new FGEPoint3D(0,1,0)},new[]{0,1,2});
+            Check(open.NonManifoldVertexCount==0,
+                "单连通的开放三角面不应误报为bow-tie顶点");
             Check(open.BoundaryEdgeCount==3 && !open.EnclosedVolume.HasValue,
                 "开放曲面不得伪报封闭体积");
+            // 两个闭合四面体只在一个顶点接触：每条边仍恰好被使用两次，
+            // 但该顶点的邻接三角面分属两个不连通fan，禁止标记为闭合流形。
+            var bowTie=new FGETriangleMesh3D(
+                new[]{
+                    new FGEPoint3D(0,0,0),
+                    new FGEPoint3D(1,0,0),new FGEPoint3D(0,1,0),
+                    new FGEPoint3D(0,0,1),new FGEPoint3D(-1,0,0),
+                    new FGEPoint3D(0,-1,0),new FGEPoint3D(0,0,-1)
+                },
+                new[]{
+                    0,2,1, 0,1,3, 0,3,2, 1,2,3,
+                    0,4,5, 0,6,4, 0,5,6, 4,6,5
+                });
+            Check(bowTie.BoundaryEdgeCount==0 && bowTie.NonManifoldEdgeCount==0 &&
+                  bowTie.InconsistentWindingEdgeCount==0 &&
+                  bowTie.NonManifoldVertexCount==1 &&
+                  !bowTie.IsClosedOrientedManifold && !bowTie.EnclosedVolume.HasValue,
+                "仅顶点接触的两个封闭壳必须被判为bow-tie非流形而不是可计量闭合体");
             byte[] boundary=new byte[size*size*size*2];
             SetUInt16(boundary,size,0,0,0,1700);
             using(FVOVolumeData touch=FVORawVolumeLoader.LoadFromMemory(
