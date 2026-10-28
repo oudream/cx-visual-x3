@@ -44,6 +44,7 @@ namespace CxVisual.Foundation.Transport
             _listener.Prefixes.Add(_config.Prefix);
             _listener.Start();
             ConfigureSendAdmission(_config);
+            ConfigureInFlightBudget(_config.TotalBufferedBytes);
             _accept=Task.Run(()=>AcceptLoop(_stop.Token));
             return Task.CompletedTask;
         }
@@ -85,25 +86,53 @@ namespace CxVisual.Foundation.Transport
         {
             try
             {
-                byte[] buffer=new byte[Math.Min(16384,_config.ReceiveBufferBytes)];
-                using(var incoming=new MemoryStream())
+                // 各Peer共享同一个内存额度；慢端只能占用自身已登记的份额。
+                using(var lease=InFlightBudget.Lease())
                 {
-                    while(!cancellation.IsCancellationRequested)
+                    int scratchBytes=Math.Min(16384,_config.ReceiveBufferBytes);
+                    lease.Reserve(scratchBytes);
+                    byte[] buffer=new byte[scratchBytes];
+                    using(var incoming=new MemoryStream())
                     {
-                        WebSocketReceiveResult result=await peer.Socket.ReceiveAsync(
-                            new ArraySegment<byte>(buffer),cancellation).ConfigureAwait(false);
-                        if(result.MessageType==WebSocketMessageType.Close)break;
-                        if(result.MessageType!=WebSocketMessageType.Binary)
-                            throw new NotSupportedException("WebSocket Server目前只提供二进制消息传输");
-                        if(incoming.Length+result.Count>_config.MaxMessageBytes)
-                            throw new FTRBudgetExceededException("WebSocket消息超出资源预算");
-                        incoming.Write(buffer,0,result.Count);
-                        if(result.EndOfMessage)
+                        while(!cancellation.IsCancellationRequested)
                         {
-                            _inReceiveCallback.Value=true;
-                            try{ReceiveFrom(peer.Address,incoming.ToArray());}
-                            finally{_inReceiveCallback.Value=false;}
-                            incoming.SetLength(0);
+                            WebSocketReceiveResult result=await peer.Socket.ReceiveAsync(
+                                new ArraySegment<byte>(buffer),cancellation).ConfigureAwait(false);
+                            if(result.MessageType==WebSocketMessageType.Close)break;
+                            if(result.MessageType!=WebSocketMessageType.Binary)
+                                throw new NotSupportedException("WebSocket Server目前只提供二进制消息传输");
+                            long required=incoming.Length+result.Count;
+                            if(required>_config.MaxMessageBytes)
+                                throw new FTRBudgetExceededException("WebSocket消息超出资源预算");
+                            if(required>incoming.Capacity)
+                            {
+                                int oldCapacity=incoming.Capacity;
+                                int next=(int)Math.Min((long)_config.MaxMessageBytes,
+                                    Math.Max(required,Math.Max(4096L,(long)oldCapacity*2)));
+                                // Capacity扩容时GC可能同时保留新旧数组，因此预留临时峰值。
+                                lease.Reserve(next);
+                                try{incoming.Capacity=next;}
+                                catch{lease.Release(next);throw;}
+                                lease.Release(oldCapacity);
+                            }
+                            incoming.Write(buffer,0,result.Count);
+                            if(result.EndOfMessage)
+                            {
+                                int copyBytes=(int)incoming.Length;
+                                lease.Reserve(copyBytes);
+                                try
+                                {
+                                    byte[] message=incoming.ToArray();
+                                    _inReceiveCallback.Value=true;
+                                    try{ReceiveFrom(peer.Address,message);}
+                                    finally{_inReceiveCallback.Value=false;}
+                                }
+                                finally{lease.Release(copyBytes);}
+                                int previous=incoming.Capacity;
+                                incoming.SetLength(0);
+                                incoming.Capacity=0; // 消息结束立即还给其它Peer，不长期占住大Buffer。
+                                lease.Release(previous);
+                            }
                         }
                     }
                 }
