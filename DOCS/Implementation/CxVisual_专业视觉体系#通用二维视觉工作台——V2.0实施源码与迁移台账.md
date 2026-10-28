@@ -117,3 +117,20 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 ## 9. 需要在首次代码阶段形成的证据
 
 至少一项：真实FIM单图+ROI算法的输入/参数/多类型输出合同、从TCT/MPW可操作、同值单元测试、异常反证、Windows CI、结构与Owner检查。其后逐次增加Vision专业算法节点、MEM工程持久化和专业Result；不要为了支持未来全部260项先创建一批无使用者的空接口。
+
+## 10. 设计先行的真实Owner复用审查与裁决
+
+已核实以下真实源代码锚点：MPMTypeDescriptor/MPCPortDescriptor/IMPMTypeProvider，MEMContent/MOLWiringDefinition，MOCEngineeringCompiler/MOCCompiledPlan/MOCSourceMap，MRKExecutionInput/Output与MRKExecutionPlan，FDTDataAdapterRegistry/MDSDataContext/MDSDataBudget/MDSBoundedByteStream，CxVisionDataFlow/CxVisionThresholdProvider/IPVCComputeModule。上述**源码存在不等于完整Vision全类运行已验收**。
+
+| V2.0原候选 | 深化裁决 |
+|---|---|
+| VisionPipelineDefinition | 先采用MEMContent+专业TypeId+MOL定义，不批准第二持久化Graph |
+| VisionTypedPort/ParameterSchema | 先复用MPC/MPM/现有MRK类型端口；只添加必要Vision语义 |
+| VisionOperationDescriptor/Factory | 先复用MPMTypeProvider/能力Resolver、FIM静态API；经两算法消费评审再考虑专业Descriptor |
+| VisionGraphExecutor/DataHeap | 禁止新增；正式Plan使用MOC/MRK/MDS/F19 |
+| VisionRunResult/ResultItem | 可作为专业结果候选，但先复用FDT/MDS数据/Artifact引用，禁止以Overlay保存历史结果 |
+| VisionSceneProjection/Controller | 只当工作台投影职责，非必然新增Facade/Controller类 |
+| FrameRef/FrameStream | 候选专业数据语义；不把MDS有界字节块冒充完整工业帧流 |
+| FIMImageBuffer与CxVisionGrayFrame | 先做8/16位、Stride/字节序/复制与同样本数值互通审查，不急于第三种原始像素类 |
+
+设计推进顺序：先完成Owner/接口与依赖核对→Image/Operation/Result最短链→MEM/MOL/MOC/MRK完整执行→工程ROI持久化与复核→批量/实时/大图及专业SDK。对应00四个Gate、02 X01—X07以及03—08专题；后续真正编码仍须固定提交SHA、Windows CI与用户操作/专业数据验收。此节只记录设计审查事实，未运行本轮Windows构建。
