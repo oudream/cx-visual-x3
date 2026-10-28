@@ -127,11 +127,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     {
         internal MDSDataLifecycleSnapshot(string name, string owner, int active, int holds,
             bool closed, DateTime? expires, IEnumerable<string> blockers,
-            MDSDataLifecyclePolicy policy)
+            IEnumerable<string> retentionReasons, MDSDataLifecyclePolicy policy)
         {
             Name = name; OwnerId = owner; ActiveConsumers = active; RetentionHolds = holds;
             ConsumerAdmissionClosed = closed; ExpiresUtc = expires; Policy = policy;
             Blockers = new ReadOnlyCollection<string>(new List<string>(blockers));
+            RetentionReasons = new ReadOnlyCollection<string>(new List<string>(retentionReasons));
         }
         public string Name { get; private set; }
         public string OwnerId { get; private set; }
@@ -140,6 +141,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public bool ConsumerAdmissionClosed { get; private set; }
         public DateTime? ExpiresUtc { get; private set; }
         public IList<string> Blockers { get; private set; }
+        public IList<string> RetentionReasons { get; private set; }
         public MDSDataLifecyclePolicy Policy { get; private set; }
     }
 }
