@@ -183,7 +183,11 @@ namespace CxVisual.TestCenter.UI
             if (volume == null) throw new ArgumentNullException("volume");
             FVOVolumeData previous = _volume;
             ClearSurfaceAnalysis(); // 原值/Frame/Scene变更时取消旧任务并清除所有GPU/WPF旧Surface。
-            if (_state != null) _state.PropertyChanged -= OnStateChanged;
+            if (_state != null)
+            {
+                _state.PropertyChanged -= OnStateChanged;
+                _state.Scene3D.Changed -= OnProfessionalSceneChanged;
+            }
             _updating = true;
             try
             {
@@ -198,6 +202,7 @@ namespace CxVisual.TestCenter.UI
                 _scene.BindCamera(_state.Camera);
                 if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
+                _state.Scene3D.Changed += OnProfessionalSceneChanged;
                 _sphereThresholdText.Text=((volume.ScalarMin+volume.ScalarMax)/2.0f)
                     .ToString("0.###",System.Globalization.CultureInfo.InvariantCulture);
                 _workbench.Bind(volume,_state);
@@ -374,7 +379,11 @@ namespace CxVisual.TestCenter.UI
             }
             if(_enableGpu.IsChecked==true)_enableGpu.IsChecked=false;
             _updating = true;
-            if (_state != null) _state.PropertyChanged -= OnStateChanged;
+            if (_state != null)
+            {
+                _state.PropertyChanged -= OnStateChanged;
+                _state.Scene3D.Changed -= OnProfessionalSceneChanged;
+            }
             _workbench.Bind(null,null);
             if (_volume != null) _volume.Dispose();
             _volume = null;
