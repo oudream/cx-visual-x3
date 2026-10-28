@@ -65,6 +65,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           plane.SourceMeshResultId==result.ResultId &&
                           plane.SourceRevision==result.SourceRevision,
                         "真实UInt16外露+Z面片应由FNU PCA-SVD正确拟合出毫米平面及来源证据");
+                    Check(Math.Abs(plane.SignedDistanceMm(
+                            new FVOPhysicalPoint3D(25,35,47.5),result.SpatialFrame)-1)<1e-8 &&
+                          Math.Abs(plane.SignedDistanceMm(
+                            new FVOPhysicalPoint3D(25,35,45.5),result.SpatialFrame)+1)<1e-8 &&
+                          Math.Abs(plane.AbsoluteDistanceMm(
+                            new FVOPhysicalPoint3D(25,35,45.5),result.SpatialFrame)-1)<1e-8,
+                        "同一来源毫米Frame中拟合平面应输出正负1mm偏差和1mm绝对距离");
+                    bool frameRejected=false;
+                    try
+                    {
+                        plane.SignedDistanceMm(new FVOPhysicalPoint3D(25,35,47.5),
+                            FVOVolumeSpatialFrame.UncalibratedAxisAligned(1,1,1));
+                    }
+                    catch(InvalidOperationException){frameRejected=true;}
+                    Check(frameRejected,
+                        "不同空间Frame未经配准不得直接比较点到平面毫米偏差");
                     bool notPlanar=false;
                     var whole=new List<int>();
                     for(int index=0;index<mesh.VertexCount;index++)whole.Add(index);
