@@ -82,3 +82,11 @@ Observer用于帧/会话变化，Strategy仅在两种真实读取Provider可替�
 | D03-08 | SHM/网络/设备失联重连、坏帧和权限拒绝 | 真实Provider/设备专项 |
 
 **状态**：此文档是架构设计；D03-06～08不能因合成小图WPF smoke成功而标记通过。
+
+## 8. 统一数据合同的深化裁决（2026-10-28）
+
+基础数据不得因为引入实时流或专业SDK就变成第三套像素底座。**E已核实**：FIMImageBuffer使用带Width/Height/Stride/PixelFormat的自有byte[]；CxVisionGrayFrame为专业8/16位灰度ushort快照，复制与像素语义不同；FDTReadOnlyBuffer、FDTDataAdapterRegistry提供只读字节与专业值捕获；MDSDataBudget计入FlowHeap/DataStack已提交数据，但不含全部临时工作区/GPU显存；MDSBoundedByteStream是本机有界字节块流而非完整CameraFrameStream。
+
+**P待裁决的FrameRef**只表达SourceId+SourceGeneration+FrameId+采集Time+PixelFormat+CalibrationRef+可选受控Lease，不复制整份FIMImageBuffer。ImageSet持FrameRef索引；RunResult持InputRef及ArtifactRef；MPW显示持当前选中的像素与MVI视口。FrameLease的实际接口须根据MDS生命周期和设备Provider评审，不得凭文档臆造Dispose语义。
+
+**三项优先测试**：Gray8/16由FIM和PVC运行相同样本逐像素及数值比较、Stride/字节序/复制峰值测量、图像被切换或流关闭后的异步数据与租约不误发布。大图应分别测量输入副本、算法工作区、WPF显示副本、GPU纹理和队列预算；对专业GPU/SDK占用必须另记账。
