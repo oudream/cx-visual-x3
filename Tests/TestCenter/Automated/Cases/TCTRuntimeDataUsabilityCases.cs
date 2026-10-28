@@ -157,6 +157,49 @@ namespace CxVisual.TestCenter.Cases
             finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
         }
 
+        private sealed class TCTExternalCompletionVerifier : IMDSExternalCompletionVerifier
+        {
+            public bool RealCompletionObserved;
+            public bool VerifyCompleted(string data, string provider, long generation)
+            {
+                return RealCompletionObserved && data == "SDK.Data" &&
+                    provider == "Camera" && generation == 19;
+            }
+        }
+
+        [TCTTest("TCT.MDS.034", "外部SDK未知操作受控恢复与真实代次释放",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSExternalOperationLease")]
+        public static void UnknownExternalOperationReconciliation(TCTTestContext t)
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                heap.Set("SDK.Data", new byte[20]);
+                MDSExternalOperationLease lease = heap.Lifecycle.BeginExternalOperation(
+                    "SDK.Data", "Camera", 19);
+                lease.Dispose();
+                lease = null;
+                var verifier = new TCTExternalCompletionVerifier();
+                t.AssertEqual(1, heap.Lifecycle.PendingExternalOperations().Count,
+                    "未确认SDK任务必须保留可诊断的恢复登记");
+                t.AssertEqual(false, heap.Lifecycle.TryReconcileExternalOperation(
+                    "SDK.Data", "Camera", 18, verifier),
+                    "旧代次不能确认当前操作");
+                t.AssertEqual(false, heap.Lifecycle.TryReconcileExternalOperation(
+                    "SDK.Data", "Camera", 19, verifier),
+                    "无专业真实完成证据不得清除Unknown");
+                t.AssertEqual(false, heap.Lifecycle.ReleaseEligible("SDK.Data"),
+                    "未核对完成时SDK数据不能释放");
+                verifier.RealCompletionObserved = true; // 仅模拟后端完成凭证，不等于SDK实机
+                t.AssertEqual(true, heap.Lifecycle.TryReconcileExternalOperation(
+                    "SDK.Data", "Camera", 19, verifier),
+                    "通过可信Provider核对才允许释放");
+                t.AssertEqual(0, heap.Lifecycle.PendingExternalOperations().Count,
+                    "释放后注册表无孤儿");
+                t.AssertEqual(true, heap.Lifecycle.ReleaseEligible("SDK.Data"),
+                    "已确认的SDK数据由原Heap回收");
+            }
+        }
+
         private sealed class TCTExistingOwner : IMDSExternalBindingResolver
         {
             public object Resolve(MDSBindingSource source, string name, Type target)
