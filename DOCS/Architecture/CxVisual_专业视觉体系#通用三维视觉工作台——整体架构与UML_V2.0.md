@@ -834,14 +834,14 @@ sequenceDiagram
 | 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs | Raymarch与GPU RenderHost E；H待实测 | MIP/MinIP/混合几何与实卡像素对照 |
 | 06 | MPR与任意切 | R25 | FVO/MVI | FVO/Slicing/FVOSliceImageBuilder.cs | 正交/任意切E+T | 曲面重切、厚层投影与真实RAW |
 | 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T；统一Camera E | 鼠标/DPI/窗口变化与视角保真 |
-| 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVI/MVISceneItem.cs [2D参考] | 3D P | 编辑/持久化/Undo/坐标精准回环 |
+| 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVI/Volume/MVI3DSceneState.cs | 场景对象引用/选择E；3D ROI编辑P | 专业ROI编辑/持久化/Undo/物理坐标回环 |
 | 09 | 动画/时序 | R28、R54–56 | MVI/MPW/MEM | MPW/Volume/Views/MPWVolumeSliceSceneControl.cs | 相机E；完整动画P | 关键帧/时间轴/装配动画/视频与重开 |
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
-| 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/ [拟新增] | P | 亚体素、精度/质量评价与真值 |
+| 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 离散阈值边界采样E；自动回归待核 | 亚体素、表面网格、精度/工业真值 |
 | 12 | 点云/网格 | R31 | FGE/CT3D | FGE/ [拟新增3D Mesh] | P | 网格拓扑/修补/点云重建质量 |
-| 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | FNU/Solvers/FNUWeightedLeastSquares.cs | 数学底座E；专业拟合P | 鲁棒/约束拟合、退化与残差 |
+| 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、FNU/LinearAlgebra/FNULinearAlgebra.cs | SVD球拟合/残差E；其他专业拟合P | 约束/鲁棒/退化、工业标准件残差与不确定度 |
 | 14 | 几何配准 | R33、R48 | CT3D/FGE/FNU | FNU/LinearAlgebra/FNULinearAlgebra.cs | 基础数值E；ICP P | 变换已知真值/坐标链/收敛残差 |
-| 15 | 尺寸测量 | R34、R51 | CT3D/FGE | CT3D/ [拟新增] | P | 物理毫米、基准、精度/不确定度 |
+| 15 | 尺寸测量 | R34、R51 | CT3D/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 球径毫米初步数值E；完整工业计量P | 基准/标定/精度/不确定度与量具对照 |
 | 16 | GD&T | R35 | CT3D/Inspection | CT3D/ [拟新增] | P | 各形位公差语义、Datums及工业量具对照 |
 | 17 | CAD集成 | R36、R50 | CT3D/专业SDK | CT3D/ [需确认SDK] | P/H许可未核 | STEP/IGES/Parasolid/SW拓扑/装配/单位 |
 | 18 | CT-CAD差异 | R37、R49 | CT3D/Inspection | CT3D/ [拟新增] | P | 正负偏差、超差区域、差异统计与报告 |
@@ -868,6 +868,8 @@ sequenceDiagram
 ---
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
+> **2026-10-28 专业纵切片源码记录**：CT3D新增基于FVO租约的离散六邻域边界采样和复用FNU SVD的球体初步拟合，结果有毫米半径/直径、RMS残差、条件数、SourceRef/Revision；MVI新增Scene3D可视引用、显隐、透明度和选择，TestCenter消费正式Scene，Headless合成球与负例已写入测试。详见`DOCS/Implementation/CxVisual_通用三维视觉工作台#V01原值边界球拟合与MVI多对象引用首包_V1.0.md`。**本轮新代码尚无完成的Windows/真实GPU/工业精度签收，不能标T或H通过。**
+
 
 > **2026-10-28 本轮实装补录（源码 D1；后续Windows/硬件结果须按实际Run升级）**：MPW正式新增`MPWVolumeRenderScheduler`，现有`MPWVolumeRenderHost`已接入`Revision/AppliedRevision/ContextEpoch`，TestCenter将CT3D ChangeSet映射到LUT/Uniform/Scene刷新；FVO新增`FVOVolumeSpatialFrame`并由`FVOVolumeData.SpatialFrame`唯一持有，默认未标定、显式变换具备双精度与正反例；FVO新增`FVOOriginalScalarLease`并公开`AcquireOriginalScalarLease()`，后台算法可在Volume释放后依赖SafeHandle租约读取真实RAW。实现与负例见`DOCS/Implementation/` P2/C02记录和`Tests/ArchitectureSmoke/Integration/`的FVO/MPW专项。上述实装不意味着FGE通用三维CAD Frame Owner已裁决，也不表示Surface/测量/CAD功能或NVIDIA/AMD/Intel硬件已通过验收。
 
