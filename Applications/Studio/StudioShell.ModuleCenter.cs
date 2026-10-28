@@ -49,12 +49,32 @@ namespace CxVisual.Studio
                     null,x.Definition.Version,x.RuntimeAvailable,true));
             control.SetCapabilities(real.Concat(unbound),
                 "实际CPU视觉软件Provider + 原Studio CPU流程演示（只读；非工业运行就绪）");
-            control.HeaderContent=new TextBlock {
+            var header=new StackPanel();
+            header.Children.Add(new TextBlock {
                 Text="工程："+_viewModel.ProjectSession.Project.Name+
                     " · Compute：真实CPU阈值算法，开发预设参数，尚未绑定MEM资源/MHS Effective。" +
                     " 其余采图/AI/输出仍是CPU流程演示，不代表驱动、设备或业务执行授权。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,4,4,6)
-            };
+            });
+            // Navigate to the original MEM/FCM/MHS/MOL owners; do not build private forms
+            // or silently bind the selected capability to an unrelated project resource.
+            var actions=new WrapPanel {Margin=new Thickness(1,2,1,6)};
+            var configure=new Button {Content="打开工程专业配置",Padding=new Thickness(12,5,12,5),
+                Margin=new Thickness(3,1,6,1),
+                ToolTip="打开原Studio FCM/MHS配置页；当前不会自动将开发CPU预设绑定到MEM资源"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(configure,
+                "Studio.ModuleCenter.OpenConfiguration");
+            configure.Click+=(sender,args)=>SafeStudioAction(()=>OpenStudioDocument("doc.config"));
+            actions.Children.Add(configure);
+            var flow=new Button {Content="打开主流程编排",Padding=new Thickness(12,5,12,5),
+                Margin=new Thickness(3,1,6,1),
+                ToolTip="打开原MOL流程编辑器；不会跳过MOC构建、MRK执行和授权"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(flow,
+                "Studio.ModuleCenter.OpenFlow");
+            flow.Click+=(sender,args)=>SafeStudioAction(()=>OpenStudioDocument("doc.flow"));
+            actions.Children.Add(flow);
+            header.Children.Add(actions);
+            control.HeaderContent=header;
             return control;
         }
     }
