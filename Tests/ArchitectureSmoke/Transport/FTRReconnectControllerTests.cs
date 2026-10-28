@@ -47,7 +47,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 control.AttemptFailed+=(n,e)=>Interlocked.Increment(ref failed);
                 control.Reconnected+=()=>Interlocked.Increment(ref restored);
                 control.Start();
-                Check(SpinWait.SpinUntil(()=>c.State==FTRChannelState.Open,3000),
+                Check(SpinWait.SpinUntil(()=>c.State==FTRChannelState.Open && Volatile.Read(ref restored)==1,3000),
                     "按配置的初始延迟、退避和总次数恢复成功");
                 Check(c.Opens==3&&failed==2&&restored==1&&!control.Snapshot().Exhausted,
                     "失败次数、成功通知及诊断必须正确");
