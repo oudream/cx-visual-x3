@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace CxVisual.Foundation.Volume
 {
@@ -13,7 +14,7 @@ namespace CxVisual.Foundation.Volume
         private readonly IntPtr _pointer;
         private readonly int _width,_height,_depth,_stride;
         private readonly FVORawVoxelFormat _format;
-        private bool _disposed;
+        private int _disposed;
         public int Width {get{return _width;}}
         public int Height {get{return _height;}}
         public int Depth {get{return _depth;}}
@@ -59,7 +60,7 @@ namespace CxVisual.Foundation.Volume
 
         public unsafe float ReadScalar(int x,int y,int z)
         {
-            if(_disposed)throw new ObjectDisposedException("FVOOriginalScalarLease");
+            if(Volatile.Read(ref _disposed)!=0)throw new ObjectDisposedException("FVOOriginalScalarLease");
             if(x<0||x>=_width||y<0||y>=_height||z<0||z>=_depth)
                 throw new ArgumentOutOfRangeException("x","原始体素索引越界，禁止钳制到边界。");
             long index=x+(long)y*_width+(long)z*_width*_height;
@@ -73,12 +74,22 @@ namespace CxVisual.Foundation.Volume
             }
         }
 
+        ~FVOOriginalScalarLease()
+        {
+            Release();
+        }
+
         public void Dispose()
         {
-            if(_disposed)return;
-            _disposed=true;
-            _owner.DangerousRelease();
+            Release();
             GC.SuppressFinalize(this);
+        }
+
+        private void Release()
+        {
+            if(Interlocked.Exchange(ref _disposed,1)!=0)return;
+            // 构造失败时_finalizer可能运行，只有成功取得SafeHandle引用才归还。
+            if(_owner!=null)_owner.DangerousRelease();
         }
     }
 }
