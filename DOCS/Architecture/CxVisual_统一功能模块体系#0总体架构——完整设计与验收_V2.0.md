@@ -1655,3 +1655,7 @@ TestCenter 真实存储与字段应以其 V4.1 正式 API 和当前实现为准�
 **后继唯一 Owner 裁决**：旧 §14.1 所列 MCCChannel/Mechanism.Connectivity.Channel 是历史快照；依据 2026-10-27 的 F17 裁决，正式 Channel 位于 Foundation/Transport/Channels，类型使用 FTR/IFTR，Connector/Protocol/PointTable/DataMapping 仍在 Mechanism.Connectivity，且 Connector 严格一 Channel、一 Protocol。不要借历史表重引 MCC Channel。命令实现最新归 Foundation.Data.Commands + Mechanism.Runtime.Commands，旧 M12 名称表示公共命令业务角色，不代表新增第二套中心。统一交互 V1.5 对 V1.4 作后继增补。
 
 源码审阅基线 master ec821564fdab09da151ecf3d3dfa5db399d64d5f 时，Driver 仅基础配置/类型，Compute 有执行入口与参数，Simulation 有模型/Clock，Service 有基本状态机；这些不等于物理/AI/CT/仿真保真/服务网络全部实现。该 SHA Windows 工作流有成功亦有失败，具体 CI 以固定 SHA 重新核实。设计 G0、软件 G1、HIL G2、工业长稳 G3 不可相互替代。
+
+## 2026-10-28 功能模块中心三入口专项设计导航
+
+- [功能模块中心与三入口统一体验 V1.0](CxVisual_统一功能模块体系——功能模块中心与三入口统一体验完整设计及验收_V1.0.md) 是五类模块之外的**公共入口与使用体验设计**，并非第六种模块或新 Owner。涵盖 Developer API、Studio、TestCenter 共用 UI/配置/运行/诊断，追加 MC-I、MC-UX、MC-C、MC-OP、MC-A01～A32 追踪；保留本文件原有 UM/TFM 和五种专业分类。其目标设计不等于实装/Windows CI/HIL。

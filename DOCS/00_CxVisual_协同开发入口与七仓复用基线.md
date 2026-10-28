@@ -243,4 +243,7 @@
 - [#4 Simulation V1.1](Architecture/CxVisual_统一功能模块体系%234Simulation——仿真模块完整设计与验收_V1.1.md)——模型、时钟、故障、Replay、虚实与确定性。
 - [#5 Service V1.1](Architecture/CxVisual_统一功能模块体系%235Service——服务模块完整设计与验收_V1.1.md)——服务响应、Ready、运行治理与集成。
 
+
+- [功能模块中心与三入口统一体验 V1.0](Architecture/CxVisual_统一功能模块体系——功能模块中心与三入口统一体验完整设计及验收_V1.0.md)——Developer API、Studio、TestCenter 共用 MFM/MOC/MRK/FCM/MHS/MPW 的能力发现、配置、使用、诊断及 MC-A01～A32 专项验收；当前为设计目标，不代表完整界面和 HIL 已实现。
+
 四篇 V1.0 历史原文保留，四篇 V1.1 分别继承全部正文和编号并增补执行合同及 X 系列专项测试。F17 Channel 后继 Owner/命令中心双项目 Owner/统一交互 V1.5 优先于过时历史表述。文档是目标，不能替代 Windows 编译、TestCenter、真实设备 HIL 或工业长稳。
