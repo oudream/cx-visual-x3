@@ -72,6 +72,47 @@ namespace CxVisual.TestCenter.Cases
             }
         }
 
+        [TCTTest("TCT.MDS.032", "代码编排MRK静态DAG消费后安全回收与Flow导出",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MRKCommittedOutputReclaimer")]
+        public static void RuntimeDataStaticConsumerReclamation(TCTTestContext t)
+        {
+            var blueprint = new MRKCodeRuntimeBuilder()
+                .DataCapability("Image", (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[] { 5, 6, 7 });
+                    return Task.FromResult((object)true);
+                }, new Dictionary<string, Type> { { "Image", typeof(byte[]) } })
+                .DataCapability("Measure", (ctx, ct) =>
+                {
+                    ctx.Data.Return("Size", ctx.Data.Get<byte[]>("Input").Length);
+                    return Task.FromResult((object)true);
+                }, new Dictionary<string, Type> { { "Size", typeof(int) } },
+                    new[] { new MRKCapabilityInput("Input", typeof(byte[])) })
+                .Flow("real", flow => flow.ReclaimConsumedData()
+                    .Step("acquire", "Image")
+                    .StepData("measure", "Measure", new[] {
+                        new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+                            "acquire.Image", typeof(byte[])) }, "acquire")
+                    .Export("Final", "measure.Size"))
+                .Freeze();
+            MRKFlowCompileDefinition source;
+            t.AssertEqual(true,
+                blueprint.TryGet("real", out source) &&
+                    source.ReclaimCommittedWhenConsumersSettle,
+                "代码编排便捷入口须沿正式编译定义保留策略");
+            MRKDevelopmentRuntime runtime = blueprint.BuildForDevelopment(new FCRWorkerOptions(2, 8));
+            try
+            {
+                MRKFlowResult result = runtime.RunAsync("real", new Dictionary<string, object>())
+                    .GetAwaiter().GetResult();
+                t.AssertEqual(MRKFlowState.Completed, result.State,
+                    "实际MRK节点执行与MDS数据回收不得影响最终Flow终态");
+                t.AssertEqual(3, result.GetCommittedOutput<int>("Final"),
+                    "最后消费者结算不应使正式Flow导出失效");
+            }
+            finally { runtime.StopAsync().GetAwaiter().GetResult(); }
+        }
+
         private sealed class TCTExistingOwner : IMDSExternalBindingResolver
         {
             public object Resolve(MDSBindingSource source, string name, Type target)
