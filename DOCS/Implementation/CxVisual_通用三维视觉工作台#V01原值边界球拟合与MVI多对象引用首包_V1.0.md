@@ -29,3 +29,15 @@
 - 目前MVI Scene是可视引用/选择状态，尚未将Surface点云上传MPW绘制，也未接入MEM提交/Undo持久保存；下一步需要真实多对象GPU呈现/结果定位/工程化。
 - Windows .NET Framework 4.8 Release x64、ArchitectureSmoke `--volume`、真实WPF/GPU、长时间RAW负载及工业真值检查应逐步升级证据；不可将源码存在或历史CI通过替代本提交验收。
 - 仓库中还存在并行Transport/模块工程编译阻断；具体失败归属应对照各Workflow日志判断，不以此误称CT3D测试失败或通过。
+
+## 四、P3 Surface真实渲染增量（2026-10-28）
+
+**代码变化**：
+1. `MPWVolumeSurfaceProjection`在现有MPW工程内实现原始mm点经`FVOVolumeSpatialFrame.PhysicalToVoxel()`回到原始索引，按原始维度映射到[-.5,.5]体空间float显示点。WPF延续既有切面Y镜像约定，OpenGL按源纹理Y方向；这是可视投影，绝不作为计量真值。
+2. `MPWVolumeOpenGlControl`新增Surface点专用VAO/VBO与GL_POINTS，叠加在同一真实OpenGL framebuffer中；显卡Context创建/销毁时上传/清理，不用HwndHost airspace上方的WPF假覆盖。
+3. `MPWVolumeSliceSceneControl`新增独立ModelVisual3D中的批量Surface小四面体Mesh，原有三正交/任意切Mesh索引不变；真实GPU失败可在WPF fallback中看专业Surface。
+4. `TCTManualVolumeProfessional`负责组合正式CT3D/FVO/MVI/MPW：从真实UInt16/Byte/Float32 RAW lease分析、GPU/WPF投影、MVI Scene注册引用，计算走Task.Run、切换Volume取消、旧Epoch拒绝发布；支持同步API便于标准球WPF端到端测试。当前仅当来源已有明确标定和原值租约才允许专业拟合，**不会自动把文件名Spacing当成可信工件坐标**。
+5. `MVI3DSceneState`的Surface可见性已驱动两种显示实现，隐藏/恢复/重新启用GPU时尊重场景真源；透明度状态与绘制Alpha的完整绑定、可视拾取和场景多资源自动映射仍待实现。
+6. `MPWVolumeSourceTests`与`TCTVolumeViewerSmoke`新增非等距旋转坐标投影、越界拒绝、显示点预算、真实UInt16合成球拟合、MVI Scene选中与显隐、WPF三刀不退化及切换体积清理等断言。
+
+**状态与限制**：源码已经提交，Windows Actions及真实NVIDIA/AMD/Intel GPU图片实测按本功能对应固定SHA核实，不把队列状态、基础工具编译、展示点数当作像素/工业精度验收。实际Surface Mesh（三角面拓扑、法向、亚体素）、CAD重合显示、Surface持久化MEM、工业标准件误差均仍未完成。
