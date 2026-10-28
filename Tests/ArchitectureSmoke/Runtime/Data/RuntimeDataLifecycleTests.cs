@@ -117,7 +117,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MRKFlowResult ok = Wait(engine.StartFlow(optimized).Completion);
                 Check(ok.State == MRKFlowState.Completed &&
                     ok.GetCommittedOutput<byte[]>("Result").Length == 70,
-                    "显式opt-in后可在100字节预算内完成双消费者与结果交接");
+                    "显式opt-in后可在100字节预算内完成双消费者与结果交接；State="
+                    + ok.State + " Error=" + (ok.Error == null ? "<null>" : ok.Error.ToString()));
                 MRKFlowResult old = Wait(engine.StartFlow(legacy).Completion);
                 Check(old.State == MRKFlowState.Failed &&
                     old.Error != null,
