@@ -45,7 +45,19 @@ namespace CxVisual.Foundation.Transport
                     if(!owned)ready.TrySetResult(error);
                     else if(!_stop.IsCancellationRequested)Fault(error);
                 }
-                finally {if(owned)region.ReleaseSide();}
+                finally
+                {
+                    if(owned)
+                    {
+                        try{region.ReleaseSide();}
+                        catch(Exception releaseError)
+                        {
+                            // 清理失败时保留MMF脏标记，新会话必须拒绝未知环槽；
+                            // 严禁从后台接收线程抛出未处理异常终止整个宿主进程。
+                            RecordReceiveError(releaseError);
+                        }
+                    }
+                }
             }){IsBackground=true,Name="FTR.SharedMemory.Receive."+Id};
             _reader.Start();
             Task settled=await Task.WhenAny(ready.Task,Task.Delay(3000,cancellation)).ConfigureAwait(false);
