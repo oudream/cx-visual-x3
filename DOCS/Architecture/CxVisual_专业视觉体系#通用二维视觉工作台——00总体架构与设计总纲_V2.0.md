@@ -133,3 +133,81 @@ flowchart LR
 - **专题设计**：03数据、04交互、05算法、06结果/工程、07运行、08工作台；设计接口均为候选直到源码与Owner评审。
 - **事实台账**：Implementation逐SHA记录代码和旧功能复用；Testing逐SHA记编译、数值、WPF及实机，历史证据不得推及最新master。
 - 变更26类定义或跨Owner对象须更新01/02、写ADR、检查对应专题和验收；本版批准的是整体目标和组织方式，不预批准每个新类名和签名。
+
+
+## 11. 架构深化：四平面、唯一真源和Owner裁决（2026-10-28）
+
+> **性质：设计深化，不是已实现功能。** 此章节细化前述V2.0主设计，编译API和新增类型须在真实源码及DOCS/02—04 Owner审核后定案。重点是先把基础对象与关系设计好，之后再扩张260项能力。
+
+### 11.1 同一Vision工作台的四个逻辑平面
+
+| 平面 | 正式持有者 | 核心对象和生命周期 | 禁止 |
+|---|---|---|---|
+| Definition 工程定义 | MEM/MOL/MPM/MRC/MTC | MEMContent、MPMTypeDescriptor、MOLWiringDefinition；Edit/Undo/Save，版本化且持久 | 不新建Vision第二工程树/第二Undo |
+| Execution 运行执行 | MOC/MRK/MDS/F19 + PVC算法 | MOCCompiledPlan→MRKExecutionPlan→MDS DataContext→专业计算；版本固定、可取消 | 不新建VisionGraphExecutor/第二DataStack |
+| Evidence 结果证据 | Vision专业结果语义 + 平台Artifact机制 | RunId、具名类型输出、Image/Mask/Measurement/Defect/Trace与引用；发布后不可原地改写 | 不把结果塞进Viewer双槽或工程定义 |
+| Presentation 可视交互 | MVI + MPW + 正式宿主 | Viewer当前Original/Result、Viewport、临时Overlay、用户草稿；按工作台结果Ref投影 | 不把MPW控件当专业算法/持久数据仓 |
+
+**贯穿身份链**：ResourceRef/DefinitionRevision → InputRef或FrameId → Invocation/RunId → ResultItemId/ArtifactRef → Review/ReportRef，CorrelationId贯穿诊断链。UI可重新选择任意结果但不能因此修改原算法结果；正式编辑必须通过MEM事务。
+
+~~~mermaid
+flowchart LR
+  D["MEMContent / MPM Type<br/>MOL定义/ROI引用"] --> C["MOC解析编译<br/>SourceMap"]
+  C --> X["MRK Plan / MDS<br/>固定Revision/预算"]
+  X --> A["FIM/PVC<br/>专业计算"]
+  A --> R["Vision Run结果<br/>TypedOutput/Artifact"]
+  R --> V["MVI/MPW<br/>按Ref显示"]
+  R --> I["Inspection/CT3D/HMI"]
+  V -. "确认编辑意图" .-> D
+~~~
+
+### 11.2 真实既有类型与新增对象的判定
+
+| 需求职责 | 必须首先复用的真实类型 | Vision可以增加的部分；仍须核实 |
+|---|---|---|
+| 视觉工程资源 | MEMContent、MEMEngineeringSession、MPMTypeDescriptor、MPCPortDescriptor、IMPMTypeProvider | Vision专用TypeId、参数字段、图像格式和校准约束；不单独持久化VisionPipelineDefinition |
+| 可执行流程 | MOLWiringDefinition、MOCEngineeringCompiler、MOCCompiledPlan、MOCSourceMap | 专业节点的能力语义、类型/图像/ROI校验、专业调试投影；不复制Graph |
+| 算法调度和端口 | MRKExecutionPlan、MRKExecutionInput/Output、MRKExecutionStep | Image/Mask/Geometry的专业Type约束与版本/结果契约；不复制端口基础 |
+| 运行数据/资源 | FDTDataAdapterRegistry、MDSDataContext、MDSDataBudget、MDSBoundedByteStream | 专业像素安全捕获、字节估算、FrameLease/Backpressure；不是新的Heap/Stack |
+| 图像像素 | FIMImageBuffer、CxVisionGrayFrame（两种现存不同用途的数据表达） | 互通映射、元数据/来源、位深/Stride/复制及性能契约；未审核不建第三种基础像素类型 |
+| 视觉会话 | MVIImageSession双槽、MVIOverlayStore、MPWViewer | 多资产索引与结果选择属于工作台；正式ROI经MEM/MRC，不让Result2/Result3无限增长 |
+| 专业计算 | CxVisionDataFlow、CxVisionThresholdProvider、IPVCComputeModule | 算法能力发现、专业执行、结果映射与第三方SDK；不强迫所有FIM静态算法成为模块 |
+
+**容量语义限制**：当前MDSBoundedByteStream是本机字节块流，每块有上限，不是含采集时间戳/FrameLease/DropPolicy的工业帧流。MDSDataBudget目前只覆盖FlowHeap和DataStack已提交托管载荷，尚未包含算法临时工作区、额外图像副本和GPU显存。设计必须复用其机制，但不能虚称完整流/大图已经验收。
+
+### 11.3 六项架构闭环必须先行
+
+1. **Image→TypedOperation**：采用现有FIM像素与PVC专业输入，将参数Schema/能力版本/类型合同映射MPM/端口而非自建注册库。
+2. **Operation→Result**：每次Run产生稳定RunId及多具名结果，图、Mask、轮廓、测量与Trace可单独访问，错误/空/取消各有状态。
+3. **Result→View**：工作台依据ResultItem/SourceRef选图，向MVI双槽投影；图窗不持久化算法输出。
+4. **View→Engineering**：临时ROI显式转正式MEM/MRC对象，Edit/Preview/Commit/Undo/Save/Open一致；算法结果默认不改工程。
+5. **Definition→Runtime**：MEM/MOL→MOC编译→MRK执行→MDS存值；运行版本固定且Studio关闭后仍能使用已发布Plan。
+6. **Stream→BoundedRun**：帧身份、来源、字节预算、背压、丢帧策略、设备断开和Buffer租约明示；软件软实时不能替代硬实时控制。
+
+### 11.4 十二个架构决议及下一道门禁
+
+| 决议 | 确定的方向 | 证据条件 |
+|---|---|---|
+| D2-01 | 全类是能力分类，不是26个Manager或项目 | 26→UML→Owner双向追溯 |
+| D2-02 | 正式视觉流程表达优先MEMContent/MOL/MPM | 创建、保存、重开类型化内容 |
+| D2-03 | Vision使用MPC/MRK现有端口合同 | Image/Mask/Measure类型反例 |
+| D2-04 | 正式流程用MOC编译，MRK执行，MDS存值 | 真实2—4节点异步Trace |
+| D2-05 | 通用FIM与专业CxVisionGrayFrame先明确互通 | 8/16位、复制/所有权/性能测试 |
+| D2-06 | MVI双槽保留Viewer职责，不充当结果仓 | 三个以上产物切换不丢身份 |
+| D2-07 | 结果与工程标注分离 | 结果选择→显式Promote→Undo/Save |
+| D2-08 | Result以RunId+ItemId+SourceRef索引 | 多类型结果复核和一致导出 |
+| D2-09 | 时间戳/FrameId/SequenceId独立于图窗状态 | 序列/乱序/设备断开反证 |
+| D2-10 | 大图有明确句柄、容量及释放责任 | CPU/GPU峰值和压力测试 |
+| D2-11 | Vision检测候选≠Inspection最终质量判定 | 跨专业Invocation与权限 |
+| D2-12 | 运行权限、日志、版本、诊断是横切合同 | 失败/取消/重试/过期可追踪 |
+
+**以上决议确定架构方向，不代表批准新类的具体名称和公开签名**。每个候选新增类型都必须通过真实Owner复用审计、两个独立消费者、生命周期/并发反证以及依赖DAG检查。
+
+### 11.5 先设计完成的四个Gate
+
+- **Gate-A 核心对象**：八个核心概念（Image、FrameRef、ViewState、ROI、Operation、Pipeline、Result、Resource）有明确身份/写入权/生命周期；每条跨域关系有Owner。
+- **Gate-B 数据与交互**：原图、结果、Mask、标注的坐标/版本/所有权统一；异步切图旧结果无法污染新图；图窗仍使用同一MVI/MPW。
+- **Gate-C 流程与工程**：Vision专业类型→已有MPM/MOL→MOC/MRK/MDS→结果/Trace；工程保存和发布保持单一真源。
+- **Gate-D 开放及工业**：通用/专业SDK的扩展点、真实批次/流、资源预算、安全与跨专业协议均具反证测试设计，未验证项不写为通过。
+
+*在A/B/C Gate的UML、契约、典型用例审定前，不应一次性批量创建260组实现类型。*

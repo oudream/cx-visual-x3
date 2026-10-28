@@ -663,3 +663,288 @@ ImageMetadata/FrameRef/MaskContract先审FIM/FDT；VisionOperationDescriptor/Typ
 ## 10. 版本与测试
 
 U/P/C/ST/SQ/DP各组图号固定；变动对象图必须同步修改01能力契约、相关03—08专题和实施/验收台账。采用CASE-01单图、CASE-02算法、CASE-03配准、CASE-04批次、CASE-05在线、CASE-06 X-Ray/CT、CASE-07工程、CASE-08 AI预留八个反向Case验证；任何通过声明都要求对应Git SHA及Windows/设备实证。
+
+
+## 11. 实现级UML深化：以真实平台类型为主体
+
+> 此处的X01—X07为**补充细化图**；原26图是架构总览，X图为Owner审查和实施输入。涉及旧C05/C06/C07中的VisionOperationDescriptor、VisionTypedPort、VisionPipelineDefinition、VisionRunResult等候选名时，本节优先：**采用已有MPM/MOL/MRK/MDS，不因概念图出现新类就批准它存在**。
+
+### X01 Vision正式工程类型和流程定义
+
+~~~mermaid
+classDiagram
+  class MEMEngineeringSession {
+    <<E>>
+    +Edit()
+    +Undo()
+    +Redo()
+  }
+  class MEMContent {
+    <<E>>
+    +Id
+    +TypeId
+  }
+  class MPMTypeDescriptor {
+    <<E>>
+    +TypeId
+    +SchemaVersion
+    +Properties
+    +Ports
+  }
+  class MPCPortDescriptor {
+    <<E>>
+    +MemberId
+    +TypeId
+    +Direction
+  }
+  class MOLWiringDefinition {
+    <<E>>
+    +Blocks
+    +Links
+  }
+  class VisionTypePolicy {
+    <<P_specialization>>
+    +PixelFormatRule
+    +CalibrationRule
+  }
+  MEMEngineeringSession --> MEMContent : authoritative
+  MEMContent --> MPMTypeDescriptor : type reference
+  MPMTypeDescriptor o-- MPCPortDescriptor
+  MEMContent --> MOLWiringDefinition : LogicAspect
+  VisionTypePolicy ..> MPMTypeDescriptor : professional validation
+~~~
+
+**关键裁决**：VisionPipeline是使用现有MEMContent和MOLWiringDefinition表达的专业资源角色，而非第二套可编辑持久Graph；MPM已有TypeId、SchemaVersion、Ports和Properties，专用算法Descriptor/参数不能覆盖已有机制。
+
+### X02 专业编译与真实MRK端口/数据适配
+
+~~~mermaid
+classDiagram
+  class MOCEngineeringCompiler {
+    <<E>>
+  }
+  class MOCCompiledPlan {
+    <<E>>
+    +Plan
+    +SourceMap
+    +EngineeringRevision
+  }
+  class MRKExecutionPlan {
+    <<E>>
+    +Steps
+  }
+  class MRKExecutionStep {
+    <<E>>
+    +Inputs
+    +DataOutputs
+  }
+  class MRKExecutionInput {
+    <<E>>
+    +Name
+    +ValueType
+    +Source
+  }
+  class IMDSDataContext {
+    <<E>>
+    +Get()
+    +Return()
+  }
+  class FDTDataAdapterRegistry {
+    <<E>>
+    +Register()
+    +Freeze()
+  }
+  class CxVisionDataFlow {
+    <<E>>
+    +CreateCpuInspectionPlan()
+  }
+  MOCEngineeringCompiler ..> MOCCompiledPlan : compile
+  MOCCompiledPlan --> MRKExecutionPlan
+  MRKExecutionPlan o-- MRKExecutionStep
+  MRKExecutionStep o-- MRKExecutionInput
+  MRKExecutionStep ..> IMDSDataContext
+  IMDSDataContext --> FDTDataAdapterRegistry : captured data
+  CxVisionDataFlow ..> MRKExecutionPlan : existing direct plan
+~~~
+
+**不变量**：项目流经MOC获得SourceMap，MRK只执行已固定计划，MDS安全管理具名输入输出；CxVisionDataFlow已可直接产生CPU Plan，但这不意味着Studio VisionPipeline编译接线已经完成。
+
+### X03 图像源、FrameRef、Viewer双槽与结果索引
+
+~~~mermaid
+classDiagram
+  class FIMImageBuffer {
+    <<E>>
+    +Width
+    +Height
+    +PixelFormat
+  }
+  class CxVisionGrayFrame {
+    <<E_specialized>>
+    +Width
+    +Height
+    +PixelDepth
+  }
+  class MVIImageSession {
+    <<E_view_session>>
+    +Original
+    +Result
+    +SourceVersion
+  }
+  class MPWImageViewerControl {
+    <<E>>
+    +ShowOriginal()
+    +ShowResult()
+  }
+  class VisionFrameRef {
+    <<P>>
+    +SourceId
+    +FrameId
+    +Timestamp
+  }
+  class VisionArtifactIndex {
+    <<P_workbench_role>>
+    +RunId
+    +OutputPort
+    +ArtifactRef
+  }
+  VisionFrameRef ..> FIMImageBuffer : resolves
+  VisionFrameRef ..> CxVisionGrayFrame : professional capture
+  VisionArtifactIndex o-- VisionFrameRef
+  VisionArtifactIndex ..> MVIImageSession : selects
+  MPWImageViewerControl --> MVIImageSession : owns
+~~~
+
+**不变量**：FIM与PVC的像素语义互通必须显式转换/验证，不能直接Cast；多图索引或结果仓不应常驻MVI双槽；源图坐标与视口投影相互独立。
+
+### X04 结果证据、临时叠加、工程对象三种身份
+
+~~~mermaid
+classDiagram
+  class CxVisionInspectionResult {
+    <<E_limited>>
+    +ConfigRevision
+    +Regions
+  }
+  class VisionRunRecord {
+    <<P>>
+    +RunId
+    +Status
+    +InputRef
+    +PlanVersion
+  }
+  class VisionResultItem {
+    <<P>>
+    +ItemId
+    +Kind
+    +SourceRef
+  }
+  class MVIImageOverlayStore {
+    <<E_temporary>>
+    +AddRange()
+    +Changed
+  }
+  class MVIImageOverlayItem {
+    <<E_temporary>>
+    +Id
+    +Layer
+  }
+  class MEMEngineeringSession {
+    <<E_engineering>>
+    +Edit()
+  }
+  class MRCVisualItem {
+    <<E_engineering>>
+  }
+  VisionRunRecord o-- VisionResultItem
+  VisionResultItem ..> CxVisionInspectionResult : adapts
+  MVIImageOverlayStore o-- MVIImageOverlayItem
+  MEMEngineeringSession --> MRCVisualItem : authoritative
+  VisionResultItem ..> MVIImageOverlayItem : display projection
+  MVIImageOverlayItem ..> MRCVisualItem : explicit engineering promote
+~~~
+
+**裁决**：RunId/ItemId属于结果；Overlay ID属于临时会话；MRC/MEM StableId属于正式工程。图中虚线是拟定映射而非自动复制；人工复核生成派生记录，原始结果不可变。
+
+### X05 切换图像后旧请求必须失效
+
+~~~mermaid
+sequenceDiagram
+  actor U as 用户
+  participant W as 工作台
+  participant S as MVIImageSession
+  participant Q as 请求Epoch/SourceRef
+  participant A as 后台算法
+  U->>W: 加载图像A
+  W->>S: SetOriginal(A)
+  W->>Q: 生成Request(A,params)
+  Q->>A: 执行
+  U->>W: 加载图像B
+  W->>S: SetOriginal(B)
+  W->>Q: Invalidate(A)
+  A-->>W: A的旧结果晚到
+  W->>Q: 校验SourceRef+Epoch+参数版本
+  Q-->>W: Stale
+  Note over W,S: 结果不得写入B视图或工程
+~~~
+
+已有MVIImageSession的SourceVersion也会因SetResult增长，不能当作仅表示Original版本的单调修订号。请求身份需独立管理。
+
+### X06 工程发布到专业运行及SourceMap
+
+~~~mermaid
+sequenceDiagram
+  participant E as MEM工程Revision
+  participant C as MOC编译
+  participant R as MRK发布与运行
+  participant V as Vision Provider
+  participant D as MDS数据
+  E->>C: 固定定义/类型/能力引用
+  C-->>R: MOCCompiledPlan/SourceMap
+  R->>V: 能力版本及资源检查
+  V-->>R: 可用/拒绝
+  R->>D: 绑定具名输入
+  R->>V: 调用专业计算
+  V-->>D: TypedOutput
+  D-->>R: Commit或Abort
+  R-->>E: RunId/Result/Trace引用
+~~~
+
+软件Plan版本与专业Provider版本应记录，不把Plan Stage成功当成已通过设备互锁或现场安全验收；Studio关闭后的目标Runtime独立性须实际测试。
+
+### X07 帧、租约、任务状态与内存释放
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> Validating
+  Validating --> Acquiring: 格式/预算/权限合法
+  Validating --> Rejected: 拒绝
+  Acquiring --> Executing: 获取Frame租约
+  Acquiring --> Cancelled: 取消
+  Executing --> Publishing: 计算及输出成功
+  Executing --> Aborting: 失败/超时/取消
+  Publishing --> Releasing: MDS Commit
+  Aborting --> Releasing: MDS Abort
+  Releasing --> Completed: 产物已提交
+  Releasing --> Failed: 不完整或失败
+  Completed --> [*]
+  Failed --> [*]
+  Rejected --> [*]
+  Cancelled --> [*]
+~~~
+
+每条终止路径须释放FrameLease和算法临时/SDK/GPU资源；MDSDataBudget当前统计已提交托管载荷，不能代表显存和全部工作区。MDSBoundedByteStream仅是本机块流，需要专业帧身份/Drop/NoDrop/重连语义。
+
+## 12. 26类与真实架构锚点的映射
+
+| 全类范围 | 主要基础UML及深化图 | 核心Owner | 必须验证 |
+|---|---|---|---|
+| 01—04 输入/数据/序列/大图 | C01/C02/X03/X07 | FIM、FDT/MDS、Automation | 位深/所有权、FrameRef、预算及回收 |
+| 05—09 显示/视口/对比/标注/工具 | C03/C04/ST01/X04/X05 | MVI/MPW、正式MRC | 坐标/双Pane/临时与工程身份 |
+| 10—15 处理/增强/分割/分析/测量/配准 | C05/X02/X03 | FIM/FGE/PVC | 算法精度/参数/输出类型 |
+| 16—17 工业检测与AI | C05/C07/X02/X04 | PVC/专业Provider | 检测事实与Inspection判定隔离 |
+| 18—20 算法能力/流程/实时 | C06/ST02/ST04/X01/X02/X06/X07 | MPM/MOL/MOC/MRK/MDS | 不新增Graph/Executor/Heap |
+| 21—23 结果/输出/工程 | C07/C08/X04/X06 | Vision结果合同、MEM/MRC | Result/Overlay/Resource不同所有权 |
+| 24—26 工作台/跨专业/质量 | P01—P03/DP01—DP02/X03—X07 | Studio、MPW、FLD及专业边界 | UI独立Runtime、Trace与现场证据 |
+
+**模式准则**：State针对真实多阶段工具，Observer针对会话/结果状态，Command复用MEM/MTC，Composite复用MRC，Strategy仅在真实替代算法出现后引入，AOP围绕Run/节点边界贯穿版本、耗时、资源、权限和错误；一律禁止为了UML好看而增加空接口。
