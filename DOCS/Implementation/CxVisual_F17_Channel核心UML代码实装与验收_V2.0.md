@@ -53,4 +53,4 @@
 - 代码审计发现：原 `FTRReconnectController.StopAsync()` 在 `AttemptFailed`、`Reconnected`、`Exhausted` 同步回调中被调用并阻塞等待时，存在恢复任务等待自身的死锁风险。
 - 新增恢复任务上下文区分：**回调内仅同步请求取消并委托继续清理；回调外 `StopAsync()` 仍等待恢复任务结束与取消源释放**。上轮停止尚未完成时，拒绝重新 `Start()`，避免两代恢复任务重叠。
 - `FTRReconnectControllerTests.StopWithinRecoveryCallbacks` 补充失败回调内同步 `StopAsync()`、成功回调内同步 `Dispose()`、外部停止等待、停止后不再重连的回归用例；原真实 TCP 重连、重试上限和停止取消用例保留。
-- **证据状态**：源码和测试已提交；此增量的 Windows x64 编译、`--channel-transport` 与跨项目回归须以固定 SHA 的 CI 最终结果为准，尚未根据旧绿灯宣称通过。仍不代表 24h 长稳或现场设备验收。
+- **Windows 固定 SHA 验收**：[F17 #40656980087](https://github.com/oudream/cx-visual-x3/actions/runs/40656980087)（`11584be9`）与 [F17 #40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715)（`4d9976ee`）工作均为 `success`。后者的实际日志输出 `F17.RECONNECT_PASS ... callback-safe stop`，同时 `F17.UML_CORE_PASS`、`CHANNEL.TRANSPORT`、TCP/NamedPipe 各向 2GiB 完整性门禁通过；此为软件 Windows 回归，不代表 24h 长稳或现场设备验收。
