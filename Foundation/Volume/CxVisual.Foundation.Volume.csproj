@@ -26,6 +26,7 @@
     <Compile Include="IO\FVORawVolumeLoader.cs"/>
     <Compile Include="Memory\FVOUnmanagedRawVolumeBuffer.cs"/>
     <Compile Include="Data\FVOVolumeData.cs"/>
+    <Compile Include="Spatial\FVOVolumeSpatialFrame.cs"/>
     <Compile Include="Internal\FVOFrameworkCompat.cs"/>
     <Compile Include="Slicing\FVOObliqueSliceDefinition.cs"/>
     <Compile Include="Slicing\FVOObliqueSliceBuilder.cs"/>
