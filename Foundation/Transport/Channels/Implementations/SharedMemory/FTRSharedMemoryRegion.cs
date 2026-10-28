@@ -11,6 +11,10 @@ namespace CxVisual.Foundation.Transport
         private const long Magic = 0x46545253484d3031L; // FTRSHM01
         private const int Version=1;
         private const int HeaderSize=128;
+        // 头部64/68字节为A/B独占端点的持久脏标记，保留旧V1环格式与槽位布局。
+        // 命名Mutex在最后一个进程退出后可能被OS销毁，不能仅凭AbandonedMutex识别旧会话。
+        private const long ActiveSideAOffset=64L;
+        private const long ActiveSideBOffset=68L;
         private readonly MemoryMappedFile _map;
         private readonly MemoryMappedViewAccessor _view;
         private readonly Mutex _guard;
@@ -18,9 +22,10 @@ namespace CxVisual.Foundation.Transport
         private bool _hasSideOwner;
         internal readonly EventWaitHandle DataA,DataB,SpaceA,SpaceB;
         private readonly int _slots,_stride;
+        private readonly FTRSharedMemorySide _side;
         internal FTRSharedMemoryRegion(FTRSharedMemoryChannelConfiguration config)
         {
-            _slots=config.Slots;_stride=checked(config.SlotBytes+4);
+            _slots=config.Slots;_stride=checked(config.SlotBytes+4);_side=config.Side;
             string name=@"Local\CxVisual.FTR."+config.MapName;
             long size=checked(HeaderSize+2L*_slots*_stride);
             _guard=new Mutex(false,name+".lock");
@@ -42,6 +47,7 @@ namespace CxVisual.Foundation.Transport
                     _view.Write(8,Version);_view.Write(12,config.SlotBytes);
                     _view.Write(16,config.Slots);
                     _view.Write(32,0L);_view.Write(40,0L);_view.Write(48,0L);_view.Write(56,0L);
+                    _view.Write(ActiveSideAOffset,0);_view.Write(ActiveSideBOffset,0);
                     _view.Write(0,Magic);
                 }
                 else if(magic!=Magic || _view.ReadInt32(8)!=Version ||
@@ -50,27 +56,66 @@ namespace CxVisual.Foundation.Transport
             }
             finally{if(acquired)_guard.ReleaseMutex();}
         }
-        /// <summary>读线程独占命名侧锁，直到通道停止；防止同Side多生产者或消费者。</summary>
+        private long SideMarkerOffset()
+        {return _side==FTRSharedMemorySide.A?ActiveSideAOffset:ActiveSideBOffset;}
+
+        /// <summary>
+        /// 侧锁阻止活跃端点并存；MMF脏标记阻止进程崩溃后Side锁被OS销毁时误认旧环安全。
+        /// 只有正常Close可清理标记；异常退出的残留消息结果不重放。
+        /// </summary>
         internal void AcquireSide()
         {
+            bool acquired=false;
             try
             {
-                if(!_sideOwner.WaitOne(0))
-                    throw new InvalidOperationException("同一共享内存名称和Side已有活跃端点");
-                _hasSideOwner=true;
+                try
+                {
+                    if(!_sideOwner.WaitOne(0))
+                        throw new InvalidOperationException("同一共享内存名称和Side已有活跃端点");
+                    acquired=true;
+                }
+                catch(AbandonedMutexException)
+                {
+                    acquired=true;
+                    throw new IOException("共享内存端点异常退出；残留数据状态未知，须更换会话/共享区名称");
+                }
+                if(!Lock(CancellationToken.None,1000))
+                    throw new TimeoutException("共享内存侧状态获取全局锁超时");
+                try
+                {
+                    if(_view.ReadInt32(SideMarkerOffset())!=0)
+                        throw new IOException("共享内存端点异常退出；旧Side占用标记未清，须更换会话/共享区名称");
+                    _view.Write(SideMarkerOffset(),1);
+                    _view.Flush(); // 先持久标记，再向Open报告成功。
+                    _hasSideOwner=true;
+                }
+                finally{_guard.ReleaseMutex();}
             }
-            catch(AbandonedMutexException)
+            catch
             {
-                // 对端异常崩溃后无法确认残留槽位是否已被业务处理，拒绝自动恢复。
-                _sideOwner.ReleaseMutex();
-                throw new IOException("共享内存端点异常退出；残留数据状态未知，须更换会话/共享区名称");
+                if(acquired && !_hasSideOwner)_sideOwner.ReleaseMutex();
+                throw;
             }
         }
         internal void ReleaseSide()
         {
             if(!_hasSideOwner)return;
-            _hasSideOwner=false;
-            _sideOwner.ReleaseMutex(); // 必须由同一个专属读线程释放
+            try
+            {
+                if(!Lock(CancellationToken.None,1000))
+                    throw new TimeoutException("共享内存端点正常清理侧状态超时");
+                try
+                {
+                    _view.Write(SideMarkerOffset(),0);
+                    _view.Flush();
+                }
+                finally{_guard.ReleaseMutex();}
+            }
+            finally
+            {
+                _hasSideOwner=false;
+                _sideOwner.ReleaseMutex(); // 必须由取得Mutex的同一个接收线程释放。
+            }
         }
         private bool Lock(CancellationToken ct,int timeout)
         {
