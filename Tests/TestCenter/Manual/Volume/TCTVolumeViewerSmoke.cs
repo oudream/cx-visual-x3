@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Professional.CT3D;
 
 namespace CxVisual.TestCenter.UI
 {
