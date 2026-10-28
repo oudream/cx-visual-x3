@@ -82,6 +82,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public ContentControl EditorHost {get{return _editor;}}
         public object HeaderContent {get{return _header.Content;}set{_header.Content=value;}}
         public int VisibleCapabilityCount {get{return _list.Items.Count;}}
+        /// <summary>Currently highlighted entry only; no implicit selection/execution.</summary>
+        public MPWModuleCapabilityView SelectedCapability
+        {get{return _list.SelectedItem as MPWModuleCapabilityView;}}
         /// <summary>UI-only read-only snapshot; no mutable registration or execution handle.</summary>
         public IReadOnlyList<MPWModuleCapabilityView> VisibleCapabilities
         {get{return _list.Items.Cast<MPWModuleCapabilityView>().ToArray();}}
