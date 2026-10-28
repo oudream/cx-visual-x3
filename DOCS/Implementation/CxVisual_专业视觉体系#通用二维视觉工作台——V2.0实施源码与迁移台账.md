@@ -187,3 +187,20 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **严格边界**：此批是对既有MRK CPU阈值检测输出的轻量聚合，**不是**完整七类RunResult；Image/Mask/ArtifactRef持久化、ReviewRecord、正式结果数据库、多专业算法Schema、Studio完整结果历史和工业硬件待实现。FlowDecision仅是既有CPU流程软件标志，**不能**代替Inspection产品OK/NG。当前SourceId为调用者声明的来源字符串，不等同于来源文件Hash或已签名FrameRef。
 
 **测试状态**：新代码与测试已提交；在#40660774027实际完成前不提升G3/G4证据等级，后续更新固定SHA/Windows结果；新增结果合同仍需实际WPF交互与专业大图性能专项。
+
+## 14. P2 Image/Mask真实产物的MRK最小闭环（2026-10-28）
+
+**真实代码提交**：[c98d933](https://github.com/oudream/cx-visual-x3/commit/c98d933bd31a688e083c88a815dae59751d8c48c)；真实像素/并发测试：[8d5c027](https://github.com/oudream/cx-visual-x3/commit/8d5c027e87b8360246ca5e71a91db157d2512aaf)；FDT载荷估算正反例补强：[9316a139](https://github.com/oudream/cx-visual-x3/commit/9316a13903a7bd69d9c1f71c9d8fe2354d408b46)。**固定Windows CI**：[Imaging #40662918228](https://github.com/oudream/cx-visual-x3/actions/runs/40662918228)，本章节初次登记时仍处于排队，**不作为已验收证据**。上轮P1 [#40660774027](https://github.com/oudream/cx-visual-x3/actions/runs/40660774027) 已独立核实成功，不得拿来证明本次P2新增代码通过。
+
+| 实际文件/Owner | 已提交源码行为 | 限制及安全合同 |
+|---|---|---|
+| `Professional/Vision/CxVisionDataFlow.cs` | 保留原`CreateCpuInspectionPlan(options,revision)`二参签名和默认3个出口，新增显式`CreateCpuInspectionPlanWithArtifacts(options,revision)`；在原Decode→Preprocess→Inspect节点内部产出处理图与阈值Mask | 无新Executor/Graph/Heap；只在明确选择时额外分配处理图和Mask，避免所有默认调用被迫承担大图副本 |
+| `Professional/Vision/CxVisionDataFlow.cs` | 当前Flow的FDT注册`FIMImageBuffer` immutable image adapter、`Stride×Height`大小估算；额外MRK具名导出`PreparedImage`及`ThresholdMask` | 图像由现有FIM私有像素持有，无法经公共API修改；该逻辑仅计托管实际像素载荷，不代表GPU/SDK峰值 |
+| `Professional/Vision/CxVisionRunSummary.cs` | `CxVisionResultKind.Image/Mask` 与`CxVisionResultItem.Image`；仅对真实MRK正式提交且格式/尺寸匹配的两项追加同RunId/SourceId/稳定端口身份 | Run内引用，不等于磁盘ArtifactRef、文件持久化、FrameLease或通用多平台结果仓；未新增第二种基础像素类 |
+| `Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs` | 真实MRK灰度图/Mask数值、Gray16带Stride输入、掩码与接受Region不同、失败不发布、默认路径兼容、并行Run隔离、FDT大小估算 | 被`--vision-results`、`--imaging`及默认ArchitectureSmoke自动包含；对应Windows CI需按本轮SHA记录 |
+
+**Mask的具体语义**：`ThresholdMask`为**Preprocess之后、四邻接/面积规则筛选之前**的整图逐像素二值0/255阈值命中；它可能比`Inspection.Regions`包含更多孤立区域。用`ThresholdPixelCount`同样本交叉核对，禁止将该Mask称作已接受缺陷实例分割。
+
+**内存与生命周期**：额外输出确实引入托管像素分配和FIM拷贝，FDT只按实际`Stride×Height`逻辑载荷估算，完整CPU工作区与GPU/SDK暂存另计。结果投影没有创建全局缓存、长期保留策略或资源数据库；消费者保存`CxVisionRunSummary`时会持有图像对象直到释放引用。后续完整Image/Mask Artifact索引、跨Run持久、显式租约、Studio图窗产品化显示仍待实现和实测。
+
+**后续方向**：结合已有MVI/MPW图窗用`ResultItem.Image`投影真实图像及Mask；再按MEM/MOC正式资源版本和RunRef实现浏览/错误状态/导出，先做同源图注册与取消/旧回写安全，不能把Viewer缓存当ResultStore。
