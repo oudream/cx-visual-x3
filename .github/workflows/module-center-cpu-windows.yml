@@ -1,0 +1,54 @@
+name: CxVisual Module Center CPU RAW End-to-End Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Applications/Studio/**'
+      - 'Professional/Vision/**'
+      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Runtime/**'
+      - 'Mechanism/Data/**'
+      - 'Mechanism/Core/**'
+      - 'Foundation/**'
+      - '.github/workflows/module-center-cpu-windows.yml'
+jobs:
+  raw-cpu-closure:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build actual .NET Framework 4.8 solution
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Module Center CPU unified build failed' }
+      - name: Execute actual RAW MHS MEM MOC MRK Vision closed loop in Studio WPF STA
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path .\Output\Release\x64\CxVisual.Studio.exe).Path
+          $report = Join-Path (Split-Path $exe) 'StudioShellSelfTest.txt'
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $exe -ArgumentList '--module-center-cpu-self-test' -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch { }
+            throw 'Module Center real CPU self-test timeout'
+          }
+          if (-not (Test-Path $report)) { throw 'Missing real CPU test report' }
+          Get-Content $report
+          if ($p.ExitCode -ne 0) { throw "CPU closed-loop process failed: $($p.ExitCode)" }
+          $passed = @(Select-String -Path $report -Pattern '^PASS:')
+          $failed = @(Select-String -Path $report -Pattern '^FAIL:')
+          if ($passed.Count -ne 1 -or $failed.Count -ne 0 -or
+              -not $passed[0].Line.Contains('S1-03D RAW真实文件')) {
+            throw 'Expected exactly one real CPU RAW -> MEM -> MOC -> MRK result/Trace PASS'
+          }
+      - name: Archive real CPU closure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-center-cpu-windows-acceptance
+          path: Output/Release/x64/StudioShellSelfTest.txt
+          if-no-files-found: warn
