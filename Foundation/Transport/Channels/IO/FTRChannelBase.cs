@@ -335,7 +335,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         protected void EnterReceiveThread() { _receivePipeline.EnterReceiveThread(); }
         protected virtual bool IsAdditionalTransportThread { get { return false; } }
         protected void PublishReceiveBuffer(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint=null)
-        {_receivePipeline.Publish(address,buffer,count,remoteEndpoint);}
+        {_receivePipeline.Publish(address,buffer,count,remoteEndpoint,SessionId);}
         protected void AfterReceived(Action action,CancellationToken cancellation){_receivePipeline.AfterReceived(action,cancellation);}
         protected void DrainBufferedReceive(int timeoutMilliseconds,CancellationToken cancellation)
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
@@ -368,7 +368,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             var legacy=Received;
             if(legacy!=null)
             {
-                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint){SessionId=this.SessionId};
+                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint){SessionId=buffer.SessionId};
                 foreach(Action<FTRChannelReceiveContext> listener in legacy.GetInvocationList())
                     try{listener(context);}catch(Exception error){RecordObserverError(error);}
             }
