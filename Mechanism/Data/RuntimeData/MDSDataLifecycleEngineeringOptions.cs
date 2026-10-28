@@ -90,12 +90,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     "工程生命周期配置不能为空");
                 yield break;
             }
+            string problem = null;
             try { settings.ToPolicy(); }
-            catch (ArgumentException error)
-            {
-                yield return FCMConfigIssue.Error(context.Path, "LIFECYCLE_POLICY",
-                    error.Message);
-            }
+            catch (ArgumentException error) { problem = error.Message; }
+            if (problem != null)
+                yield return FCMConfigIssue.Error(context.Path, "LIFECYCLE_POLICY", problem);
         }
     }
 }
