@@ -58,6 +58,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public void CloseConsumerAdmission(string name) { _owner.CloseLifecycleAdmission(name); }
         /// <summary>按显式的TTL或最后消费者规则回收，仅回收满足安全条件的数据。</summary>
         public int Sweep(DateTime? nowUtc = null) { return _owner.SweepLifecycle(nowUtc ?? DateTime.UtcNow); }
+        /// <summary>明确以字节为目标驱逐有资格的缓存，返回真实释放的逻辑载荷字节。</summary>
+        public long SweepPressure(long requiredBytes)
+        { return _owner.SweepLifecyclePressure(requiredBytes); }
         public bool ReleaseEligible(string name) { return _owner.ReleaseLifecycleEligible(name); }
     }
 
@@ -331,6 +334,63 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 }
                 return released;
             }
+        }
+
+        // 仅允许回收无使用/保留的显式TTL缓存；所有预算操作仍归原Heap。
+        internal long SweepLifecyclePressure(long requiredBytes, string excludeName = null)
+        {
+            if (requiredBytes < 0) throw new ArgumentOutOfRangeException("requiredBytes");
+            if (requiredBytes == 0) return 0;
+            lock (_gate)
+            {
+                EnsureOpen();
+                if (Budget == null)
+                    throw new NotSupportedException("没有MDSDataBudget不能证明压力回收的载荷字节数");
+                long freed = 0;
+                var names = new List<string>(_lifecycles.Keys);
+                names.Sort(StringComparer.Ordinal);
+                foreach (string name in names)
+                {
+                    if (string.Equals(name, excludeName, StringComparison.Ordinal)) continue;
+                    MDSDataLifecycleRecord record;
+                    if (!_lifecycles.TryGetValue(name, out record) ||
+                        !record.Policy.Reclamation.ReleaseOnPressure ||
+                        LifecycleBlockers(record).Count != 0) continue;
+                    MDSDataFileEntry file;
+                    if (_files.TryGetValue(name, out file))
+                    {
+                        if (file.State != MDSDataLoadState.Loaded) continue;
+                        long bytes = file.CachedBytes;
+                        file.Cache = null;
+                        file.CachedBytes = 0;
+                        file.State = MDSDataLoadState.Unloaded;
+                        file.Generation++;
+                        record.ExpiresUtc = null;
+                        Budget.Release(bytes);
+                        freed = checked(freed + bytes);
+                    }
+                    else
+                    {
+                        MDSDataEntry item;
+                        if (!_values.TryGetValue(name, out item) || item.Bytes == 0) continue;
+                        long bytes = item.Bytes;
+                        if (DropLifecycleItem(name))
+                            freed = checked(freed + bytes);
+                    }
+                    if (freed >= requiredBytes) break;
+                }
+                return freed;
+            }
+        }
+
+        // 调用方持有Heap锁；最终是否足够仍由Budget.Reserve原子判断。
+        private void ReserveHeapBudgetWithPressure(long bytes, string excludeName)
+        {
+            if (Budget == null) return;
+            long available = Budget.LimitBytes - Budget.RetainedBytes;
+            if (bytes > available)
+                SweepLifecyclePressure(bytes - available, excludeName);
+            Budget.Reserve(bytes);
         }
 
         internal bool ReleaseLifecycleEligible(string name)
