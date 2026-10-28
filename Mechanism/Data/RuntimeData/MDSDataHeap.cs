@@ -65,7 +65,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 EnsureOpen();
                 if (_values.ContainsKey(name) || _files.ContainsKey(name))
                     throw new MDSDataException(MDSDataErrorCode.NameConflict, "数据名已存在：" + name, name);
-                if (Budget != null) Budget.Reserve(size);
+                if (Budget != null) ReserveHeapBudgetWithPressure(size, name);
                 try { _values.Add(name, new MDSDataEntry(frozen, type, size)); }
                 catch { if (Budget != null) Budget.Release(size); throw; }
             }
@@ -164,7 +164,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可替换：" + name, name);
                 CheckLifecycleMutation(name);
                 long oldSize = old == null ? file.CachedBytes : old.Bytes;
-                if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
+                if (Budget != null && size > oldSize)
+                    ReserveHeapBudgetWithPressure(size - oldSize, name);
                 _files.Remove(name);
                 _values[name] = new MDSDataEntry(frozen, type, size);
                 if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
@@ -231,7 +232,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 MDSDataEntry previous;
                 _values.TryGetValue(name, out previous);
                 long oldSize = previous == null ? (file == null ? 0 : file.CachedBytes) : previous.Bytes;
-                if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
+                if (Budget != null && size > oldSize)
+                    ReserveHeapBudgetWithPressure(size - oldSize, name);
                 _files.Remove(name);
                 _values[name] = new MDSDataEntry(safeOwnedValue, declaredType, size);
                 if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
