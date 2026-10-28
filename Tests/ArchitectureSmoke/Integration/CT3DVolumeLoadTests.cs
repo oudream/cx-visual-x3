@@ -112,7 +112,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         catch(InvalidOperationException){limit=true;}
                         Check(limit,"超预算必须报错，不得只取一侧点伪报球半径");
                         CT3DSurfaceSamples cut=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            original,0f,1,5000,CancellationToken.None);
+                            original,0f,1,10000,CancellationToken.None);
                         Check(cut.TouchesVolumeBoundary,"接触边缘的体必须保留截断诊断");
                         bool cutRefused=false;
                         try {CT3DSurfaceSphereAnalysis.FitSphere(cut);}
