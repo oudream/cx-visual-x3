@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Orchestration\CxVisual.Mechanism.Orchestration.csproj"><Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Orchestration</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
   </ItemGroup>
