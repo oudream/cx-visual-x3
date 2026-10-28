@@ -33,6 +33,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             LongLivedVirtualChannel();
+            RepeatedVirtualSessions();
             PeerReplyAndGeneration();
             Console.WriteLine("F17.CONVENIENCE_PASS long-lived subscribe, observer isolation, safe reply and generation routing");
         }
@@ -96,6 +97,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(states>=3 && right.State==FTRChannelState.Open,
                     "订阅令牌不拥有Socket/Channel，外部Host继续维护Channel");
                 right.Close();left.Close();
+            }
+        }
+
+        /// <summary>固定门禁：同实例100轮正常重开，不丢订阅，不接受旧Session回复。</summary>
+        private static void RepeatedVirtualSessions()
+        {
+            var pair=FTRVirtualChannel.CreatePair("f17-cycle-left","f17-cycle-right");
+            using(var sender=pair[0])
+            using(var receiver=pair[1])
+            {
+                int seen=0;
+                FTRChannelReceiveContext previous=null;
+                using(var subscription=receiver.SubscribeReceived(ctx=>
+                {
+                    Check(ctx.SessionId==receiver.SessionId && ctx.SessionId!=Guid.Empty,
+                        "第"+(seen+1)+"轮收到错误SessionId");
+                    seen++;
+                    previous=ctx;
+                }))
+                {
+                    sender.Open();
+                    Guid last=Guid.Empty;
+                    try
+                    {
+                        for(int cycle=0;cycle<100;cycle++)
+                        {
+                            receiver.Open();
+                            Check(receiver.SessionId!=Guid.Empty && receiver.SessionId!=last,
+                                "同实例100次重开未刷新SessionId: "+cycle);
+                            last=receiver.SessionId;
+                            if(previous!=null)
+                            {
+                                bool rejected=false;
+                                try {receiver.ReplyAsync(previous,new byte[]{99}).GetAwaiter().GetResult();}
+                                catch(InvalidOperationException) {rejected=true;}
+                                Check(rejected,"旧Session回复跨代通过: "+cycle);
+                            }
+                            sender.SendBytes(new byte[]{(byte)cycle});
+                            Check(seen==cycle+1 && previous!=null &&
+                                previous.SessionId==last && previous.Data.Length==1 &&
+                                previous.Data[0]==(byte)cycle,
+                                "100轮重开接收或身份不匹配: "+cycle);
+                            receiver.Close();
+                            Check(receiver.State==FTRChannelState.Closed,
+                                "关闭后状态未归Closed: "+cycle);
+                        }
+                    }
+                    finally
+                    {
+                        if(receiver.State!=FTRChannelState.Closed)receiver.Close();
+                        sender.Close();
+                    }
+                }
+                Check(seen==100,"100轮生命周期出现漏收或重复投递");
             }
         }
 
