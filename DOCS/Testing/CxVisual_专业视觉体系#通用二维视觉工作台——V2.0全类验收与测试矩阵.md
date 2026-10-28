@@ -224,3 +224,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | CI-VIS-09 / V2D-26 | [Imaging #40672752671](https://github.com/oudream/cx-visual-x3/actions/runs/40672752671)与[TestCenter #40672752691](https://github.com/oudream/cx-visual-x3/actions/runs/40672752691)匹配提交3b15550 | 无完整成功日志则不可登记G3/G4或G5 | 初次登记queued，G2源码 |
 
 **特别说明**：现有面积测量按图像格点与各向异性像素间距计算，未引入畸变标定或几何配准，不能视为完整工业计量G6。WPF自动点击可用于G4/G5部分自动证据；G5人工实际体验、UIA可访问性、现场硬件和长时性能仍需单独记录。
+
+## 16. 用户截图反证：显示参数和绘图类别真实WPF验收（2026-10-28）
+
+本组UI专项对应源码提交 [9394e3b](https://github.com/oudream/cx-visual-x3/commit/9394e3b0d8c88bdaad4483460307daf3bb41eea5)，不得用前一批已通过构建替代。新WPF断言按真实Routed Button.Click执行，不虚构真人鼠标/设备HIL。
+
+| 用例 | 正反行为 | 代码状态 / 验收等级 |
+|---|---|---|
+| UI-UX-01 / V2D-08,09 | 显示页四个分类`SelectMode.ROI/测量/标注/缺陷`点击后必须对应RectangleRoi/Distance/Point/DefectBox，边框高亮与Viewer.ToolMode一致；仍有原`OverlayColor.ROI`选中图元改色回归 | 已编码G2；WPF Windows待结果 |
+| UI-UX-02 / V2D-05 | 实际点击Window按钮以1..16窗位映射Gray16样本，测量中间像素产生有限Gray8显示值且原位深像素不变；将下限改成“b”后操作必须拒绝并通过AutomationProperties报告具体输入错误，不破坏旧映射 | 已编码G2；WPF Windows待结果 |
+| UI-UX-03 / V2D-05 | 点击AutoWindow进入自动灰度范围+自动对比，避免16位图实际窄灰度区间在0..65535默认窗口下视觉发黑 | 已编码G2；WPF Windows待结果 |
+| UI-UX-04 / V2D-05 | 输入Gamma=2、亮度=0.1、对比度=1.5并点击ApplyDisplay，值与真实输出PNG像素必须改变；勾选反色应立即提交；非法Gamma保留旧状态并有可查询WPF错误；Reset恢复IsIdentity且滑块1/0/1 | 已编码G2；WPF Windows待结果 |
+| UI-UX-05 / V2D-05,26 | MVI.SetTone一次设置所有显示参数只发一个Changed；幂等无通知；非法NaN完整拒绝且无部分状态发布，随后Reset可以恢复 | 已编码G2；ArchitectureSmoke Windows待结果 |
+
+**匹配工作流**：[Imaging #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082)、[TestCenter #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116)；首次登记为in_progress，尚不可写G3/G4/G5通过。后续需要核实WPF像素PNG与Auto Contrast失败日志、最终用户手工完整操作、工业大图性能，不得将单张截图当作验收完成。
