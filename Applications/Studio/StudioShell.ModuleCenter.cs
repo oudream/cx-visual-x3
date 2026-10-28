@@ -78,6 +78,7 @@ namespace CxVisual.Studio
             public int EngineeringRevision,CompletedTraceEvents;
             public string PlanFingerprint,ConfigVersion;
             public CxVisionInspectionResult Inspection;
+            public CxVisionRunSummary Evidence;
         }
         private static byte[] ReadStudioRaw(string path,int width,int height,
             CxVisionPixelDepth depth,CancellationToken token)
@@ -171,7 +172,11 @@ namespace CxVisual.Studio
                         PageId=page.Id,FlowId=result.FlowId,InspectId=inspect,
                         EngineeringRevision=snapshot.Revision,
                         PlanFingerprint=candidate.Fingerprint,ConfigVersion=version,
-                        Inspection=inspection,CompletedTraceEvents=completed,
+                        Inspection=inspection,
+                        Evidence=CxVisionRunSummary.FromInspection(result.FlowId,path,inspection,
+                            planFingerprint:candidate.Fingerprint,
+                            capabilityVersion:version,completedUtc:result.CompletedUtc),
+                        CompletedTraceEvents=completed,
                         TraceRecords=trace.Events.Take(300).Select(e=>new StudioCpuTraceRecord{
                             Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
                             BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
@@ -372,10 +377,11 @@ namespace CxVisual.Studio
                     RefreshScene();
                     // Keep the result pane visible; the existing "打开主流程编排"
                     // action navigates to the newly selected MEM page on request.
-                    regionResults.ItemsSource=report.Inspection.Regions.Select((region,index)=>
-                        new {Index=index+1,AreaPixels=region.PixelArea,
-                            MinX=region.MinX,MinY=region.MinY,
-                            MaxX=region.MaxX,MaxY=region.MaxY}).ToArray();
+                    regionResults.ItemsSource=report.Evidence.Items
+                        .Where(item=>item.Kind==CxVisionResultKind.Region)
+                        .Select((item,index)=>new {Index=index+1,AreaPixels=item.Region.PixelArea,
+                            MinX=item.Region.MinX,MinY=item.Region.MinY,
+                            MaxX=item.Region.MaxX,MaxY=item.Region.MaxY}).ToArray();
                     regionResults.Visibility=report.Inspection.Regions.Count==0?
                         Visibility.Collapsed:Visibility.Visible;
                     executionTrace.ItemsSource=report.TraceRecords;
