@@ -14,9 +14,9 @@
 | F04 积分/ODE | `FNUNumericalIntegration`、`FNUOdeSolver`、`FNUOdeTrajectory` | 复合Simpson、标量定步长RK4 | 源码+专项测试 |
 | F10 时域 | `FNUMovingAverage`、`FNUFirFilter`、`FNUFirStream`、`FNUIirFilter`、`FNUResampling`、`FNUConvolution`、`FNUCorrelation`、`FNUWindowFunction` | 状态滤波/流式FIR/重采样/卷积相关/Hann窗 | 源码+专项测试 |
 | F10 频域 | `FNUFourier`、`FNUFrequencyAnalysis`、`FNUFrequencySpectrum` | FFT/逆变换、单边振幅频谱/Hz | 源码+专项测试 |
-| F13 张量 | `FNUTensorShape`、`FNUTensorBuffer`、`FNUTensorMath` | RowMajor/Stride/Offset、广播、求和、MatMul、切片复制 | 源码+专项测试 |
+| F13 张量 | `FNUTensorShape`、`FNUTensorBuffer`、`FNUTensorView`、`FNUTensorMath` | RowMajor/Stride/Offset、实时无拷贝只读View、广播、归约、MatMul与切片复制 | 源码+专项测试 |
 
-合计 **34个公开类型**，包含代表性算法类/结果类，**不是“52个全部完成”**。代码位于 `Foundation/Numerics`，传统.NET Framework 4.8 C#7.3 csproj，Math.NET 5.0.0 MIT NuGet已存在；本轮没有新建csproj与第二套平台运行数据存储。
+合计 **35个公开类型**，包含代表性算法类/结果类，**不是“52个全部完成”**。代码位于 `Foundation/Numerics`，传统.NET Framework 4.8 C#7.3 csproj，Math.NET 5.0.0 MIT NuGet已存在；本轮没有新建csproj与第二套平台运行数据存储。
 
 ## 二、开发者自由组合示例（以下API均有对应真实源码）
 
@@ -120,3 +120,14 @@ double conditionNumber = solved.ConditionNumber;
 - `FNUTensorMath.SumView` 与 `MatMulViews/MatMulViewsInto` 可直接处理非连续步长输入；Into会检查输出不能引用输入任一底层Owner，结果溢出可能留下部分输出。
 - 测试覆盖转置-切片组合、步长/行序、活视图与快照、独立MatMul参考、别名、错误维度与空视图。
 - 本次源码/自动化需按实际代码提交SHA的Windows CI单独验证；视图不是GPU/多dtype Tensor，也不保证多线程写安全。
+
+## 十二、F13视图专项固定SHA验收（2026-10-28）
+
+**代码 SHA**：`1aa095afaa3ef264ef8e0f6b22873101ea54c38e`。
+**Windows CI**：[Numerics #40613787782](https://github.com/oudream/cx-visual-x3/actions/runs/40613787782) **Success**。
+
+- `CxVisual.Unified.sln` .NET Framework 4.8 / x64 完整构建成功。
+- `Verify-Structure.ps1` 与 `Verify-OwnerDependencies.ps1` 成功。
+- `--numerics` 独立质量测试成功（含无拷贝Slice/Transpose、Get2D/GetFlat、数据实时性、CopyToBuffer隔离、非连续View MatMul、别名和越界）。
+- 默认 `ArchitectureSmoke` 通过。此证据为代码SHA对应结果；此后文档补录不改变已验证代码。
+- 尚未进行独立矩阵性能基准、GC分配/吞吐曲线、多数据类型、非CPU后端或实际工业设备验证。

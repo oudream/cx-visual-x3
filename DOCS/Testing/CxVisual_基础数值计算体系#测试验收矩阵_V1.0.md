@@ -92,3 +92,15 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 - N31：`AddInto`、`MultiplyInto` 的尾轴广播、输出形状合同、输入输出别名防护、复制API一致性与零长维。
 - 第一批固定代码SHA `f73b11d`：[Numerics Windows CI #40612654481](https://github.com/oudream/cx-visual-x3/actions/runs/40612654481)，完整编译、Owner检查、Numerics专项和默认回归通过。
 - 第二批固定代码SHA `9c0fb6d`：[Numerics Windows CI #40612824905](https://github.com/oudream/cx-visual-x3/actions/runs/40612824905)，截至本次记录，完整构建、Owner检查、Numerics专项和默认回归各执行步骤成功，工作流最终结论须核对。
+
+## 2026-10-28 F13 无拷贝 View 质量测试
+
+| 编号 | 需求与测试 | 证据 |
+|---|---|---|
+| N32 | 从已有Buffer创建只读活View，源缓冲修改可见；元数据独立，显式CopyToBuffer隔离 | `FNUNumericsQualityTests.TensorViewQuality` |
+| N33 | 非连续Transpose与半开区间Slice组合、物理Stride与逻辑GetFlat一致、空视图和越界拒绝 | 同上 |
+| N34 | SumView/MatMulViews/MatMulViewsInto直接消费View；参考矩阵乘法对照、输入Owner别名禁止 | 同上 |
+
+固定代码提交 `1aa095a`：[Numerics Windows CI #40613787782](https://github.com/oudream/cx-visual-x3/actions/runs/40613787782) **完成且成功**（.NET48/x64 全方案Build、Owner/DAG、--numerics与默认ArchitectureSmoke）。
+
+验收仅覆盖当前double CPU View及已写正反例，不意味着非连续视图所有可能排列、多dtype/GPU或性能指标均已验收。

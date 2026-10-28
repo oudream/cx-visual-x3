@@ -69,10 +69,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         { get { return new MDSDataReclamationPolicy(true, false); } }
         public static MDSDataReclamationPolicy OnExpiry
         { get { return new MDSDataReclamationPolicy(false, true); } }
+        public static MDSDataReclamationPolicy OnPressure
+        { get { return new MDSDataReclamationPolicy(false, false, true); } }
+        public static MDSDataReclamationPolicy OnExpiryOrPressure
+        { get { return new MDSDataReclamationPolicy(false, true, true); } }
         public bool ReleaseAfterConsumers { get; private set; }
         public bool ReleaseOnExpiry { get; private set; }
-        public MDSDataReclamationPolicy(bool afterConsumers, bool onExpiry)
-        { ReleaseAfterConsumers = afterConsumers; ReleaseOnExpiry = onExpiry; }
+        public bool ReleaseOnPressure { get; private set; }
+        public MDSDataReclamationPolicy(bool afterConsumers, bool onExpiry, bool onPressure = false)
+        { ReleaseAfterConsumers = afterConsumers; ReleaseOnExpiry = onExpiry; ReleaseOnPressure = onPressure; }
     }
 
     /// <summary>只持有策略定义；可单独设置五维且不持有数据实例。</summary>
@@ -108,7 +113,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 throw new ArgumentException("末消费者自动回收需要ConsumerBound生命周期");
             if (Reclamation.ReleaseOnExpiry && !Retention.TimeToLive.HasValue)
                 throw new ArgumentException("到期回收需要明确的TTL缓存保留策略");
-            if (Retention.IsPinned && (Reclamation.ReleaseAfterConsumers || Reclamation.ReleaseOnExpiry))
+            if (Reclamation.ReleaseOnPressure && !Retention.TimeToLive.HasValue)
+                throw new ArgumentException("容量压力回收只允许显式声明的可驱逐缓存");
+            if (Retention.IsPinned && (Reclamation.ReleaseAfterConsumers ||
+                Reclamation.ReleaseOnExpiry || Reclamation.ReleaseOnPressure))
                 throw new ArgumentException("永久Pinned保留不能同时配置自动回收");
         }
         public MDSDataLifecyclePolicy WithOwnership(MDSDataOwnershipPolicy x)

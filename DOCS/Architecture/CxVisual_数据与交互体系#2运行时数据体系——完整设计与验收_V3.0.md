@@ -1090,3 +1090,62 @@ var policy = MDSDataLifecyclePolicy.Default
 每一项分开登记 DESIGNED / CODED / BUILT / AUTOMATED_PASS / UI_PASS / HARDWARE_PASS；通过 Windows x64 全解、专项 ArchitectureSmoke、TestCenter 正反例及对应实机验收后才能标完成。无法取得设备则列 HARDWARE_PENDING，不得伪称完成。
 
 **这份要求是“完好完整”的验收合同，而不是当前五维能力都已落地的声明。**
+
+
+## 17. 五维生命周期真实API、组合使用与验收台账（2026-10-28）
+
+> 本节区分已经可调用的源码与尚未完成的 V3.0 目标。五维独立类及组合入口已落到 Mechanism.Data 的原有 Heap；是托管 Heap 级真实能力，不等于整个 MDS/MRK/Professional 全类生命周期已完成。
+
+### 17.1 真实开发者入口
+
+~~~csharp
+using (var heap = new MDSDataHeap())
+{
+    heap.Set("Image", new byte[] { 1, 2, 3 });
+
+    // 每维可独立设置。
+    heap.Lifecycle.ConfigureOwnership("Image",
+        MDSDataOwnershipPolicy.Default.WithMove(false));
+    heap.Lifecycle.ConfigureTransfer("Image", MDSDataTransferPolicy.CopyOnly);
+
+    // 也可组合设置：构建时校验冲突。
+    var policy = MDSDataLifecyclePolicy.Default
+        .WithLifetime(MDSDataLifetimePolicy.UntilLastConsumer())
+        .WithRetention(MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(2)))
+        .WithReclamation(MDSDataReclamationPolicy.OnExpiry);
+    heap.Lifecycle.Configure("Image", policy);
+
+    using (var use = heap.Lifecycle.AcquireRead<byte[]>("Image"))
+    using (var retained = heap.Lifecycle.Retain("Image", "DebugInspector"))
+    {
+        byte[] image = use.Read();
+        var snapshot = heap.Lifecycle.Inspect("Image");
+        // snapshot.OwnerId / ActiveConsumers / RetentionReasons / Blockers
+    }
+    // 真实时间到期可Sweep()；测试可传入明确UTC时间。
+    int released = heap.Lifecycle.Sweep();
+}
+~~~
+
+- 普通算法仍使用 Get / Set / Return，不必配置五维；高级开发者才选按条目配置。
+- Ownership、Lifetime、Retention、Transfer、Reclamation 五种 Policy 均可分别配置；组合策略需要相容，未设置ConsumerBound不能使用AfterLastConsumer，未设置TTL不能使用OnExpiry，Pinned不能与自动回收组合。
+- AcquireUse、AcquireRead<T>、Retain(reason)、CloseConsumerAdmission、GetPolicy、Inspect、GetBlockers、ReleaseEligible、Sweep 是原Heap附着的便利方法，不另建数据Owner；移动、复制仍用原 Heap.MoveTo/CopyTo。
+- 活跃读取/保留会阻止删除、覆盖、转移、卸载、关闭Heap；只读Copy允许复制且不使旧值失效。TTL到期的文件缓存只清载荷、保留Locator，之后可按需Load。
+- 时间策略的含义：CacheFor从配置生效时或文件重新加载完成时计时。调试日期注入仅用于确定性测试。ExternalBorrow、GPU Fence、SHM与远程AI并未因此获得真实释放安全保证。
+
+### 17.2 实际状态与待做边界
+
+| 归属 | 已提交源码 | 尚未完成 |
+|---|---|---|
+| Foundation.Data | 保留原类型安全、专业Adapter与只读Buffer | 完整专业外部Carrier合同 |
+| Mechanism.Data / Heap | 五维独立与组合配置、校验、消费者保活、具名Retention、Copy/Move拒绝、TTL/手动回收与阻断、预算释放 | Session数据池、跨进程、安全外部借用、精确物理占用 |
+| Mechanism.Data / Stack | 原来的Pending/Committed原子提交与Flow结束回收保持 | CommittedOutput按MRK真实消费者自动回收，Loop/Join/Export完整安全 |
+| MRK/MOC/MEM | 原有类型端口、Run/Invocation、计划编译 | 生命周期编译决策、动态消费证明、工程策略持久化 |
+| TestCenter | 人工工作区 manual.data-lifecycle：五维独立/组合真实WPF按钮、保留与阻断诊断；自动案例TCT.MDS.030/031 | 固定SHA完成全量CI、Studio统一编辑器与生产UI体验 |
+| Professional | 原各专业对象与数据Owner继续复用 | CT真实ROI、GPU/SHM/SDK Fence、远程AI Unknown、真实设备长稳 |
+
+第一版策略/Heap与ArchitectureSmoke在固定提交 118cac13 的 Runtime Windows CI #40612892480 验证成功。后续固定提交6cd267a的 Runtime Windows CI #40613614820 成功，包含文件TTL回归。但这些绿灯不能自动覆盖最新的具名保留/强类型使用Lease、完整TestCenter WPF等较新增量；新SHA必须分别核对。
+
+### 17.3 完成判据
+
+继续按上节 LC01～LC10 验收。独立类存在、API可以编译或部分CI绿色均不等于全部完成。只有五维各自可配置且有真实运行效果、组合行为正确、动态MRK消费者/内存资源可安全结算、Studio/TestCenter自然操作、工业外部资源及压力/故障完成对应等级实测，才能称完整完好。实机不可用时列 HARDWARE_PENDING，不伪称通过。
