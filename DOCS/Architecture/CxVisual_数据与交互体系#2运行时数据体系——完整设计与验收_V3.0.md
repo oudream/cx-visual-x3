@@ -1293,3 +1293,5 @@ try {
 - 只有循环体 `MRKExecutionPlan.DataExports` 所声明的生产者是可以在编译时安全确认的跨轮保留集合。新增 `MRKLoopDataRetention.KeepDeclaredExports(body)` 从已验证的具名导出映射生成原有策略，仍由 `MRKLoopRegion` 校验和 `MRKExecutionEngine` 执行；默认不变，未声明的任意回调访问不能被自动认定为合法消费者。
 - 正反例 `R08_DeclaredExportRetentionIsInferred`：图像→测量循环中只保留正式导出的测量节点，4轮后Join读取完整历史、放弃图像历史提示 `history_not_retained`，同200B预算必须完成；null编译体拒绝。动态隐式访问、跨专业外部完成和完整自动最后消费者推导仍未解决。
 - **前轮固定SHA证据**：`4a2fbf1872083bc18a4fd4932f1c0f880784eb86` 的 [MDS Windows专项 #40659054686](https://github.com/oudream/cx-visual-x3/actions/runs/40659054686) 与 [统一Runtime #40659054760](https://github.com/oudream/cx-visual-x3/actions/runs/40659054760) 均为Success。新增 `KeepDeclaredExports` 的源码和测试需使用本轮新SHA重新编译/验收，不能沿用前轮绿灯。
+
+- **本轮固定SHA核验结果**：`3e248fb77eb4ae69a1d5d332986f7af30fbd3606` 的 [MDS生命周期Windows #40659467173](https://github.com/oudream/cx-visual-x3/actions/runs/40659467173) 和 [统一Runtime Windows #40659467165](https://github.com/oudream/cx-visual-x3/actions/runs/40659467165) 均为 **Success**；新增声明导出推导、200B动态Join、原R08并发回收、TestCenter 030～034、完整.NET48 Release x64与WPF软件验收以该固定SHA对应的CI为据。并不等于自动推断任意隐式消费或硬件外部资源完工。
