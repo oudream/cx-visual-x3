@@ -404,8 +404,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new double[,]{{1}}, new double[]{1}, double.NaN), "ridge rejects NaN lambda");
             Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.RidgeLeastSquares(
                 new double[,]{{1}}, new double[]{1}, double.PositiveInfinity), "ridge rejects infinite lambda");
+            var wide = FNULinearAlgebra.RidgeLeastSquares(
+                new double[,]{{1,1}}, new double[]{2}, 2);
+            Near(wide.Coefficients[0], 0.5, 1e-12, "ridge underdetermined coefficient a");
+            Near(wide.Coefficients[1], 0.5, 1e-12, "ridge underdetermined coefficient b");
+            Check(wide.Rank == 1 && double.IsPositiveInfinity(wide.ConditionNumber),
+                "wide rank-deficient design reports infinite condition");
             Throws<ArgumentException>(() => FNULinearAlgebra.RidgeLeastSquares(
-                new double[,]{{1,2}}, new double[]{1}, 1), "ridge rejects underdetermined shape");
+                new double[,]{{1,2}}, new double[]{1,2}, 1),
+                "ridge observations length mismatch");
             var ridgeSamples = new double[,]{{1,0},{0,2}};
             var ridgeY = new double[]{3,8};
             FNULinearAlgebra.RidgeLeastSquares(ridgeSamples, ridgeY, 1);

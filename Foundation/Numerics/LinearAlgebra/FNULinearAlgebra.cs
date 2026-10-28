@@ -67,7 +67,7 @@ namespace CxVisual.Foundation.Numerics {
         /// SVD ridge least squares: minimizes ||A*x-b||^2 + lambda*||x||^2.
         /// Lambda is in the squared units of the unscaled design matrix.
         /// Lambda must be finite and positive. Unlike strict LeastSquares,
-        /// rank-deficient matrices are supported without normal equations.
+        /// rank-deficient and underdetermined matrices are supported without normal equations.
         /// The reported ConditionNumber refers to the original design.
         /// </summary>
         public static FNULeastSquaresResult RidgeLeastSquares(
@@ -78,7 +78,7 @@ namespace CxVisual.Foundation.Numerics {
             if (design == null) throw new ArgumentNullException("design");
             if (observations == null) throw new ArgumentNullException("observations");
             int rows = design.GetLength(0), cols = design.GetLength(1);
-            if (rows == 0 || cols == 0 || rows < cols || observations.Length != rows)
+            if (rows == 0 || cols == 0 || observations.Length != rows)
                 throw new ArgumentException("Invalid ridge least-squares shape");
             for (int row = 0; row < rows; ++row)
             {

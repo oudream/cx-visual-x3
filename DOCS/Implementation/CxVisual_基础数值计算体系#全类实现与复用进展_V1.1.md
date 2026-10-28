@@ -152,7 +152,7 @@ double conditionNumber = solved.ConditionNumber;
 
 ## 十五、F04 SVD岭正则化（2026-10-28）
 
-- 公开 `FNULinearAlgebra.RidgeLeastSquares(A,b,lambda)`：最小化 `||Ax-b||²+lambda||x||²`，要求有限且严格正的lambda，限制行数≥列数。与原 `LeastSquares(A,b)` 严格满列秩并列，原签名/失败语义不变。
+- 公开 `FNULinearAlgebra.RidgeLeastSquares(A,b,lambda)`：最小化 `||Ax-b||²+lambda||x||²`，要求有限且严格正的lambda，支持超定、方阵、秩亏及欠定问题。与原 `LeastSquares(A,b)` 严格满列秩并列，原签名/失败语义不变。
 - 使用 Math.NET 的SVD因子 `U,S,VT` 构造滤波 `s/(s²+lambda)`，避免正规方程放大病态与平方中间溢出；秩亏/零矩阵允许求解。原设计矩阵秩与条件数按真实SVD返回，秩亏报告正无穷。
 - 正反验收：对角矩阵独立解析解、秩亏列重复的解析解、零设计矩阵、参数非法和欠定矩阵拒绝、输入防修改。
 - 单一lambda有物理单位（设计矩阵奇异值平方），此API不自动标准化特征或自动挑选正则化；大型/极端尺度与广泛数值稳定性测试仍待验证。
@@ -163,3 +163,5 @@ double conditionNumber = solved.ConditionNumber;
 - `MatMulViewsInto` 现在对已验证维度的只读View使用物理存储偏移和Stride在数值内层遍历，不再对每个元素调用会重复计算和校验行列的公开`Get2D`；底层数组访问仍由View统一约束。
 - 不改变 `MatMulViews` 与 `MatMulViewsInto` 的输出所有权、别名限制、零长度行为和Neumaier补偿求和。
 - 添加非连续双切片/转置的独立参考算法测试和尺寸不兼容反例。性能优劣依真实Windows基准，不能预先假定更快。
+
+- 增补宽矩阵（1×2）的唯一带正则化解解析反例：`A=[1,1], b=[2], lambda=2`，系数应为[0.5,0.5]；无正则化的普通LeastSquares仍明确拒绝欠定系统。
