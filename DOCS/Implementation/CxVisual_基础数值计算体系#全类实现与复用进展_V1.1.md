@@ -209,3 +209,10 @@ double conditionNumber = solved.ConditionNumber;
 - 完全保留原API、不同Rank与singleton尾轴广播语义、空张量行为和输入/输出别名拒绝。与View的Into版本一致：数值中途溢出可能产生部分输出，调用者不得消费出错后的结果。
 - 增加60组固定随机三维Shape和原始数组独立计算对照，另外包含一维广播、空维和溢出时首元素输出保持不变的边界测试；增加256×256固定样本下Buffer Into与View Into的实际毫秒/线程分配基准。
 - 优化效果需依代码SHA对应的Windows CI实测判定，不以算法复杂度推测真实加速比。
+
+## 二十二、F13连续Buffer归约与切片共用View内核（2026-10-28）
+
+- 将原 `FNUTensorMath.ReduceSum(Buffer,axis)` 改为调用已独立验证的View物理游标/补偿求和内核，避免逐元素恢复每维坐标；新增 `ReduceSumInto(Buffer,axis,output)` 支持显式复用输出。原输出形状、异常和补偿精度规则不变；Into在异常时保持输出未修改。
+- `FNUTensorBuffer.Slice(axis,start,length)` 现在委托View的无拷贝Slice与游标`CopyToBuffer`，仍然返回**独立所有权副本**，而不是把旧API悄然变成活视图。
+- 45组固定随机Shape与全部轴的独立坐标参考验证，另测部分切片、空切片、所有权隔离、数值相消、空轴和溢出原子性；新增`ReduceSumInto`与分配式的实际ms/op和bytes/op基准。
+- 代码增量以固定SHA Windows .NET48构建/专项/基准结果判定；不把运行时数据或F17的全量故障认定为本模块数值失败。
