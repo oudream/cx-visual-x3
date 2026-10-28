@@ -496,6 +496,7 @@ namespace CxVisual.TestCenter.UI
                 VerticalAlignment = VerticalAlignment.Center, MinWidth = 100,
                 IsSnapToTickEnabled = false };
             Slider current = slider;
+            AutomationProperties.SetAutomationId(current,"TCT.Imaging.Slider."+title);
             current.ValueChanged += (sender,args) =>
             {
                 if (!_changingGraySliders)

@@ -307,6 +307,11 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.DisplayState.WindowWidth!=15 ||
                     frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
                     throw new InvalidOperationException("WPF窗位操作未改变显示状态或损伤原始像素");
+                frame.Viewer.SavePng(file);
+                var manualWindowPreview=MPWImageViewerControl.ReadImageFile(file);
+                double originalMappedValue=manualWindowPreview.GetGrayValue(1,2);
+                if(originalMappedValue<=0 || originalMappedValue>=255)
+                    throw new InvalidOperationException("手动窗宽窗位没有生成有效灰度动态范围");
                 windowLow.Text="b";
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.DisplayState.WindowWidth!=15 ||
@@ -333,6 +338,10 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.DisplayState.Brightness!=0.1 ||
                     frame.Viewer.DisplayState.Contrast!=1.5)
                     throw new InvalidOperationException("WPF Gamma/亮度/对比度未实际提交");
+                frame.Viewer.SavePng(file);
+                var enhancedPreview=MPWImageViewerControl.ReadImageFile(file);
+                if(enhancedPreview.GetGrayValue(1,2)==originalMappedValue)
+                    throw new InvalidOperationException("WPF灰阶参数没有真正改变显示像素");
                 invertedBox.IsChecked=true;
                 if(!frame.Viewer.DisplayState.IsInverted)
                     throw new InvalidOperationException("反色勾选后未应用实际显示状态");
@@ -345,6 +354,12 @@ namespace CxVisual.TestCenter.UI
                 if(!frame.Viewer.DisplayState.IsIdentity ||
                     frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
                     throw new InvalidOperationException("显示复位没有恢复状态或修改了原图");
+                Slider gammaSlider=FindControl<Slider>(frame,"TCT.Imaging.Slider.Gamma");
+                Slider brightnessSlider=FindControl<Slider>(frame,"TCT.Imaging.Slider.亮度");
+                Slider contrastSlider=FindControl<Slider>(frame,"TCT.Imaging.Slider.对比度");
+                if(gammaSlider==null || brightnessSlider==null || contrastSlider==null ||
+                   gammaSlider.Value!=1 || brightnessSlider.Value!=0 || contrastSlider.Value!=1)
+                    throw new InvalidOperationException("显示复位后滑块仍停留在旧Gamma/亮度/对比度");
                 // 实际点击第六张二维工作台的专业CPU检测按钮，MRK产生Image/Mask
                 // 并经共用ResultItem投影到现有MPW/MVI结果槽。
                 TabControl cpuTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
