@@ -272,6 +272,50 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                // 实际点击第六张二维工作台的专业CPU检测按钮，MRK产生Image/Mask
+                // 并经共用ResultItem投影到现有MPW/MVI结果槽。
+                TabControl cpuTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                cpuTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                Button cpuRun=FindControl<Button>(frame,"TCT.Imaging.CpuVisionRun");
+                Button cpuCancel=FindControl<Button>(frame,"TCT.Imaging.CpuVisionCancel");
+                TextBox cpuThreshold=FindControl<TextBox>(frame,"TCT.Imaging.CpuThreshold");
+                TextBox cpuArea=FindControl<TextBox>(frame,"TCT.Imaging.CpuMinArea");
+                if(cpuRun==null||cpuCancel==null||cpuThreshold==null||cpuArea==null)
+                    throw new InvalidOperationException("专业CPU检测按钮、参数或取消入口未加入正式二维工作区");
+                cpuThreshold.Text="10";
+                cpuArea.Text="2";
+                cpuRun.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                System.Diagnostics.Stopwatch cpuWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && cpuWait.ElapsedMilliseconds<15000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var evidence=frame.CpuEvidence;
+                if(evidence==null||evidence.RunId==Guid.Empty||
+                    evidence.SourceId==null||
+                    evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Mask)!=1||
+                    evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Image)!=1||
+                    evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Region)!=1||
+                    evidence.Items.Single(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Region)
+                        .Region.PixelArea!=7||
+                    frame.Viewer.Session.Result==null||
+                    frame.Viewer.Session.Result.PixelFormat!=FIMPixelFormat.Gray8||
+                    frame.Viewer.Session.Result.GetGrayValue(0,0)!=0||
+                    frame.Viewer.Session.Result.GetGrayValue(1,2)!=255||
+                    frame.Viewer.Session.Original.PixelFormat!=FIMPixelFormat.Gray16||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0)!=1)
+                    throw new InvalidOperationException("点击专业CPU按钮未得到MRK真实Run、16位原图/阈值Mask和区域");
+                // 旧运行证据不得留在下一张图的工作台状态。
+                frame.SetOriginal(image);
+                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null)
+                    throw new InvalidOperationException("重新打开原图后旧Vision Run和Mask没有清除");
+                cpuCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 // 真实变换页：矩形ROI中心种子 -> 后台生长 -> Gray8结果掩码和原像素反证。
                 frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
                 TabControl growthTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
