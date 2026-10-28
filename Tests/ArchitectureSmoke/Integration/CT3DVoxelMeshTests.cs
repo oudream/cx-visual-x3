@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using CxVisual.Foundation.Geometry;
+using CxVisual.Foundation.Numerics;
 using CxVisual.Foundation.Volume;
 using CxVisual.Professional.CT3D;
 
@@ -41,6 +42,58 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           mesh.SignedEnclosedVolume.Value>0 &&
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "体素外露表面解析面积24平方毫米、体积8立方毫米");
+                    // 在FGE网格中选局部 +Z 面片ROI，不把整个封闭立方体拟合成平面。
+                    var topFace=new List<int>(),collinear=new List<int>();
+                    for(int index=0;index<mesh.VertexCount;index++)
+                    {
+                        FGEPoint3D v=mesh.Vertices[index];
+                        if(Math.Abs(v.Z-mesh.BoundsMax.Z)<1e-9)
+                        {
+                            topFace.Add(index);
+                            if(Math.Abs(v.Y-mesh.BoundsMin.Y)<1e-9)
+                                collinear.Add(index);
+                        }
+                    }
+                    CT3DPlaneFitResult plane=CT3DMeshPlaneAnalysis.FitSelectedVertices(
+                        result,topFace,0.01,1000,CancellationToken.None);
+                    Check(topFace.Count==9 && plane.SampleCount==9 &&
+                          Math.Abs(plane.PointMm.Z-46.5)<1e-9 &&
+                          Math.Abs(plane.Normal.Z-1)<1e-9 &&
+                          plane.RmsResidualMm<1e-9 &&
+                          plane.MaxAbsoluteResidualMm<1e-9 &&
+                          plane.SourceMeshResultId==result.ResultId &&
+                          plane.SourceRevision==result.SourceRevision,
+                        "真实UInt16外露+Z面片应由FNU PCA-SVD正确拟合出毫米平面及来源证据");
+                    bool notPlanar=false;
+                    var whole=new List<int>();
+                    for(int index=0;index<mesh.VertexCount;index++)whole.Add(index);
+                    try {CT3DMeshPlaneAnalysis.FitSelectedVertices(
+                        result,whole,0.01,1000,CancellationToken.None);}
+                    catch(InvalidOperationException){notPlanar=true;}
+                    Check(notPlanar,"不能把全部立方体表面误当单一平面ROI");
+                    bool lineRejected=false;
+                    try {CT3DMeshPlaneAnalysis.FitSelectedVertices(
+                        result,collinear,0.01,1000,CancellationToken.None);}
+                    catch(InvalidOperationException){lineRejected=true;}
+                    Check(lineRejected && collinear.Count==3,
+                        "三点共线的几何ROI必须因秩亏被SVD拒绝");
+                    bool repeatedRejected=false;
+                    try {CT3DMeshPlaneAnalysis.FitSelectedVertices(
+                        result,new[]{topFace[0],topFace[0],topFace[1]},
+                        0.01,1000,CancellationToken.None);}
+                    catch(ArgumentException){repeatedRejected=true;}
+                    Check(repeatedRejected,"重复顶点不得冒充多个独立平面采样");
+                    var arbitrary=new double[,]{
+                        {0,0,4},{1,0,6},{2,0,8},
+                        {0,1,7},{1,1,9},{2,1,11},
+                        {0,2,10},{1,2,12},{2,2,14}
+                    };
+                    FNUPcaPlaneResult inclined=FNULinearAlgebra.FitPlaneBySvd(arbitrary);
+                    double[] normal=inclined.Normal;
+                    Check(inclined.RmsPerpendicularResidual<1e-9 &&
+                          Math.Abs(normal[0]+2*normal[2])<1e-9 &&
+                          Math.Abs(normal[1]+3*normal[2])<1e-9,
+                        "FNU SVD必须支持任意倾斜平面，不依赖Z=ax+by固定方向");
                     Check(result.HasCalibratedClosedGeometry && !result.TouchesVolumeBoundary &&
                           result.SourceRef=="fixture:mesh-cube" && result.SourceRevision==3 &&
                           result.ResultId!=Guid.Empty,
