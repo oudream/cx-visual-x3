@@ -48,6 +48,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             LegacyDefaultsAndAtomicFailure();
             ConcurrentFlowOwnership();
             MeasuredArtifactsRemainSourceCorrect();
+            SharedHeadlessPreviewApi();
             MviImageMaskProjection();
         }
 
@@ -244,6 +245,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "失败Run不得伪造Measurement项");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>Studio/SDK无需WPF即可调用和TestCenter相同的专业预览链。</summary>
+        private static void SharedHeadlessPreviewApi()
+        {
+            // 带行Padding的FIM源图，末尾孤立命中点必须计入Mask但不计入已接受区域。
+            var source = new FIMImageBuffer(5,3,FIMPixelFormat.Gray8,new byte[] {
+                210,210,0,0,0,99,99,
+                210,0,0,0,0,99,99,
+                0,0,0,0,250,99,99
+            },7);
+            CxVisionInspectionOptions options=Options(CxVisionPixelDepth.Bits8,200);
+            var run=CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                source,options,"source/headless",System.Threading.CancellationToken.None)
+                .GetAwaiter().GetResult();
+            var accepted=run.Items.Single(i=>i.Kind==CxVisionResultKind.Measurement);
+            var mask=run.Items.Single(i=>i.Kind==CxVisionResultKind.Mask);
+            Check(run.RunId!=Guid.Empty && run.SourceId=="source/headless" &&
+                accepted.IntegerValue==3 && accepted.Unit=="px²" &&
+                mask.Image.GetGrayValue(4,2)==255 &&
+                run.Items.Single(i=>i.Name=="阈值命中像素数").IntegerValue==4 &&
+                source.GetGrayValue(0,0)==210,
+                "无界面API未复用真实测量合同或有Stride的FIM像素");
+            Reject<ArgumentException>(()=>CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                source,Options(CxVisionPixelDepth.Bits16,200),"bad",
+                System.Threading.CancellationToken.None).GetAwaiter().GetResult(),
+                "位深不匹配必须在MRK运行之前拒绝");
+            Reject<ArgumentException>(()=>CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                source,options," ",System.Threading.CancellationToken.None).GetAwaiter().GetResult(),
+                "空SourceId不可形成有效证据");
+            using(var cts=new System.Threading.CancellationTokenSource())
+            {
+                cts.Cancel();
+                Reject<OperationCanceledException>(()=>
+                    CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                        source,options,"cancel",cts.Token).GetAwaiter().GetResult(),
+                    "已取消请求不得发布结果");
+            }
         }
 
         /// <summary>
