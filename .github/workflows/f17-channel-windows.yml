@@ -36,6 +36,16 @@ jobs:
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
           & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "Channel integrated solution build failed" }
+      - name: Run UML core HTTP Server, WebSocket Server and cross-process SharedMemory
+        shell: pwsh
+        run: |
+          $output = & .\\Output\\Release\\x64\\CxVisual.Tests.ArchitectureSmoke.exe --channel-uml-core 2>&1
+          $status = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.UML_CORE_PASS' -or
+              ($output -join "`n") -notmatch 'F17.SHARED_MEMORY_CROSS_PROCESS PASS') {
+              throw "F17 UML core actual communication verification failed: $status"
+          }
       - name: Run dedicated FTR Connector and OS loopback acceptance
         shell: pwsh
         run: |

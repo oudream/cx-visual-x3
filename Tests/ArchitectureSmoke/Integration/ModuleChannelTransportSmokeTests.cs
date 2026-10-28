@@ -118,6 +118,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
 
+        // UML核心三个新增传输类的独立可执行门禁，避免旧NamedPipe等测试阻断归因。
+        public static void RunUmlCore()
+        {
+            HttpServerLoopback();
+            WebSocketServerLoopback();
+            SharedMemoryLoopback();
+            SharedMemoryCrossProcess();
+            Console.WriteLine("F17.UML_CORE_PASS HTTP/WebSocket/SharedMemory real OS, process and lifecycle");
+        }
+
         // 覆盖所有已实现的 ChannelKind：装配能力不是打开真实设备的证明。
         // 始终使用真实 FTR 类型与单个 Empty Protocol，不新建替代通道工厂。
         private static void ConnectorAllChannelKinds()
