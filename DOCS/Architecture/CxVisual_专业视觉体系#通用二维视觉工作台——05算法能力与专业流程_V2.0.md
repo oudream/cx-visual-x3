@@ -123,3 +123,27 @@ AI归Vision专业能力；输入/输出仍使用通用Image/Mask/Geometry/Measur
 | D05-09 | AI预留只测试契约兼容，不冒充已有模型或现场效果 |
 
 **注意**：测试和实施状态以对应新提交及Windows CI为准；本次仅形成目标规格。
+
+## 10. 以现有正式类型构成Vision专业算法体系（架构深化）
+
+**本节优先于此前候选类名。** VisionOperationDescriptor、VisionTypedPort、VisionPipelineDefinition目前仅是设计角色，不自动批准为公共API或第二套持久化模型。已核实真实源码拥有MPMTypeDescriptor、MPCPortDescriptor、IMPMTypeProvider、MEMContent、MOLWiringDefinition、MOCEngineeringCompiler、MOCCompiledPlan、MRKExecutionInput/Output、MDSDataContext、FDTDataAdapterRegistry、CxVisionThresholdProvider及IPVCComputeModule。
+
+| 需要的能力 | 原有权威Owner与类型 | Vision只补充 |
+|---|---|---|
+| 算法/参数类型 | MPMTypeDescriptor/IMPMTypeProvider | vision.*专业TypeId、像素格式、ROI、单位、标定规则 |
+| 输入输出端口 | MPCPortDescriptor、MRKExecutionInput/Output | Mask/Geometry/Measurement的专业约束，不新增第二端口注册表 |
+| 正式可编辑流程 | MEMContent + MOLWiringDefinition | 专业节点Capability、参数、ROI及结果引用；不新建可持久化Graph |
+| 解析编译 | MOCCompiledPlan/SourceMap | 专业格式/能力验证、调试来源投影 |
+| 执行/数据 | MRKExecutionPlan + MDSDataContext/FDT适配 | 安全像素捕获、尺寸估算、执行和类型化结果 |
+| 专业SDK与算法 | PVC Provider/ComputeModule，FIM静态算子 | 有真实算法差异时才引入最小策略合同 |
+
+~~~mermaid
+flowchart LR
+  T["MPM专业Type/Ports"] --> D["MEMContent + MOL Logic"]
+  D --> C["MOC解析编译 / SourceMap"]
+  C --> R["MRK Plan / MDS typed data"]
+  R --> P["FIM/PVC专业算法"]
+  P --> O["Vision Result/Artifact【待实现】"]
+~~~
+
+**批准新增类型之前的最小验证**：增强→阈值→区域分析→测量的2—4节点纵向链；定义各节点TypeId、参数、输入输出、错误/取消、Frame来源、参数和标定Revision；能从WPF和无头SDK以同一语义运行、输出Image+Mask+Measurement且保留RunId/Trace。仅当已有MPM/MPC/MRK契约无法表示且两种真实算法同时需要时，才审专业扩展，而非创建新框架。
