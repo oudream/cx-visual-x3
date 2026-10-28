@@ -1,5 +1,7 @@
 using System;
 using System.Reflection;
+using System.Windows.Threading;
+using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -36,7 +38,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
                      "SetSceneOptions", "SetSlicePositions", "SetObliqueTexture", "CaptureFrame", "ResetCamera" })
                 Check(gpu.GetMethod(api, BindingFlags.Public | BindingFlags.Instance) != null,
                     "缺少体绘真实API："+api);
-            Console.WriteLine("PASS MPW legacy GLSL, WGL renderer entrypoints and geometry compiled (physical GPU pending)");
+            // 正式MPW调度器不需要模拟GPU成功即可验证失效合并与代次。
+            Dispatcher dispatcher=Dispatcher.CurrentDispatcher;
+            int count=0;
+            MPWVolumeRenderDirty applied=MPWVolumeRenderDirty.None;
+            using(MPWVolumeRenderScheduler scheduler=new MPWVolumeRenderScheduler(
+                dispatcher,flags=>{count++;applied=flags;}))
+            {
+                scheduler.ResetContext(1);
+                scheduler.Invalidate(MPWVolumeRenderDirty.Uniforms);
+                scheduler.Invalidate(MPWVolumeRenderDirty.Scene);
+                Check(count==0 && scheduler.IsQueued &&
+                      scheduler.Pending==(MPWVolumeRenderDirty.Uniforms|MPWVolumeRenderDirty.Scene),
+                    "单次交互的多次Uniform/Scene变更必须合并");
+                scheduler.FlushNow();
+                Check(count==1 && applied==(MPWVolumeRenderDirty.Uniforms|MPWVolumeRenderDirty.Scene)
+                    && scheduler.Revision==2 && scheduler.AppliedRevision==2,
+                    "GPU刷新合并成功后才更新已应用Revision");
+                scheduler.Invalidate(MPWVolumeRenderDirty.TransferLut);
+                scheduler.ResetContext(2);
+                Check(scheduler.Pending==MPWVolumeRenderDirty.None && scheduler.Epoch==2,
+                    "旧GPU上下文挂起的上传不得重放到新Context");
+                scheduler.Invalidate(MPWVolumeRenderDirty.TransferLut);
+                scheduler.FlushNow();
+                Check(count==2 && applied==MPWVolumeRenderDirty.TransferLut,
+                    "新Context只应用新代次LUT");
+                bool bad=false;
+                try {scheduler.Invalidate((MPWVolumeRenderDirty)128);}
+                catch(ArgumentOutOfRangeException){bad=true;}
+                Check(bad && scheduler.Pending==MPWVolumeRenderDirty.None,
+                    "未知Dirty位必须拒绝且不污染调度队列");
+            }
+            Console.WriteLine("PASS MPW GL source and render revision/epoch batching (hardware pending)");
         }
 
         private static FieldInfo ReadField(Type type, string fieldName)
