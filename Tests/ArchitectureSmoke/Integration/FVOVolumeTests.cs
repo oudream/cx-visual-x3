@@ -209,6 +209,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Expect<ArgumentOutOfRangeException>(()=>previewOnly.TryGetOriginalScalar(-1,3,3,out actual),
                         "计量坐标不能自动钳制越界索引");
                 }
+                // C02体素中心→毫米：明确区分未标定Identity和真实方向/原点。
+                using(FVOVolumeData spatial=new FVOVolumeData(4,5,6,new byte[120],
+                    "space-test",null,null,null,0.1f,0.2f,0.3f,0,255,null,null))
+                {
+                    Check(!spatial.SpatialFrame.IsCalibrated &&
+                          spatial.SpatialFrame.Unit=="mm",
+                        "默认轴对齐只是显示几何，不得冒充已校准的世界空间");
+                    double[] rotation={0,-1,0,1,0,0,0,0,1};
+                    FVOVolumeSpatialFrame calibrated=new FVOVolumeSpatialFrame(
+                        spatial.SpacingX,spatial.SpacingY,spatial.SpacingZ,
+                        10,20,30,rotation,true);
+                    spatial.SetSpatialFrame(calibrated);
+                    rotation[0]=888;
+                    double[] exported=calibrated.CopyDirectionRowMajor();
+                    exported[1]=999;
+                    FVOPhysicalPoint3D physical=spatial.SpatialFrame.VoxelToPhysical(2,3,4);
+                    Check(spatial.SpatialFrame.IsCalibrated && spatial.SpatialFrame.IsRightHanded &&
+                          Math.Abs(physical.X-(10-3*spatial.SpacingY))<1e-6 &&
+                          Math.Abs(physical.Y-(20+2*spatial.SpacingX))<1e-6 &&
+                          Math.Abs(physical.Z-(30+4*spatial.SpacingZ))<1e-6,
+                        "旋转方向、非等距Spacing与物理原点组合必须正确且防御数组篡改");
+                    FVOVoxelCoordinate3D roundtrip=spatial.SpatialFrame.PhysicalToVoxel(
+                        physical.X,physical.Y,physical.Z);
+                    Check(Math.Abs(roundtrip.X-2)<1e-8 &&
+                          Math.Abs(roundtrip.Y-3)<1e-8 &&
+                          Math.Abs(roundtrip.Z-4)<1e-8,
+                        "三维体素中心及物理坐标逆变换应精确往返");
+                    FVOVolumeSpatialFrame flip=new FVOVolumeSpatialFrame(
+                        spatial.SpacingX,spatial.SpacingY,spatial.SpacingZ,
+                        0,0,0,new double[]{-1,0,0,0,1,0,0,0,1},true);
+                    Check(!flip.IsRightHanded,"镜像源需显式保留左手/右手方向证据");
+                    Expect<ArgumentException>(()=>new FVOVolumeSpatialFrame(
+                        .1,.2,.3,0,0,0,new double[]{1,0,0,0,2,0,0,0,1},true),
+                        "非正交Direction必须拒绝");
+                    Expect<ArgumentException>(()=>spatial.SetSpatialFrame(
+                        FVOVolumeSpatialFrame.UncalibratedAxisAligned(1,1,1)),
+                        "空间Frame不能覆盖已有RAW不相容Spacing");
+                    Expect<ArgumentOutOfRangeException>(()=>new FVOVolumeSpatialFrame(
+                        .1,double.NaN,.3,0,0,0,new double[]{1,0,0,0,1,0,0,0,1},true),
+                        "非法有限性不能进入空间Frame");
+                }
                 using (FVOVolumeData demo = FVOVolumeData.CreateDemo(12, 12, 12))
                 {
                     FVOVolumeHistogram hist = FVOVolumeHistogram.FromVolume(demo);
