@@ -88,3 +88,17 @@
 | `4c398047` | TestCenter WPF UIA 在Virtual真实收发后检查`State=Open`、Session、TX/RX健康视图，并保持离线通道不连接实体设备 | 新增代码已提交，TestCenter Windows最终结果待核实 |
 
 所有“待核实”只能在对应固定SHA的CI真正结束并有日志后改为通过；仍不覆盖24h长稳、跨PC、真实硬件、HTTP/WS跨层全链路总内存及工业SLA。
+
+
+## V3.0 新增Peer隔离、单快照及配置稳定性追踪（2026-10-28）
+
+| 代码固定SHA | 测试用例 | 反证与状态 |
+|---|---|---|
+| `489c7f3b` | `FTRReconnectControllerTests.BackoffAndLimit` | 外部修改原FCM重连次数/间隔不能改变控制器已冻结的有效策略；[F17 #40661871142](https://github.com/oudream/cx-visual-x3/actions/runs/40661871142) success |
+| `54ac4bef` | `FTRChannelHealthTests.ChannelLifecycleAndHealth` | 未Open TCP Server的离线目录Peer不能算在线；新固定SHA待验证 |
+| `b95ff48a` | `FTRWebSocketAtomicTests.OversizedPeerIsolated` | 一个WS客户端发送超消息上限字节后记录SubChannel/ResourceExhausted，另一客户端完整收发且Server仍Open；新固定SHA待验证 |
+| `56fc61cf` | `FTRChannelHealthTests.HttpClientAdmissionWithoutNetwork` | 不使用池化接收的HTTP Client异步发送在快照与网络前按字节预算拒绝；新固定SHA待验证 |
+| `8fb97eb9` | `FTRTcpBulkTests.AsyncSliceSnapshot` | 新增Async切片重载只复制一次，源修改不污染已接纳数据，预算按有效count而非整个源数组结算；新固定SHA待验证 |
+| `3a549615` | `ModuleChannelTransportSmokeTests.ByteStreamAdapterLoopback` | ByteStreamAdapter基类路径复用单次异步切片快照，Custom Provider接口保持兼容；新固定SHA待验证 |
+
+对应代码包括`RecordReceiveError`旧签名+SubChannel重载、HTTP/WS接收预算分类、`FTRChannelBase.SendAsync(byte[],int,int,...)`新增兼容重载、`FTRByteStreamAdapter.WriteAsync`去重复制。原`--channel-transport`及`--channel-bulk-long`继续保留，不因局部成功宣布跨PC、24h长稳或CT专业零复制链路通过。
