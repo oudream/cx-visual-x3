@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
 
@@ -360,7 +361,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new FGEPoint2D(5,5),new FGEPoint2D(1,5)}),
                 "SDK输入错误Bounds不应写入非法矩形");
 
+            // GoF Observer + OOP唯一Store：多对象提交只发送一个完整状态通知。
+            MVIImageOverlayStore batch=new MVIImageOverlayStore();
+            int batchNotifications=0;
+            int seenOnNotify=-1;
+            batch.Changed += (sender,args) =>
+            {
+                batchNotifications++;
+                seenOnNotify=batch.Items.Count;
+            };
+            MVIImageOverlayItem first=new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,3,3));
+            MVIImageOverlayItem second=new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(4,4,3,3));
+            Ensure(batch.AddRange(new[]{first,second})==2 &&
+                batchNotifications==1 && seenOnNotify==2 &&
+                batch.Find(first.Id)!=null && batch.Find(second.Id)!=null,
+                "原子批量叠加应在完整写入后仅发布一次Observer通知");
+            Ensure(batch.AddRange(new MVIImageOverlayItem[0])==0 &&
+                batchNotifications==1,"空批次不改变Store或发送通知");
+            Fail<ArgumentNullException>(()=>batch.AddRange(null),"null批次拒绝");
+            Fail<ArgumentException>(()=>batch.AddRange(new MVIImageOverlayItem[]{
+                new MVIImageOverlayItem(MVIImageOverlayKind.RectangleRoi,
+                    MVIImageOverlayLayer.Roi,new FGERect2D(8,8,2,2)),null}),
+                "批中null拒绝且不部分提交");
+            Fail<InvalidOperationException>(()=>batch.AddRange(new[]{first}),
+                "与已有覆盖项重复身份拒绝");
+            MVIImageOverlayItem candidate=new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(10,10,2,2));
+            Fail<InvalidOperationException>(()=>batch.AddRange(new[]{candidate,candidate}),
+                "同批重复身份拒绝");
+            Fail<InvalidOperationException>(()=>batch.AddRange(ThrowAfter(candidate)),
+                "枚举中途异常不得部分写入");
+            Ensure(batch.Items.Count==2 && batchNotifications==1 &&
+                batch.Find(candidate.Id)==null,
+                "所有前置异常保留原来的两个对象及一次通知");
+            MVIImageOverlayItem third=new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonAnnotation,MVIImageOverlayLayer.Annotation,
+                new FGERect2D(0,0,2,2),new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(2,0),new FGEPoint2D(0,2)});
+            Ensure(batch.AddRange(new[]{third})==1 &&
+                batchNotifications==2 && seenOnNotify==3,
+                "单元素批提交与常规Add一致，且保持已存在对象");
+            Console.WriteLine("PASS MVI ImageOverlay: 原子批量叠加、完整通知、重复/空项/枚举异常反证");
+
             Console.WriteLine("PASS MVI ImageOverlay: 旋转矩形正交几何/角度/命中/异常与原有ROI");
+        }
+
+        private static IEnumerable<MVIImageOverlayItem> ThrowAfter(MVIImageOverlayItem item)
+        {
+            yield return item;
+            throw new InvalidOperationException("模拟枚举器中途失败");
         }
 
         private static void Ensure(bool condition,string description)
