@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Threading;
+using CxVisual.Mechanism.Data.Configuration;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -381,6 +384,48 @@ namespace CxVisual.TestCenter.UI
                         editor.LastError != null ||
                         heap.Lifecycle.GetPolicy("Studio.Image").Transfer.AllowMove)
                         throw new InvalidOperationException("Studio组合按钮未真正应用策略：" + editor.LastError);
+                    string directory = Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Studio-Lifecycle-" + Guid.NewGuid().ToString("N"));
+                    try
+                    {
+                        var section = new MHSConfigService(directory)
+                            .ForProject("Wpf-Project").Open<MDSDataLifecycleEngineeringOptions>();
+                        editor.BindEngineering(section);
+                        bool unauthorized = false;
+                        try { editor.SaveEngineeringDraftAsync("未授权保存").GetAwaiter().GetResult(); }
+                        catch (InvalidOperationException) { unauthorized = true; }
+                        if (!unauthorized || section.HasPendingApply)
+                            throw new InvalidOperationException("Studio工程设置未授权却写入MHS");
+                        editor.BindEngineering(section, true);
+                        editor.LoadEngineeringDraft();
+                        ((ComboBox)editor.FindName("LifetimeMode")).SelectedIndex = 1;
+                        ((ComboBox)editor.FindName("RetentionMode")).SelectedIndex = 1;
+                        ((ComboBox)editor.FindName("ReclamationMode")).SelectedIndex = 2;
+                        ((ComboBox)editor.FindName("TransferMode")).SelectedIndex = 1;
+                        ((TextBox)editor.FindName("CacheTtlSecondsBox")).Text = "180";
+                        var committed = editor.SaveEngineeringDraftAsync("WPF实际工程策略保存",
+                            CancellationToken.None).GetAwaiter().GetResult();
+                        if (!committed.Success || !section.HasPendingApply ||
+                            section.GetLatestSaved().CacheTtlSeconds != 180 ||
+                            section.Get().CacheTtlSeconds == 180 ||
+                            heap.Lifecycle.GetPolicy("Studio.Image").Retention.TimeToLive.HasValue)
+                            throw new InvalidOperationException(
+                                "WPF工程Saved与Effective或当前运行Heap发生混淆");
+                        var reopened = new MHSConfigService(directory).ForProject("Wpf-Project")
+                            .Open<MDSDataLifecycleEngineeringOptions>();
+                        if (reopened.GetLatestSaved().CacheTtlSeconds != 180)
+                            throw new InvalidOperationException("工程五维配置没有真实落盘");
+                        ((TextBox)editor.FindName("CacheTtlSecondsBox")).Text = "0";
+                        bool invalid = false;
+                        try { editor.BuildEngineeringDraft(); }
+                        catch (ArgumentOutOfRangeException) { invalid = true; }
+                        if (!invalid || section.GetLatestSaved().CacheTtlSeconds != 180)
+                            throw new InvalidOperationException("无效TTL意外更改正式Saved配置");
+                    }
+                    finally
+                    {
+                        try { Directory.Delete(directory, true); } catch (IOException) { }
+                    }
                 }
                 finally { editor.Dispose(); }
             }
