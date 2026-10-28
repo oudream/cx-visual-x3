@@ -29,7 +29,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public bool Demonstration {get;private set;}
         public string Label {get{return Name+" · "+Id;}}
         public string Status {get{return Demonstration?"演示Resolver，非设备就绪":
-            Resolved?"运行解析存在，非授权确认":"无运行处理者";}}
+            Resolved?"运行解析存在，非授权确认":"未验证运行处理者";}}
     }
 
     /// <summary>Shared WPF host surface; FCM/MHS, MEM, MOC, MRK remain the only owners.</summary>
@@ -44,6 +44,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly TextBlock _source=new TextBlock {TextWrapping=TextWrapping.Wrap};
         private readonly TextBlock _detail=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(6)};
         private readonly WrapPanel _kinds=new WrapPanel();
+        private readonly Button _allKinds=new Button {Content="全部",
+            Margin=new Thickness(2),Padding=new Thickness(9,5,9,5)};
         private readonly ColumnDefinition _catalogColumn=new ColumnDefinition {Width=new GridLength(220)};
         private readonly DockPanel _catalogPane=new DockPanel {Margin=new Thickness(0,2,9,0)};
         private MPWModuleCapabilityView[] _catalog=new MPWModuleCapabilityView[0];
@@ -54,6 +56,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public ContentControl EditorHost {get{return _editor;}}
         public object HeaderContent {get{return _header.Content;}set{_header.Content=value;}}
         public int VisibleCapabilityCount {get{return _list.Items.Count;}}
+        public string SearchText {get{return _search.Text;}set{_search.Text=value??"";}}
+        public MFMModuleKind? SelectedKind {get{return _kind;}}
         /// <summary>Restore full-width FCM editing in TestCenter when no live catalog is wired.</summary>
         public bool ConfigurationOnly {
             get {return _catalogPane.Visibility==Visibility.Collapsed;}
@@ -74,6 +78,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 FontWeight=FontWeights.SemiBold};
             title.SetResourceReference(TextBlock.ForegroundProperty,"MPWForegroundBrush");
             head.Children.Add(title);
+            _allKinds.Click+=(s,e)=>SetSelectedKind(null);
+            _kinds.Children.Add(_allKinds);
             foreach(MFMModuleKind kind in new[] {MFMModuleKind.Connector,MFMModuleKind.Driver,
                 MFMModuleKind.Compute,MFMModuleKind.Simulation,MFMModuleKind.Service})
             {
@@ -123,6 +129,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(kind.HasValue&&!Enum.IsDefined(typeof(MFMModuleKind),kind.Value))
                 throw new ArgumentOutOfRangeException("kind");
             _kind=kind;
+            _allKinds.FontWeight=kind.HasValue?FontWeights.Normal:FontWeights.Bold;
             foreach(var button in _kinds.Children.OfType<Button>())
                 button.FontWeight=kind.HasValue&&(string)button.Content==kind.ToString()
                     ?FontWeights.Bold:FontWeights.Normal;

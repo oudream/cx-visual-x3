@@ -91,6 +91,18 @@ namespace CxVisual.Studio
                     MPWModuleCenterControl center=opened==null?null:opened.Content as MPWModuleCenterControl;
                     Assert(center!=null&&center.VisibleCapabilityCount>0,
                         "Studio共享中心未加载真正MOC演示目录");
+                    int originalCount=center.VisibleCapabilityCount;
+                    center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver);
+                    Assert(center.VisibleCapabilityCount==0,
+                        "CPU演示目录不能伪装为已经注册的Driver Provider");
+                    center.SetSelectedKind(null);
+                    Assert(center.VisibleCapabilityCount==originalCount,
+                        "返回全部类别未恢复真实目录");
+                    center.SearchText="__missing_capability__";
+                    Assert(center.VisibleCapabilityCount==0,"空搜索结果不能产生伪能力");
+                    center.SearchText="";
+                    Assert(center.VisibleCapabilityCount==originalCount,
+                        "清除搜索未恢复目录");
                     window.OpenStudioDocument("doc.modules");
                     Assert(window.GetStudioContentIds().Count(id=>id=="doc.modules")==1,
                         "同一中心重复打开产生两个文档");

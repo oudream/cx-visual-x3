@@ -99,6 +99,7 @@ namespace CxVisual.TestCenter.UI
         private Func<CancellationToken, Task<MHSConfigCommitResult>> _saveDraft;
         private Func<FCMConfigApplyPolicy, MHSConfigApplyResult> _applySaved;
         private Func<string> _versions;
+        private Action _refreshDeclaredCapabilities;
         private bool _busy;
         private string _activeId;
         private MFMModuleKind? _activeKind;
@@ -350,6 +351,16 @@ namespace CxVisual.TestCenter.UI
                     "。尚未做设备连接和 MRK 运行验证。";
             };
             _activeId = id; _activeKind = kind;
+            _refreshDeclaredCapabilities=() => {
+                // A declaration projection is not an MOC Provider, Ready or authorization fact.
+                var declared=next.Draft.CapabilityIds??
+                    new System.Collections.Generic.List<string>();
+                _center.SetCapabilities(declared.Where(x=>!String.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.Ordinal)
+                    .Select(x=>new MPWModuleCapabilityView(x,x,"配置中声明",kind,1,false,false)),
+                    "本模块FCM声明的CapabilityIds（尚未核实Provider/授权）");
+            };
+            _refreshDeclaredCapabilities();
             _editorHost.Content = next;
             RebuildPages(kind);
             if (old != null) old.Dispose();
@@ -410,6 +421,7 @@ namespace CxVisual.TestCenter.UI
         public void ValidateCurrent()
         {
             if (_validate == null) throw new InvalidOperationException("尚未打开模块配置");
+            if (_refreshDeclaredCapabilities != null) _refreshDeclaredCapabilities();
             try { UpdateStatus(_validate()); }
             catch (Exception error) { UpdateStatus("模块结构校验失败：" + error.GetType().Name + "，请检查配置。"); }
         }
@@ -421,6 +433,8 @@ namespace CxVisual.TestCenter.UI
             _activeEditor = null; _draftGuard = null; _validate = null;
             _saveDraft = null; _applySaved = null; _versions = null;
             _project = null; _visibleSchemaEditors = null;
+            _refreshDeclaredCapabilities = null;
+            _center.SetCapabilities(null,"尚未打开正式模块配置");
             _activeId = null; _activeKind = null;
         }
     }
