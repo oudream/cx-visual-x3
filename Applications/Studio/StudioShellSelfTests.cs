@@ -137,6 +137,24 @@ namespace CxVisual.Studio
                         "模块中心配置入口没有打开原FCM/MHS Studio配置文档");
                     Assert(window.TryCloseStudioDocument("doc.config"),
                         "模块中心新打开的空配置文档不能正常关闭");
+                    Button load=actions.FirstOrDefault(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.LoadEffective");
+                    Assert(load!=null,"模块中心缺少显式MHS Effective授权读取入口");
+                    TextBlock effectiveStatus=moduleHeader.Children.OfType<TextBlock>()
+                        .LastOrDefault();
+                    Assert(effectiveStatus!=null&&
+                        effectiveStatus.Text.Contains("需要显式操作"),
+                        "模块中心首次发现不应该自动打开MHS并Apply");
+                    load.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,load));
+                    Assert(effectiveStatus.Text.Contains("已从正式MHS读取 Effective")&&
+                        effectiveStatus.Text.Contains("vision.cpu.threshold.v1/config:"),
+                        "未通过真实MHS Effective快照刷新软件Provider版本："+
+                        effectiveStatus.Text);
+                    Assert(center.VisibleCapabilities.Any(x=>
+                        x.Id==CxVisionThresholdProvider.CapabilityId&&x.Resolved&&
+                        x.Kind==CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute),
+                        "加载MHS有效配置后不应丢失MOC/MFM软件计算能力");
                     flow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,flow));
                     Assert(window.GetStudioContentIds().Contains("doc.flow"),
                         "模块中心流程入口没有打开原MOL Studio主流程");
