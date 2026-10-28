@@ -90,3 +90,104 @@ Observer用于帧/会话变化，Strategy仅在两种真实读取Provider可替�
 **P待裁决的FrameRef**只表达SourceId+SourceGeneration+FrameId+采集Time+PixelFormat+CalibrationRef+可选受控Lease，不复制整份FIMImageBuffer。ImageSet持FrameRef索引；RunResult持InputRef及ArtifactRef；MPW显示持当前选中的像素与MVI视口。FrameLease的实际接口须根据MDS生命周期和设备Provider评审，不得凭文档臆造Dispose语义。
 
 **三项优先测试**：Gray8/16由FIM和PVC运行相同样本逐像素及数值比较、Stride/字节序/复制峰值测量、图像被切换或流关闭后的异步数据与租约不误发布。大图应分别测量输入副本、算法工作区、WPF显示副本、GPU纹理和队列预算；对专业GPU/SDK占用必须另记账。
+
+## 9. 数据契约深化：Image、Frame、Mask与Artifact的唯一身份
+
+> 设计状态：P候选；其中FIMImageBuffer/FIMPixelSpacing、FDTReadOnlyBuffer/FDTDataAdapterRegistry、MDSDataBudget/MDSBoundedByteStream均已核实源码为E，不能将候选FrameRef、MaskRef和ArtifactRef作为现成C#类型。
+
+### 9.1 对象身份和所有权
+
+| 角色 | 唯一语义及Owner | 生命周期 | 禁止做法 |
+|---|---|---|---|
+| PixelBuffer E | FIMImageBuffer：Width/Height/Stride/PixelFormat、像素值 | 原始像素快照；公共构造复制、CopyPixels再复制 | 把采集设备或WPF放入基础像素对象 |
+| Frame Envelope P | SourceId+SourceGeneration+FrameId+CapturedAtUtc+ImageRef | 单次采集事件，有时间/重连代次 | 将FrameId单独用作跨设备唯一ID |
+| ImageSet P | DatasetId+DatasetRevision+有序FrameRef | 图像集合/序列，允许坏帧条目 | 用当前Viewer双槽充当序列库 |
+| Mask P | SourceImageRef+Origin+Size+BinaryMeaning+CoordinateSpace | 算法产物，显示时可投影 | 用一张灰度图替代全部区域坐标语义 |
+| ArtifactRef P | RunId+OutputPort+ArtifactId+Hash+Schema+Retention | 大数据引用，存储Owner待审 | 工程XML携带GB像素或IntPtr |
+| ViewSession E | MVIImageSession的Original/Result与视口 | 当前显示窗口，不拥有历史产物 | 每增加算法新添Result2/Result3字段 |
+| Calibration | FIMPixelSpacing? + TransformRef + Unit | 按源图/标定版本绑定 | 没标定直接输出毫米，或混淆原图和物理坐标 |
+
+### 9.2 真实像素安全边界（不能凭空扩大）
+
+FIMImageBuffer支持Gray8、Gray16、GrayFloat32、Bgr24、Bgra32；使用带整数溢出检查的Stride/尺寸合法性，公共构造复制输入，CopyPixels返回独立副本，Gray16按小端读取，彩色灰度按BT.601解释。FIMPixelSpacing持各轴独立毫米每像素；无标定时应为nullable/Unknown。不同于FIM，PVC的CxVisionGrayFrame专门表示8/16位灰度ushort[]，不能Cast互换或宣称没有复制。
+
+| ID | 必须明确的输入反证 |
+|---|---|
+| DC-01 | Width×Bpp、Stride×Height溢出或数据长度不足拒绝；不污染已显示有效帧 |
+| DC-02 | 有Padding的Stride读取像素、ROI边界和直方图正确 |
+| DC-03 | Gray16/Float32显示窗位变化不改变CopyPixels输出 |
+| DC-04 | sx≠sy时距离/角度按物理系计算；缺标定不得填mm |
+| DC-05 | 重连后SourceGeneration变化，旧FrameRef和晚到结果失效 |
+| DC-06 | CPU图像副本、WPF显示、GPU/SDK临时内存分开测量 |
+| DC-07 | Mask的Origin/Size/Reference和ROI几何匹配；多帧来源不混 |
+| DC-08 | Artifact丢失、文件损坏、租约失效给BrokenRef或Stale，不展示错图 |
+
+### 9.3 四种身份的核心UML（E/P区别）
+
+~~~mermaid
+classDiagram
+  class FIMImageBuffer {
+    <<E>>
+    +Width
+    +Height
+    +Stride
+    +PixelFormat
+    +CopyPixels()
+  }
+  class FIMPixelSpacing {
+    <<E>>
+    +MillimetersPerPixelX
+    +MillimetersPerPixelY
+  }
+  class ImageFrameEnvelope {
+    <<P_role>>
+    +SourceId
+    +SourceGeneration
+    +FrameId
+    +CapturedAtUtc
+  }
+  class ImageSetIndex {
+    <<P_role>>
+    +DatasetId
+    +Revision
+  }
+  class ImageArtifactRef {
+    <<P_role>>
+    +ArtifactId
+    +TypeId
+    +Hash
+  }
+  class MVIImageSession {
+    <<E>>
+    +Original
+    +Result
+  }
+  ImageSetIndex o-- ImageFrameEnvelope
+  ImageFrameEnvelope --> ImageArtifactRef : may reference
+  ImageFrameEnvelope ..> FIMPixelSpacing : calibration
+  ImageArtifactRef ..> FIMImageBuffer : resolves
+  MVIImageSession ..> FIMImageBuffer : current pixels
+~~~
+
+### 9.4 生命周期及释放规则
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> Created
+  Created --> Validated: format/size/source checked
+  Created --> Rejected: invalid
+  Validated --> Available: owned buffer or lease
+  Available --> InUse: acquire
+  InUse --> Available: release
+  Available --> Expired: ttl/source changes
+  InUse --> Closing: stop
+  Closing --> Expired: consumers released
+  Expired --> [*]
+  Rejected --> [*]
+~~~
+
+FrameLease与ArtifactRef是专业语义候选，并非现有FIMImageBuffer对外提供的零拷贝租约。运行必须有清晰Owner释放CPU Buffer、SDK句柄、GPU纹理及正在使用的MDS数据引用，不能将关闭图窗等价为所有资源均回收。MDSDataBudget当前只计算FlowHeap/DataStack已提交的托管载荷；MDSBoundedByteStream是单机有界byte[]块传输而不是有SourceId/FrameId/DropPolicy的相机流。利用这两个机制进行专业扩展，而不是建立第二DataHeap与Executor。
+
+### 9.5 设计批准与后续真实验收
+
+先完成DC-01—08、FIM与CxVisionGrayFrame同样本等价、Stride和内存复制实测；只有复用FDT/MDS与现有专业类型后仍存在真实缺口，才批准新增Frame Envelope/ArtifactRef或专业Lease接口。架构评审不替代代码/Windows/HIL测试。
