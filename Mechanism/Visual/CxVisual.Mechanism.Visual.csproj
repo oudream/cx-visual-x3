@@ -21,6 +21,7 @@
     <Compile Include="MOLFlowLayout.cs"/>
     <Compile Include="Volume\MVIVolumeViewState.cs"/>
     <Compile Include="Volume\MVI3DCameraState.cs"/>
+    <Compile Include="Volume\MVI3DSceneState.cs"/>
     <Compile Include="Imaging\MVIImageSlot.cs"/>
     <Compile Include="Imaging\MVIImageSession.cs"/>
     <Compile Include="Imaging\MVIImageViewport.cs"/>
