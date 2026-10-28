@@ -25,8 +25,10 @@
     <Compile Include="Visualization\Rendering\CT3DRenderingPresets.cs"/>
     <Compile Include="Visualization\Loading\CT3DVolumeLoadService.cs"/>
     <Compile Include="Analysis\CT3DSurfaceSphereAnalysis.cs"/>
+    <Compile Include="Analysis\CT3DVoxelBoundaryMeshExtractor.cs"/>
     <Compile Include="CxCtReconstructionOptions.cs"/></ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Numerics\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Volume\CxVisual.Foundation.Volume.csproj"><Project>{32E6A935-9FE6-54BA-A56D-16E7F7658F02}</Project><Name>CxVisual.Foundation.Volume</Name></ProjectReference>
