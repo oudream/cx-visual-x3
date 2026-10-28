@@ -49,28 +49,13 @@ namespace CxVisual.Foundation.Numerics
         internal double At(int offset) { return _values[offset]; }
         internal void Put(int offset, double value) { RequireFinite(value); _values[offset] = value; }
 
-        /// <summary>复制一个轴的半开区间切片，不共享原缓冲区，便于并行和跨模块使用。</summary>
+        /// <summary>
+        /// 复制指定轴的半开区间切片。结果拥有独立缓冲区。
+        /// 使用View逻辑游标遍历，避免为每个元素重算多维商与余数。
+        /// </summary>
         public FNUTensorBuffer Slice(int axis, int start, int length)
         {
-            if (axis < 0 || axis >= Shape.Rank) throw new ArgumentOutOfRangeException("axis");
-            if (start < 0 || length < 0 || start > Shape.DimensionAt(axis) ||
-                length > Shape.DimensionAt(axis) - start)
-                throw new ArgumentOutOfRangeException("length");
-            int[] dims = Shape.CopyDimensions();
-            dims[axis] = length;
-            var output = new FNUTensorBuffer(new FNUTensorShape(dims));
-            for (int flat = 0; flat < output.Shape.ElementCount; flat++)
-            {
-                int remaining = flat, oldOffset = 0;
-                for (int j = 0; j < dims.Length; j++)
-                {
-                    int coordinate = remaining / output.Shape.StrideAt(j);
-                    remaining %= output.Shape.StrideAt(j);
-                    oldOffset += (coordinate + (j == axis ? start : 0)) * Shape.StrideAt(j);
-                }
-                output.Put(flat, _values[oldOffset]);
-            }
-            return output;
+            return AsView().Slice(axis, start, length).CopyToBuffer();
         }
 
         private static void RequireFinite(double value)
