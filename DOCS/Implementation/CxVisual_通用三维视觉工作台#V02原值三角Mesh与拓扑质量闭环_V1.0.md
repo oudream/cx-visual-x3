@@ -45,3 +45,9 @@
 - CT3D的`HasCalibratedClosedGeometry`增加正有向体积条件；这仍只是来源标定/拓扑条件，不代表工业计量已签收。
 - CT3D Mesh与离散球拟合调用共享`CT3DRawScalarGuard.ReadFinite`拒绝Float32 RAW中的NaN/Infinity，防止浮点非有限值因比较行为被误判为实心材料。ArchitectureSmoke补充Float32 NaN反证；这些改动必须按**对应新SHA的Windows --volume**回归判定，不借用此前UInt16测试通过。
 - 所有新增能力继续使用FGE/CT3D既定Owner、现有工程与Windows自动化入口。尚未完成三角Mesh多连通分量拓扑修补、完整非流形自交检测、亚体素面、真实GPU像素/深度遮挡和工业标准件误差评定。
+
+## 六、固定SHA专项验证升级（2026-10-28）
+
+- 固定提交`e77cae8d9`（祖先包含FGE bow-tie顶点诊断及双四面体反例）对应的Windows Imaging Run `40687637635`已完成 **SUCCESS**，其`Build all existing projects on Windows x64`与`Execute FIM MVI standalone and default smoke`均为SUCCESS，`--volume`日志再次输出`PASS CT3D UInt16 physical voxel mesh, topology, mirrored normals and negative cases`；故这批**共享顶点、开放边、两个封闭壳单顶点接触、旋转/镜像和正有向体积**的测试可以标为`自动化通过（固定SHA）`。
+- Float32非有限值的输入保护与测试在更新的`6ac270c3`、`baf51b6c`、`084bc6ad`提交中落地，**不属于上述e77已通过的源码范围**。等待对应后续Windows全量/专项`--volume`完成后才提升证据等级。
+- UIA的Channel Viewer缺失和并行二维Imaging测试编译问题，应按对应日志归属，不能把它们写成CT3D Mesh数值失败或通过；真正GPU面片颜色/深度和工业标准件依然待实机。
