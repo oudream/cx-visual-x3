@@ -10,6 +10,23 @@ namespace CxVisual.Foundation.Transport
     /// </summary>
     public static class FTRChannelConvenience
     {
+        /// <summary>
+        /// 从正式Transport接口读取一次健康视图；兼容Factory/Custom Provider，
+        /// 无需调用方强制转换具体FTRChannelBase，也不建立监控线程。
+        /// </summary>
+        public static FTRChannelHealthSnapshot ReadHealth(this IFTRChannelTransport channel)
+        {
+            if(channel==null)throw new ArgumentNullException("channel");
+            FTRChannelBase standard=channel as FTRChannelBase;
+            if(standard!=null)return standard.Health;
+            FTRChannelState state=channel.State;
+            var multi=channel as IFTRSubChannelAware;
+            int peers=state!=FTRChannelState.Open?0:
+                (multi==null?1:multi.SnapshotSubChannels().Length);
+            return new FTRChannelHealthSnapshot(
+                channel.Id,channel.SessionId,state,peers,channel.Diagnostics);
+        }
+
         /// <summary>订阅接收，并取得解除订阅令牌；只撤销本次观察，不关闭Channel。</summary>
         public static IDisposable SubscribeReceived(this IFTRChannelTransport channel,
             Action<FTRChannelReceiveContext> observer)
