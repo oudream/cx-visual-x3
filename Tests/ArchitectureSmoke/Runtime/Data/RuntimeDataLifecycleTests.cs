@@ -194,6 +194,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 copy[0] = 9;
                 Check(handed.GetCommittedOutput<byte[]>("Image")[0] == 0,
                     "领取结果不能暴露原MDS已提交可写数据");
+                using (var target = new MDSDataHeap(null, new MDSDataBudget(64)))
+                {
+                    handed.CopyCommittedOutputTo<byte[]>("Image", target, "Transferred");
+                    byte[] isolated = target.Get<byte[]>("Transferred");
+                    isolated[0] = 31;
+                    Check(handed.GetCommittedOutput<byte[]>("Image")[0] == 0 &&
+                        target.Get<byte[]>("Transferred")[0] == 0 &&
+                        target.Budget.RetainedBytes == 48,
+                        "结果交给其它Heap必须由目标Owner安全复制并独立预算");
+                    bool conflict = false;
+                    try { handed.CopyCommittedOutputTo<byte[]>("Image", target, "Transferred"); }
+                    catch (MDSDataException) { conflict = true; }
+                    Check(conflict && target.Budget.RetainedBytes == 48,
+                        "重复名称不能无声覆盖或重复计费");
+                    bool wrongType = false;
+                    try { handed.CopyCommittedOutputTo<int>("Image", target, "WrongType"); }
+                    catch (InvalidCastException) { wrongType = true; }
+                    Check(wrongType && !target.Contains("WrongType"),
+                        "类型不兼容不得写入部分目标数据");
+                    handed.CopyCommittedOutputTo<byte[]>("Image", target, "Transferred", true);
+                    Check(target.Get<byte[]>("Transferred").Length == 48 &&
+                        target.Budget.RetainedBytes == 48,
+                        "显式覆盖应按目标预算替换，不增加双份保留量");
+                }
+                using (var insufficient = new MDSDataHeap(null, new MDSDataBudget(32)))
+                {
+                    bool denied = false;
+                    try { handed.CopyCommittedOutputTo<byte[]>("Image", insufficient, "TooLarge"); }
+                    catch (MDSDataException) { denied = true; }
+                    Check(denied && !insufficient.Contains("TooLarge") &&
+                        insufficient.Budget.RetainedBytes == 0,
+                        "目标预算拒绝必须保持失败原子性，不破坏原结果");
+                }
                 Check(!session.TryTakeCompletedResult(first.FlowId, out handed) &&
                     !session.ReleaseRetainedResult(first.FlowId),
                     "重复领取和重复释放不能造成双重所有权");
