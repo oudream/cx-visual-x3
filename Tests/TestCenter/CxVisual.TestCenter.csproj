@@ -89,6 +89,7 @@
     <Compile Include="Manual\Command\TCTManualCommandOperations.cs" />
     <Compile Include="Automated\Cases\TCTCommandCenterCases.cs" />
     <Compile Include="Manual\Module\TCTManualModuleFrame.cs" />
+    <Compile Include="Manual\Module\TCTCpuComputePanel.cs" />
     <Compile Include="Automated\UI\Overview\TCTTestOverviewControl.cs" />
     <Compile Include="Automated\UI\ArchitectureSmoke\TCTArchitectureSmokeProcessRunner.cs" />
     <Compile Include="Automated\UI\ArchitectureSmoke\TCTArchitectureSmokeFrame.cs" />
