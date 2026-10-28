@@ -43,6 +43,7 @@ namespace CxVisual.Foundation.Transport
             _listener=new HttpListener();
             _listener.Prefixes.Add(_config.Prefix);
             _listener.Start();
+            ConfigureSendAdmission(_config);
             _accept=Task.Run(()=>AcceptLoop(_stop.Token));
             return Task.CompletedTask;
         }

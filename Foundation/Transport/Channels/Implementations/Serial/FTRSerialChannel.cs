@@ -31,6 +31,7 @@ public sealed class FTRSerialChannel : FTRChannelBase
                 _config.DataBits, stopBits) { ReadTimeout = 500, WriteTimeout = 5000 };
             port.Open();
             _port = port;
+            ConfigureSendAdmission(_config);
             _stop = new CancellationTokenSource();
             _reader = Task.Run(() => ReadLoop(_stop.Token));
             return Task.CompletedTask;

@@ -31,6 +31,7 @@ public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase, IFTRMessag
                 timeout.CancelAfter(_config.ConnectTimeoutMs);
                 await socket.ConnectAsync(new Uri(_config.Url), timeout.Token).ConfigureAwait(false);
             }
+            ConfigureSendAdmission(_config);
             _stop = new CancellationTokenSource();
             _reader = Task.Run(() => ReceiveLoop(socket, _stop.Token));
         }

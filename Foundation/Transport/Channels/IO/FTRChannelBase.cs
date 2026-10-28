@@ -254,11 +254,21 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             Action<FTRChannelReceiveContext> handler = Received;
             if (handler != null) handler(context);
         }
+        /// <summary>异步快照先入场后分配；不要求Channel必须使用池化接收者。</summary>
+        protected void ConfigureSendAdmission(FTRChannelConfiguration configuration)
+        {
+            configuration.Validate();
+            lock(_gate)
+            {
+                _sendCapacity=configuration.SendQueueCapacity;
+                _sendByteBudget=configuration.SendByteBudget;
+                _boundedSend=true;
+            }
+        }
         protected void StartBufferedReceive(FTRChannelConfiguration configuration)
         {
-            configuration.Validate();_capturePayloadEvidence=configuration.CapturePayloadEvidence;
-            lock(_gate){_sendCapacity=configuration.SendQueueCapacity;
-                _sendByteBudget=configuration.SendByteBudget;_boundedSend=true;}
+            ConfigureSendAdmission(configuration);
+            _capturePayloadEvidence=configuration.CapturePayloadEvidence;
             _receivePipeline=new FTRReceivePipeline(Id,configuration,DeliverBuffer,RecordReceiveError);
         }
         protected FTRReceiveBuffer RentReceiveBuffer(CancellationToken cancellation)

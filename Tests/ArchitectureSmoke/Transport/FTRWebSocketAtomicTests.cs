@@ -28,11 +28,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             int port=FreePort();
             var serverConfig=new FTRWebSocketServerChannelConfiguration{
                 Id="ws-atomic-server",Prefix="http://localhost:"+port+"/atomic/",
-                MaxClients=2,MaxMessageBytes=131072
+                MaxClients=2,MaxMessageBytes=131072,SendByteBudget=4096,SendQueueCapacity=1
             };
             var clientConfig=new FTRWebSocketClientChannelConfiguration{
                 Id="ws-atomic-client",Url="ws://localhost:"+port+"/atomic/",
-                MaxMessageBytes=131072
+                MaxMessageBytes=131072,SendByteBudget=4096,SendQueueCapacity=1
             };
             using(var server=new FTRWebSocketServerChannel(serverConfig))
             using(var client=new FTRWebSocketClientChannel(clientConfig))
@@ -65,11 +65,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     server.Open();
                     client.Open();
+                    bool clientRejected=false;
+                    try{client.SendAsync(new byte[4097],new FTRSubChannelAddress(client.Id),
+                        CancellationToken.None).GetAwaiter().GetResult();}
+                    catch(InvalidOperationException){clientRejected=true;}
+                    Check(clientRejected && client.Diagnostics.RejectedSends==1 &&
+                        client.Diagnostics.LastFailure.Kind==FTRFailureKind.ResourceExhausted,
+                        "无接收池的WS Client仍须在克隆前拒绝超预算异步发送");
                     // 旧FTR默认实现会将4096字节切成多条WS消息，本断言必须能抓住。
                     client.Send(request,segmentBytes:4096);
                     Check(serverReceived.Wait(8000) && Volatile.Read(ref requestMessages)==1 &&
                         received.SequenceEqual(request),
                         "Client同步分块必须只产生一条完整RFC6455消息");
+                    bool serverRejected=false;
+                    try{server.SendAsync(new byte[4097],peer,CancellationToken.None).GetAwaiter().GetResult();}
+                    catch(InvalidOperationException){serverRejected=true;}
+                    Check(serverRejected && server.Diagnostics.RejectedSends==1 &&
+                        server.Diagnostics.LastFailure.Kind==FTRFailureKind.ResourceExhausted,
+                        "无接收池的WS Server仍须在克隆前拒绝超预算异步发送");
                     Task sendA=Task.Run(()=>server.Send(a,0,a.Length,peer,CancellationToken.None));
                     Task sendB=Task.Run(()=>server.Send(b,0,b.Length,peer,CancellationToken.None));
                     Check(clientReceived.Wait(8000),"并发大消息未完整返回");

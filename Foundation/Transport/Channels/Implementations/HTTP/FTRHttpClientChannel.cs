@@ -24,6 +24,7 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
         {
             ct.ThrowIfCancellationRequested();
             _client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(_config.RequestTimeoutMs) };
+            ConfigureSendAdmission(_config);
             return Task.CompletedTask;
         }
         protected override async Task OnSendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
