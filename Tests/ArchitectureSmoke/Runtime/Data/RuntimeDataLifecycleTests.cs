@@ -40,6 +40,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RuntimeDataLifecyclePolicyTests.Run();
             CommittedFrameReleaseAccountsBudget();
             StaticDagReclaimsAfterAllConsumers();
+            DynamicRegionsMustRejectPrematureReclamation();
         }
 
         private static void CommittedFrameReleaseAccountsBudget()
@@ -125,6 +126,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "默认仍保守保留整Flow，低预算应明确失败，不能暗中更改旧行为");
             }
             finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void DynamicRegionsMustRejectPrematureReclamation()
+        {
+            var body = new MRKExecutionPlan("dynamic-body", new[] {
+                new MRKExecutionStep("write", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Value", 1);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Value", typeof(int) } })
+            });
+            var looping = new MRKExecutionStep("loop", new string[0],
+                (ctx, ct) => Task.FromResult((object)true),
+                loopRegion: new MRKLoopRegion(body, 2, (ctx, i) => i < 2));
+            bool rejected = false;
+            try
+            {
+                new MRKExecutionPlan("must-not-reclaim-loop",
+                    new[] { looping },
+                    reclaimCommittedWhenConsumersSettle: true);
+            }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected,
+                "动态Loop的CollectLoopOutputs仍可能引用历史Invocation，必须拒绝提前自动回收");
         }
 
         private static void Check(bool condition, string reason)
