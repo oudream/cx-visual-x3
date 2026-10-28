@@ -19,6 +19,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         private readonly Queue<FTRChannelFrame> _frames = new Queue<FTRChannelFrame>();
         private int _retainedEvidenceBytes;
         private long _sequence;
+        private Guid _sessionId;
         private FTRChannelState _state = FTRChannelState.Closed;
         private readonly FTRChannelDiagnostics _diagnostics=new FTRChannelDiagnostics();
         private FTRReceivePipeline _receivePipeline;
@@ -31,10 +32,10 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         protected FTRChannelBase(string id, FTRChannelTopology topology)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("通道 Id 不可为空");
-            Id = id.Trim(); Topology = topology; SessionId = Guid.NewGuid();
+            Id = id.Trim(); Topology = topology; _sessionId = Guid.NewGuid();
         }
         public string Id { get; private set; }
-        public Guid SessionId { get; private set; }
+        public Guid SessionId { get {lock(_gate)return _sessionId;} }
         public FTRChannelTopology Topology { get; private set; }
         public FTRChannelState State { get { lock (_gate) return _state; } }
         public event Action<FTRChannelReceiveContext> Received;
@@ -69,6 +70,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 if (_state != FTRChannelState.Closed)
                     throw new InvalidOperationException("通道只能从 Closed 打开");
                 // 先改变状态，再启动异步接收，避免高速回环包在 Closed 状态被丢弃。
+                _sessionId = Guid.NewGuid(); // 新Open不得沿用旧物理连接的SessionId
                 _state = FTRChannelState.Opening;
             }
             NotifyState();
