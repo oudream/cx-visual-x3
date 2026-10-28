@@ -58,6 +58,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private string _annotationText = "标注";
         private FIMPixelRegion? _region;
         private readonly MVIImageDisplayState _displayState = new MVIImageDisplayState();
+        // 仅呈现层风格预设，不另存图元或建立第二OverlayStore。
+        private readonly Dictionary<MVIImageOverlayLayer,int> _overlayLayerColors =
+            new Dictionary<MVIImageOverlayLayer,int>();
 
         public MPWImageViewerControl()
         {
@@ -1768,11 +1771,50 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             canvas.Children.Add(line);
         }
 
+        /// <summary>图层默认颜色属于当前Viewer外观，现有图元仍由唯一MVI Store管理。</summary>
+        public int GetOverlayLayerColor(MVIImageOverlayLayer layer)
+        {
+            VerifyAccess();
+            if (!Enum.IsDefined(typeof(MVIImageOverlayLayer),layer))
+                throw new ArgumentOutOfRangeException("layer");
+            int argb;
+            if (_overlayLayerColors.TryGetValue(layer,out argb))return argb;
+            switch(layer)
+            {
+                case MVIImageOverlayLayer.Roi: return unchecked((int)0xff0da6c3);
+                case MVIImageOverlayLayer.Measurement: return unchecked((int)0xffe6a422);
+                case MVIImageOverlayLayer.Annotation: return unchecked((int)0xffb9306e);
+                case MVIImageOverlayLayer.Defect: return unchecked((int)0xffe9473d);
+                default: return unchecked((int)0xffff4040);
+            }
+        }
+        public void SetOverlayLayerColor(MVIImageOverlayLayer layer,int argb)
+        {
+            VerifyAccess();
+            if (!Enum.IsDefined(typeof(MVIImageOverlayLayer),layer))
+                throw new ArgumentOutOfRangeException("layer");
+            _overlayLayerColors[layer]=argb;
+            // 已锁定项不能绕过MVI编辑保护；现有其余项保留Id/坐标/层级。
+            foreach(MVIImageOverlayItem item in _overlays.Items)
+                if(item.Layer==layer && !item.IsLocked && item.Argb!=argb)
+                    _overlays.Replace(item.WithStyle(argb,item.LineWidth));
+        }
+        private MVIImageOverlayItem ApplyLayerDefaultColor(MVIImageOverlayItem item)
+        {
+            if(item==null)throw new ArgumentNullException("item");
+            int argb;
+            // 只有使用构造函数默认色的新增WPF图元采用用户层色。
+            // 保留算法证据/导入图元显式ARBG，不覆盖其专业语义。
+            if(!item.IsLocked && item.Argb==unchecked((int)0xffff4040) &&
+               _overlayLayerColors.TryGetValue(item.Layer,out argb))
+                return item.WithStyle(argb,item.LineWidth);
+            return item;
+        }
         public MVIImageOverlayItem AddOverlay(MVIImageOverlayItem item)
         {
             VerifyAccess();
             if (ActiveImage == null) throw new InvalidOperationException("图像未加载。");
-            return _overlays.Add(item);
+            return _overlays.Add(ApplyLayerDefaultColor(item));
         }
 
         /// <summary>在WPF所属线程一次写入已校验的叠加项并触发一次重绘。</summary>
@@ -1780,7 +1822,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             if (ActiveImage == null) throw new InvalidOperationException("图像未加载。");
-            return _overlays.AddRange(items);
+            if(items==null)throw new ArgumentNullException("items");
+            return _overlays.AddRange(items.Select(ApplyLayerDefaultColor).ToArray());
         }
 
         /// <summary>用于API层创建多边形/检测缺陷/算法结果，无需将标注坐标转成WPF类型。</summary>
