@@ -16,6 +16,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (args != null && args.Length == 2 && args[0] == "--channel-shm-child")
+                    return ModuleChannelTransportSmokeTests.RunSharedMemoryChild(args[1]);
                 if (args != null && args.Length == 3 && args[0] == "--channel-pipe-child")
                     return FTRNamedPipeBulkTests.RunChild(args[1], args[2]);
                 if (args != null && args.Length == 2 && args[0] == "--command-pipe-child")

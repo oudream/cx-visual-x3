@@ -104,6 +104,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             WebSocketLoopback();
             WebSocketServerLoopback();
             SharedMemoryLoopback();
+            SharedMemoryCrossProcess();
             ReplayFileLoopback();
             MulticastConfigurationSmoke();
             HttpLoopback();
@@ -413,6 +414,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 a.Close();b.Close();
             }
             Console.WriteLine("F17.SHARED_MEMORY PASS: real named MMF two-ended bounded ring, integrity and close");
+        }
+
+
+        public static int RunSharedMemoryChild(string map)
+        {
+            var conf=new FTRSharedMemoryChannelConfiguration {
+                Id="shm-cross-child",MapName=map,Side=FTRSharedMemorySide.B,
+                Slots=4,SlotBytes=4096,ReceiveBufferBytes=4096,ReceiveByteBudget=16384,QueueCapacity=4
+            };
+            using(var channel=new FTRSharedMemoryChannel(conf))
+            using(var reply=new ManualResetEventSlim())
+            {
+                channel.Received += data => {
+                    if(data.Data.SequenceEqual(new byte[]{55,66,77}))reply.Set();
+                };
+                channel.Open();
+                byte[] sent=new byte[8193];
+                for(int i=0;i<sent.Length;i++)sent[i]=(byte)(i%239);
+                channel.Send(sent);
+                Check(reply.Wait(8000),"跨进程共享内存子进程必须真实接收父进程响应");
+                channel.Close();
+            }
+            Console.WriteLine("F17.SHM_CHILD_PASS");
+            return 0;
+        }
+        private static void SharedMemoryCrossProcess()
+        {
+            string name="f17cp_"+Guid.NewGuid().ToString("N");
+            var conf=new FTRSharedMemoryChannelConfiguration {
+                Id="shm-cross-parent",MapName=name,Side=FTRSharedMemorySide.A,
+                Slots=4,SlotBytes=4096,ReceiveBufferBytes=4096,ReceiveByteBudget=16384,QueueCapacity=4
+            };
+            using(var channel=new FTRSharedMemoryChannel(conf))
+            using(var dataReady=new ManualResetEventSlim())
+            {
+                var observed=new List<byte>();object gate=new object();
+                channel.Received += block => {
+                    bool complete=false;
+                    lock(gate)
+                    {
+                        observed.AddRange(block.Data);
+                        complete=observed.Count==8193;
+                    }
+                    if(complete)
+                    {
+                        dataReady.Set();
+                        channel.Send(new byte[]{55,66,77});
+                    }
+                };
+                channel.Open();
+                var info=new System.Diagnostics.ProcessStartInfo(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location,
+                    "--channel-shm-child "+name) {
+                    UseShellExecute=false,CreateNoWindow=true,
+                    RedirectStandardOutput=true,RedirectStandardError=true
+                };
+                using(var child=System.Diagnostics.Process.Start(info))
+                {
+                    Check(child!=null,"共享内存跨进程测试必须创建独立子进程");
+                    Task<string> output=child.StandardOutput.ReadToEndAsync();
+                    Task<string> error=child.StandardError.ReadToEndAsync();
+                    bool exited=child.WaitForExit(10000);
+                    if(!exited){child.Kill();child.WaitForExit(3000);}
+                    Check(exited && child.ExitCode==0,
+                        "共享内存跨进程子进程失败: "+(exited?error.GetAwaiter().GetResult():"timeout"));
+                    Check(output.GetAwaiter().GetResult().Contains("F17.SHM_CHILD_PASS"),
+                        "共享内存子进程成功结果必须真实输出");
+                }
+                Check(dataReady.IsSet,"真实子进程输入字节没有到达父进程");
+                byte[] expected=new byte[8193];
+                for(int i=0;i<expected.Length;i++)expected[i]=(byte)(i%239);
+                lock(gate)Check(observed.SequenceEqual(expected),"跨进程共享环顺序、长度或内容不一致");
+                channel.Close();
+            }
+            Console.WriteLine("F17.SHARED_MEMORY_CROSS_PROCESS PASS: real child process, 8193 bytes and response");
         }
 
         private static byte[] ReadExactly(NetworkStream stream, int count)
