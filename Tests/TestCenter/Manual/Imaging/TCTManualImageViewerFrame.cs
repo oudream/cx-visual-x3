@@ -60,6 +60,7 @@ namespace CxVisual.TestCenter.UI
         private FIMImageBuffer _cpuSourceImage;
         private string _cpuSourceId;
         private CxVisionRunSummary _cpuEvidence;
+        private FIMImageBuffer _cpuDisplayedMask;
         public CxVisionRunSummary CpuEvidence { get { return _cpuEvidence; } }
 
         private readonly CheckBox _growEightConnected=new CheckBox {
@@ -154,6 +155,14 @@ namespace CxVisual.TestCenter.UI
                     _cpuSourceId = _cpuSourceImage == null ? null :
                         "testcenter.imaging/" + Guid.NewGuid().ToString("N");
                     _cpuEvidence = null;
+                    _cpuDisplayedMask = null;
+                }
+                else if (_cpuEvidence != null &&
+                         !ReferenceEquals(_viewer.Session.Result, _cpuDisplayedMask))
+                {
+                    // 其他图像操作已替换结果槽：旧Mask证据不再对应当前可视图。
+                    _cpuEvidence = null;
+                    _cpuDisplayedMask = null;
                 }
                 CancelAnalysis();
                 FIMImageBuffer current = _viewer.ActiveImage;
@@ -257,6 +266,7 @@ namespace CxVisual.TestCenter.UI
                     mask.Image.Width != original.Width || mask.Image.Height != original.Height)
                     throw new InvalidOperationException("运行结果来源或掩码坐标与当前原图不匹配。");
                 _viewer.ShowResult(mask.Image);
+                _cpuDisplayedMask = mask.Image;
                 _cpuEvidence = evidence;
                 var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
                 Show("真实CPU检测完成：阈值命中=" +
@@ -265,7 +275,12 @@ namespace CxVisual.TestCenter.UI
                     evidence.RunId.ToString("N") + "。结果图是阈值Mask，原图未修改。");
             }
             catch (OperationCanceledException) { }
-            catch (Exception error) { Show("CPU视觉检测失败：" + error.Message); }
+            catch (Exception error)
+            {
+                // 被新Run/新图取代的旧异常不能覆盖当前用户状态。
+                if (request == null || ReferenceEquals(request, _cpuRunCancellation))
+                    Show("CPU视觉检测失败：" + error.Message);
+            }
             finally
             {
                 if (request != null)
