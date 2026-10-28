@@ -440,6 +440,10 @@ namespace CxVisual.TestCenter.UI
                 "  TX率="+(d.SendBytesPerSecond/1024.0).ToString("F1")+" KiB/s"+
                 "  RX率="+(d.ReceiveBytesPerSecond/1024.0).ToString("F1")+" KiB/s"+
                 "  Rejected="+d.RejectedSends+
+                (d.PayloadBufferByteBudget>0 ?
+                    "  多端在途="+d.BufferedPayloadBytes+"/"+d.PayloadBufferByteBudget+
+                    " B  峰值="+d.PeakBufferedPayloadBytes+
+                    " B  预算拒绝="+d.RejectedPayloadBuffers : "")+
                 (q==null ? "" : "  Pool="+q.InUseBytes+"/"+((long)q.BufferSize*q.Capacity)+" B"+
                     "  Backpressure="+q.BackpressureWaits)+
                 "\n最近故障："+failure+
