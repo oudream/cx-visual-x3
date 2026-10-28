@@ -157,3 +157,16 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 单次Windows Runner数值：`AddViewsInto(reused)`0.8605ms/176B，`AddViews(allocating)`0.9735ms/525468B；`ReduceSumViewInto(reused)`0.4860ms/4272B，`ReduceSumView(allocating)`0.4927ms/6512B。数据是诊断性结果，不构成p95或不同CPU上的性能验收。不可将其他Owner的F17或M1/M2失败归为Numerics代码失败，也不可反过来把Numerics专项PASS说成整个工作流PASS。
 
 **复跑结论补录（同SHA #40643586096，Attempt 2）**：Windows全方案Build、Owner/DAG、Numerics数值质量、固定随机Oracle和独立Benchmark再次PASS；全量ArchitectureSmoke再次在“运行时数据M1/M2验收：显式opt-in后可在100字节预算内完成双消费者与结果交接”失败。两次同SHA失败复现，属于运行时数据/机制Owner，Numerics本轮不擅自修复其他Owner代码，整体workflow仍为failure。
+
+## 2026-10-28 Buffer连续张量优化验收 N48～N51
+
+| 编号 | 测试与质量合同 | 固定SHA证据 |
+|---|---|---|
+| N48 | Buffer AddInto/MultiplyInto改用预计算Stride和坐标游标，60组固定随机三维Shape的独立原始数组逐点数值参考 | `7206084` [#40647612288](https://github.com/oudream/cx-visual-x3/actions/runs/40647612288) Numerics PASS |
+| N49 | 尾轴Rank1广播、零长维度、首输出溢出不改变已有结果 | 同N48，Numerics专项PASS |
+| N50 | Buffer ReduceSumInto沿轴输出复用、45组随机Shape/三个轴独立参考、rank1数值抵消、空轴/别名/溢出原子性 | `626cb78` [#40648092926](https://github.com/oudream/cx-visual-x3/actions/runs/40648092926) Numerics PASS |
+| N51 | Buffer.Slice保持独立副本，用View游标复制；随机完整/空切片与View.GetFlat oracle比较、修改副本后源数据不变；归约基准实测 | 同N50，Windows构建+数值专项+benchmark PASS |
+
+代码SHA `626cb78a48d95454cccd2790eefc00919f8e5e9d`：全方案.NET48/x64构建、Owner/DAG、Numerics数值质量和性能诊断成功；完整ArchitectureSmoke仍为F17.PIPE_BULK子进程失败，**Workflow整体失败**。
+
+该次CI中 `ReduceSumInto` 0.7487ms/4456B，分配式 `ReduceSum` 0.6672ms/6696B：仅证实减少2240B/次分配，不证明加速；`AddInto` 0.7265ms/144B，`MultiplyInto` 0.6750ms/144B为单机绝对读数，不是对应旧算法的同机A/B加速证明。针对切片仍需补独立微基准与大规模样本，防止仅凭代码结构宣称性能改善。
