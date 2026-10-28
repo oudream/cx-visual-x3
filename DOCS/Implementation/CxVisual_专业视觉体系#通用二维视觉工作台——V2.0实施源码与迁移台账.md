@@ -134,3 +134,22 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 | FIMImageBuffer与CxVisionGrayFrame | 先做8/16位、Stride/字节序/复制与同样本数值互通审查，不急于第三种原始像素类 |
 
 设计推进顺序：先完成Owner/接口与依赖核对→Image/Operation/Result最短链→MEM/MOL/MOC/MRK完整执行→工程ROI持久化与复核→批量/实时/大图及专业SDK。对应00四个Gate、02 X01—X07以及03—08专题；后续真正编码仍须固定提交SHA、Windows CI与用户操作/专业数据验收。此节只记录设计审查事实，未运行本轮Windows构建。
+
+## 11. 三核心契约的源码审查收敛与实现前置条件（2026-10-28）
+
+本轮重新读取最新master相关代码后确认：Foundation.Imaging的FIMImageBuffer公共构造复制像素，具有Stride/Gray16小端/GrayFloat32和色彩灰度语义；FIMPixelSpacing使用独立X/Y毫米每像素；PVC有真实CxVisionGrayFrame、CxVisionInspectionResult和CxVisionDataFlow。工程/流程层已有MPMTypeDescriptor/MPCPortDescriptor、MOCCapabilityDescriptor/MOCCapabilityCatalog、MOLWiringDefinition、MOCFlowBuilder和MOCEngineeringCompiler.Compile；运行层已有MRKExecutionInput/Output、MDSDataContext、FDTDataAdapterRegistry。
+
+**补充裁决**：工程MPCPortDescriptor的TypeId是字符串，运行MRKExecutionInput的ValueType是CLR Type；参数MPMValue支持工程标量/资源引用而不是承载Image/Mask运行像素。因此Vision首先需要真实的专业TypeId与运行数据映射/校验，而非另造端口/参数管理系统。MOC的Catalog展示与Provider实际RuntimeAvailable必须分开。
+
+| 工作包 | 最低可验证交付 | 新增类型批准条件 |
+|---|---|---|
+| W-DATA-01 | FIM与CxVisionGrayFrame Gray8/16、Stride、颜色/所有权和内存副本对照 | 同样本有不兼容且FDT适配无法安全覆盖 |
+| W-DATA-02 | ImageFrame来源/FrameId/代次/Mask空间/Artifact状态模型 | 实际两种源（文件与相机或回放）共享稳定合同 |
+| W-ALG-01 | MPM专业vision.* TypeId+参数Schema、MOC Capability目录及Runtime真实可用性 | 无法用现有MPM/MPC表达的专业字段明确且可测试 |
+| W-ALG-02 | 工程Data/Control线→MOC→MRK具名输入输出，算法错误/取消可追溯 | 先用已有MOL+MRK，禁止新VisionGraphExecutor |
+| W-RES-01 | 一个Run含Image/Mask/Geometry/Measurement并能按SourceRef定位 | 专业Run/ResultItem对象确需持久身份，现有结果无法组合满足 |
+| W-RES-02 | ROI显式Promote、MEM撤销/保存重开、历史Run稳定 | 不允许引入第二工程树或ViewerUndo |
+| W-UI-01 | 同一工作台算法可无头和WPF调用，Result表与图窗联动 | 真实两个消费者再决定是否增加专业Facade |
+| W-RUNTIME-01 | 真实有界帧身份、Backpressure与资源归还 | MDSBoundedByteStream的字节块接口无法单独承载Frame语义 |
+
+**未完成**：W-DATA/W-ALG/W-RES等为实施门禁而非已提交的C#功能；本轮文档更改没有运行Windows CI或实机。后续新增源代码必须在此表记录Owner、真实路径、对应版本、Commit SHA及数值/WPF/CI/SDK证据。
