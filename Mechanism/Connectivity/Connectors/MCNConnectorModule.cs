@@ -66,12 +66,14 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = true;
             }
             transport.Received += HandleReceived;
+            transport.StateChanged += HandleChannelStateChanged;
             FTRMultiChannelBase multiPeer = transport as FTRMultiChannelBase;
             if (multiPeer != null) multiPeer.PeerRemoved += HandlePeerRemoved;
             try { await transport.OpenAsync(ct).ConfigureAwait(false); }
             catch
             {
                 transport.Received -= HandleReceived;
+                transport.StateChanged -= HandleChannelStateChanged;
                 if (multiPeer != null) multiPeer.PeerRemoved -= HandlePeerRemoved;
                 IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
                 if (cleanup != null) cleanup.ResetAll();
@@ -90,6 +92,7 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = false;
             }
             transport.Received -= HandleReceived;
+            transport.StateChanged -= HandleChannelStateChanged;
             FTRMultiChannelBase multiPeer = transport as FTRMultiChannelBase;
             if (multiPeer != null) multiPeer.PeerRemoved -= HandlePeerRemoved;
             try { await transport.CloseAsync(ct).ConfigureAwait(false); }
@@ -101,6 +104,14 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
 
+        // 故障或重新Open意味着旧连接半包、事务与会话已经失效。
+        // 规约缓存只由Mechanism唯一Owner清理，Transport不解释Protocol。
+        private void HandleChannelStateChanged(FTRChannelState state)
+        {
+            if(state != FTRChannelState.Faulted && state != FTRChannelState.Opening)return;
+            IMPAProtocolSessionCleanup cleanup=Protocol as IMPAProtocolSessionCleanup;
+            if(cleanup!=null)cleanup.ResetAll();
+        }
         private void HandlePeerRemoved(FTRSubChannelAddress address)
         {
             IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
