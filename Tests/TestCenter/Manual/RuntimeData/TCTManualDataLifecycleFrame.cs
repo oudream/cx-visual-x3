@@ -61,7 +61,7 @@ namespace CxVisual.TestCenter.UI
                     }), () => !_closed),
                     new TCTWorkspaceAction("lifecycle.retain", "临时保留", () => Guard(() => {
                         if (_retentionHold != null) throw new InvalidOperationException("已有保留凭证");
-                        _retentionHold = _heap.Lifecycle.Retain(SelectedName());
+                        _retentionHold = _heap.Lifecycle.Retain(SelectedName(), "TestCenter.Manual");
                     }), () => !_closed),
                     new TCTWorkspaceAction("lifecycle.release-retention", "解除保留", () => Guard(() => {
                         if (_retentionHold == null) throw new InvalidOperationException("无保留凭证");
@@ -267,6 +267,7 @@ namespace CxVisual.TestCenter.UI
                     "\nAdmission Closed: " + snap.ConsumerAdmissionClosed +
                     "\nTTL: " + (snap.ExpiresUtc.HasValue ? snap.ExpiresUtc.Value.ToString("O") : "none") +
                     "\nBlockers: " + string.Join(", ", snap.Blockers) +
+                    "\nRetention Reasons: " + string.Join(", ", snap.RetentionReasons) +
                     "\nOwnership: Move=" + snap.Policy.Ownership.AllowMove +
                     ", Copy=" + snap.Policy.Ownership.AllowCopy +
                     "\nLifetime: ConsumerBound=" + snap.Policy.Lifetime.ConsumerBound +
