@@ -181,7 +181,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         throw new InvalidOperationException("文件加载结果过期，禁止发布");
                     if (canPublish != null && !canPublish())
                         throw new ObjectDisposedException("节点已结算，文件数据不能迟到发布");
-                    if (Budget != null) Budget.Reserve(cachedBytes);
+                    if (Budget != null) ReserveHeapBudgetWithPressure(cachedBytes, name);
                     entry.Cache = owned;
                     entry.CachedBytes = cachedBytes;
                     entry.State = MDSDataLoadState.Loaded;
