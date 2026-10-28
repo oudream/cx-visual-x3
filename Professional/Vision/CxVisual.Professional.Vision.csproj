@@ -29,7 +29,7 @@
     <ProjectReference Include="..\..\Mechanism\Orchestration\CxVisual.Mechanism.Orchestration.csproj"><Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Orchestration</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
-    <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{A929D0EF-9E94-518E-A5BB-E328B4F69063}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference>
+    <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{1626A969-FF77-560F-AA00-53D010AD01B3}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
