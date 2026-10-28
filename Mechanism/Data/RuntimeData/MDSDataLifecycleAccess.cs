@@ -274,7 +274,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
 
         private bool TrySweepRecord(string name, MDSDataLifecycleRecord record, DateTime nowUtc)
         {
-            if (!IsAutoEligible(record, nowUtc) || LifecycleBlockers(record).Count != 0)
+            if (!IsAutoEligible(record, nowUtc) || LifecycleBlockers(record).Count != 0 ||
+                (record.Policy.Lifetime.ConsumerBound && !record.Closed))
                 return false;
             // FileLocator是持久路径说明，不是加载缓存。TTL只卸载已加载内容；
             // 只有显式ReleaseEligible或整个Heap关闭才移除定位符。
@@ -355,7 +356,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     MDSDataLifecycleRecord record;
                     if (!_lifecycles.TryGetValue(name, out record) ||
                         !record.Policy.Reclamation.ReleaseOnPressure ||
-                        LifecycleBlockers(record).Count != 0) continue;
+                        LifecycleBlockers(record).Count != 0 ||
+                        (record.Policy.Lifetime.ConsumerBound && !record.Closed)) continue;
                     MDSDataFileEntry file;
                     if (_files.TryGetValue(name, out file))
                     {
@@ -387,6 +389,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private void ReserveHeapBudgetWithPressure(long bytes, string excludeName)
         {
             if (Budget == null) return;
+            if (bytes > Budget.LimitBytes)
+            {
+                // 单项本身超过全部预算，不能为必然失败的请求驱逐现有缓存。
+                Budget.Reserve(bytes);
+                return;
+            }
             long available = Budget.LimitBytes - Budget.RetainedBytes;
             if (bytes > available)
                 SweepLifecyclePressure(bytes - available, excludeName);
