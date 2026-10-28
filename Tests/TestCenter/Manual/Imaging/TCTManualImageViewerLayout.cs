@@ -28,8 +28,13 @@ namespace CxVisual.TestCenter.UI
         // 仅保存可视按钮映射；真实工具状态仍以唯一MPW.ToolMode为准。
         private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
             _regionToolButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
-        private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
-            _categoryButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
+        private Slider _windowWidthSlider,_windowCenterSlider;
+        private readonly TextBox _windowWidthInput=new TextBox { Width=72,Text="65535",Margin=new Thickness(2) };
+        private readonly TextBox _windowCenterInput=new TextBox { Width=72,Text="32767.5",Margin=new Thickness(2) };
+        private readonly CheckBox _windowEnabled=new CheckBox { Content="应用窗宽窗位",IsChecked=false,Margin=new Thickness(4) };
+        private readonly CheckBox _windowRoi=new CheckBox { Content="框选自动取窗",IsChecked=false,Margin=new Thickness(4) };
+        private bool _syncingWindowControls;
+        private double _windowLimit=65535;
         private bool _syncingDisplayInputs;
         private readonly TextBlock _windowMode = new TextBlock {
             Text = "当前显示：自动窗宽/窗位", Foreground = Brushes.SteelBlue,
@@ -308,44 +313,9 @@ namespace CxVisual.TestCenter.UI
             _regionToolButtons[mode]=button;
             return button;
         }
-        private static bool InCategory(MVIImageToolMode active,MVIImageToolMode category)
+         private void UpdateRegionToolHighlight()
         {
-            if (category == MVIImageToolMode.RectangleRoi)
-                return active == MVIImageToolMode.RectangleRoi ||
-                    active == MVIImageToolMode.CircleRoi ||
-                    active == MVIImageToolMode.EllipseRoi ||
-                    active == MVIImageToolMode.RotatedRectangleRoi ||
-                    active == MVIImageToolMode.PolygonRoi;
-            if (category == MVIImageToolMode.Distance)
-                return active == MVIImageToolMode.Distance ||
-                    active == MVIImageToolMode.Angle ||
-                    active == MVIImageToolMode.LinePair ||
-                    active == MVIImageToolMode.HorizontalDistance ||
-                    active == MVIImageToolMode.VerticalDistance ||
-                    active == MVIImageToolMode.Diameter ||
-                    active == MVIImageToolMode.Area ||
-                    active == MVIImageToolMode.PolygonArea ||
-                    active == MVIImageToolMode.LineProfile;
-            if (category == MVIImageToolMode.Point)
-                return active == MVIImageToolMode.Point ||
-                    active == MVIImageToolMode.Text ||
-                    active == MVIImageToolMode.Arrow;
-            return category == MVIImageToolMode.DefectBox &&
-                active == MVIImageToolMode.DefectBox;
-        }
-        private void UpdateRegionToolHighlight()
-        {
-            foreach (var category in _categoryButtons)
-            {
-                bool selected = InCategory(_viewer.ToolMode, category.Key);
-                category.Value.BorderBrush = selected ? Paint(24,90,170) : Paint(207,222,239);
-                category.Value.BorderThickness = new Thickness(selected ? 3 : 1);
-                category.Value.FontWeight = selected ? FontWeights.Bold : FontWeights.Normal;
-                AutomationProperties.SetHelpText(category.Value, selected ?
-                    "已选中，在左侧图像上绘制；工具分类与图层可见性是两种不同操作。" :
-                    "点击切换绘制工具，下面的复选框仅控制图层可见性。");
-            }
-            foreach(var entry in _regionToolButtons)
+             foreach(var entry in _regionToolButtons)
             {
                 bool selected=_viewer.ToolMode==entry.Key;
                 entry.Value.Background=selected ? Paint(218,237,255) : Brushes.White;
@@ -369,48 +339,8 @@ namespace CxVisual.TestCenter.UI
         private UIElement BuildDisplayPage()
         {
             StackPanel content = Column();
-            content.Children.Add(Heading("绘制工具  ·  点击选择后在图像上操作"));
-            WrapPanel modes = Row();
-            foreach (var choice in new[] {
-                Tuple.Create("ROI",MVIImageToolMode.RectangleRoi,Color.FromRgb(13,166,195)),
-                Tuple.Create("测量",MVIImageToolMode.Distance,Color.FromRgb(230,164,34)),
-                Tuple.Create("标注",MVIImageToolMode.Point,Color.FromRgb(185,48,110)),
-                Tuple.Create("缺陷",MVIImageToolMode.DefectBox,Color.FromRgb(233,71,61)) })
-            {
-                MVIImageToolMode selectedMode = choice.Item2;
-                Button tool = Action(modes,choice.Item1,"SelectMode."+choice.Item1,
-                    ()=>SelectTool(selectedMode));
-                tool.Width=69; tool.MinHeight=34; tool.Padding=new Thickness(2);
-                tool.Background=new SolidColorBrush(choice.Item3);
-                tool.Foreground=Brushes.White;
-                tool.ToolTip="选择"+choice.Item1+"绘制工具，不是修改颜色";
-                _categoryButtons[selectedMode]=tool;
-            }
-            content.Children.Add(modes);
-            content.Children.Add(Hint("选择类别后在左侧图像拖动/点击绘制；下方复选框只控制图层可见性。"));
-            content.Children.Add(Heading("选中对象改色  ·  须先选中一个图元"));
-            WrapPanel colors = Row();
-            // 旧Viewer的Overlay颜色操作不能退化为四块无法点击的装饰色块。
-            foreach (Tuple<string,Color> c in new[] {
-                Tuple.Create("ROI",Color.FromRgb(13,166,195)),
-                Tuple.Create("测量",Color.FromRgb(230,164,34)),
-                Tuple.Create("标注",Color.FromRgb(185,48,110)),
-                Tuple.Create("缺陷",Color.FromRgb(233,71,61)) })
-            {
-                Color preset=c.Item2;
-                Button swatch=Action(colors,"设"+c.Item1+"色","OverlayColor."+c.Item1,
-                    ()=>SetSelectedOverlayColor(preset));
-                swatch.Width=69;swatch.Height=29;swatch.MinHeight=29;
-                swatch.Padding=new Thickness(2);
-                swatch.Background=new SolidColorBrush(preset);
-                swatch.Foreground=Brushes.White;
-                swatch.BorderThickness=new Thickness(1);
-                swatch.ToolTip="将选中的ROI、测量或标注对象设置为"+c.Item1+
-                    "颜色；锁定对象需先解锁。";
-                AutomationProperties.SetHelpText(swatch,
-                    "选择对象后点击此颜色即可实际修改Overlay绘制样式。");
-            }
-            content.Children.Add(colors);
+            content.Children.Add(Heading("图层显示与交互"));
+            content.Children.Add(Hint("工具在【区域】【测量】【标注】等专业页签及顶部快捷栏操作，左侧图像直接绘制。"));
             WrapPanel visibility = Row(_showRoi,_showMeasurements,_showAnnotations,_showDefects);
             foreach (CheckBox check in visibility.Children.OfType<CheckBox>())
                 check.Margin = new Thickness(8,5,10,5);
@@ -428,38 +358,79 @@ namespace CxVisual.TestCenter.UI
         }
         private UIElement BuildWindowPage()
         {
-            StackPanel content = Column();
-            content.Children.Add(Heading("原始灰度窗宽 / 窗位"));
+            StackPanel content=Column();
+            content.Children.Add(Heading("窗宽 / 窗位 · 原始灰度映射"));
+            AutomationProperties.SetAutomationId(_windowEnabled,"TCT.Imaging.WindowEnabled");
+            AutomationProperties.SetAutomationId(_windowRoi,"TCT.Imaging.WindowRoi");
+            content.Children.Add(Row(_windowEnabled,_windowRoi));
+            content.Children.Add(WindowSliderRow("窗宽",_windowWidthInput,true,out _windowWidthSlider));
+            content.Children.Add(WindowSliderRow("窗位",_windowCenterInput,false,out _windowCenterSlider));
+            _windowEnabled.Checked+=(sender,args)=>{if(!_syncingWindowControls) ApplyWindowFromSlider();};
+            _windowEnabled.Unchecked+=(sender,args)=>{if(!_syncingWindowControls) ResetWindowOnly();};
+            WrapPanel actions=Row();
+            Action(actions,"应用窗宽窗位","Window",Window);
+            Action(actions,"刷新窗值","AutoWindow",AutoWindow);
+            Action(actions,"恢复自动","ResetWindow",ResetWindowOnly);
+            content.Children.Add(actions);
+            content.Children.Add(_windowMode);
+            content.Children.Add(Hint("拖动滑条松开即生效；可输入窗宽/窗位按回车。勾选框选自动取窗后点刷新窗值。"));
+            Expander advanced=new Expander { Header="高级：直接设置窗下限与上限",Margin=new Thickness(3),IsExpanded=false };
+            StackPanel limits=Column();
             AutomationProperties.SetAutomationId(_low,"TCT.Imaging.WindowLow");
             AutomationProperties.SetAutomationId(_high,"TCT.Imaging.WindowHigh");
-            content.Children.Add(Row(Label("窗下限"),_low));
-            content.Children.Add(Row(Label("窗上限"),_high));
-            _low.KeyDown += (sender,e) => {
-                if (e.Key==Key.Enter) { ApplyWindowFromInput(); e.Handled=true; }
-            };
-            _high.KeyDown += (sender,e) => {
-                if (e.Key==Key.Enter) { ApplyWindowFromInput(); e.Handled=true; }
-            };
-            WrapPanel actions = Row();
-            Action(actions,"应用窗宽窗位","Window",Window);
-            Action(actions,"自动对比度","AutoWindow",AutoWindow);
-            Action(actions,"还原显示","ResetWindow",ResetDisplay);
-            content.Children.Add(_windowMode);
-            content.Children.Add(actions);
-            content.Children.Add(Hint("窗参数改变显示映射，不修改原始8/16/32位像素。"));
+            limits.Children.Add(Row(Label("下限"),_low,Label("上限"),_high));
+            Action(limits,"按上下限应用","WindowLimits",ApplyWindowFromLimits);
+            advanced.Content=limits; content.Children.Add(advanced);
             content.Children.Add(Heading("灰度参考与快速检查"));
-            WrapPanel more = Row();
+            WrapPanel more=Row();
             Action(more,"灰度统计","AnalyzeWindow",Calculate);
             Action(more,"灰度剖面","ProfileWindow",ShowLineProfile);
             content.Children.Add(more);
             return Scroll(content);
         }
+        private UIElement WindowSliderRow(string label,TextBox field,bool isWidth,out Slider slider)
+        {
+            Grid row=new Grid { Margin=new Thickness(2,9,2,9) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(43) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(80) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
+            row.Children.Add(Label(label));
+            slider=new Slider {
+                Minimum=isWidth?1:0, Maximum=_windowLimit,
+                Value=isWidth?_windowLimit:_windowLimit/2,
+                SmallChange=1,LargeChange=100,
+                AutoToolTipPlacement=System.Windows.Controls.Primitives.AutoToolTipPlacement.TopLeft,
+                AutoToolTipPrecision=1,Margin=new Thickness(4,0,6,0),
+                VerticalAlignment=VerticalAlignment.Center,MinWidth=74 };
+            Slider current=slider;
+            AutomationProperties.SetAutomationId(current,isWidth?
+                "TCT.Imaging.WindowWidthSlider":"TCT.Imaging.WindowCenterSlider");
+            AutomationProperties.SetAutomationId(field,isWidth?
+                "TCT.Imaging.WindowWidth":"TCT.Imaging.WindowCenter");
+            current.ValueChanged+=(sender,args)=>{
+                if(_syncingWindowControls)return;
+                field.Text=current.Value.ToString("0.###",CultureInfo.InvariantCulture);
+                SyncWindowLimitsFromCenterWidth();
+            };
+            current.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+                new System.Windows.Controls.Primitives.DragCompletedEventHandler(
+                    (sender,args)=>ApplyWindowFromSlider()));
+            current.PreviewMouseLeftButtonUp+=(sender,args)=>ApplyWindowFromSlider();
+            current.KeyUp+=(sender,args)=>ApplyWindowFromSlider();
+            field.KeyDown+=(sender,args)=>{
+                if(args.Key==Key.Enter){ApplyWindowFromSlider();args.Handled=true;}
+            };
+            Grid.SetColumn(field,1);row.Children.Add(field);
+            Grid.SetColumn(current,2);row.Children.Add(current);
+            return row;
+        }
         private UIElement BuildGrayPage()
         {
             StackPanel content = Column();
-            content.Children.Add(Heading("灰阶与显示增强"));
+            content.Children.Add(Heading("灰度拉伸与显示增强"));
+            content.Children.Add(Row(_autoContrast,_displayInverted));
             content.Children.Add(GraySliderRow("Gamma",_displayGamma,0.1,3.0,1.0,out _gammaSlider));
-            content.Children.Add(GraySliderRow("亮度",_displayBrightness,-1.0,1.0,0.0,out _brightnessSlider));
+            content.Children.Add(GraySliderRow("亮度",_displayBrightness,-255,255,0.0,out _brightnessSlider));
             content.Children.Add(GraySliderRow("对比度",_displayContrast,0.0,3.0,1.0,out _contrastSlider));
             AutomationProperties.SetAutomationId(_displayGamma,"TCT.Imaging.Gamma");
             AutomationProperties.SetAutomationId(_displayBrightness,"TCT.Imaging.Brightness");
@@ -471,12 +442,11 @@ namespace CxVisual.TestCenter.UI
                 check.Checked += (sender,args) => { if (!_syncingDisplayInputs) ApplyGraySliderChange(); };
                 check.Unchecked += (sender,args) => { if (!_syncingDisplayInputs) ApplyGraySliderChange(); };
             }
-            content.Children.Add(Row(_displayInverted,_autoContrast));
             WrapPanel buttons = Row();
             Action(buttons,"应用灰阶参数","ApplyDisplay",ApplyDisplay);
             Action(buttons,"全部复位","ResetDisplay",ResetDisplay);
             content.Children.Add(buttons);
-            content.Children.Add(Hint("拖动后松开鼠标才生成新的显示缓冲，避免大图在拖动期间反复复制；也可输入数值再点应用。原像素不变。"));
+            content.Children.Add(Hint("Gamma 0.1～3.0；亮度 -255～255；对比度 0～3.0。滑动松开或输入回车后更新，不改原图。"));
             return Scroll(content);
         }
         /// <summary>滑块只在鼠标释放/键盘确认时提交处理，避免大图频繁同步重绘。</summary>
@@ -484,9 +454,11 @@ namespace CxVisual.TestCenter.UI
             double initial, out Slider slider)
         {
             Grid row = new Grid { Margin = new Thickness(2,7,2,7) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(65) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1,GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(61) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(35) });
             TextBlock label = Label(title);
             row.Children.Add(label);
             slider = new Slider { Minimum = min, Maximum = max, Value = initial,
@@ -500,7 +472,7 @@ namespace CxVisual.TestCenter.UI
             current.ValueChanged += (sender,args) =>
             {
                 if (!_changingGraySliders)
-                    field.Text = current.Value.ToString("0.###",CultureInfo.InvariantCulture);
+                    field.Text = current.Value.ToString(title=="亮度"?"0":"0.###",CultureInfo.InvariantCulture);
             };
             current.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
                 new System.Windows.Controls.Primitives.DragCompletedEventHandler(
@@ -511,9 +483,15 @@ namespace CxVisual.TestCenter.UI
             {
                 if(args.Key==Key.Enter) { ApplyGraySliderChange(); args.Handled=true; }
             };
-            Grid.SetColumn(current,1); row.Children.Add(current);
-            field.Width = 55; field.FontSize = 13;
-            Grid.SetColumn(field,2); row.Children.Add(field);
+            Grid.SetColumn(current,3);row.Children.Add(current);
+            field.Width=50;field.FontSize=12;
+            Grid.SetColumn(field,1);row.Children.Add(field);
+            TextBlock minimum=Label(min.ToString("0.##",CultureInfo.InvariantCulture));
+            minimum.FontSize=11;minimum.Foreground=Brushes.Gray;
+            Grid.SetColumn(minimum,2);row.Children.Add(minimum);
+            TextBlock maximum=Label(max.ToString("0.##",CultureInfo.InvariantCulture));
+            maximum.FontSize=11;maximum.Foreground=Brushes.Gray;
+            Grid.SetColumn(maximum,4);row.Children.Add(maximum);
             return row;
         }
         private void ApplyGraySliderChange()
@@ -616,8 +594,9 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(_overlayLabel,"TCT.Imaging.OverlayLabel");
             content.Children.Add(Row(Label("ARGB"),_overlayArgb,Label("线宽(px)"),_overlayLineWidth));
             content.Children.Add(Row(Label("文字/标签"),_overlayLabel));
+            Action(content,"选择颜色…","ChooseOverlayColor",ChooseOverlayColor);
             Action(content,"应用对象属性","ApplyOverlayProperties",ApplyOverlayProperties);
-            content.Children.Add(Hint("选中图元后可修改8位ARGB颜色、像素线宽和标签；锁定对象不能更改。"));
+            content.Children.Add(Hint("先在图像或列表选中图元，点“选择颜色…”打开系统颜色对话框；取消不修改对象。"));
             content.Children.Add(Hint("逐顶点模式：直接拖金色点移动；Shift＋点击边线插点；Alt＋点击金色点删点，或按索引使用上方按钮。锁定对象和自交/退化图形禁止修改；所有工具仍共享MVI原图坐标Store。"));
             return Scroll(content);
         }
