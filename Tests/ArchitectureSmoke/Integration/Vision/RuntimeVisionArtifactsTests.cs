@@ -5,6 +5,7 @@ using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Mechanism.Visual;
 using CxVisual.Professional.Vision;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -46,6 +47,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Gray16FIMStrideArtifacts();
             LegacyDefaultsAndAtomicFailure();
             ConcurrentFlowOwnership();
+            MviImageMaskProjection();
         }
 
         private static void OptInGray8ThresholdArtifacts()
@@ -175,6 +177,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<InvalidOperationException>(
                     () => CxVisionRunSummary.FromCpuFlow(bad, "bad"),
                     "执行失败不得生成有效Run结果");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>
+        /// 验证专业Run的FIM产物可直接交给现有MVI双槽；不需要第二Viewer状态。
+        /// 此处是UI无关状态集成，WPF视觉展示仍由Studio/TestCenter后续验收。
+        /// </summary>
+        private static void MviImageMaskProjection()
+        {
+            byte[] pixels = {
+                0xF4,0x01, 0xF4,0x01, 0xEE,0xEE,
+                0,0, 0,0, 0xEE,0xEE
+            };
+            FIMImageBuffer original = new FIMImageBuffer(2, 2,
+                FIMPixelFormat.Gray16, pixels, 6);
+            var inputs = CxVisionImageInterop.ToCpuInspectionInputs(original,
+                CxVisionPixelDepth.Bits16);
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
+            try
+            {
+                var run = engine.StartFlow(
+                    CxVisionDataFlow.CreateCpuInspectionPlanWithArtifacts(
+                        Options(CxVisionPixelDepth.Bits16, 400), 76), inputs)
+                    .Completion.GetAwaiter().GetResult();
+                Check(run.State == MRKFlowState.Completed, "Viewer映射用的真实Run失败");
+                var result = CxVisionRunSummary.FromCpuFlow(run, "XRay-Viewer/source-1");
+                var binary = result.Items.Single(i => i.Kind == CxVisionResultKind.Mask);
+                var session = new MVIImageSession();
+                session.SetOriginal(original);
+                // 上层选择必须先检查SourceId/RunId后，才向Viewer提交显示。
+                Check(binary.RunId == result.RunId &&
+                    binary.SourceId == result.SourceId &&
+                    binary.Image.Width == session.Original.Width &&
+                    binary.Image.Height == session.Original.Height,
+                    "产物来源、Run身份及坐标尺寸不一致");
+                session.SetResult(binary.Image);
+                session.Select(MVIImageSlot.Result);
+                Check(session.HasResult &&
+                    session.ActiveImage.PixelFormat == FIMPixelFormat.Gray8 &&
+                    session.ActiveImage.GetGrayValue(0, 0) == 255 &&
+                    session.Original.PixelFormat == FIMPixelFormat.Gray16 &&
+                    session.Original.GetGrayValue(0, 0) == 500,
+                    "Result Mask在MVI中投影错误或破坏原16位像素");
+                session.Select(MVIImageSlot.Original);
+                Check(session.ActiveImage.GetGrayValue(0, 0) == 500,
+                    "从Result返回Original时丢失原图位深");
+                session.SetOriginal(new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8,
+                    new byte[] { 5, 6, 7, 8 }));
+                Check(!session.HasResult && session.Result == null &&
+                    session.ActiveSlot == MVIImageSlot.Original &&
+                    session.ActiveImage.GetGrayValue(0, 0) == 5,
+                    "新原图加载后必须清理旧Run可视结果；历史Result留在专业Run而非Viewer");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
