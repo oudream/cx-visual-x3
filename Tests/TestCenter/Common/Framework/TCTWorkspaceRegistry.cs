@@ -116,6 +116,9 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("manual.variable", "manual.root", "变量中心测试",
                 "真实MDS变量/组织树/LatestOnly派发：定义、更新、分组与50K进程内压力；非现场PLC认证",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualVariableFrame()));
+            registry.Register(new TCTWorkspaceDescriptor("manual.data-lifecycle", "manual.root", "运行数据 · 五维生命周期",
+                "MDS真实Heap策略：五维独立/组合设置、消费者保活、保留、交接、TTL扫描及阻断原因；非GPU/设备实机",
+                TCTWorkspaceNodeKind.Leaf, () => new TCTManualDataLifecycleFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.imaging", "manual.root",
                 "二维工业视觉工作台",
                 "真实FIM/MVI/MPW二维图像：文件加载、16位浏览、ROI、分析、处理结果与PNG输出",
