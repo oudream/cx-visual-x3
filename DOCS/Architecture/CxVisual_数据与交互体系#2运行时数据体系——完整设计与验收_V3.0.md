@@ -1260,3 +1260,14 @@ try {
 - **最新固定SHA补验成功**：源码 00e14897b5fc 的 [MDS Windows专项 #40650288622](https://github.com/oudream/cx-visual-x3/actions/runs/40650288622) **Success**，包含工程Effective版本冻结与旧修订拒绝、真实Studio WPF ApplyAll点击、全解决方案Release x64、TestCenter 030～033及MDS测试。20,000轮SOAK实测 throughput/s=250778.4、p95=4.60µs、p99=20.70µs、逻辑峰值8192B、结束后0B；是短时托管CI指标，非设备验收。更早 bb88894efb01 的 [统一Runtime CI #40650206921](https://github.com/oudream/cx-visual-x3/actions/runs/40650206921) 同样Success，跨模块回归须继续在最新master保持。
 
 **仍未闭环**：GPU Fence/SDK完成回调/SHM跨进程ACK真实性与可恢复持久化、CT高负载ROI实机、完整动态Join未声明消费者自动追踪、MOC/MEM逐资源策略编译和长期RSS/VRAM峰值；若缺少设备，一律标HARDWARE_PENDING。
+
+### 19.4 Session到MDS Heap交接及Studio MHS工程策略真实入口（2026-10-28）
+
+> 新增真实源码；最终固定SHA Windows CI须单独核验。不可借用前一批绿灯宣称通过。
+
+- **FlowResult跨Owner交接**：MRKFlowResult.CopyCommittedOutputTo<T>(outputName,targetHeap,targetName,overwrite=false)。仅Completed及声明的正式导出可写；类型不匹配/名称冲突/预算拒绝保持源与目标一致性；目标MDS Heap执行唯一安全Freeze并持有副本，源FlowResult保持可读。非GPU/SDK/SHM物理所有权转移。
+- **Session联动**：先用既有MRKRuntimeSession.TryTakeCompletedResult显式领取结果，再由调用者选择输出复制到独立Heap。Session保留责任解除不销毁Flow.Completion及已交接的目标数据。
+- **Studio工程Saved入口**：MPWDataLifecycleWorkspaceControl.BindEngineering(section,allowEngineeringChanges)绑定MHS正式Section；LoadEngineeringDraft读取Saved、BuildEngineeringDraft验证五维及TTL、SaveEngineeringDraftAsync经MHS正式CAS/验证/审计落盘。WPF按钮提供读取和提交、Saved/Effective版本展示。仅保存Saved，不调用ApplyPendingAtTaskBoundary、不修改当前Run。
+- **Host注入**：MainWindow.AttachStudioRuntimeDataEngineering(section,allowEngineeringChanges)与原AttachStudioRuntimeDataHeap分离。MHS仍是唯一工程配置Owner，MDS仍是唯一运行值Owner。
+- **正反例**：ArchitectureSmoke跨Heap拷贝、重复名、类型错误、预算拒绝及可变别名隔离；TestCenter真实WPF验证未授权拒绝、工程Saved重载、Effective未改变、TTL非法拒绝。
+- **限制**：还没有在Studio工程打开流程自动绑定正确ProjectScope/用户身份；没有多数据项工程映射、外部硬件实测。代码提交与最终CI结果必须各自登记。
