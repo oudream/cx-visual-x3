@@ -173,9 +173,10 @@ namespace CxVisual.TestCenter.UI
             _state.Scene3D.Select(_meshSceneItemId);
             UpdateMeshPresentation();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
-                "RAW体素面Mesh · {0}三角面 · 面积{1:0.###}mm² · {2} · 非亚体素",
+                "RAW体素面Mesh · {0}三角面 · 面积{1:0.###}mm² · {2}个面壳 · {3} · 非亚体素/未认证",
                 result.Mesh.TriangleCount,result.Mesh.SurfaceArea,
-                result.Mesh.IsClosedOrientedManifold?"闭合":"拓扑需复核");
+                result.Mesh.ConnectedFaceComponentCount,
+                result.HasCalibratedClosedGeometry?"单体闭合几何":"多体/边界/拓扑需复核");
             RaiseStateChanged();
         }
 
