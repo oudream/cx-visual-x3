@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using CxVisual.Foundation.Data.Configuration;
+using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Mechanism.Data.RuntimeData
 {
@@ -75,6 +76,36 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             if (heap == null) throw new ArgumentNullException("heap");
             ToPolicy().ApplyTo(heap, dataName);
+        }
+    }
+
+    /// <summary>
+    /// 受信运行Host在新Run/Task边界的显式映射；只捕获MHS已生效快照，
+    /// 不从Saved草稿读取、不越过CAS/授权生效，也不持有第二份数据真源。
+    /// 返回确切Effective修订标识，便于诊断与运行证据关联。
+    /// </summary>
+    public static class MDSDataLifecycleEngineeringBinding
+    {
+        public static string ApplyEffectiveForTask(
+            MHSConfigSection<MDSDataLifecycleEngineeringOptions> section,
+            MDSDataHeap heap, string dataName, string taskId,
+            string expectedEffectiveVersion = null)
+        {
+            if (section == null) throw new ArgumentNullException("section");
+            if (heap == null) throw new ArgumentNullException("heap");
+            if (string.IsNullOrWhiteSpace(dataName))
+                throw new ArgumentException("必须指定已有MDS数据名称", "dataName");
+            using (var snapshot = section.CaptureForTask(taskId))
+            {
+                if (expectedEffectiveVersion != null &&
+                    !string.Equals(snapshot.Version, expectedEffectiveVersion,
+                        StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "MDS_CONFIG_EFFECTIVE_VERSION_CHANGED: 本次Run禁止应用已过期策略");
+                var policy = snapshot.Get().ToPolicy();
+                policy.ApplyTo(heap, dataName);
+                return snapshot.Version;
+            }
         }
     }
 
