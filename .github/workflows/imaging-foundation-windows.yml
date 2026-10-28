@@ -5,6 +5,9 @@ on:
     branches: [master]
     paths:
       - 'Foundation/Imaging/**'
+      - 'Professional/Vision/**'
+      - 'Applications/Studio/StudioShell.ModuleCenter.cs'
+      - 'Tests/ArchitectureSmoke/Integration/Vision/**'
       - 'Foundation/Volume/**'
       - 'Professional/CT3D/**'
       - 'Tests/ArchitectureSmoke/Integration/FVOVolumeTests.cs'
@@ -88,6 +91,8 @@ jobs:
           $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
           & $exe --volume
           if ($LASTEXITCODE -ne 0) { throw 'FVO --volume regression failed' }
+          & $exe --vision-results
+          if ($LASTEXITCODE -ne 0) { throw 'Vision result contract regression failed' }
           & $exe --imaging
           if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
           & $exe
