@@ -85,3 +85,13 @@
 - `3a549615`：`FTRByteStreamAdapter.WriteAsync`检测正式`FTRChannelBase`时走单快照切片API，第三方IFTRChannelTransport仍沿用原接口回退，不额外建立OS接收者。`8fb97eb9`补按有效count结算与源缓冲后修改不污染发送的回归。
 - `56fc61cf`：原无池化Reader的HTTP Client新增入场拒绝负例，证明超预算时不建立实际网络请求，不复制传入数组。
 - 这些是六项能力的增量，不等于消除HTTP/WS接收端MemoryStream/ToArray、跨MPA/MDS零复制以及现场24h长稳的完整任务。Windows CI必须逐固定SHA记录，不能借旧版本成功冒充后续代码通过。
+
+
+## 9. F17-P0 多客户端定向ID、HTTP/WS合计缓冲与异常退出（2026-10-28）
+
+1. 已有`FTRSubChannelAddress(ChannelId,SubChannelId,Generation)`由HTTP Server为每次请求建立，WS/TCP/Pipe Server为连接建立。`Received.Address`及`MCNConnectorModule.PayloadReceivedFrom`携带来源；HTTP `RespondAsync(address,...)`与WS `SendToPeerAsync`校验身份和代次。运行期ID不是已认证用户ID。
+2. 新`FTRBufferedByteBudget`/`FTRBufferedByteLease`属于Foundation.Transport内部；HTTP/WS Server的FCM新字段`TotalBufferedBytes`默认32MiB；原Diagnostics新增BufferedPayloadBytes、PeakBufferedPayloadBytes、RejectedPayloadBuffers及PayloadBufferByteBudget，TestCenter复用原Health只读展示。
+3. HTTP聚合请求、扩容新旧缓冲峰值、独立Received上下文副本、响应副本均共享额度，`RespondAsync`成功后租约移交Serve唯一结束路径，重复/过期请求不泄漏额度；全局额度耗尽503，单请求体超过MaxRequestBytes仍413。WS对每个Peer的scratch、聚合、上下文复制统一计账，消息结束释放大缓冲，只关闭超额Peer。
+4. `FTRChannelBase.ReceiveBytes`与`FTRMultiChannelBase.ReceiveFrom`兼容地增加有效长度重载；HTTP/WS以`MemoryStream.GetBuffer()`借用源切片，去除`ToArray`整消息副本，同时保持旧Received独立拷贝与SubChannel/Generation。未声明跨MPA/MDS全链路零复制。
+5. 新`FTRMultiClientBudgetTests`验证真实Windows HTTP并发双请求、两种预算拒绝与状态码、WS双客户端单播、跨消息分片占用和独立存活。`FTRSharedMemoryCrashTests`新子进程命令`--channel-shm-crash-child`验证异常遗弃锁拒绝旧MMF，并以新Map恢复双向收发；不重播未知业务数据。
+6. 均挂入原`--channel-uml-core`、`--channel-transport`，传统.csproj保持不新增项目。上述为源码完成/新CI待验收状态，旧WS预算测试失败证据见正式Testing文档；24h跨PC/现场设备和全量工作集GC SLA仍未达标。
