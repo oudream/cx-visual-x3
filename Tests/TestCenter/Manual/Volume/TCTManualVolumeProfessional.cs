@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Professional.CT3D;
@@ -23,6 +24,8 @@ namespace CxVisual.TestCenter.UI
         private IReadOnlyList<Vector3> _surfacePreviewPoints;
         private Guid? _surfaceSceneItemId;
         private Guid? _meshSceneItemId;
+        private Guid? _planeSceneItemId;
+        public CT3DPlaneFitResult LastMeshPlaneFit {get;private set;}
         private MPWVolumeDisplayMesh _meshPreview;
         public CT3DVoxelBoundaryMeshResult LastVoxelMesh {get;private set;}
         public int MeshDisplayedTriangleCount {get{return _scene.SurfaceMeshTriangleCount;}}
@@ -107,6 +110,8 @@ namespace CxVisual.TestCenter.UI
             _surfacePreviewPoints=null;
             _surfaceSceneItemId=null;
             _meshSceneItemId=null;
+            _planeSceneItemId=null;
+            LastMeshPlaneFit=null;
             _meshPreview=null;
             LastSphereFit=null;
             LastVoxelMesh=null;
@@ -178,6 +183,62 @@ namespace CxVisual.TestCenter.UI
                 result.Mesh.ConnectedFaceComponentCount,
                 result.HasCalibratedClosedGeometry?"单体闭合几何":"多体/边界/拓扑需复核");
             RaiseStateChanged();
+        }
+
+        /// <summary>
+        /// 用户/算法已选局部Mesh顶点ROI的真正平面拟合入口。
+        /// MVI仅注册Measurement引用；专业毫米结果由CT3D保存，绝不重新拟合R8预览。
+        /// </summary>
+        public CT3DPlaneFitResult AnalyzeCurrentMeshPlane(IReadOnlyList<int> selectedVertexIndices,
+            double maxPlanarityRatio=0.08)
+        {
+            if(_state==null || _volume==null || LastVoxelMesh==null)
+                throw new InvalidOperationException("请先从原始RAW建立三角Mesh并选择局部面片。");
+            if(LastVoxelMesh.SourceRevision!=_sphereEpoch ||
+               !Object.ReferenceEquals(LastVoxelMesh.SpatialFrame,_volume.SpatialFrame))
+                throw new InvalidOperationException("原始Volume或空间Frame已变化，旧Mesh不能用于拟合。");
+            CT3DPlaneFitResult result=CT3DMeshPlaneAnalysis.FitSelectedVertices(
+                LastVoxelMesh,selectedVertexIndices,maxPlanarityRatio);
+            if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
+            LastMeshPlaneFit=result;
+            _planeSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Measurement,
+                "ct3d:plane:"+result.ResultId.ToString("N"),result.SourceRevision,
+                "volume:physical-frame");
+            _state.Scene3D.Select(_planeSceneItemId);
+            _status.Text=String.Format(CultureInfo.InvariantCulture,
+                "局部平面拟合 · RMS {0:0.######} mm · 最大偏差 {1:0.######} mm · ROI {2}点（未作GD&T判定）",
+                result.RmsResidualMm,result.MaxAbsoluteResidualMm,result.SampleCount);
+            RaiseStateChanged();
+            return result;
+        }
+
+        /// <summary>
+        /// 便于开发者和测试验证的体素+Z端面快速选区示例，不是通用ROI交互或工业基准面。
+        /// 通过SourceFrame逆变换寻找原始网格局部Z最大层，支持倾斜/镜像来源。
+        /// </summary>
+        public CT3DPlaneFitResult AnalyzeCurrentMeshPlaneTopZ(double maxPlanarityRatio=0.08)
+        {
+            if(LastVoxelMesh==null)throw new InvalidOperationException("请先生成网格。");
+            var mesh=LastVoxelMesh.Mesh;
+            FVOVolumeSpatialFrame frame=LastVoxelMesh.SpatialFrame;
+            var z=new double[mesh.VertexCount];
+            double largest=double.NegativeInfinity;
+            for(int i=0;i<mesh.VertexCount;i++)
+            {
+                FGEPoint3D p=mesh.Vertices[i];
+                z[i]=frame.PhysicalToVoxel(p.X,p.Y,p.Z).Z;
+                largest=Math.Max(largest,z[i]);
+            }
+            var top=new List<int>();
+            for(int i=0;i<z.Length;i++)
+                if(Math.Abs(z[i]-largest)<1e-6)top.Add(i);
+            return AnalyzeCurrentMeshPlane(top,maxPlanarityRatio);
+        }
+
+        private void StartMeshPlaneTopZFromUi()
+        {
+            try{AnalyzeCurrentMeshPlaneTopZ();}
+            catch(Exception ex){_status.Text="局部端面拟合失败："+ex.Message;}
         }
 
         /// <summary>后台执行工业RAW网格提取，跟随Volume切换取消并拒绝旧结果发布。</summary>
