@@ -276,3 +276,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - 新增默认ROI/测量/标注/缺陷图元（包括鼠标`CompleteDraw`、开发者`AddOverlay/AddPolygonRoi`）应统一进入MPW当前层默认色，不得出现按钮与新对象颜色不同；未显式选择色也需与预设色相符。
 - 显式指定非默认ARGB的外来算法产物不得被UI预设改写；修改同层颜色更新现有未锁定对象且保留Id/几何，锁定对象不因UI设置而被改色；普通`MVIImageOverlayItem`本身的属性身份与基础默认值不变。
 - 源码：[0eeedc0](https://github.com/oudream/cx-visual-x3/commit/0eeedc0aa0843c4f886156bab0068c38600b91a0)、[ec1e044](https://github.com/oudream/cx-visual-x3/commit/ec1e0445251bbb1c6097fbf4c257039e08019551)、[9d9a3a1](https://github.com/oudream/cx-visual-x3/commit/9d9a3a14458a89efd2bbd454f428187f3ed2dc8d)；Windows最新固定SHA待实际CI执行结论，原色板模态操作仍待人工截图。
+
+## 18. CASE-ARCH-01首包：已筛选面积与共享专业预览的正反验收
+
+- **ARCH-A04 / RES-01首个小闭环**：采用真实MRK `Decode→Preprocess→Inspect→MeasureAcceptedRegions`及已有Statistics/Decision，带图像/Mask和独立的具名`AcceptedRegionPixelArea`输出；Gray8样本5×3共4个阈值命中，其中孤立点被MinArea=2拒绝，Measurement=3 px²。该阶段不是完整四种可编排MPM/MOL算法。
+- **ARCH-R02**：无区域仍合法提交0 px²，保留独立RunId；坏RAW长度、失败Run禁止Image/Mask/Measurement部分发布，原旧Plan输出数量不变。重复Run ItemId唯一，同Run来源与输出端口不混。
+- **ARCH-D02 / ARCH-Q03首包**：FIM 5×3 Gray8带7字节Stride在`RunCpuInspectionPreviewAsync`无UI运行，Mask孤立命中、已接受区域测量、原像素保持；非法位深、空SourceId和预取消拒绝。Windows命令由ArchitectureSmoke `--imaging` 或 `--vision-results`载入上述测试。
+- **UI-UX-13**：TestCenter真实WPF按钮运行专业无头API，输出列表包含Measurement 7 px²（原实验Gray16样本），选中测量不更改正在查看的Mask，原图保留，参数代次变化使旧Run失效。用`TCTImageViewerSmoke`做实际控件反证。
+
+源码提交：[404d9d3](https://github.com/oudream/cx-visual-x3/commit/404d9d39c9b653081292f331d0b5fc70ff9bd70c)、[dd5506f](https://github.com/oudream/cx-visual-x3/commit/dd5506fffa303804358ede9c6106f162c2bd5d3d)、[047a855](https://github.com/oudream/cx-visual-x3/commit/047a85587fac8f2830d1d9080047221a2f4c3791)、[f2d55bb](https://github.com/oudream/cx-visual-x3/commit/f2d55bbd612280e0fbabb1c64db0ca27d4127ea5)、[c25e50d](https://github.com/oudream/cx-visual-x3/commit/c25e50d96f91f20458a1dfb5db02835f0a89ecd0)、[a34e034](https://github.com/oudream/cx-visual-x3/commit/a34e03411fa715ff04a3c64e783ba7d30d97e0dd)、[5b34232](https://github.com/oudream/cx-visual-x3/commit/5b3423258a96db58f808e755c4338b45464414b0)。
+
+**新提交时尚未宣称Windows通过**；需检查固定SHA [Imaging #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846)、后续触发的TestCenter Windows任务和运行日志，不能继承旧版本success，未知则保留待验状态。
