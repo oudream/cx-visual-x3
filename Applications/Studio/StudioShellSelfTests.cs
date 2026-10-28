@@ -222,18 +222,18 @@ namespace CxVisual.Studio
                         catch(InvalidDataException){badLengthDenied=true;}
                         Assert(badLengthDenied&&session.Revision==before,
                             "不匹配RAW长度意外修改了MEM或未被拒绝");
-                        var report=MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
+                        var cpuReport=MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
                             filename,5,3,System.Threading.CancellationToken.None)
                             .GetAwaiter().GetResult();
-                        Assert(report.Inspection!=null &&
-                            report.Inspection.ThresholdPixelCount==4 &&
-                            report.Inspection.Regions.Count==1 &&
-                            report.Inspection.Regions[0].PixelArea==3 &&
-                            !report.Inspection.Passed &&
-                            report.Inspection.ConfigRevision==provider.ConfigurationRevision &&
-                            report.CompletedTraceEvents>0 && report.FlowId!=Guid.Empty &&
-                            report.PlanFingerprint.Length==64 &&
-                            session.Find(report.PageId) is MEMPage &&
+                        Assert(cpuReport.Inspection!=null &&
+                            cpuReport.Inspection.ThresholdPixelCount==4 &&
+                            cpuReport.Inspection.Regions.Count==1 &&
+                            cpuReport.Inspection.Regions[0].PixelArea==3 &&
+                            !cpuReport.Inspection.Passed &&
+                            cpuReport.Inspection.ConfigRevision==provider.ConfigurationRevision &&
+                            cpuReport.CompletedTraceEvents>0 && cpuReport.FlowId!=Guid.Empty &&
+                            cpuReport.PlanFingerprint.Length==64 &&
+                            session.Find(cpuReport.PageId) is MEMPage &&
                             session.Revision>before,
                             "真实RAW→MEM→MOC授权发布→MRK计算/Trace闭环未获得可复核输出");
                     }
