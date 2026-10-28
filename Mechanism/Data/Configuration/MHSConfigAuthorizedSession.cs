@@ -31,6 +31,16 @@ namespace CxVisual.Mechanism.Data.Configuration
             // alter Immediate behavior of other callers using the same instance.
             return new MHSConfigAuthorizedSection<T>(section, this);
         }
+        /// <summary>
+        /// Authorized non-creating read for an existing Effective section.
+        /// Always demand Read first; never fall back to trusted raw Open.
+        /// </summary>
+        public MHSConfigAuthorizedSection<T> OpenExisting<T>(FCMConfigIdentity identity) where T : new()
+        {
+            Require(identity,FCMConfigAccessAction.Read,null);
+            return new MHSConfigAuthorizedSection<T>(
+                _service.OpenExisting<T>(identity),this);
+        }
         internal void Require(FCMConfigIdentity identity, FCMConfigAccessAction action, string path)
         {
             FCMConfigAccessDecision decision = _policy.Evaluate(_principal,
