@@ -9,6 +9,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal MDSDataLifecyclePolicy Policy;
         internal int Users;
         internal int Holds;
+        internal readonly Dictionary<string, int> HoldReasons =
+            new Dictionary<string, int>(StringComparer.Ordinal);
         internal bool Closed;
         internal DateTime? ExpiresUtc;
         internal MDSDataLifecycleRecord(MDSDataLifecyclePolicy policy)
@@ -46,11 +48,45 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         /// <summary>需要跨异步/专业过程持有数据时使用。Dispose后不再保证读取安全。</summary>
         public IDisposable AcquireUse(string name) { return _owner.AcquireLifecycleUse(name, false); }
         /// <summary>显式诊断/结果保留。Dispose解除该条保留理由。</summary>
-        public IDisposable Retain(string name) { return _owner.AcquireLifecycleUse(name, true); }
+        public IDisposable Retain(string name, string reason = "Manual")
+        { return _owner.AcquireLifecycleUse(name, true, reason); }
+        public MDSDataUseLease<T> AcquireRead<T>(string name)
+        {
+            IDisposable token = _owner.AcquireLifecycleUse(name, false);
+            return new MDSDataUseLease<T>(_owner, name, token);
+        }
         public void CloseConsumerAdmission(string name) { _owner.CloseLifecycleAdmission(name); }
         /// <summary>按显式的TTL或最后消费者规则回收，仅回收满足安全条件的数据。</summary>
         public int Sweep(DateTime? nowUtc = null) { return _owner.SweepLifecycle(nowUtc ?? DateTime.UtcNow); }
         public bool ReleaseEligible(string name) { return _owner.ReleaseLifecycleEligible(name); }
+    }
+
+    /// <summary>高级开发者的便捷读取入口；读值与释放使用登记串行化。</summary>
+    public sealed class MDSDataUseLease<T> : IDisposable
+    {
+        private readonly object _gate = new object();
+        private readonly MDSDataHeap _heap;
+        private readonly string _name;
+        private IDisposable _token;
+        internal MDSDataUseLease(MDSDataHeap heap, string name, IDisposable token)
+        { _heap = heap; _name = name; _token = token; }
+        public T Read()
+        {
+            lock (_gate)
+            {
+                if (_token == null) throw new ObjectDisposedException("MDSDataUseLease");
+                return _heap.Get<T>(_name);
+            }
+        }
+        public void Dispose()
+        {
+            lock (_gate)
+            {
+                if (_token == null) return;
+                _token.Dispose();
+                _token = null;
+            }
+        }
     }
 
     public sealed partial class MDSDataHeap
@@ -123,7 +159,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (record != null)
             {
                 if (record.Users != 0) reasons.Add("ActiveConsumers");
-                if (record.Holds != 0) reasons.Add("RetentionHolds");
+                if (record.Holds != 0)
+                {
+                    reasons.Add("RetentionHolds");
+                    foreach (string reason in record.HoldReasons.Keys) reasons.Add("Retained:" + reason);
+                }
                 if (record.Policy.Retention.IsPinned) reasons.Add("Pinned");
             }
             return reasons;
@@ -136,20 +176,28 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 MDSDataLifecycleRecord record = EnsureLifecycleRecord(name);
                 return new MDSDataLifecycleSnapshot(name, RunId, record.Users,
                     record.Holds, record.Closed, record.ExpiresUtc,
-                    LifecycleBlockers(record), record.Policy);
+                    LifecycleBlockers(record), record.HoldReasons.Keys, record.Policy);
             }
         }
 
-        internal IDisposable AcquireLifecycleUse(string name, bool hold)
+        internal IDisposable AcquireLifecycleUse(string name, bool hold, string reason = null)
         {
+            if (hold && (string.IsNullOrWhiteSpace(reason) || reason.Length > 128))
+                throw new ArgumentException("保留理由不能为空或过长", "reason");
             lock (_gate)
             {
                 var record = EnsureLifecycleRecord(name);
                 if (!hold && record.Closed)
                     throw new InvalidOperationException("数据已经关闭新消费者入场：" + name);
-                if (hold) checked { record.Holds++; }
+                if (hold)
+                {
+                    checked { record.Holds++; }
+                    int count;
+                    record.HoldReasons.TryGetValue(reason, out count);
+                    record.HoldReasons[reason] = checked(count + 1);
+                }
                 else checked { record.Users++; }
-                return new MDSDataUseRegistration(this, name, record, hold);
+                return new MDSDataUseRegistration(this, name, record, hold, reason);
             }
         }
 
@@ -159,18 +207,20 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             private readonly string _name;
             private readonly MDSDataLifecycleRecord _record;
             private readonly bool _hold;
+            private readonly string _reason;
             internal MDSDataUseRegistration(MDSDataHeap owner, string name,
-                MDSDataLifecycleRecord record, bool hold)
-            { _owner = owner; _name = name; _record = record; _hold = hold; }
+                MDSDataLifecycleRecord record, bool hold, string reason)
+            { _owner = owner; _name = name; _record = record; _hold = hold; _reason = reason; }
             public void Dispose()
             {
                 MDSDataHeap heap = System.Threading.Interlocked.Exchange(ref _owner, null);
                 if (heap == null) return;
-                heap.ReleaseLifecycleUse(_name, _record, _hold);
+                heap.ReleaseLifecycleUse(_name, _record, _hold, _reason);
             }
         }
 
-        private void ReleaseLifecycleUse(string name, MDSDataLifecycleRecord record, bool hold)
+        private void ReleaseLifecycleUse(string name, MDSDataLifecycleRecord record,
+            bool hold, string reason)
         {
             lock (_gate)
             {
@@ -178,7 +228,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (!_lifecycles.TryGetValue(name, out current) ||
                     !object.ReferenceEquals(record, current))
                     throw new InvalidOperationException("生命周期使用凭证已与数据脱离");
-                if (hold) { if (record.Holds == 0) throw new InvalidOperationException("保留凭证重复释放"); record.Holds--; }
+                if (hold)
+                {
+                    int count;
+                    if (record.Holds == 0 || !record.HoldReasons.TryGetValue(reason, out count) || count == 0)
+                        throw new InvalidOperationException("保留凭证重复释放或来源无效");
+                    record.Holds--;
+                    if (count == 1) record.HoldReasons.Remove(reason);
+                    else record.HoldReasons[reason] = count - 1;
+                }
                 else { if (record.Users == 0) throw new InvalidOperationException("消费者重复释放"); record.Users--; }
                 TrySweepRecord(name, record, DateTime.UtcNow);
             }
