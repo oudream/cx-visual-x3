@@ -1,7 +1,9 @@
 using System;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Linq;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
@@ -71,6 +73,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(gpu.GetMethod("SetSurfacePoints")!=null &&
                 gpu.GetMethod("ClearSurfacePoints")!=null,
                 "专业Surface须进入真实HwndHost/GL framebuffer，而不是WPF伪覆盖");
+            // 同一FVO物理Frame用于真实索引三角Mesh；角点[-.5, n-.5]必须映射GL体外框。
+            var meshFge=new FGETriangleMesh3D(
+                new[]{
+                    frame.VoxelToPhysical(-.5,-.5,-.5),
+                    frame.VoxelToPhysical(10.5,-.5,-.5),
+                    frame.VoxelToPhysical(-.5,20.5,-.5)
+                }.Select(p=>new FGEPoint3D(p.X,p.Y,p.Z)).ToArray(),
+                new[]{0,1,2});
+            MPWVolumeDisplayMesh meshView=MPWVolumeSurfaceProjection.ProjectMesh(
+                meshFge,frame,11,21,31);
+            Check(meshView.TriangleCount==1 &&
+                Math.Abs(meshView.Vertices[0].X+.5)<1e-6 &&
+                Math.Abs(meshView.Vertices[1].X-.5)<1e-6 &&
+                Math.Abs(meshView.Vertices[2].Y-.5)<1e-6,
+                "FGE三角Mesh的体素角点投影必须匹配原始物理GL外框");
+            Check(gpu.GetMethod("SetSurfaceMesh")!=null &&
+                gpu.GetMethod("ClearSurfaceMesh")!=null &&
+                gpu.GetMethod("SetVolumeWithOriginalDimensions")!=null,
+                "正式GPU必须支持Mesh三角层及独立的原始CT物理体积比例");
+            bool overBudget=false;
+            try {MPWVolumeSurfaceProjection.ProjectMesh(meshFge,frame,11,21,31,0);}
+            catch(ArgumentOutOfRangeException){overBudget=true;}
+            Check(overBudget,"预览三角面预算不合法必须拒绝");
+
             // 正式MPW调度器不需要模拟GPU成功即可验证失效合并与代次。
             Dispatcher dispatcher=Dispatcher.CurrentDispatcher;
             int count=0;
