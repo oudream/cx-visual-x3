@@ -1,0 +1,58 @@
+name: TestCenter Compute CPU Real WPF UI End-to-End Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/**'
+      - 'Professional/Vision/**'
+      - 'Mechanism/**'
+      - 'Foundation/**'
+      - 'Applications/Studio/**'
+      - '.github/workflows/testcenter-compute-cpu-ui-windows.yml'
+jobs:
+  compute-cpu-uia:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter and Studio packages
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter Restore failed' }
+          & msbuild.exe Applications/Studio/CxVisual.Studio.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Studio Restore failed' }
+      - name: Build actual Windows .NET Framework 4.8 solution
+        shell: pwsh
+        run: |
+          & msbuild.exe CxVisual.Unified.sln /m:1 /nr:false /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Unified x64 Debug build failed' }
+      - name: Execute real TestCenter Compute UI Automation and CPU workflow
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $report=Join-Path (Split-Path $exe) 'TestCenter-Cpu-UIA-Report.txt'
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--module-cpu-ui-automation' -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch {}
+            throw 'TestCenter real Compute WPF UIA timed out'
+          }
+          $p.Refresh()
+          if (Test-Path $report) { Get-Content $report }
+          if ($p.ExitCode -ne 0) { throw "TestCenter real Compute UIA failed: $($p.ExitCode)" }
+          if (-not (Test-Path $report)) { throw 'Missing Compute UIA report' }
+          $lines=Get-Content $report
+          if (@($lines | Where-Object { $_ -like 'PASS TCT.Compute.UIA*' }).Count -ne 1 -or
+              @($lines | Where-Object { $_ -like 'FAIL*' }).Count -ne 0) {
+            throw 'Compute UIA did not report actual success'
+          }
+      - name: Preserve operator-level UIA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testcenter-compute-cpu-real-uia
+          path: Output/Debug/x64/TestCenter-Cpu-UIA-Report.txt
+          if-no-files-found: warn
