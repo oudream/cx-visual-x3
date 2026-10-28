@@ -133,3 +133,12 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 - `489c7f3b`在`FTRReconnectController`构造时冻结实际重连次数、间隔、退避；调用方修改原FCM配置对象不能在运行中悄悄改变策略。
 - `bb855563`、`1efbe549`把原TestCenter人工Channel页面接入真实FTR只读健康视图/每秒UI采样，展示状态、Session、收发速率、故障类别、池和背压；`4c398047`补原WPF UIA真实Virtual收发后的健康信息断言。无设备授权时仍只离线选择类型。
 - 截至记录时，较新的`489c7f3b` F17和TestCenter Windows完整回归**仍需以其各自固定SHA完成结果验收**；已有WS原子性[专项#40660867450](https://github.com/oudream/cx-visual-x3/actions/runs/40660867450)真实日志已输出`F17.WS_ATOMIC_PASS`，不能替代后续资源预算/界面提交的回归。
+
+
+### 8.5 V3.0 后续可靠性与低复制设计约束（2026-10-28）
+
+- **可靠性/多端**：`RecordReceiveError`兼容新增SubChannel作用域，不可将一个TCP/Pipe/HTTP/WS客户端的异常误判为监听器崩溃；HTTP/WS消息超限使用有类型预算故障，明确定义丢弃或断开的传输语义。真实WS双端异常隔离测试`b95ff48a`已经提交，Windows固定SHA结果按测试矩阵追踪。
+- **诊断健康**：Snapshot的State与Session同锁取值，离线登记的SubChannel不能算活动物理连接（`54ac4bef`）；TestCenter仅展示FTR正式诊断快照，不建立第二套诊断执行器。
+- **配置扩展**：已有`FTRReconnectController`只在创建时冻结MaxAttempts、InitialDelay、Backoff、MaxDelay，避免外部FCM运行期篡改策略（`489c7f3b`，F17 Windows #40661871142 success）。这不等于15类全部配置都已冻结生效。
+- **高性能**：`FTRChannelBase.SendAsync`增加切片重载、`FTRByteStreamAdapter`复用单次独立快照（`27d934b5`、`3a549615`、`8fb97eb9`）。不更改现有IFTR契约，不声称整个FTR→MPA→MDS零复制；异步预算仍在快照分配前接纳。
+- **未完成P0**：HTTP/WS多端接收总内存额度、专业大数据Handle、共享区跨重启恢复、全部通道参数行为矩阵、长期负载、跨PC/HIL继续作为明确缺口。每个新提交须独立CI，绝不将历史绿灯泛化为14项全面完成。
