@@ -362,12 +362,15 @@ namespace CxVisual.TestCenter.UI
             _activeId = id; _activeKind = kind;
             _refreshDeclaredCapabilities=() => {
                 // A declaration projection is not an MOC Provider, Ready or authorization fact.
-                var declared=next.Draft.CapabilityIds??
-                    new System.Collections.Generic.List<string>();
-                _center.SetCapabilities(declared.Where(x=>!String.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.Ordinal)
-                    .Select(x=>new MPWModuleCapabilityView(x,x,"配置中声明",kind,1,false,false)),
-                    "本模块FCM声明的CapabilityIds（尚未核实Provider/授权）");
+                // The authoritative MFM descriptor is derived from the real FCM draft.
+                // Only declaration is known here; this TestCenter config workspace has
+                // not consulted MOC or an operation-scoped Runtime/authorization source.
+                MFMModuleDescriptor descriptor=next.Draft.Describe(id,kind);
+                _center.SetCapabilities(descriptor.CapabilityIds
+                    .Select(x=>new MPWModuleCapabilityView(x,x,"FCM模块声明",descriptor.Kind,
+                        descriptor.Version,false,false,descriptor.Id,
+                        described:false,resolverChecked:false)),
+                    "当前FCM/MHS模块声明（未查询MOC与运行授权）");
             };
             _refreshDeclaredCapabilities();
             _editorHost.Content = next;
