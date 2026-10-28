@@ -75,3 +75,21 @@ Professional ---> 适配入口/能力契约；不反向引入专业实现到 Dec
 旧 `DOCS/Architecture/CxVisual_工程与逻辑体系#逻辑体系——完整设计与验收_V1.0.md` 和运行体系早期 MOC/MRK 说明保留历史来源；**本裁决在“Logic+Orchestration → Decision”归属上更新旧目标**，其尚未迁移的源码行为仍需按旧 API 审计。原 28/9 布局及四大电子规格中的对应项目行，应在实际项目迁移同批更新，而不能在文档阶段宣称已变为 27/8。
 
 **当前交付范围仅为正式设计与可执行迁移指导；项目改名、源码转移、构建与 CI 均为后续实施任务。**
+
+
+---
+
+## H. 2026-10-28 V1.1 补充裁决：实现前必须遵守的 Owner 精化
+
+**以下是对 V1.0 既定融合方向的精化，不改变 Decision 正式命名、27/8 目标或 Core/Decision/Runtime 三层职责。** 本节优先于本文此前粒度较粗的迁移措辞；所有现行 C# API 以对应真实源码为准。
+
+1. **Decision 的独立价值是决策，而不是包一层 Plan。** 三个根问题“能不能做、该不该做、怎样做更好”同时服务于零 Plan 的 Assess、Compare 和复杂工程 Plan。D01～D10 为可组合能力域，不能强迫单次判断创建完整工程或 MRK Runtime。
+2. **编辑与静态决策严格隔离。** 原 MOCFlowBuilder 的 Move/Paste/Group/Align/Edit/Extract 等调用会改写工程定义；不能简单按原物理文件一股脑迁入 Decision。唯一权威变更仍由 Core 的 MEMEngineeringSession / 事务负责，Studio 可以通过受控编辑适配调用；Decision 只读取快照、生成诊断/建议。若旧 API 需要兼容，允许无副本、单向、限期的迁移外观。
+3. **静态 Descriptor 与实机 Provider 必须拆开。** Decision 比较 CapabilityId、Schema、版本、资源、软目标与候选，但无权持有 MRKResolvedCapability.ExecuteAsync 的执行能力。Runtime/Host/Professional 才能实际绑定和验证现场可用性/权限。
+4. **纯 Plan / 已绑定 Plan 必须是两种不同合同。** Decision 的描述型 Plan 只存版本、引用、结构、策略、依赖和 SourceMap；MRK 现有含委托的 MRKExecutionPlan 仍为运行端内部对象。两者仅能经 Runtime Loader 进行受控转换，禁止跨进程序列化 Delegate。
+5. **Stage/Activate 非决策副作用。** MOCProjectRelease.Prepare 的静态检查可归 Decision；现有 Stage/Activate 的运行许可、版本 Pin、现场安全点必须保留 Lifecycle/Host/Runtime 的唯一执行权；旧 API 兼容不可制造依赖环。
+6. **安全三态不能降级为 bool。** 任意已知硬约束违反 → Rejected；缺失或不可验证硬约束 → Unknown；仅静态已知条件满足 → Allowed，仍必须 Runtime 再验证。硬安全不能被优化权重或 AI 建议覆盖。
+7. **文档唯一真源按职责划分。** [#0总体架构](../Architecture/CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md) 定能力边界、案例与主图；[#1 API](../Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md) 定类型/字段/拟议签名；[Migration](../Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md) 定逐源码 Owner/顺序；[Testing](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md) 定正反例、指标和分级证据。历史 V1.0 条目保留溯源，新 V1.1 深化段与之冲突时以本补充和对应专题最新实施合同为准。
+8. **物理合并仍不得执行于本轮。** 现有解决方案 28 项目、Mechanism 9；只有真实 P0～P4 通过，且在对应 commit 验收了无环依赖、旧功能等价、Windows x64 全回归，方可改报为 27/8。不能把设计提交当实现提交。
+
+**补充来源边界：** 本轮固定读取 GitHub 源码 SHA 216963b009a94bfd2074defd0c7572fbb65a09bb；02/03/04 为 xlsx 权威规格，本轮只核对仓库存在和 DOCS/00 摘要，并未完成所有 Sheet 内容读取。对表格 Owner 的冲突应在实施前专门核验、提交差异表，不默认为本文已经覆盖所有细节。新方案、签名、能力均为目标设计，未运行实现测试。

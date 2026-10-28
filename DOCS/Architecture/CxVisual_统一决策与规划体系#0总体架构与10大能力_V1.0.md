@@ -1,5 +1,32 @@
 # CxVisual 统一决策与规划体系——总体架构与十项能力 V1.0
 
+> **2026-10-28 深化修订（V1.1内容，文件路径延续V1.0）：** 本文件是 Decision 的**唯一总体架构和十大能力真源**；[对象/API](CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)负责签名，[迁移规格](../Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)负责逐文件步骤，[测试规格](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)负责证据。下列图和新接口均为**目标设计**，不是当前已运行代码。审计基线见文末；遇更晚 master 时须重新审查。
+
+## 一张图看懂：Core → Decision → Runtime
+
+```mermaid
+flowchart LR
+    U["开发者 / Studio / 模板 / AI建议"] --> C
+    C["CORE<br/>唯一工程定义与约束<br/>MEM / MOL / 模块声明"] --> D
+    D["DECISION<br/>① 能否做：语义与硬约束<br/>② 值否做：目标与权衡<br/>③ 如何更好：选型/策略/规划"] -->|评估 / 候选 / 方案 / 诊断| R
+    R["RUNTIME<br/>环境复核、能力绑定<br/>执行/资源租约/状态/Trace"] --> P
+    P["Professional Providers<br/>Vision / CT3D / Automation / AI"] --> R
+    R -.->|实测快照/诊断证据；非隐式改写| D
+    D -.->|可定位的原因和建议| U
+    F["Foundation + MDS<br/>数学与资源描述 / 运行数据真源"] -.-> D
+    F -.-> R
+    U -->|简单 SDK 可直达| P
+    classDef core fill:#e9f2ff,stroke:#2472aa,color:#18395d
+    classDef decision fill:#eaf9ef,stroke:#1a7e48,color:#184b30
+    classDef runtime fill:#fff2df,stroke:#ac701b,color:#623b09
+    class C core
+    class D decision
+    class R runtime
+```
+
+> 图中实线是**业务信息/调用方向**，不是 C# ProjectReference 图。目标物理引用应为 Runtime → Decision → Core；Decision **绝不能**引用 Runtime；Provider 的真实动作不能反向依赖 Decision。简单 SDK 并非必须走三层。静态 Allowed 只表示“已知假设下检查通过”，不是现场许可。
+
+
 > 名称：`CxVisual.Mechanism.Decision`；英文：Unified Decision & Planning System。
 > 状态：用户已决定名称和融合方向；**目标设计，非十项能力已实现说明**。
 > 三层：Core（定义）→ Decision（判断/决策/规划）→ Runtime（受控运行）。运行时数据 MDS、专业算法与实际设备动作保有唯一 Owner。
@@ -111,3 +138,106 @@ Core 描述 MOL 条件、While、Foreach、子 Content/命名数据端口；Deci
 现有 Core/MOL、MOCBuildService/MOCEngineeringCompiler/CapabilityCatalog、MRK 计划编译/执行、SourceMap、发布候选及综合测试，是 D01/D02/D05/D10 的**部分现有代码基础**。D03/D04/D06/D07/D08/D09 的系统级比较、规划、预测/仿真与反馈闭环，**不能因存在少数方法就声明完成**。十项均需按测试矩阵审查：**规划 → 源码 → Windows 编译 → 自动化回归 → 设备/现场验证**，不能混级。
 
 实施优先：第一阶段语义/可行性/能力与版本检查及无环计划合同；第二阶段策略和资源规划；第三阶段比较/仿真/反馈优化。任何阶段不得把 Decision 变成第二运行引擎。
+
+
+---
+
+## V1.1-A 从专业工程的痛点反推独立价值
+
+| 实际场景与用户诉求 | 如果没有 Decision，开发者需手工承担 | Decision 独有职责 | 不归 Decision 的真源 |
+|---|---|---|---|
+| X-Ray 多算法、探测器及 PLC 联动 | 分散的 Schema/版本比较、节拍估算、重试危险性判断、诊断回溯 | 先做硬门槛筛选，再权衡时延/精度/成本；形成超时、禁重试、备用方案和证据 | 探测器驱动、曝光许可、PLC联锁、真正分选动作由专业与 Runtime |
+| CT 重建和三维处理跨 CPU/GPU | 编写不同设备组合的内存和批处理预估、临时切换逻辑 | 显式 Volume/Projection 合同，估计峰值驻留/带宽/算力、选批与算法、保留候选 | FVO/FVN/FCT 数值算法，GPU 内存分配及实机调度 |
+| 复杂工程、动态循环、三层子流程 | 每个节点局部校验导致端到端资源与依赖未知；难解释改动影响 | 同一版本快照上的全局语义校验、控制/数据依赖及静态结构编译、SourceMap | MOL 定义/编辑事务；MRK 逐次调用和 MDS Frame 生命周期 |
+| 多设备/功能模块/网络 | 设备与能力名义存在但 schema/版本和组资源互斥 | 判断候选可行性、排列顺序、冲突图、恢复策略和替代方案 | MFM/MHS 能力声明、MRC 权威工程对象，F17 Channel，实机设备状态 |
+| AI 算法与多 Provider | 依赖 AI 推荐而跳过安全、预算、可重复性 | AI 仅作为候选来源；确定性校验/证据/可复核排序与人工批准门禁 | 模型推理执行、模型仓和训练、认证安全系统 |
+
+**反证归属法：** 若只需计算一个 SVD、调用一次阈值检测、读取一个 MDS 值或启停一个 Worker，则无需 Decision。若需要“多个选择 + 目标冲突 + 跨节点约束 + 可追溯原因”中的任一组合，Decision 带来独立价值。不能以“包一层服务”冒充新能力。
+
+## V1.1-B 三个判断是主脉络，十项能力是组合服务
+
+```mermaid
+flowchart TB
+  I["Core Snapshot + Requirement + Capability Catalog + Environment Assumptions"] --> S["D01 语义/规则推导"]
+  S --> V["D02 类型/版本/硬约束判定"]
+  V --> Q{"硬约束全部已证明？"}
+  Q -->|不满足| NO["Rejected + Diagnostics + SourceMap"]
+  Q -->|缺数据/需现场查验| UN["Unknown + RequiredChecks（不自动放行）"]
+  Q -->|满足静态门槛| W["D03 目标权重与取舍"]
+  W --> M["D04 多候选匹配选择"]
+  M --> L["D05 控制/数据协作结构"]
+  L --> T["D06 策略与降级候选"]
+  T --> B["D07 资源容量/预算估算"]
+  B --> O["D08 推演/多方案优化"]
+  O --> X["D09 静态/虚拟/回放验证"]
+  X --> K{"验证结论"}
+  K -->|不满足| NO
+  K -->|条件性| UN
+  K -->|成立| Y["Decision Artifact（可选 Plan + 备选）"]
+  NO --> E["D10 解释、证据、影响分析"]
+  UN --> E
+  Y --> E
+  Y --> R["Runtime Loader：真实许可/版本/容量再检查"]
+  R -.->|TelemetrySnapshot| E
+```
+
+每次调用不要求走完全流程：仅 D02 的检查可以马上返回；D03/D04 的多候选比较无需生产 Plan；只有完整工程需要 D05/编译。执行端反馈必须形成新的显式评估请求，不得直接篡改正在运行的授权方案。
+
+## V1.1-C 十项能力的实现颗粒度和验收输出
+
+| ID | 主要子能力（目标全集，不代表已实现） | 可独立调用的最小结果 | 组合输入/可复用组件 |
+|---|---|---|---|
+| D01 | 常量/表达式树、三值逻辑、类型与单位推导、端口兼容、短路、副作用/幂等声明、子流程作用域、可重复规则解释 | SemanticAssessment + 推导路径 | Core MOL/MPM、已有 MOLScalarExpression；后续可扩展纯规则解释器 |
+| D02 | 结构合法性、引用存在性/依赖环、Schema/版本/能力、权限前置、资源硬上限、危险操作门槛、时效性、未知场景 | Allowed/Rejected/Unknown + 原因与阻断级别 | Snapshot/Capability/Constraint，已有 MOL ValidateExecutable 与 MOC Build |
+| D03 | 多目标（吞吐/延迟/质量/精度/成本/可靠性/能耗）、量纲归一、硬软约束优先级、Pareto 支配、公平与权重、冲突/不可满足分析 | ObjectiveTradeoff（可行性、优先级、被牺牲目标） | FVN/数学算法复用；不在本层另造数值库 |
+| D04 | Capability/schema/version 匹配、环境及许可证条件、候选剪枝、排序、稳定 tie-break、版本锁定、选中与备用、无候选拒绝 | CandidateSelection + rejectedCandidates + reasons | MOC Catalog/MFM 描述、专业 Provider **元数据** |
+| D05 | DAG、数据依赖、分支/并行/Join、事件/状态机、动态 Loop/Foreach、子流程边界、临界区、可追溯编译、增量计划 | StructuralPlan + SourceMap | MOLWiring + 旧 MOCCompiler 静态分支 + MRK 编译器静态部分 |
+| D06 | 超时、重试/退避、取消、补偿、熔断/降级、替代方案、优先级/抢占准入、故障区域、策略冲突与合法性 | StrategySet + preconditions + 禁止项 | MOLStepPolicy 声明、MRKExecutionPolicy运行语义；**不启动计时器** |
+| D07 | CPU/GPU/专用设备容量、内存峰值/释放、带宽与延迟、数据留存/流式处理、并发峰值/队列、资源冲突图、预算误差 | ResourceEstimate + Bottlenecks + Assumptions | F19、MDS DataBudget 的公开约束；没有实测则显式标估算 |
+| D08 | 关键路径、离散事件/蒙特卡罗候选推演、敏感性分析、Pareto 前沿、鲁棒性和情景优化、可重复随机种子、推荐替代方案 | ScenarioComparison + uncertainty + tradeoffs | Foundation.Numerics/Solvers/Statistics，必要时可插拔经验证优化库 |
+| D09 | 静态规则证明、同一业务合同下 Virtual/Replay/Hybrid 仿真、故障注入、变更影响范围/回归选择、风险排序、真实设备缺项 | VerificationReport + evidenceTier + ImpactSet | Professional.Simulation Provider / MRK Replay；**不新造 SimulationFlow** |
+| D10 | 决策原因码/证据链、SourceMap/身份版本、输入快照指纹、可定位诊断、对比解释、历史反馈、模型偏差、缓存失效与审计 | Explanation + EvidenceRefs + impact | MOCSourceMap、MRK Trace 只读快照、Studio/TestCenter 显示 |
+
+**公共门槛：** (1)硬约束先于软评分；(2)未知不变成通过；(3)同输入/版本/种子产生相同可观察结果；(4)取消/超时不放行；(5)证据有单位、时间戳、适用环境、来源；(6)仅将无副作用、与 Runtime 无关的内容下沉 Decision；(7)所有现场许可仍由真实 Owner 复核。
+
+## V1.1-D 数学、优化和第三方库的边界
+
+- **复用优先：** 统计、矩阵、FFT、SVD/求解、插值与张量运算优先复用 Foundation.Numerics 已有能力；高阶求解器只经接口和性能/许可证/可再现性审查后接入。不把 Math.NET/OR-Tools 等“可能选型”写成已安装依赖。
+- **决策建模：** 硬约束集合 H(c) 是三态约束（pass/fail/unknown）；仅 H(c)=pass 的候选进入软目标比较。可行域为空时不可选择“分数最高但违规者”。
+- **多目标规则：** 先按硬约束过滤，然后标准化具有明确单位的软指标，再分析 Pareto 非支配候选；权重法仅在目标权重、测量依据和等值排序确定后使用。缺样本时结果只能标 Suggested/Estimated。
+- **资源规划：** PeakMemory ≥ 同时存活缓冲之和 + 明确模型开销；带宽按读/写/拷贝次数与尺寸估算；对 CT 块、图像、GPU 需说明所有权、驻留位置和最大并发。不能用均值替代 p95/p99 尾延迟，也不能用静态预算替代 MRK 资源租约。
+- **策略安全：** Retry 只在幂等、受控可重试或具有可靠去重键/设备确认条件时建议；不可逆工业动作与安全联锁永远不能因 AI 得分或软策略被放行。
+
+## V1.1-E 四个端到端工业合同（合成示例，非真实性能数据）
+
+| 案例 | Core 定义 | Decision 判断 / 对比 / 方案 | Runtime + Professional 动作 | 强制失败反例与可证明效果 |
+|---|---|---|---|---|
+| A X-Ray 在线检测 | 探测器尺寸/像素、曝光与 PLC 命令的能力声明、NG规则、目标节拍、算法版本、风险级别 | 剔除格式/精度/硬截止冲突候选；在可行候选中比较精度证据、p95耗时与资源；生成超时“停止/人工介入”安全策略与备选 | 探测器采集、Vision/AI 推理、实际安全联锁、MRK排序/取消/Trace | 审核时非法模型/未知安全许可必须拒绝或等待现场检查；无 Decision 时散落校验被统一且解释可定位；**不宣称产线节拍已达到** |
+| B CT/3D | 投影尺寸、几何及单位、精度目标、CPU/GPU能力、内存上限 | 计算候选峰值驻留、分块/并发/传输估算；GPU不满足时仅选已验证CPU备选或报不可行 | FCT/专业重建、GPU驱动与分配、MDS数据传递、三维工作台显示 | 超出内存预算或输入坐标契约不兼容须明确拒绝；不把预估时间当实测 |
+| C 复杂工程 | MOL动态循环、子Content、条件、端口、Try/Finally、版本和数据合同 | 有界结构Plan、端口与依赖验证、SourceMap、回收与资源预算建议；强制避免将最大迭代次数展开为等量节点 | MRK运行迭代、Frame、Break/Continue/Return、数据提交、异常结算 | 嵌套子流程未声明出口、依赖环或版本错则拒绝；对照当前 G05/G06/R05/三层命名数据回归 |
+| D 多设备与模块 | MFM模块能力/版本、PLC/运动控制/采集设备声明、优先级、隔离与限额 | 多Provider匹配、全局冲突检测、资源/时间窗预测、替代与恢复策略、可解释方案 | F17连接与设备服务、专业安全控制、MRK租约与执行组、真实健康检查 | 两个并行路径超出独占设备容量应拒绝或串行；设备未就绪不能由静态分析假装可用 |
+
+案例中指标仅为**测试输入**。实施前须收集真实 HardwareProfile、数据规模、算法版本、延迟分布、SafetyPolicy，并将每个候选拒绝原因关联 BlockId/CapabilityId。
+
+## V1.1-F 十项能力内聚、扩展与跨切面
+
+```mermaid
+flowchart LR
+  C["Core: definition snapshot"] --> A["Assessment / Semantics / Constraints"]
+  A --> V["Evaluation / Selection / Optimization"]
+  V --> S["Planning / Strategy / Compilation"]
+  S --> P["Immutable Plan / Diagnostics / Evidence"]
+  P --> R["Runtime: load + bind + execute"]
+  X["横切：Identity · Version · Audit · Cancellation · ResourceBudget · Provenance"] -.-> A
+  X -.-> V
+  X -.-> S
+  X -.-> P
+```
+
+OOP：以不可变值对象表达 Request/Snapshot/Assessment/Plan 和具体约束，避免共享可变单例；GoF Strategy 用于候选评分或资源估算算法，Specification/Composite 用于组合硬约束，Adapter 用于旧 MOC API 迁移，Factory 用于由受控配置装配评估器；AOP/Decorator 只用于超时、审计、指标、缓存与调用跟踪，不得截获后悄悄改变 Reject/Unknown。每个扩展点必须有两个实际使用者、隔离测试及性能理由；禁止为了凑十大能力创建十个 Manager。
+
+## V1.1-G 源码和成熟度快照（固定审计，不冒称当前 HEAD）
+
+- 本轮只读源码取样 SHA：216963b009a94bfd2074defd0c7572fbb65a09bb（2026-10-28 UTC）。现有 Logic 工程仅 AssemblyInfo，Orchestration 为 MOC 四主要源文件；Runtime 自带 MRK 编译与执行。MOC 和 MRK 存在可复用的 D01/D02/D05/D10 局部行为，但 D03/D04/D06/D07/D08/D09 的完整系统级实现 **尚未有证据**。
+- 本文件所有新增 D01～D10 表格均标记**正式目标设计**；既有专项测试即使绿灯也只证明所测用例，不能证明本轮计划的统一 Decision API。
+- 唯一权威：本文件管能力与边界；对象字段、C# 签名详见 #1；逐文件 Owner 详见 Migration；正反例和量化门槛详见 Testing；融合决议详见 Decisions。避免跨文件复制公共合同。

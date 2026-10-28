@@ -133,3 +133,283 @@ Runtime bound plan（进程内，不保证可序列化）
 - L3：基于现场历史实测的推演优化、仿真影响及建议，不自作主张控制设备。
 
 保留原 C# 简单使用入口；图形化和代码式最终共用相同 Core 定义与判定结果。旧 MOC 类型的保留/废弃依 [迁移台账](../Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md) 决定，**旧 API 不能在迁移计划表中被写成已经存在的新 API**。
+
+
+---
+
+# V1.1 对象合同与 SDK 实施级深化
+
+> **合同状态：全部 MDC\* 类型及以下 C# 签名均为“拟议、待实装”，不能复制后假定现有 master 可编译。** 本文是 Decision API 的**唯一权威规格**。数值算法参考 [总体架构 D01～D10](CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md)，逐类迁移依据 [迁移文档](../Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)。固定取样 SHA：216963b009a94bfd2074defd0c7572fbb65a09bb。
+
+## 1. 一眼看懂的对象关系（目标 UML，非实际类）
+
+```mermaid
+classDiagram
+    class MDCDecisionService {
+      +Assess(request) MDCAssessment
+      +Compare(request) MDCCandidateSelection
+      +Plan(request) MDCPlanningResult
+      +Compile(request) MDCCompileResult
+      +Explain(decisionId) MDCExplanation
+      +AnalyzeImpact(request) MDCImpactResult
+    }
+    class MDCDecisionRequest {
+      +DefinitionRevision
+      +CapabilitySnapshot
+      +Requirements
+      +EnvironmentAssumptions
+      +Cancellation
+    }
+    class MDCAssessment {
+      +Verdict
+      +Diagnostics
+      +RequiredRuntimeChecks
+    }
+    class MDCCandidateSelection {
+      +FeasibleCandidates
+      +RejectedCandidates
+      +Selected
+      +Alternatives
+    }
+    class MDCPlanningResult {
+      +Structure
+      +Strategy
+      +ResourceEstimate
+      +Diagnostics
+    }
+    class MDCExecutablePlan {
+      +PlanId
+      +DefinitionFingerprint
+      +CapabilityRequirements
+      +SourceMap
+    }
+    class MDCExplanation {
+      +ReasonCodes
+      +EvidenceReferences
+      +SourceIds
+    }
+    MDCDecisionService --> MDCDecisionRequest
+    MDCDecisionService --> MDCAssessment
+    MDCDecisionService --> MDCCandidateSelection
+    MDCDecisionService --> MDCPlanningResult
+    MDCDecisionService --> MDCExplanation
+    MDCPlanningResult --> MDCExecutablePlan : optional compiled artifact
+    MDCExecutablePlan --> MDCExplanation : traceable
+```
+
+**属性名是字段语义，不是已存在的 C# Property。** Core 的 MEMProjectSnapshot/MOLWiringDefinition 保持定义真源，MRKExecutionPlan（当前含执行委托）保持运行内对象；新 MDCExecutablePlan 只能是明确版本化的纯描述。
+
+## 2. 不可省略的基础字段与不变量
+
+| 类型候选 | 必填字段与不变量 | Owner / 数据规则 |
+|---|---|---|
+| MDCDecisionRequest | RequestId、DefinitionReference（ProjectId/Revision/ContentId）、RequirementSet、CapabilityCatalogRevision、PolicyRevision、EnvironmentAssumptions、EvaluationMode、Deadline/Cancel | Decision 只读/一次性上下文；不偷偷访问 Studio 状态 |
+| MDCConstraint | ConstraintId、Class=Hard/Soft、PredicateId+Version、Unit、Threshold、SourceId、Severity、EvidenceRequired | Hard 的 Unknown ≠ Passed；严格禁止将 PLC 联锁软件预测映射为 true |
+| MDCObjective | MetricId、Goal(min/max/target)、Unit、Weight、Tolerance、Priority、EvidenceType | 软分数只允许基于同量纲归一及有界范围；目标冲突有诊断 |
+| MDCCapabilitySnapshot | CapabilityId、ContractVersion、SchemaFingerprint、Input/Output、SideEffects、Idempotency、RequiredResources、OriginProvider、CapturedAt、ValidUntil | 专业/模块只供描述，Decision 不持有真实 DeviceHandle/Delegate |
+| MDCEnvironmentAssumptions | Platform、Cpu/Gpu、MemoryCapacity、Bandwidth、DeviceProfile、MeasurementDistribution、Timestamp、Provenance | 静态/测量/模拟来源明确；过期返回 Unknown |
+| MDCAssessment | Verdict=Allowed/Rejected/Unknown、ConstraintOutcomes、Diagnostics、RequiredRuntimeChecks、EvidenceRefs | Status 不能根据 Warning 自动变成 Allowed |
+| MDCCandidateSelection | EvaluatedCandidates、Feasible、Rejected、Selected、Alternatives、NormalizedScores、ParetoFront、TieBreaker | 无可行候选时 Selected=null；所有 Reject 原因可复核 |
+| MDCStrategySet | PolicyVersion、Timeout/Retry/Compensation/Failover、SafetyGate、ApplicableConditions、FallbackOrder | 只描述策略，不启动计时器/重试动作 |
+| MDCResourceEstimate | PeakBytes、PeakGpuBytes、BandwidthBytesPerSecond、Cpu/GpuEstimate、MaxConcurrent、QueueBudget、ConfidenceInterval、Assumptions、Evidence | 所有预算带单位/样本；未测不得宣称保证 |
+| MDCExecutablePlan | PlanId/Version、DefinitionFingerprint、CapabilityContractRefs、DAG+Regions、Policies、SourceMap、DependencyManifest、ArtifactFingerprint | 不可变，无 Delegate、Worker、Task、DeviceHandle、LiveMdsFrame |
+| MDCDecisionEvidence | EvidenceId、SubjectId、SourceKind=Static/Measured/Virtual/Replay/HIL/Field、SnapshotFingerprint、CollectedAt、ValidUntil、Confidence、Metrics | 不允许以 Virtual 冒充 Field，不可用 Trace 直接改写当前 Plan |
+
+**稳定判定规则：** Rejected 在任一已证明违反的 Hard 条件下成立；否则若有任何无法证明的必需 Hard 条件则 Unknown；仅全部 Hard 明确满足才 Allowed。硬拒绝优先级高于未知。副作用/认证/实机许可不可通过静态 Snapshot 最终确认，允许附 RequiredRuntimeChecks 而非“已授权”。
+
+**指纹：** 使用规范化 UTF-8、字段排序、文化不敏感编码、确定算法与明确版本号；禁止仅靠 GetHashCode、反射枚举不确定顺序或当前时间生成逻辑结果。不得因一次无关 UI 坐标改动使非视觉的语义 Plan 不必要失效，具体指纹字段及兼容版须通过 golden 测试批准。
+
+## 3. SDK 公开合同（C# 形状；目标设计）
+
+```csharp
+// 目标规范，尚未实现。建议保持 .NET Framework 4.8 / Task + CancellationToken。
+// 单一门面仅为易用；核心计算器按职责组合，不制造十个引擎。
+public interface IMDCDecisionService
+{
+    MDCAssessment Assess(MDCAssessmentRequest request,
+                         CancellationToken cancel = default(CancellationToken));
+    MDCCandidateSelection Compare(MDCComparisonRequest request,
+                         CancellationToken cancel = default(CancellationToken));
+    MDCPlanningResult Plan(MDCPlanningRequest request,
+                         CancellationToken cancel = default(CancellationToken));
+    MDCCompileResult Compile(MDCCompileRequest request,
+                         CancellationToken cancel = default(CancellationToken));
+    MDCExplanation Explain(MDCExplanationRequest request);
+    MDCImpactResult AnalyzeImpact(MDCImpactRequest request,
+                         CancellationToken cancel = default(CancellationToken));
+}
+// 所有请求各自承载所需最小上下文，不应强制用完整 MEMProject。
+// 策略/资源/仿真可作为 IMDCDecisionService 的组合子服务，以实际复用需求决定是否公开。
+public enum MDCVerdict { Allowed, Rejected, Unknown }
+public enum MDCEvidenceTier { Static, Estimated, Virtual, Replay, HIL, Field }
+```
+
+### A. 单一判断：连接两个端口（不编译、不启动 Runtime）
+
+```csharp
+// 目标示意；接入现有 MPCPortDescriptor 与 MOLLink 合同需适配。
+var request = MDCAssessmentRequest.ForConnection(
+    sourcePort, targetPort, capabilitySnapshot, policySnapshot);
+var result = decision.Assess(request, cancellationToken);
+if (result.Verdict != MDCVerdict.Allowed)
+{
+    // Unknown 只能提示需要 RuntimeCheck；Rejected 展示明确错误位置。
+    foreach (var d in result.Diagnostics) Report(d.Code, d.SourceId, d.Message);
+}
+```
+
+### B. 多候选选择：先硬约束后软目标
+
+```csharp
+var comparison = decision.Compare(new MDCComparisonRequest(
+    candidates: new[] { cpuReconstruction, gpuReconstruction },
+    hardConstraints: new[] { volumeFormat, maxGpuBytes, safeLicense },
+    objectives: new[] { latencyP95, accuracy, cost },
+    capabilities: capabilitySnapshot,
+    environment: measuredEnvironment), token);
+if (comparison.Selected == null)
+    throw new InvalidOperationException("无可验证可行候选；须显示 rejected/unknown 证据");
+// Explain 能说明为什么未选 GPU，而不能仅回一个分数。
+var choices = comparison.Alternatives;
+```
+
+### C. 复杂工程：只生成描述型执行方案
+
+```csharp
+var assessed = decision.Assess(MDCAssessmentRequest.ForProject(
+    coreSnapshot, requirements, catalogSnapshot, environment), token);
+if (assessed.Verdict != MDCVerdict.Allowed)
+    return; // Unknown/Rejected 都不可自动发布
+var evaluation = decision.Compare(
+    MDCComparisonRequest.ForProject(coreSnapshot, requirements, catalogSnapshot, environment), token);
+var planned = decision.Plan(MDCPlanningRequest.From(
+    coreSnapshot, evaluation, requirements, environment), token);
+var built = decision.Compile(MDCCompileRequest.From(planned), token);
+if (!built.Succeeded) return;
+// 以下 Runtime 接口也为目标设计：装载时执行许可、设备与版本复核。
+var receipt = runtime.LoadAndValidate(built.ExecutablePlan, authorizedRuntimeEnvironment);
+if (!receipt.Allowed) return;
+runtime.Start(receipt); // 再按既有 MRK 生命周期与授权机制执行
+```
+
+### D. 资源规划、策略及影响分析
+
+```csharp
+var estimate = planned.ResourceEstimate;          // 含单位、证据与区间
+var retryPolicy = planned.Strategy.Retry;          // 条件声明，不会执行重试
+var impact = decision.AnalyzeImpact(new MDCImpactRequest(
+    baselineDefinition, changedDefinition, catalogSnapshot, policySnapshot), token);
+// impact.ImpactedSourceIds 用来在 Studio 高亮节点，并选取必要回归测试。
+// 所有签名和字段待 P1 逐类型审核后固化；本示意不是现有编译通过代码。
+```
+
+**简单调用体验：** 最小请求仅传端口+ContractSnapshot+Policy，避免创建项目、Worker、Engine。**专业 API 直达体验：** 只需一次处理或由调用者完全控制处理逻辑的 SDK，可以直接调用 Vision/CT3D 或 MRK，Decision 为可选能力，而不是全局拦截器。
+
+## 4. 运行交接与反馈时序（目标）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as 开发者 / Studio
+    participant Core as Core工程快照
+    participant Dec as Decision
+    participant Host as Host/生命周期门禁
+    participant MRK as Runtime Loader + Engine
+    participant Pro as 专业Provider/设备
+    Dev->>Core: 读取Project+Revision快照
+    Core-->>Dev: 不可变定义/约束
+    Dev->>Dec: Assess/Compare/Plan（只读能力/环境证据）
+    Dec-->>Dev: Verdict+候选+策略+ResourceEstimate+SourceMap
+    Dev->>Dec: Compile(版本化输入)
+    Dec-->>Dev: 描述型Plan + Fingerprint
+    Dev->>Host: 提交候选/审批
+    Host->>MRK: LoadAndValidate(Plan,授权与真实环境)
+    MRK->>Pro: 校验版本/能力/资源/安全前置
+    Pro-->>MRK: 实际可用性/拒绝
+    alt 真实授权与约束满足
+      MRK->>Pro: 受控执行
+      Pro-->>MRK: 结果/状态
+      MRK-->>Host: Trace/Telemetry
+      Host-->>Dec: 显式匿名化/脱敏的反馈快照（可选）
+    else 任一硬条件不满足
+      MRK-->>Host: Reject + runtime reason
+    end
+```
+
+**执行侧真正生效的三道门禁：** 静态可行性只是第一道；Host/生命周期发布授权为第二道；MRK/专业实时状态与联锁为第三道。计划的静态版本签名不可替代工业现场安全 PLC / E-Stop。
+
+## 5. 资源与策略的对象组合
+
+```mermaid
+classDiagram
+  class MDCPlanningResult {
+    +MDCStructuralPlan Structure
+    +MDCStrategySet Strategies
+    +MDCResourceEstimate Budget
+    +MDCDecisionEvidence Evidence
+  }
+  class MDCStructuralPlan {
+    +Nodes
+    +Edges
+    +Regions
+    +SourceMap
+  }
+  class MDCStrategySet {
+    +RetryConditions
+    +TimeoutPolicy
+    +FailoverRoutes
+    +CompensationPreconditions
+  }
+  class MDCResourceEstimate {
+    +PeakBytes
+    +PeakGpuBytes
+    +MaxConcurrency
+    +Confidence
+  }
+  class MDCExecutablePlan {
+    +PlanId
+    +Fingerprint
+    +CapabilityManifest
+  }
+  class MRKExecutionPlan {
+    +BoundDelegates
+    +ExecutionContext
+  }
+  MDCPlanningResult *-- MDCStructuralPlan
+  MDCPlanningResult *-- MDCStrategySet
+  MDCPlanningResult *-- MDCResourceEstimate
+  MDCPlanningResult --> MDCExecutablePlan : compile
+  MDCExecutablePlan ..> MRKExecutionPlan : RuntimeLoader binds
+```
+
+## 6. 解释/溯源/增量影响（唯一追溯链）
+
+```mermaid
+flowchart LR
+  A["ProjectId + Revision + BlockId"] --> B["DefinitionFingerprint"]
+  C["CapabilityCatalogRevision + PolicyVersion"] --> D["DecisionId + Verdict"]
+  B --> D
+  D --> E["Assessment/Selection/Plan + ReasonCodes"]
+  E --> F["SourceMap / Diagnostics / EvidenceRef"]
+  F --> G["Studio/TestCenter 定位与解释"]
+  E --> H["PlanFingerprint"]
+  H --> I["Runtime RunId / InvocationId / AttemptId"]
+  I --> J["Trace / Measurement / FailureEvidence"]
+  J -.-> K["显式新评估请求（不改变活动Plan）"]
+  K -.-> D
+```
+
+**影响计算**：比较两个版本的定义、能力合同、策略及资源假设；从变更 BlockId/CapabilityId 沿依赖、数据流和受影响控制区域传播，得到 Changed/IndirectlyAffected/Unchanged；对隐藏外部副作用或未知依赖报告 Unknown，并触发保守回归集合，而非宣称完全无影响。
+
+## 7. 扩展点、错误和并发合同
+
+- **可插拔但有边界：** 允许纯 IConstraintEvaluator、ICandidateRanker、IResourceEstimator、IScenarioEvaluator 等候选扩展接口；每个实现声明 AlgorithmId/Version、可重复性、单位/时间来源和最大预算。禁止扩展点直接持有 MRKFlowHandle 或设备 DLL。
+- **组合规则：** 同一评估请求含 Snapshot ID + Revision + CapabilityFingerprint + PolicyVersion + EnvironmentEpoch；不可变输入允许并行，任何随机算法需固定 Seed；同指纹同结果（排除与结果无关的耗时指标）。
+- **取消与超时：** 被取消/预算超时必须返回明确 Cancelled/TimedOut 的不完成结果（不能通过）；中间缓存只保存成功且可重现的只读分析，单个请求不得永久占用共享锁。
+- **异常与诊断：** 非法输入返回 ValidationDiagnostic；真实解析缺失返回 Unknown；内部程序错误不能伪装为用户规则拒绝；错误码/SourceId/Span/Severity/EvidenceRefs 可机器消费，可安全展示。
+- **性能：** 流式处理声明元数据和摘要，禁止把 GB 级图像/Volume 原始数据复制到 Decision 做选型；对 100/1000/10000 节点记录 WallTime/CPU/PeakWorkingSet/AllocatedBytes/缓存率，目标阈值需通过固定硬件基准协定。
+- **GoF/AOP：** Strategy 对“可替换的评分/估算算法”，Composite 对多约束规则树，Adapter 对旧 MOC，Decorator 对审计/限时/指标与安全日志；不得让拦截器改变判断结论或者增加第二个运行器。首期不因设计图单独创建 Manager/Repository/Bus DLL。
+
+## 8. 开发者与 AI 实施门槛
+
+P1 必须先交付真正可用的 Assess（无需 Plan/Runtime）、三态硬约束、诊断与 SourceMap；P2 后再开放 Compare/Plan/Compile 等入口；D07/D08/D09 若尚缺独立证据，只作为显式不支持能力/Unknown 返回，不得静默用常量模拟。所有已展示示例 API 名称在“逐类型源码映射 + Windows 调用测试”之前保持 **Proposed** 标签。

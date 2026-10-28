@@ -107,3 +107,118 @@ Mechanism/
 - **P0～P3未通过时，不应宣称 P4 改名融合完成。**
 - 任一P阶段出现功能回退、旧工程无法保存重开、失去SourceMap、重复执行设备动作、跨层循环引用或Windows构建失败，暂停扩展并修复当前阶段。
 - 仅在**真实 SLN 中仅有一个 Decision DLL、旧 Logic/Orchestration 不再编译、Runtime不再反向承担静态编译、无循环依赖、关键集成测试全部通过**后，才可宣布“项目融合完成”；新十项能力中的尚未实装部分仍须标明“规划”。
+
+
+---
+
+## V1.1 实施级源码、依赖与回归深化（本轮仅文档）
+
+> 审计固定点：216963b009a94bfd2074defd0c7572fbb65a09bb。目标是**一个 Decision DLL、一个 Runtime 执行器、一个 Core 定义真源**。下一次实装前须重新核实 master 的全部消费者与源文件指纹。
+
+### 一、现状和目标一张图
+
+```mermaid
+flowchart LR
+  subgraph NOW["实际已存在"]
+    CORE["Core: 工程/MOL定义"]
+    LOG["Logic: AssemblyInfo"]
+    MOC["Orchestration: MOC编译/Builder/发布"]
+    MRK["Runtime: Compiler + Engine"]
+    MOC --> MRK
+  end
+  subgraph TARGET["未来目标"]
+    CO["Core：唯一MEM/MOL"]
+    DE["Decision：校验/选择/静态Plan/SourceMap"]
+    RU["Runtime：Plan绑定/执行/Trace/资源"]
+    RU --> DE
+    DE --> CO
+    RU --> CO
+  end
+  CORE -.-> CO
+  LOG -.-> DE
+  MOC -.-> DE
+  MRK -.->|静态分析部分| DE
+  MRK -.->|有状态部分| RU
+```
+
+图中实线箭头是项目引用方向，虚线是拟议迁移方向。当前 Orchestration → Runtime，不可先改名再令 Runtime → Decision，否则形成工程依赖环。
+
+### 二、按真实源码的 Owner 映射（不是一股脑迁移）
+
+| 当前源文件 / 已存在类型 | 目标 Owner | 实际迁移动作与禁止事项 |
+|---|---|---|
+| Core/Engineering/MOLLogicDefinition.cs：MOLExpression、MOLControlBlock、MOLLoopDefinition、MOLWiringDefinition、MOLStateMachineDefinition、MOLStepPolicy、Codec | **Core 保留** | 只供 Decision 读取不可变快照；工程 ID、Schema、动态 Loop、状态机和配置不动；不建立第二套 MOL |
+| Core/Engineering/MEMProjectSnapshot.cs：MEMProjectSnapshot/MEMNodeSnapshot | **Core 保留** | 快照身份与 Revision 保真；不在 Decision 复制工程树 |
+| Orchestration/MOCEngineeringCompiler.cs：MOCStepOrigin、MOCSourceMap、MOCCompiledPlan | **Decision 纯编译/溯源；Runtime 已绑定计划** | 显式拆 Static SourceMap/Plan 与 MRK 执行委托；StepId 和 BlockId 必须保持映射 |
+| 同文件：MOCTraceView、MOCObservedStep、ReadTrace | **Runtime Trace 事实 + Decision 只读映射** | Trace 数据不能让 Decision 反向引用 Runtime；由上层传入只读 TraceDTO |
+| 同文件：MOCExpressions、MOCResolver、MOCEngineeringCompiler.Compile | **Decision 静态语义/编译 + Runtime 真正委托绑定** | IMRKResolver 的执行委托与 Capability 元数据分离；不能破坏分支/Join/嵌套与数据端口 |
+| 同文件：MOCWiringFragment、MOCFlowBuilder、Edit/Paste/Group/Align/ExtractLinearContent | **Core 编辑事务唯一真源；上层便捷适配** | 注意这些方法会修改工程定义，不能因为位于旧 MOC 文件就全部归 Decision；需逐方法审计事务/保存副作用 |
+| Orchestration/MOCBuildService.cs：MOCDiagnostic/MOCBuildResult/MOCBuildService | **Decision** | 保留诊断码和定位语义；新 Assess 不强制编完整 Plan |
+| Orchestration/MOCCapabilityCatalog.cs：MOCCapabilityDescriptor/IMOCCapabilityProvider/MOCCapabilityCatalog | **Decision 只读目录投影；MFM/专业声明真源** | RuntimeAvailable 是运行状态提示，不能用作静态许可的唯一证据或第二模块注册中心 |
+| Orchestration/MOCProjectRelease.cs：Prepare/Stage | **Prepare→Decision；Stage→Lifecycle/Host/MRK** | 将发布候选指纹与实际授权/安全点切开；不得让 Decision 直接激活设备 |
+| Runtime/Execution/MRKExecutionCompiler.cs：MRKStepCompileRequest/MRKCompileResult/MRKExecutionPlanCompiler | **Decision 静态部分** | 与 MOC 编译收敛为一个实现；兼容外观有移除条件，不保留第二套 Compiler |
+| 同文件：MRKResolvedCapability/IMRKCapabilityResolver | **Runtime 绑定；Decision 消费独立 CapabilityContract** | 真实 ExecuteAsync/SynchronousSdk 不得进入描述型 Plan |
+| Runtime/Execution/MRKExecutionPlan.cs：MRKExecutionStep/MRKExecutionPlan/LoopRegion/TryRegion | **Runtime 保留进程内绑定；Decision 拥有纯 DTO 描述** | 禁止序列化 Delegate/Handle/Worker；Loop 不按 MaxIterations 重复展开 |
+| Runtime/Execution/MRKExecutionComposition.cs：MRKExecutionOrchestrationCompiler/MRKFlowCompileDefinition | **静态结构→Decision；运行适配→Runtime** | 三层子流程、具名端口、作用域和静态数据回收的结果须保真 |
+| Runtime/Execution/MRKExecutionPolicy.cs、Groups.cs、Engine.cs、Journal.cs、Publishing.cs | **Runtime 保留** | Decision 只提策略和预算；真正重试/调度/租约/审计/Plan激活留原内核 |
+| Runtime/Commands/*、Mechanism/Data/RuntimeData/* | **原 Owner 保留** | 不迁 CommandCenter，也不复制 MDS Frame/Heap/Stack |
+| Studio/TestCenter/ArchitectureSmoke | **消费者/测试层** | 统一诊断视图与源 ID 定位，保留 Headless/Windows 原有入口，UI 不自行重建判定引擎 |
+
+**对 V1.0 的一处明确修正：** 将 MOCFlowBuilder 整个归入 Decision 不妥，因为其含会改变 MEMEngineeringSession 的 Edit/Move/Paste/Group 等操作；最终必须按副作用将编辑权留 Core 唯一事务，Decision 只消费定义/可提供便利包装。这是正式 Owner 迁移门禁，不能被目录重命名掩盖。
+
+### 三、必须按此顺序断环后合并
+
+```mermaid
+flowchart TB
+ A["P0 锁 SHA、类型/调用图、旧测试 Golden"] --> B["P1 最薄纯DTO：Descriptor/Assessment/Plan"]
+ B --> C["P2 MOC与MRK静态编译拆出；Delegate绑定留Runtime"]
+ C --> D{"Decision 还依赖 Runtime 吗？"}
+ D -->|是| C
+ D -->|否| E["P3 Runtime Loader 引用Decision纯合同"]
+ E --> F{"动态Loop/嵌套/Trace/数据/发布全部等价？"}
+ F -->|否| C
+ F -->|是| G["P4 唯一Decision工程：SLN/CSProj/GUID/清单更新"]
+ G --> H["P5 十项能力深化与专业/现场验收"]
+```
+
+依赖目标（箭头为 C# ProjectReference）：Runtime → Decision → Core / Data / 基础契约；Runtime → Core / Data / F19；Studio 可依赖所需基础设施，专业 Provider 不反向引用 Decision。P0须按真实 csproj 路径构造拓扑图并拒绝环，不能以命名空间相似度判断依赖。
+
+### 四、真实 API 拆分与版本兼容
+
+1. **P0：** 固定 SHA 和旧结果 Golden：诊断码/SourceMap、StepIds、工程保存-重开、三层命名数据、循环/子流程、权限与异常。扫描 using、ProjectReference、反射、XAML、序列化、测试、发布脚本，登记调用方。
+2. **P1：** 先定义不可变纯能力描述与 MDCAssessment，且最小端口/节点验证无需 Plan。禁止 Decision 引入 MRKExecutionContext、MRKFlowHandle、Delegate 或真实设备 API。
+3. **P2：** 将 MOC 编译/静态验证和 MRK 静态 Compiler 合并为单一编译职责。现有 MOCBuildService、MOCEngineeringCompiler 的调用暂由单向 Adapter 代理；对动态 For/While/Foreach、Branch Join、Try/Finally 按原 Golden 比较。
+4. **P3：** MRK Loader 消费不可变描述型 MDCExecutablePlan 并进行真实环境、权限、资源、版本、指纹复核；运行中不接受 Decision 直接改写活动 Plan。原 MRKExecutionPlan 仍为进程内绑定结果。
+5. **P4：** 仅在目标 DAG 无环后，创建 Mechanism/Decision（沿用经核实的 Orchestration GUID）、更新 Unified.sln 及所有 csproj、AssemblyName、RootNamespace、资源路径、ProjectCatalog、DirectoryLayout、02/03/04 规格表和 CI 校验；移除两个旧独立工程，目标数 27/8。
+6. **P5：** D03/D04/D06/D07/D08/D09 逐项以真实多专业案例和性能证据交付，不将名字存在视为实现完成。
+
+**Plan 双合同：**
+
+```text
+Core Snapshot + Capability Descriptors + Requirements
+     → Decision（静态校验/规划/编译）
+     → MDCExecutablePlan [纯数据：PlanId/Version/DAG/Regions/Policy/SourceMap/Manifest]
+     → Host 发布授权 + Runtime.Loader 现场二次检验
+     → MRKExecutionPlan [ExecuteAsync / Context / 实际资源租约]
+     → MRKExecutionEngine → MDS Frame/Heap + Trace
+```
+
+可序列化 Plan 不得包含 Delegate、Task、CancellationTokenSource、GPU buffer、PLC/相机句柄、MDS live Frame。静态 Allowed 不能证明现场许可。迁移兼容只允许**一个方向**的 Adapter，不得在长期构建中保留两个编译引擎。
+
+### 五、执行时的核查命令与追踪字段
+
+```powershell
+git rev-parse HEAD
+git grep -n -E 'CxVisual\.Mechanism\.(Logic|Orchestration)|MOC(Build|Engineering|ProjectRelease|Capability|Flow|Trace)' -- '*.cs' '*.csproj' '*.sln' '*.xaml'
+git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapability|MRKExecutionOrchestrationCompiler' -- '*.cs'
+# 从全量 csproj ProjectReference 构建有向图，拓扑排序拒绝任何循环。
+# 在 MSBuild x64 / net48 下实际重建，之后运行 --organization、--organization-wpf、--concurrency、--command-center 和默认回归。
+```
+
+每行源码迁移记录必须包含：OldPath、OldType、旧签名/消费者、目标 Owner 与新签名、兼容窗口、原 Revision/Schema/SourceMap、测试ID、实际提交 SHA、Windows CI链接、剩余风险。
+
+### 六、不可绕过的停止线
+
+当前事实：Unified.sln 仍为28项目；Logic.csproj 只编译 AssemblyInfo；Orchestration.csproj 含 MOC 四源码并引用 Runtime；Runtime.csproj 同时包含 MRK 编译与执行；这只是**源码存在**证据，不等于本轮测试通过。
+
+任何一个阶段只要出现有向环、MDS 数据丢失/双重释放、不可逆设备动作重复、SourceMap/ID 错位、旧工程不能恢复、动态嵌套行为退化或正式 Windows 编译失败，立即停止后续物理融合。回滚该阶段代码，保留日志与诊断归因。本轮文档提交不代表项目融合已经实施。
