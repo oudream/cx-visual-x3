@@ -10,6 +10,9 @@ on:
       - 'Foundation/**'
       - 'Applications/Studio/**'
       - '.github/workflows/testcenter-compute-cpu-ui-windows.yml'
+concurrency:
+  group: testcenter-compute-cpu-uia-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   compute-cpu-uia:
     runs-on: windows-2022
