@@ -37,6 +37,7 @@
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeGeometry.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeOpenGlControl.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeRenderHost.cs"/>
+    <Compile Include="Volume\Rendering\OpenGl\MPWVolumeRenderScheduler.cs"/>
     <Compile Include="Imaging\MPWImageSequenceReader.cs"/>
     <Compile Include="Imaging\MPWImagePlotControl.cs"/>
     <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
