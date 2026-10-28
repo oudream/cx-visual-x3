@@ -1205,3 +1205,47 @@ var builder = new MRKCodeRuntimeBuilder()
 - 固定源码SHA be9ef73196cb 的 [MDS生命周期专项Windows CI #40644805645](https://github.com/oudream/cx-visual-x3/actions/runs/40644805645) **Success**：进一步覆盖三层内联子流程在静态回收下仍保持入口映射、子流程原子提交屏障和顶层Flow导出；完整Release x64全解、ArchitectureSmoke、TestCenter 030/031/032和真实STA WPF均成功。
 - **后续限制**：Loop/Foreach/动态Join的历史输出提前回收、Session/Result跨Owner交接、Studio工程编辑与GPU/SDK/SHM外部资源实机长稳仍未完成；不可用静态DAG绿灯代替这些验收。
 - 完整Runtime统一回归若在其它模块失败，须区分本阶段MDS专项成功与全解回归未通过。
+
+
+## 19. W4：动态回收、Session交接、工程编辑、外部屏障和SOAK（2026-10-28）
+
+> 本节是继续落地的源码与验收台账。列出已提交、已验证与仍待生产闭环，**不以协议类型存在宣告真实GPU/SHM安全**；与§18的“当时未完成”记录构成时间上的增量，不改写历史证据。
+
+| 项目 | 真实入口 / 归属 | 行为及边界 |
+|---|---|---|
+| Loop/Foreach | MRKLoopDataRetention.KeepAll、KeepForJoin(stepIds)、ReleaseAfterIteration；MRKLoopRegion(dataRetention:...) | 默认保留所有Invocation历史；显式选择后每轮Task.WhenAll结算完、Frame关闭后，仅回收未声明保留的MDS输出。保留节点可供CollectLoopOutputs读取，访问已放弃历史明确报告history_not_retained。串行/并行都复用原F19和MDS；嵌套动态控制区域及未知步骤拒绝此优化。**不声称自动发现所有动态消费关系** |
+| Session结果 | MRKSessionResultRetentionOptions、MRKRuntimeSession.TryTakeCompletedResult / ReleaseRetainedResult / SweepExpiredResults | 结果为Flow完成后已有的独立导出快照，Session只保存受MaxResults、MaxPayloadBytes、TTL限制的引用，达到上限记录RetentionRejected；Stop清理未领取引用。Take是Session**保留职责交接**，不能阻止其他代码仍通过原Flow.Completion读取结果，不是跨进程独占所有权转移；默认不开启 |
+| Studio运行页 | MPWDataLifecycleWorkspaceControl；Studio doc.runtime-data、AttachStudioRuntimeDataHeap | 观察可信Heap、显示真实阻断原因、独立或组合应用五维，默认只读；实时改动不等于工程保存或对设备生效。TestCenter同一WPF控件有未授权拒绝与授权真写的正反例 |
+| 工程级配置 | MDSDataLifecycleEngineeringOptions + MHS Schema RuntimeData.Lifecycle；Studio现有doc.config | 原MHS草稿、授权、Saved/Effective、NextTask生效、工程ProjectScope持久化；ToPolicy()/ApplyTo(heap,dataName)映射正式MDS策略，配置不另存运行值。Host仍必须在新Run安全边界**显式读取已批准Effective**并绑定数据项，不得通过Studio草稿自动修改进行中的Flow |
+| 外部资源 | MDSDataLifecycleAccess.BeginExternalOperation(name,providerId,generation) | 保留凭证归原Heap。未确认的Dispose进入Unknown并继续阻断Remove/Move/Heap.Dispose/自动回收；只能以同代次真实完成事件ConfirmCompletion解锁，旧代次拒绝；这是进程内**fail-closed逻辑屏障**，非GPU Fence/SDK/IPC ACK真实性验收。Provider失去Lease后恢复机制仍需实现 |
+| 性能 | ArchitectureSmoke --runtime-data-soak [iterations] | 实际MDS Frame打开、提交、关闭、释放；逐帧逻辑预算归零、输出吞吐、p95/p99微秒、GC代次、管理堆变化与逻辑载荷峰值；CI默认20,000轮。**不等于数小时长稳、RSS/VRAM峰值或CT现场验收** |
+
+### 19.1 便捷组合案例
+
+~~~csharp
+// 编排者：只有测量结果进入Join历史；大量临时影像在本轮全部消费者结束后释放。
+var loop = new MRKLoopRegion(bodyPlan, 100000,
+    (ctx, index) => index < 1000,
+    dataRetention: MRKLoopDataRetention.KeepForJoin("measure"));
+
+// 开发者：默认不保留Session结果；显式选有界缓存可主动领取。
+var retention = new MRKSessionResultRetentionOptions(
+    10, 64L * 1024 * 1024, TimeSpan.FromMinutes(10));
+var session = new MRKRuntimeSession("Line-A", engine, planSlot,
+    resultRetention: retention);
+session.Start();
+// 完成后：session.TryTakeCompletedResult(flowId, out MRKFlowResult completed);
+
+// 专业Provider的GPU任务：只在真实完成Fence后确认；Dispose不等于Fence完成。
+var external = heap.Lifecycle.BeginExternalOperation("GpuFrame", "GpuProvider", generation);
+try {
+    // 提交及等待真实GPU完成，确认返回的实际generation
+    external.ConfirmCompletion(generation);
+} finally { external.Dispose(); } // 未确认则Unknown，继续阻断释放
+~~~
+
+### 19.2 验收等级及后续依赖
+
+- 已有固定SHA 41f450f4a79f 的 MDS生命周期Windows CI 为Success，涵盖此前Loop有界释放、Session结果TTL等已提交主线，后续工程配置/Studio/外部协议/专用SOAK均必须以自己的更新SHA重新验收。
+- MHS配置的新DataAnnotations编译引用在并行提交 eaa9f3453de4 补正；此前失败日志不能重复用作新版本状态。
+- 下一步仍需实现并实证：MOC/MEM自动选择不同数据的回收策略，动态Join非显式声明的引用追踪、真实外部Provider可恢复Lease及硬件完成源、CT Volume/ROI与GPU/SHM/SDK实机、安全压力、数小时或数天的p95/p99与峰值趋势、工程关闭重开和多项目兼容。
