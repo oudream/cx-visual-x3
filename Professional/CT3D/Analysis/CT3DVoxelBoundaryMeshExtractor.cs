@@ -6,6 +6,19 @@ using CxVisual.Foundation.Volume;
 
 namespace CxVisual.Professional.CT3D
 {
+    /// <summary>工业RAW Float32不能将NaN/Infinity当作实心体素或空域。</summary>
+    internal static class CT3DRawScalarGuard
+    {
+        internal static float ReadFinite(FVOOriginalScalarLease source,int x,int y,int z)
+        {
+            float scalar=source.ReadScalar(x,y,z);
+            if(float.IsNaN(scalar)||float.IsInfinity(scalar))
+                throw new InvalidOperationException(
+                    "原始体素含NaN或Infinity，拒绝以非有限标量生成专业表面或Mesh。");
+            return scalar;
+        }
+    }
+
     /// <summary>专业提取结果：独立双精度FGE网格 + 原值版本/空间来源，不保存重复RAW或GPU对象。</summary>
     public sealed class CT3DVoxelBoundaryMeshResult
     {
@@ -29,7 +42,8 @@ namespace CxVisual.Professional.CT3D
         public bool HasCalibratedClosedGeometry
         {
             get{return SpatialFrame.IsCalibrated && !TouchesVolumeBoundary &&
-                Mesh.IsClosedOrientedManifold;}
+                Mesh.IsClosedOrientedManifold && Mesh.SignedEnclosedVolume.HasValue &&
+                Mesh.SignedEnclosedVolume.Value>0;}
         }
     }
 
@@ -87,13 +101,13 @@ namespace CxVisual.Professional.CT3D
                     if((y&15)==0)cancellation.ThrowIfCancellationRequested();
                     for(int x=0;x<source.Width;x++)
                     {
-                        if(source.ReadScalar(x,y,z)<threshold)continue;
+                        if(CT3DRawScalarGuard.ReadFinite(source,x,y,z)<threshold)continue;
                         for(int face=0;face<6;face++)
                         {
                             int nx=x+Dx[face],ny=y+Dy[face],nz=z+Dz[face];
                             bool outside=nx<0||ny<0||nz<0||
                                 nx>=source.Width||ny>=source.Height||nz>=source.Depth;
-                            if(!outside && source.ReadScalar(nx,ny,nz)>=threshold)continue;
+                            if(!outside && CT3DRawScalarGuard.ReadFinite(source,nx,ny,nz)>=threshold)continue;
                             if(triangles.Count/3>maxTriangles-2)
                                 throw new InvalidOperationException(
                                     "三角网格超出最大面数预算，禁止生成部分网格或默默简化。");
