@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Data.Configuration;
@@ -1784,6 +1785,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(catalog.Find("vision.capture").RuntimeAvailable&&
                 !catalog.Find("vision.inspect").RuntimeAvailable,
                 "unresolved professional capability reported available");
+            // MFM -> MOC is an on-demand projection, not another catalog.
+            var camera=new MFMModuleDescriptor("Camera01","真实模块声明",MFMModuleKind.Driver,
+                capabilityIds:new[]{"vision.capture","driver.not.installed"});
+            var compute=new MFMModuleDescriptor("Compute01","计算模块声明",MFMModuleKind.Compute,
+                capabilityIds:new[]{"vision.capture","vision.inspect"});
+            var linked=catalog.DescribeModules(new[]{compute,camera});
+            Check(linked.Count==4&&linked[0].Module.Id=="Compute01"&&
+                linked[0].CapabilityId=="vision.capture"&&linked[0].Described&&
+                linked[0].RuntimeResolved&&
+                linked.Any(x=>x.Module.Id=="Camera01"&&
+                    x.CapabilityId=="driver.not.installed"&&!x.Described&&!x.RuntimeResolved)&&
+                linked.Any(x=>x.Module.Id=="Compute01"&&
+                    x.CapabilityId=="vision.inspect"&&x.Described&&!x.RuntimeResolved),
+                "MFM/MOC join should preserve declared/description/runtime resolution independently");
+            Check(catalog.All.Count==2&&catalog.Find("driver.not.installed")==null,
+                "module projection illegally modified the MOC catalog");
+            bool duplicateModuleDenied=false;
+            try { catalog.DescribeModules(new[]{camera,camera}); }
+            catch(InvalidOperationException){duplicateModuleDenied=true;}
+            Check(duplicateModuleDenied,"duplicate module ids accepted in capability projection");
+            bool nullModuleDenied=false;
+            try { catalog.DescribeModules(new MFMModuleDescriptor[]{null}); }
+            catch(ArgumentException){nullModuleDenied=true;}
+            Check(nullModuleDenied,"null module accepted");
+
             bool rejected=false;
             try{new MOCCapabilityCatalog(new[]{
                 new DemoCapabilityProvider(inspect),new DemoCapabilityProvider(inspect)},resolver);}
