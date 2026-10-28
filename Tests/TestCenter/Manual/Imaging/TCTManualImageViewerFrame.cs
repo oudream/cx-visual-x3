@@ -11,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Visual;
 using Microsoft.Win32;
@@ -769,7 +770,12 @@ namespace CxVisual.TestCenter.UI
             CancellationTokenSource cancellation=new CancellationTokenSource();
             _analysisCancellation=cancellation;
             long epoch=Interlocked.Read(ref _analysisEpoch);
+            long sourceVersion=_viewer.Session.SourceVersion;
+            FLDLogScope log=new FLDLogScope("TCT.Imaging.MaskContours",
+                Guid.NewGuid().ToString("N"));
             Stopwatch timer=Stopwatch.StartNew();
+            log.Info("开始二值轮廓提取；图像="+mask.Width+"x"+mask.Height+
+                "；源版本="+sourceVersion+"；最大边数=100000。");
             Show("正在追踪结果掩码的外环与孔洞，可切图取消。");
             try
             {
@@ -809,17 +815,28 @@ namespace CxVisual.TestCenter.UI
                    !ReferenceEquals(original,_viewer.Session.Original) ||
                    !ReferenceEquals(mask,_viewer.Session.Result))return;
                 timer.Stop();
-                foreach(MVIImageOverlayItem item in objects)_viewer.AddOverlay(item);
+                _viewer.AddOverlays(objects);
                 _viewer.SelectOriginal();
                 _viewer.SelectOverlay(objects[0].Id);
+                log.Info("轮廓完成；外环="+outer+"；孔洞="+holes+
+                    "；耗时毫秒="+timer.Elapsed.TotalMilliseconds.ToString("0.###",CultureInfo.InvariantCulture)+
+                    "；源版本="+sourceVersion+"；叠加数量="+objects.Count+"。");
                 Show("结果掩码轮廓已转成"+outer+"条外环、"+holes+
                     "条孔洞标注，原图坐标/点序列已写入OverlayStore，可在输出页导出CSV；"+
                     "保留独立Gray8掩码。耗时 "+
                     timer.Elapsed.TotalMilliseconds.ToString("0.#",CultureInfo.InvariantCulture)+"ms。");
             }
-            catch(OperationCanceledException) { }
+            catch(OperationCanceledException)
+            {
+                timer.Stop();
+                log.Info("轮廓任务取消；耗时毫秒="+
+                    timer.Elapsed.TotalMilliseconds.ToString("0.###",CultureInfo.InvariantCulture)+"。");
+            }
             catch(Exception error)
             {
+                timer.Stop();
+                log.Error("轮廓提取失败；源版本="+sourceVersion+
+                    "；耗时毫秒="+timer.Elapsed.TotalMilliseconds.ToString("0.###",CultureInfo.InvariantCulture),error);
                 if(epoch==Interlocked.Read(ref _analysisEpoch))
                     Show("轮廓提取失败："+error.Message);
             }
