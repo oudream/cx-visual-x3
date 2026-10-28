@@ -84,3 +84,11 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 
 - [8b8c160 CI #40523131245](https://github.com/oudream/cx-visual-x3/actions/runs/40523131245) 的 Windows 项目编译失败，错误来自并行图元编辑测试 `VisualShapeEditingTests.cs` 缺少 `using System.Collections.Generic;`（CS0246/CS1503），不是 Numerics 底座编译错误；专项数值测试因此未执行，不能标记通过。
 - 该图元测试引用已在 `17aee42` 中由负责方修复；本次补录用于在含该修复的新提交上重新触发 Numerics 专项与全平台回归，最终结果以新CI为准。
+
+## 2026-10-28 F13 张量无额外结果分配调用与空形状验证
+
+- N29：多轴巨大尺寸但存在零维时，创建Shape不应虚假溢出；非空巨大尺寸必须拒绝，空Shape没有可访问坐标。
+- N30：`MatMulInto` 输出复用、尺寸和别名检查、补偿求和、固定随机矩阵逐值与朴素乘法对照、零内维矩阵乘积。
+- N31：`AddInto`、`MultiplyInto` 的尾轴广播、输出形状合同、输入输出别名防护、复制API一致性与零长维。
+- 第一批固定代码SHA `f73b11d`：[Numerics Windows CI #40612654481](https://github.com/oudream/cx-visual-x3/actions/runs/40612654481)，完整编译、Owner检查、Numerics专项和默认回归通过。
+- 第二批固定代码SHA `9c0fb6d`：[Numerics Windows CI #40612824905](https://github.com/oudream/cx-visual-x3/actions/runs/40612824905)，截至本次记录，完整构建、Owner检查、Numerics专项和默认回归各执行步骤成功，工作流最终结论须核对。

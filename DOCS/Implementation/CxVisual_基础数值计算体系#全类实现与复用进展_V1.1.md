@@ -103,3 +103,12 @@ double conditionNumber = solved.ConditionNumber;
 - 输入/输出对象不允许为同一实例；参数形状不合法会在计算前报错且不修改输出。数值溢出后输出可能部分更新，需视为无效。
 - 新增正反例：行向量广播加/乘、与已有分配API逐值比较、错误形状/别名、零维张量、零内维矩阵乘积。
 - Windows CI 成功及完整回归以代码 SHA 对应的实际运行记录为准。性能指标尚需独立微基准/GC计数实证。
+
+## 十、F13 同代码SHA Windows验证记录（2026-10-28）
+
+| 代码SHA | Windows Actions | 实际验证 |
+|---|---|---|
+| `f73b11d` | [Numerics #40612654481](https://github.com/oudream/cx-visual-x3/actions/runs/40612654481) | **成功**：NuGet restore、.NET48/x64完整构建、Owner DAG、--numerics及默认ArchitectureSmoke |
+| `9c0fb6d` | [Numerics #40612824905](https://github.com/oudream/cx-visual-x3/actions/runs/40612824905) | 截至补录时：全方案构建、Owner DAG、--numerics及默认ArchitectureSmoke **每步成功**；最终Workflow状态须点击Actions核对 |
+
+不能把现有CPU密集张量API等同于GPU/多类型Tensor能力，也不能把编译和数值回归当作性能吞吐测试。F13下一质量门槛仍为低分配基准、跨规模矩阵对照、极端溢出处理与更多数据类型/视图合同。 
