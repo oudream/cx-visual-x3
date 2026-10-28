@@ -299,3 +299,16 @@
 **最新CI**：FIM数学反证修正后，[Imaging #40475730885](https://github.com/oudream/cx-visual-x3/actions/runs/40475730885)已核实SUCCESS，SHA `da05669`。`3787e3a`的[Imaging #40475820357](https://github.com/oudream/cx-visual-x3/actions/runs/40475820357)已核实**SUCCESS**，包含Windows x64全工程编译、FIM/MVI数字反证、实际WPF Viewer按钮/轮廓/CSV操作及PNG回环。相同SHA的[TestCenter #40475820420](https://github.com/oudream/cx-visual-x3/actions/runs/40475820420)为**FAIL**，失败步骤是跨专业`Verify isolated Connector UIA PointTable and DataMapping`（非本轮二维功能）；不得把Imaging绿灯冒充整个平台全绿。
 
 **尚需继续**：旧HALCON回调所涉具体专业阈值/缺陷算法的同图比较、孔洞ROI的精确面积交互、轮廓编辑/简化/拟合、文本就地编辑、工程状态与统一Undo、工业4300×4300等性能及实机验收。
+
+## 16. OOP-GoF-AOP首轮可执行验证（2026-10-28）
+
+**正式UML设计入口**：[二维视觉工作台 OOP-GoF-AOP 与UML实施设计 V1.1](../Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——OOP-GoF-AOP与UML实施设计_V1.1.md)。本节按真实改动与固定SHA记录，不能替代之后的工程Undo/专业SDK验收。
+
+| 关注点 | 正式对象、改动和证明 | 仍需完成 |
+|---|---|---|
+| OOP / GoF State | `MVIImageLinePairGesture` 属于 `Mechanism.Visual`，维护四阶段Ls2Ls输入和短命原图坐标草稿；MPW主/副Pane继续调用同一 `AppendLinePairPoint`。传统csproj显式纳入、数值用例验证退化线、NaN/越界、重合端点、取消和完成。代码 `3613ce3`、`8532005`、`5a9bc10`、`20cc250`、`62b3c12`。 | 多边形/Bezier等复杂工具的统一手势合同与真实物理输入 |
+| OOP / GoF Observer | 同一 `MVIImageOverlayStore` 新增 `AddRange`：全部枚举/校验后一次追加、一次事件；MPW `AddOverlays` WPF线程入口；TCT原轮廓循环改为一次批量。代码 `add9a1c`、`055d0c9`、`9c8f44d`、`7bdb024`、`fb028ff`。 | 更多批次操作需求确定后再评估替换/删除复合事务；不建第二Undo |
+| AOP / F16 | 轮廓提取记录 `FLDLogScope` 关联ID、输入维度、源版本、外环/孔洞数、耗时和异常；TestCenter宿主统一初始化/释放FLD；WPF回归使用真实FLD日志快照反证开始/结束关联。代码 `9c8f44d`、`6c04e37`、`60992cb`。 | 正式Studio/专业宿主的日志初始化和多任务取消/异常验收 |
+| CI验收 | [Windows Imaging #40619073480](https://github.com/oudream/cx-visual-x3/actions/runs/40619073480)，固定SHA `60992cb542d10cbe08e75a403f6eff455029c959`：**全工程构建 SUCCESS**、依赖DAG SUCCESS、**真实WPF 2D操作/PNG回环 SUCCESS**、FIM/MVI `--imaging` PASS（含最新State、Batch数值反证）；但整体工作流为 **FAIL**，默认回归 `F17.PIPE_BULK child exit failure`（跨进程管道，非二维本轮），3D步骤跳过。工作流拆分WPF与默认回归，避免F17问题遮蔽二维真实结果。 | 解决跨专业F17回归后才能宣告完整工作流绿色；实机硬件和多DPI尚未验收 |
+
+**严格状态**：以上是首批架构实施及实际Windows专项验证，**不代表完整UML所列Gesture接口、MEM工程型ROI映射、Undo/Redo、复杂专业策略、工业大图性能已全部交付**。持久工程仍由现有MEM/MRC持有唯一真源；ROI临时标注不得作为第二份工程文档。
