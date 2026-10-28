@@ -16,8 +16,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MRKExecutionEngine _engine;
         private readonly MRKExecutionPlan _plan;
         private readonly int _maxInFlight;
-        private readonly Dictionary<Guid, MRKFlowHandle> _active =
-            new Dictionary<Guid, MRKFlowHandle>();
+        private sealed class ActiveFlow
+        {
+            internal MRKFlowHandle Handle;
+            internal Task Settlement;
+        }
+        private readonly Dictionary<Guid, ActiveFlow> _active = new Dictionary<Guid, ActiveFlow>();
         private long _rejected;
         private bool _stopping;
         private Task _stopTask;
@@ -45,8 +49,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 { _rejected++; return null; }
                 cancellation.ThrowIfCancellationRequested();
                 MRKFlowHandle flow = _engine.StartFlow(_plan, inputs, cancellation);
-                _active.Add(flow.FlowId, flow);
-                Task cleanup = flow.Completion.ContinueWith(completed =>
+                var active = new ActiveFlow { Handle = flow };
+                _active.Add(flow.FlowId, active);
+                active.Settlement = flow.Completion.ContinueWith(completed =>
                 {
                     lock (_gate) _active.Remove(flow.FlowId);
                 }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
@@ -73,24 +78,27 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>停止新的触发；可请求取消在途流程，但不会强杀未协作退出的工作。</summary>
         public Task StopAsync(bool requestCancelActive = false)
         {
-            MRKFlowHandle[] flows;
+            ActiveFlow[] flows;
             lock (_gate)
             {
                 _stopping = true;
-                flows = new List<MRKFlowHandle>(_active.Values).ToArray();
+                flows = new List<ActiveFlow>(_active.Values).ToArray();
                 if (_stopTask == null) _stopTask = DrainAsync(flows);
             }
             if (requestCancelActive)
-                foreach (MRKFlowHandle flow in flows) flow.RequestCancel();
+                foreach (ActiveFlow flow in flows) flow.Handle.RequestCancel();
             return _stopTask;
         }
-        private async Task DrainAsync(MRKFlowHandle[] flows)
+        private async Task DrainAsync(ActiveFlow[] flows)
         {
             FCRPeriodicJob timer;
             lock (_gate) timer = _periodic;
             if (timer != null) await timer.StopAsync().ConfigureAwait(false);
             List<Task> tasks = new List<Task>();
-            foreach (MRKFlowHandle flow in flows) tasks.Add(flow.Completion);
+            // Flow的Completion使用异步延续；等待它不等于在途登记已经清理。
+            // 必须等待本Trigger拥有的清理延续，Stop完成时InFlight才真实归零。
+            foreach (ActiveFlow flow in flows)
+            { tasks.Add(flow.Handle.Completion); tasks.Add(flow.Settlement); }
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
     }

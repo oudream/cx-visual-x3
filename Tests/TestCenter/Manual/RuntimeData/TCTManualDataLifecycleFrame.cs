@@ -320,16 +320,16 @@ namespace CxVisual.TestCenter.UI
                 frame._modes[2].SelectedIndex = 1;
                 frame._modes[3].SelectedIndex = 1;
                 frame._modes[4].SelectedIndex = 2;
-                frame._applyAll.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame._applyAll.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (frame.LastError != null ||
                     !frame._heap.Lifecycle.GetPolicy("Image").Reclamation.ReleaseOnExpiry)
                     throw new InvalidOperationException("WPF组合设置未真正修改MDS策略：" + frame.LastError);
-                frame._acquire.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame._acquire.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (frame.ActiveConsumers != 1) throw new InvalidOperationException("WPF按钮未登记真实消费者");
-                frame._sweep.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame._sweep.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (!frame.HasImage) throw new InvalidOperationException("TTL在读者仍活跃时提前释放");
-                frame._releaseUse.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                frame._sweep.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame._releaseUse.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                frame._sweep.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (frame.HasImage) throw new InvalidOperationException("TTL到期后未真实释放数据");
                 frame.Commands.Single(x => x.Id == "lifecycle.reset").Execute();
                 frame._modes[0].SelectedIndex = 1;

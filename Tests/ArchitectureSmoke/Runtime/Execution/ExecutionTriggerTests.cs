@@ -12,6 +12,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ManualTriggerConcurrencyAndDrain();
             PeriodicTriggerNeverLaunchesUnboundedFlows();
+            StopWaitsForOwnedSettlement();
         }
         private static void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException("触发测试：" + message); }
@@ -80,8 +81,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "周期触发没有执行两次");
             Await(trigger.StopAsync());
             Check(peak == 1 && trigger.Rejected > 0 && trigger.InFlight == 0,
-                "周期触发重入或在途队列没有收敛");
+                "周期触发重入或在途队列没有收敛：peak=" + peak + ", rejected=" + trigger.Rejected + ", inFlight=" + trigger.InFlight);
             Await(engine.StopAsync());
+        }
+        private static void StopWaitsForOwnedSettlement()
+        {
+            // 公共行为竞态压力：Stop必须等待本Trigger登记清理，不依赖私有门或线程池调度顺序。
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var plan = new MRKExecutionPlan("trigger-settlement", new[] {
+                    new MRKExecutionStep("work", new string[0], async (context, token) => {
+                        await release.Task.ConfigureAwait(false); return (object)7;
+                    }) });
+                var engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
+                var trigger = new MRKExecutionTrigger(engine, plan, 1);
+                var flow = trigger.TryTrigger();
+                Task stopping = trigger.StopAsync();
+                Check(!stopping.IsCompleted && trigger.InFlight == 1, "Stop未保留未结算的工作");
+                release.SetResult(true); Await(stopping);
+                Check(trigger.InFlight == 0 && flow.Completion.IsCompleted && trigger.TryTrigger() == null,
+                    "Stop返回必须结算本Trigger在途登记并拒绝新触发，attempt=" + attempt);
+                Await(engine.StopAsync());
+            }
         }
     }
 }

@@ -7,6 +7,12 @@
 
 ## 00. 本次TDD路线与阶段范围
 
+### 2026-10-28 Trigger停止结算竞态修复
+
+F17完整架构回归再次暴露既有周期触发停止后`InFlight`可能非零。Flow完成源使用`RunContinuationsAsynchronously`，原Stop仅等Flow.Completion，不能证明Trigger自己的移除登记延续已完成。正式`MRKExecutionTrigger`保留每个在途Flow的Settlement任务，Stop等待同一任务结算；API、执行Engine和Owner不变。
+
+新增`ExecutionTriggerTests.StopWaitsForOwnedSettlement`，64轮公共行为竞态：未释放工作前Stop不得完成，完成后InFlight必须0、Flow已完成且新触发拒绝；保留原Manual/Periodic断言并补充失败实值。必须运行Windows x64构建、`--concurrency`、默认ArchitectureSmoke和对应源码CI；本记录不把尚未执行的门禁写成通过，也不涉及硬件停止或跨进程所有权。
+
 从六角色期望倒推：R1软件开发者提交/等待/取消；R2专业Provider仅实现\`Func<CancellationToken,Task<T>>\`；R3工程编排用户的基本DAG连线与All汇合；R4调试人员查看Work/Flow状态；R5操作员观察明确的失败/超时事实；R6平台开发者保持两个源码集中目录、没有框架复制。
 
 **测试场景驱动架构**（实际验收入口如下）：从首批10项扩展到20项以上可执行方法；场景代码与对应实现一同迭代，严格以Windows CI日志为准，未记录的红灯阶段不能声称已跑过；\`Tests/FoundationSmoke/Program.cs --concurrency\`单独运行F19测试，不依赖其他仍有已知资源竞争风险的F16同步日志测试；ArchitectureSmoke仍整体执行。
