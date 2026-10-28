@@ -825,9 +825,9 @@ namespace CxVisual.TestCenter.UI
                     frame.ViewState.Scene3D.SetVisibility(selectedSurface,true);
                     Check(frame.SurfaceDisplayedPointCount>100,
                         "恢复显示不能从R8预览重新生成计量Surface");
-                    int before=frame.SurfaceDisplayedPointCount;
+                    int surfacePointsBeforeSlice=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
-                    Check(frame.SurfaceDisplayedPointCount==before &&
+                    Check(frame.SurfaceDisplayedPointCount==surfacePointsBeforeSlice &&
                           frame.Scene.SlicePlaneCount==3,
                         "三刀变化不得清除专业Surface叠加层");
                 }
