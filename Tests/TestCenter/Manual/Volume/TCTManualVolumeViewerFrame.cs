@@ -55,6 +55,9 @@ namespace CxVisual.TestCenter.UI
                     WorkspaceAction("ct3d.clear","清空数据",ClearVolume,loaded),
                     WorkspaceAction("ct3d.fit","复位四视图",FitAllViews,loaded),
                     WorkspaceAction("ct3d.center","三刀居中",Center,loaded),
+                    WorkspaceAction("ct3d.surface.sphere","离散球体分析",
+                        StartSurfaceSphereFromUi,()=>_volume!=null &&
+                        _volume.HasOriginalRawData && _volume.SpatialFrame.IsCalibrated),
                     WorkspaceAction("ct3d.camera","3D相机复位",Reset3DCamera,loaded),
                     WorkspaceAction("ct3d.window","应用窗宽窗位",ApplyWindowCenterWidth,loaded),
                     WorkspaceAction("ct3d.gray","应用灰阶映射",UpdateLegacyGrayMapping,loaded),
@@ -179,6 +182,7 @@ namespace CxVisual.TestCenter.UI
         {
             if (volume == null) throw new ArgumentNullException("volume");
             FVOVolumeData previous = _volume;
+            ClearSurfaceAnalysis(); // 原值/Frame/Scene变更时取消旧任务并清除所有GPU/WPF旧Surface。
             if (_state != null) _state.PropertyChanged -= OnStateChanged;
             _updating = true;
             try
@@ -189,11 +193,13 @@ namespace CxVisual.TestCenter.UI
                 string sourceRef=string.IsNullOrWhiteSpace(volume.SourceFilePath)
                     ? "session:volume:"+Guid.NewGuid().ToString("N")
                     : volume.SourceFilePath;
-                _state.Scene3D.Add(MVI3DSceneKind.Volume,sourceRef,0,
+                _state.Scene3D.Add(MVI3DSceneKind.Volume,sourceRef,_sphereEpoch,
                     "volume:physical-frame");
                 _scene.BindCamera(_state.Camera);
                 if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
+                _sphereThresholdText.Text=((volume.ScalarMin+volume.ScalarMax)/2.0f)
+                    .ToString("0.###",System.Globalization.CultureInfo.InvariantCulture);
                 _workbench.Bind(volume,_state);
                 _sliderX.Maximum = volume.OriginalWidth - 1;
                 _sliderY.Maximum = volume.OriginalHeight - 1;
@@ -358,6 +364,7 @@ namespace CxVisual.TestCenter.UI
         public void OnWorkspaceClosed()
         {
             CancelPendingRawLoads();
+            ClearSurfaceAnalysis();
             DisableGpu(); // MPW Host先释放WGL，再释放FVO原值。
             if(_gpuHost!=null)
             {
