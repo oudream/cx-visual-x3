@@ -34,8 +34,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--numerics-benchmark") >= 0) { FNUNumericsBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--numerics") >= 0) { FNUNumericsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); RuntimeVisionImageInteropTests.Run(); RuntimeVisionResultTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--vision-results") >= 0) { RuntimeVisionResultTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); RuntimeVisionImageInteropTests.Run(); RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--vision-results") >= 0) { RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-uml-core") >= 0) { ModuleChannelTransportSmokeTests.RunUmlCore(); FTRWebSocketAtomicTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); FTRWebSocketAtomicTests.Run(); return 0; }
@@ -100,6 +100,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 RuntimeDataStorageTests.Run();
                 RuntimeVisionDataFlowTests.Run();
                 RuntimeVisionResultTests.Run();
+                RuntimeVisionArtifactsTests.Run();
                 RuntimeVisionImageInteropTests.Run();
                 ModuleArchitectureReviewTests.Run();
                 InteractionStageOneTests.Run();

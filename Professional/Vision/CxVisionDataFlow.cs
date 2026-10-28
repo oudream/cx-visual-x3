@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Types;
+using CxVisual.Foundation.Imaging;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Professional.Vision
@@ -36,14 +37,42 @@ namespace CxVisual.Professional.Vision
         public static MRKExecutionPlan CreateCpuInspectionPlan(
             CxVisionInspectionOptions options, long revision = 1)
         {
+            return BuildCpuInspectionPlan(options, revision, false);
+        }
+
+        /// <summary>
+        /// 显式要求发布专业图像产物时才增加灰度处理图与0/255阈值Mask；
+        /// 不改变原CreateCpuInspectionPlan签名、已有调用方或默认内存开销。
+        /// Mask是面积筛选之前的逐像素阈值结果，不能当作已验收缺陷Region集合。
+        /// </summary>
+        public static MRKExecutionPlan CreateCpuInspectionPlanWithArtifacts(
+            CxVisionInspectionOptions options, long revision = 1)
+        {
+            return BuildCpuInspectionPlan(options, revision, true);
+        }
+
+        private static MRKExecutionPlan BuildCpuInspectionPlan(
+            CxVisionInspectionOptions options, long revision, bool publishArtifacts)
+        {
             if (options == null) throw new ArgumentNullException("options");
             CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(options);
             CxVisionPixelDepth pixelDepth = options.PixelDepth;
+            int threshold = options.GrayThreshold;
             if (pixelDepth != CxVisionPixelDepth.Bits8 &&
                 pixelDepth != CxVisionPixelDepth.Bits16)
                 throw new NotSupportedException("只支持8/16位灰度原始像素");
             Dictionary<string, Type> imageOutput = new Dictionary<string, Type>
             { { "Frame", typeof(CxVisionGrayFrame) } };
+            // 增量专业产物只增加当前MRK计划的具名数据端口，仍由MDS统一捕获/预算。
+            Dictionary<string, Type> preprocessOutputs =
+                new Dictionary<string, Type>(imageOutput);
+            Dictionary<string, Type> inspectOutputs = new Dictionary<string, Type>
+            { { "Result", typeof(CxVisionInspectionResult) } };
+            if (publishArtifacts)
+            {
+                preprocessOutputs.Add("Image", typeof(FIMImageBuffer));
+                inspectOutputs.Add("Mask", typeof(FIMImageBuffer));
+            }
             MRKExecutionInput[] rawInputs = {
                 new MRKExecutionInput("Raw", MRKInputSource.FlowInput,
                     "RawPixels", typeof(FDTReadOnlyBuffer)),
@@ -61,6 +90,10 @@ namespace CxVisual.Professional.Vision
                     ctx.Data.Adapters.Register<CxVisionGrayFrame>(null,
                         immutable: true, kind: FDTDataKind.Image,
                         sizeEstimator: frame => checked((long)frame.Width * frame.Height * 2L));
+                    if (publishArtifacts)
+                        ctx.Data.Adapters.Register<FIMImageBuffer>(null,
+                            immutable: true, kind: FDTDataKind.Image,
+                            sizeEstimator: image => checked((long)image.Stride * image.Height));
                     ctx.Data.Adapters.Register<CxVisionInspectionResult>(
                         CopyResult, kind: FDTDataKind.Object,
                         sizeEstimator: result => checked(128L + result.Regions.Count * 64L));
@@ -98,11 +131,17 @@ namespace CxVisual.Professional.Vision
                     var prepared = new CxVisionGrayFrame(image.Width, image.Height,
                         image.PixelDepth, filtered);
                     ctx.Data.Return("Frame", prepared);
+                    if (publishArtifacts)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        // FIM像素自持有；由专业转换已有像素，不暴露ushort[]可变别名。
+                        ctx.Data.Return("Image", CxVisionImageInterop.ToImageBuffer(prepared));
+                    }
                     return Task.FromResult((object)prepared.Width);
                 }, inputs: new[] {
                     new MRKExecutionInput("FrameInput", MRKInputSource.StepOutput,
                         "Decode.Frame", typeof(CxVisionGrayFrame))
-                }, dataOutputs: imageOutput),
+                }, dataOutputs: preprocessOutputs),
 
                 new MRKExecutionStep("Inspect", new [] { "Preprocess" }, (ctx, ct) =>
                 {
@@ -111,13 +150,27 @@ namespace CxVisual.Professional.Vision
                     CxVisionInspectionResult result = pipeline.Inspect(frame, revision, ct);
                     ct.ThrowIfCancellationRequested();
                     ctx.Data.Return("Result", result);
+                    if (publishArtifacts)
+                    {
+                        // 与Inspection.ThresholdPixelCount相同语义：经Preprocess后的全图
+                        // 阈值命中0/255 Mask，未应用缺陷区域的面积上下限。
+                        byte[] mask = new byte[checked(frame.Width * frame.Height)];
+                        int hits = 0;
+                        for (int i = 0; i < mask.Length; ++i)
+                        {
+                            if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
+                            if (frame.PixelAt(i) >= threshold) { mask[i] = 255; ++hits; }
+                        }
+                        if (hits != result.ThresholdPixelCount)
+                            throw new InvalidOperationException("阈值Mask与检测像素数不一致");
+                        ctx.Data.Return("Mask", new FIMImageBuffer(frame.Width,
+                            frame.Height, FIMPixelFormat.Gray8, mask));
+                    }
                     return Task.FromResult((object)result.Regions.Count);
                 }, inputs: new[] {
                     new MRKExecutionInput("FrameInput", MRKInputSource.StepOutput,
                         "Preprocess.Frame", typeof(CxVisionGrayFrame))
-                }, dataOutputs: new Dictionary<string, Type> {
-                    { "Result", typeof(CxVisionInspectionResult) }
-                }),
+                }, dataOutputs: inspectOutputs),
 
                 new MRKExecutionStep("Statistics", new [] { "Preprocess" }, (ctx, ct) =>
                 {
@@ -156,12 +209,18 @@ namespace CxVisual.Professional.Vision
                     { "Passed", typeof(bool) }
                 })
             };
-            return new MRKExecutionPlan("Vision.CpuInspection", steps,
-                new Dictionary<string, string> {
-                    { "Inspection", "Inspect.Result" },
-                    { "GraySum", "Statistics.GraySum" },
-                    { "Passed", "Decision.Passed" }
-                });
+            Dictionary<string, string> exports = new Dictionary<string, string>
+            {
+                { "Inspection", "Inspect.Result" },
+                { "GraySum", "Statistics.GraySum" },
+                { "Passed", "Decision.Passed" }
+            };
+            if (publishArtifacts)
+            {
+                exports.Add("PreparedImage", "Preprocess.Image");
+                exports.Add("ThresholdMask", "Inspect.Mask");
+            }
+            return new MRKExecutionPlan("Vision.CpuInspection", steps, exports);
         }
     }
 }

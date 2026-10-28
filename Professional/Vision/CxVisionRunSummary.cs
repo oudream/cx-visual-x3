@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using CxVisual.Foundation.Imaging;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Professional.Vision
 {
     /// <summary>现有CPU检测结果实际可提供的类型；流程标志并非产品级OK/NG。</summary>
-    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision }
+    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask }
 
     /// <summary>不可变候选区域快照，不泄漏原CxVisionDefectRegion的可变属性。</summary>
     public sealed class CxVisionRegionSnapshot
@@ -34,7 +35,10 @@ namespace CxVisual.Professional.Vision
         }
     }
 
-    /// <summary>每次Run中稳定可引用的只读小值项；无object/大图像持久副本。</summary>
+    /// <summary>
+    /// 每次Run的具名专业结果项。图像使用自持有不可变FIM像素快照，
+    /// 只支持本Run内临时引用，不是磁盘Artifact或持久ImageSet。
+    /// </summary>
     public sealed class CxVisionResultItem
     {
         public string ItemId { get; private set; }
@@ -47,10 +51,13 @@ namespace CxVisual.Professional.Vision
         public long? IntegerValue { get; private set; }
         public bool? BooleanValue { get; private set; }
         public CxVisionRegionSnapshot Region { get; private set; }
+        /// <summary>仅Kind为Image/Mask时存在；FIM公开像素访问均不可修改内部数据。</summary>
+        public FIMImageBuffer Image { get; private set; }
 
         internal CxVisionResultItem(Guid runId, string sourceId, string suffix,
             string outputPort, CxVisionResultKind kind, string name, string unit,
-            long? number = null, bool? boolean = null, CxVisionRegionSnapshot region = null)
+            long? number = null, bool? boolean = null, CxVisionRegionSnapshot region = null,
+            FIMImageBuffer image = null)
         {
             RunId = runId;
             SourceId = sourceId;
@@ -62,12 +69,14 @@ namespace CxVisual.Professional.Vision
             IntegerValue = number;
             BooleanValue = boolean;
             Region = region;
+            Image = image;
         }
     }
 
     /// <summary>
     /// 现有MRK及MEM/MOC CPU检测的轻量只读结果投影。
-    /// 不取代MRKFlowResult、MDS DataStack或工程/Artifact存储；未实现Mask/Image结果。
+    /// 不取代MRKFlowResult、MDS DataStack或工程/Artifact存储；
+    /// 仅显式开启的CPU计划能携带Run内的Image/Mask内存产物。
     /// </summary>
     public sealed class CxVisionRunSummary
     {
@@ -90,11 +99,40 @@ namespace CxVisual.Professional.Vision
             if (flow == null) throw new ArgumentNullException("flow");
             if (flow.State != MRKFlowState.Completed)
                 throw new InvalidOperationException("MRK未完成，不能投影Pending数据");
-            return FromInspection(flow.FlowId, sourceId,
+            CxVisionRunSummary result = FromInspection(flow.FlowId, sourceId,
                 flow.GetCommittedOutput<CxVisionInspectionResult>("Inspection"),
                 flow.GetCommittedOutput<long>("GraySum"),
                 flow.GetCommittedOutput<bool>("Passed"),
                 completedUtc: flow.CompletedUtc);
+            // 只从MRK正式提交出口取值；失败/取消时不会读任何Pending产物。
+            // FIMImageBuffer持有只读像素，MDS现有FDT Adapter对其计费。
+            IDictionary<string, object> exports = flow.CommittedOutputs;
+            object prepared, mask;
+            bool hasImage = exports.TryGetValue("PreparedImage", out prepared);
+            bool hasMask = exports.TryGetValue("ThresholdMask", out mask);
+            if (hasImage != hasMask)
+                throw new InvalidOperationException("处理图与阈值Mask必须成对正式提交");
+            if (hasImage)
+            {
+                FIMImageBuffer image = prepared as FIMImageBuffer;
+                FIMImageBuffer binary = mask as FIMImageBuffer;
+                if (image == null || binary == null ||
+                    (image.PixelFormat != FIMPixelFormat.Gray8 &&
+                     image.PixelFormat != FIMPixelFormat.Gray16) ||
+                    binary.PixelFormat != FIMPixelFormat.Gray8 ||
+                    image.Width != result.Width || image.Height != result.Height ||
+                    binary.Width != result.Width || binary.Height != result.Height)
+                    throw new InvalidOperationException("CPU图像产物格式、尺寸或类型不匹配");
+                var items = new List<CxVisionResultItem>(result.Items);
+                items.Add(new CxVisionResultItem(result.RunId, result.SourceId,
+                    "PreparedImage", "PreparedImage", CxVisionResultKind.Image,
+                    "预处理灰度图", null, image: image));
+                items.Add(new CxVisionResultItem(result.RunId, result.SourceId,
+                    "ThresholdMask", "ThresholdMask", CxVisionResultKind.Mask,
+                    "阈值二值Mask（面积筛选前）", null, image: binary));
+                result.Items = items.AsReadOnly();
+            }
+            return result;
         }
 
         /// <summary>
