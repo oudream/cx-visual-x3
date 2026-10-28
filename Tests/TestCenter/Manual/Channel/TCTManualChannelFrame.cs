@@ -104,10 +104,9 @@ namespace CxVisual.TestCenter.UI
         public TCTManualChannelFrame()
         {
             ManualSessionId = Guid.NewGuid();
-            _channelKind.ItemsSource = new[] {
-                FTRChannelKind.Virtual, FTRChannelKind.TcpClient, FTRChannelKind.TcpServer,
-                FTRChannelKind.Udp, FTRChannelKind.UdpServer, FTRChannelKind.Serial
-            };
+            // 与FTR唯一Kind注册保持一致，不再维护TestCenter私有六类型白名单。
+            _channelKind.ItemsSource = Enum.GetValues(typeof(FTRChannelKind))
+                .Cast<FTRChannelKind>().Where(kind => kind != FTRChannelKind.Custom).ToArray();
             DockPanel content = new DockPanel { Margin = new Thickness(13, 8, 13, 8) };
             StackPanel options = new StackPanel();
             options.Children.Add(new TextBlock {
@@ -120,7 +119,7 @@ namespace CxVisual.TestCenter.UI
             options.Children.Add(picker);
             options.Children.Add(_topology);
             _singlePanel.Children.Add(new TextBlock {
-                Text = "Single：Virtual通道有真实收发；TCP Client / UDP需下一阶段Loopback验证，当前禁止伪装连接。",
+                Text = "本页仅Virtual执行真实收发；其他类型可检查能力与配置，真实收发须在专项测试或授权设备联机中执行。",
                 FontSize = 15, Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
             _singlePanel.Children.Add(new TextBlock { Text = "发送内容（UTF-8）", FontSize = 16 });
             _singlePanel.Children.Add(_payload);
@@ -223,10 +222,20 @@ namespace CxVisual.TestCenter.UI
             // 直接实例化已有正式MultiPeer Channel；只用其生产目录，不执行OpenAsync，
             // 因而不会在测试界面无授权时创建监听Socket或冒充设备连接。
             FTRChannelConfiguration configuration = FTRChannelConfigurations.Create(kind);
-            _multiChannel = kind == FTRChannelKind.TcpServer
-                ? (FTRMultiChannelBase)new FTRTcpServerChannel(configuration) :
-                kind == FTRChannelKind.UdpServer
-                ? (FTRMultiChannelBase)new FTRUdpServerChannel(configuration) : null;
+            FTRMultiChannelBase next = null;
+            if(configuration.DescribeType().Topology == FTRChannelTopology.MultiPeer)
+            {
+                // 仅创建，不Open；真实Factory是唯一归属，适用于所有已注册MultiPeer实现。
+                IFTRChannelTransport channel = new FTRChannelFactory().Create(configuration);
+                next = channel as FTRMultiChannelBase;
+                if(next == null)
+                {
+                    channel.Dispose();
+                    throw new NotSupportedException("正式MultiPeer实现尚未支持离线SubChannel目录");
+                }
+            }
+            if(_multiChannel != null)_multiChannel.Dispose();
+            _multiChannel = next;
             _peers.Clear();
             _stationProtocol.Points.Clear();
             _stations.Clear();
