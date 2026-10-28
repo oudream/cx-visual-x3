@@ -11,3 +11,7 @@
 ## 后续
 - GPU Context/ResourceSet继续从910行旧控件中提取，LUT/Uniform独立调度及Upload/PresentedRevision仍待实装。
 - 完整Windows/TestCenter及NVIDIA/AMD/Intel GPU硬件实测未在代码提交时自动成立，按CI Run日志和现场配置单独标记。
+
+## P2集成增量（同日）
+- TestCenter GPU参数更新改为消费`CT3DRenderingSettings.ApplyParametersWithChangeSet`返回的`TransferLut`分类；外部FVO曲线编辑显式`NotifyTransferFunctionsChanged`提升版本，不再只依赖无版本bool。仍保留局部`_gpuTransferDirty`等待真正MPW RenderScheduler迁入，未冒称全部P2调度完成。
+- `MPWVolumeRenderHost`在WGL释放出现异常时也进入Fallback，恢复WPF空间切面、保留错误信息；Dispose使用finally维持终态。

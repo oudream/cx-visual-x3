@@ -54,8 +54,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 FailureReason=_gpu.FailureReason;
                 _state=FailureReason!=null && FailureReason.IndexOf("OpenGL 3.3",
                     StringComparison.OrdinalIgnoreCase)>=0?GpuState.Unavailable:GpuState.Failed;
-                ReleaseGpu();
-                _state=GpuState.Fallback;_fallback.Visibility=Visibility.Visible;Notify();
+                try { ReleaseGpu(); }
+                catch(Exception cleanup) { FailureReason+="；GPU释放异常："+cleanup.Message; }
+                finally
+                {
+                    _state=GpuState.Fallback;
+                    _fallback.Visibility=Visibility.Visible;
+                    Notify();
+                }
                 return;
             }
             _state=GpuState.Ready;
@@ -68,17 +74,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             if(_state==GpuState.Disposed)return;
             FailureReason=string.IsNullOrWhiteSpace(reason)?"GPU故障":reason;
             _state=GpuState.Failed;
-            ReleaseGpu();
-            _state=GpuState.Fallback;_fallback.Visibility=Visibility.Visible;
-            Notify();
+            try { ReleaseGpu(); }
+            catch(Exception cleanup) { FailureReason+="；GPU释放异常："+cleanup.Message; }
+            finally
+            {
+                _state=GpuState.Fallback;
+                _fallback.Visibility=Visibility.Visible;
+                Notify();
+            }
         }
         public void Disable()
         {
             VerifyAccess();
             if(_state==GpuState.Disposed || (_state==GpuState.Fallback && _gpu==null))return;
-            ReleaseGpu();
-            _state=GpuState.Fallback;_fallback.Visibility=Visibility.Visible;
-            Notify();
+            try { ReleaseGpu(); }
+            catch(Exception cleanup) { FailureReason="GPU关闭异常："+cleanup.Message; }
+            finally
+            {
+                _state=GpuState.Fallback;
+                _fallback.Visibility=Visibility.Visible;
+                Notify();
+            }
         }
         public void Retry(MVI3DCameraState camera,Action<MPWVolumeOpenGlControl> configure)
         {
@@ -104,9 +120,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             VerifyAccess();
             if(_state==GpuState.Disposed)return;
             _state=GpuState.Disposing;
-            ReleaseGpu();
-            _fallback.Visibility=Visibility.Visible;
-            _state=GpuState.Disposed;Notify();
+            try { ReleaseGpu(); }
+            finally
+            {
+                _fallback.Visibility=Visibility.Visible;
+                _state=GpuState.Disposed;
+                Notify();
+            }
         }
         private void VerifyAccess()
         {

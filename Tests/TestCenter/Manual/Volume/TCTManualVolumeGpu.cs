@@ -97,10 +97,9 @@ namespace CxVisual.TestCenter.UI
 
         private void UpdateGpuSettings(bool transferChanged=false)
         {
-            if(transferChanged)_gpuTransferDirty=true;
             if (_volume == null) return;
             // 仅桥接现有MPW控件的原始输入；校验、写入、LUT失效均由CT3D负责。
-            bool lutChanged=_gpuSettings.ApplyParameters(new CT3DRenderingParameterValues {
+            CT3DRenderingChangeSet change=_gpuSettings.ApplyParametersWithChangeSet(new CT3DRenderingParameterValues {
                 Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
                     CT3DRenderingPresetKind.SlicerLikeGrayscale),
                 VolumeOpacity=(float)_gpuOpacity.Value,
@@ -122,7 +121,13 @@ namespace CxVisual.TestCenter.UI
                 ShowVolumeBounds=_gpuBounds.IsChecked==true,
                 SliceOpacity=(float)_gpuSliceOpacity.Value
             });
-            if(lutChanged)_gpuTransferDirty=true;
+            if(change.RequiresTransferLut)_gpuTransferDirty=true;
+            if(transferChanged)
+            {
+                // 正式FVO曲线编辑由CT3D提交专业LUT失效，保留唯一曲线数据源。
+                _gpuSettings.NotifyTransferFunctionsChanged();
+                _gpuTransferDirty=true;
+            }
             if (_gpu == null || !_gpu.IsAvailable) return;
             try
             {
