@@ -25,7 +25,51 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     public sealed class MDSDataLifecycleAccess
     {
         private readonly MDSDataHeap _owner;
+        private readonly object _externalGate = new object();
+        private readonly Dictionary<string, MDSExternalOperationLease> _external =
+            new Dictionary<string, MDSExternalOperationLease>(StringComparer.Ordinal);
         internal MDSDataLifecycleAccess(MDSDataHeap owner) { _owner = owner; }
+        private static string ExternalKey(string name, string providerId, long generation)
+        { return name + "\u001f" + providerId + "\u001f" +
+            generation.ToString(System.Globalization.CultureInfo.InvariantCulture); }
+
+        /// <summary>枚举进程内待确认任务，供专业Provider恢复时核对，绝不包含外部裸句柄。</summary>
+        public IList<MDSExternalOperationSnapshot> PendingExternalOperations()
+        {
+            lock (_externalGate)
+            {
+                var result = new List<MDSExternalOperationSnapshot>();
+                foreach (MDSExternalOperationLease item in _external.Values)
+                    result.Add(new MDSExternalOperationSnapshot(item.DataName,
+                        item.ProviderId, item.Generation, item.State));
+                return result.AsReadOnly();
+            }
+        }
+
+        /// <summary>Provider使用外部真实完成证据核对Unknown；验证失败继续锁定数据。</summary>
+        public bool TryReconcileExternalOperation(string dataName, string providerId,
+            long generation, IMDSExternalCompletionVerifier verifier)
+        {
+            if (verifier == null) throw new ArgumentNullException("verifier");
+            MDSExternalOperationLease lease;
+            lock (_externalGate)
+                if (!_external.TryGetValue(ExternalKey(dataName, providerId, generation),
+                    out lease)) return false;
+            // 外部Verifier可能阻塞或抛错，绝不可持任何Heap/Registry锁调用。
+            if (!verifier.VerifyCompleted(dataName, providerId, generation)) return false;
+            return lease.ConfirmCompletion(generation);
+        }
+
+        private void OnExternalConfirmed(MDSExternalOperationLease lease)
+        {
+            lock (_externalGate)
+            {
+                string key = ExternalKey(lease.DataName, lease.ProviderId, lease.Generation);
+                MDSExternalOperationLease registered;
+                if (_external.TryGetValue(key, out registered) &&
+                    object.ReferenceEquals(registered, lease)) _external.Remove(key);
+            }
+        }
 
         public void Configure(string name, MDSDataLifecyclePolicy policy)
         { _owner.ConfigureLifecycle(name, policy); }
@@ -56,9 +100,23 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 throw new ArgumentException("external.provider_required", "providerId");
             if (generation <= 0)
                 throw new ArgumentOutOfRangeException("generation");
-            return new MDSExternalOperationLease(
-                Retain(name, "External:" + providerId + ":" + generation),
-                name, providerId, generation);
+            lock (_externalGate)
+            {
+                string key = ExternalKey(name, providerId, generation);
+                if (_external.ContainsKey(key))
+                    throw new InvalidOperationException("external.duplicate_operation_identity");
+                if (_external.Count >= 1024)
+                    throw new InvalidOperationException("external.pending_operation_capacity_exceeded");
+                IDisposable hold = Retain(name, "External:" + providerId + ":" + generation);
+                try
+                {
+                    var lease = new MDSExternalOperationLease(hold,
+                        name, providerId, generation, OnExternalConfirmed);
+                    _external.Add(key, lease);
+                    return lease;
+                }
+                catch { hold.Dispose(); throw; }
+            }
         }
         public IDisposable Retain(string name, string reason = "Manual")
         { return _owner.AcquireLifecycleUse(name, true, reason); }
@@ -110,14 +168,34 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     /// 不能用托管Dispose伪装外部Fence已完成。
     /// </summary>
     public enum MDSExternalOperationState { InFlight, Unknown, Confirmed }
+
+    /// <summary>仅用于可信Provider确认，MDS不伪造GPU Fence/SDK Callback/IPC ACK。</summary>
+    public interface IMDSExternalCompletionVerifier
+    {
+        bool VerifyCompleted(string dataName, string providerId, long generation);
+    }
+
+    public sealed class MDSExternalOperationSnapshot
+    {
+        internal MDSExternalOperationSnapshot(string name, string provider, long generation,
+            MDSExternalOperationState state)
+        { DataName = name; ProviderId = provider; Generation = generation; State = state; }
+        public string DataName { get; private set; }
+        public string ProviderId { get; private set; }
+        public long Generation { get; private set; }
+        public MDSExternalOperationState State { get; private set; }
+    }
+
     public sealed class MDSExternalOperationLease : IDisposable
     {
         private readonly object _gate = new object();
         private IDisposable _hold;
+        private readonly Action<MDSExternalOperationLease> _confirmed;
         internal MDSExternalOperationLease(IDisposable hold,
-            string dataName, string providerId, long generation)
+            string dataName, string providerId, long generation,
+            Action<MDSExternalOperationLease> confirmed)
         {
-            _hold = hold;
+            _hold = hold; _confirmed = confirmed;
             DataName = dataName; ProviderId = providerId; Generation = generation;
         }
         public string DataName { get; private set; }
@@ -137,6 +215,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _hold.Dispose();
                 _hold = null;
                 State = MDSExternalOperationState.Confirmed;
+                if (_confirmed != null) _confirmed(this);
                 return true;
             }
         }
