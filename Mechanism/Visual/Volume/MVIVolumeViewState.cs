@@ -32,6 +32,9 @@ namespace CxVisual.Mechanism.Visual
         /// <summary>该会话唯一的三维相机状态；WPF与GL不得分别持有权威姿态。</summary>
         public MVI3DCameraState Camera { get; private set; } = new MVI3DCameraState();
 
+        /// <summary>仅管理可视引用和选择，不复制工程/Volume/CT3D专业真值。</summary>
+        public MVI3DSceneState Scene3D { get; private set; } = new MVI3DSceneState();
+
         private int _sliceX;
         private int _sliceY;
         private int _sliceZ;
