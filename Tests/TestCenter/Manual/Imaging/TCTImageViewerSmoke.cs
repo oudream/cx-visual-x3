@@ -903,7 +903,7 @@ namespace CxVisual.TestCenter.UI
                 MVIImageOverlayItem recolored=frame.Viewer.Overlays.Find(statsPolygon.Id);
                 if(recolored==null || recolored.Id!=statsPolygon.Id ||
                     recolored.Argb!=unchecked((int)0xff0da6c3) ||
-                    statsPolygon.Argb==recolored.Argb)
+                    recolored.Argb==layerColor)
                     throw new InvalidOperationException(
                         "点击ROI颜色按钮后没有真正改变原OverlayStore对象样式");
                 TabControl statsTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
