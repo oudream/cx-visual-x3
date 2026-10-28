@@ -442,7 +442,7 @@ namespace CxVisual.TestCenter.UI
                 "  Rejected="+d.RejectedSends+
                 (q==null ? "" : "  Pool="+q.InUseBytes+"/"+((long)q.BufferSize*q.Capacity)+" B"+
                     "  Backpressure="+q.BackpressureWaits)+
-                "\\n最近故障："+failure+
+                "\n最近故障："+failure+
                 (h.State==FTRChannelState.Closed ? "（离线状态不代表设备可用）" : "");
         }
 
