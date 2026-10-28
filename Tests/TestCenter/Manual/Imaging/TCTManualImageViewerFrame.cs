@@ -61,6 +61,9 @@ namespace CxVisual.TestCenter.UI
         private string _cpuSourceId;
         private CxVisionRunSummary _cpuEvidence;
         private FIMImageBuffer _cpuDisplayedMask;
+        private readonly ListBox _cpuResultItems = new ListBox {
+            Height = 145, Background = Brushes.White, Margin = new Thickness(5),
+            FontSize = 12 };
         public CxVisionRunSummary CpuEvidence { get { return _cpuEvidence; } }
 
         private readonly CheckBox _growEightConnected=new CheckBox {
@@ -119,6 +122,7 @@ namespace CxVisual.TestCenter.UI
         public TCTManualImageViewerFrame()
         {
             BuildWorkbenchLayout();
+            _cpuResultItems.SelectionChanged += (sender,args) => SelectCpuResultItem();
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
@@ -156,6 +160,7 @@ namespace CxVisual.TestCenter.UI
                         "testcenter.imaging/" + Guid.NewGuid().ToString("N");
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
+                    _cpuResultItems.Items.Clear();
                 }
                 else if (_cpuEvidence != null &&
                          !ReferenceEquals(_viewer.Session.Result, _cpuDisplayedMask))
@@ -163,6 +168,7 @@ namespace CxVisual.TestCenter.UI
                     // 其他图像操作已替换结果槽：旧Mask证据不再对应当前可视图。
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
+                    _cpuResultItems.Items.Clear();
                 }
                 CancelAnalysis();
                 FIMImageBuffer current = _viewer.ActiveImage;
@@ -187,6 +193,47 @@ namespace CxVisual.TestCenter.UI
                     ShowLineProfile();
                 if (StateChanged != null) StateChanged();
             };
+        }
+
+        private void SelectCpuResultItem()
+        {
+            ListBoxItem selected = _cpuResultItems.SelectedItem as ListBoxItem;
+            if (selected == null) return;
+            CxVisionResultItem item = selected.Tag as CxVisionResultItem;
+            CxVisionRunSummary run = _cpuEvidence;
+            if (run == null || item == null ||
+                item.RunId != run.RunId || item.SourceId != run.SourceId ||
+                run.SourceId != _cpuSourceId ||
+                !ReferenceEquals(_cpuSourceImage, _viewer.Session.Original))
+            {
+                Show("当前来源已改变，拒绝显示上一Run的视觉产物。");
+                return;
+            }
+            if (item.Kind == CxVisionResultKind.Image ||
+                item.Kind == CxVisionResultKind.Mask)
+            {
+                FIMImageBuffer image = item.Image;
+                if (image == null || image.Width != _cpuSourceImage.Width ||
+                    image.Height != _cpuSourceImage.Height)
+                {
+                    Show("视觉产物引用无效或尺寸不匹配，不予显示。");
+                    return;
+                }
+                _cpuDisplayedMask = image;
+                _viewer.ShowResult(image);
+                Show("结果项：" + item.Name + "；Run=" + run.RunId.ToString("N") +
+                    "；ItemId=" + item.ItemId + "；Source=" + run.SourceId);
+                return;
+            }
+            string value = item.Region != null ?
+                "面积=" + item.Region.PixelArea + " px²；范围=(" +
+                item.Region.MinX + "," + item.Region.MinY + ")-(" +
+                item.Region.MaxX + "," + item.Region.MaxY + ")" :
+                item.IntegerValue.HasValue ? item.IntegerValue.Value.ToString(
+                    CultureInfo.InvariantCulture) + " " + item.Unit :
+                item.BooleanValue.HasValue ? item.BooleanValue.Value.ToString() : "无";
+            Show("结果项：" + item.Name + "；" + value +
+                "；Run=" + run.RunId.ToString("N") + "；ItemId=" + item.ItemId);
         }
 
         private void CancelCpuVision()
@@ -227,6 +274,7 @@ namespace CxVisual.TestCenter.UI
                 if (!string.IsNullOrEmpty(issue)) throw new ArgumentException(issue);
                 CancelCpuVision();
                 _cpuEvidence = null;
+                _cpuResultItems.Items.Clear();
                 request = new CancellationTokenSource();
                 _cpuRunCancellation = request;
                 string sourceId = _cpuSourceId;
@@ -268,6 +316,23 @@ namespace CxVisual.TestCenter.UI
                 _viewer.ShowResult(mask.Image);
                 _cpuDisplayedMask = mask.Image;
                 _cpuEvidence = evidence;
+                _cpuResultItems.Items.Clear();
+                foreach (CxVisionResultItem item in evidence.Items)
+                {
+                    string number = item.Region != null ?
+                        item.Region.PixelArea.ToString(CultureInfo.InvariantCulture) + " px²" :
+                        item.IntegerValue.HasValue ?
+                        item.IntegerValue.Value.ToString(CultureInfo.InvariantCulture) +
+                            (item.Unit == null ? "" : " " + item.Unit) :
+                        item.BooleanValue.HasValue ? item.BooleanValue.Value.ToString() :
+                        item.Image == null ? "" :
+                        item.Image.Width.ToString(CultureInfo.InvariantCulture) + "×" +
+                            item.Image.Height.ToString(CultureInfo.InvariantCulture) +
+                            " " + item.Image.PixelFormat;
+                    _cpuResultItems.Items.Add(new ListBoxItem {
+                        Tag = item, Content = item.Kind + " · " + item.Name + " · " + number
+                    });
+                }
                 var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
                 Show("真实CPU检测完成：阈值命中=" +
                     evidence.Items.Single(i => i.Name == "阈值命中像素数").IntegerValue +
@@ -555,6 +620,7 @@ namespace CxVisual.TestCenter.UI
             CancelCpuVision();
             _cpuSourceImage = null;
             _cpuEvidence = null;
+            _cpuResultItems.Items.Clear();
             _viewer.ShowOriginal(image);
             Show("图像已从内存加载：" + image.Width + "×" + image.Height + " · " + image.PixelFormat);
         }
