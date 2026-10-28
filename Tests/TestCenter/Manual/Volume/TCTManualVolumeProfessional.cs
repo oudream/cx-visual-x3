@@ -169,6 +169,10 @@ namespace CxVisual.TestCenter.UI
             MPWVolumeDisplayMesh preview=MPWVolumeSurfaceProjection.ProjectMesh(
                 result.Mesh,volume.SpatialFrame,volume.OriginalWidth,volume.OriginalHeight,
                 volume.OriginalDepth,50000);
+            // 重生成Mesh时必须作废依赖旧Mesh的平面特征和MVI测量引用。
+            if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
+            _planeSceneItemId=null;
+            LastMeshPlaneFit=null;
             if(_meshSceneItemId.HasValue)_state.Scene3D.Remove(_meshSceneItemId.Value);
             _meshPreview=preview;
             LastVoxelMesh=result;
