@@ -831,14 +831,14 @@ sequenceDiagram
 | 02 | 空间与质量 | R21、R52 | FVO/FGE/CT3D | FVO/Spatial/FVOVolumeSpatialFrame.cs | 物理Frame/方向与正逆变换E；可信源标定接入P | 各向异性/旋转/镜像、真实CT标定与回环误差 |
 | 03 | 处理与变换 | R22 | FVO/CT3D/FNU | FVO/Slicing/FVOObliqueSliceBuilder.cs | 插值E；通用3D处理P | 滤波重采样、原值容差与区域边界 |
 | 04 | 大数据/LOD | R23、R53 | FVO/MPW | FVO/Memory/FVOOriginalScalarLease.cs | SafeHandle原值租约E；GPU LOD P | >2GB压力、并发租约/取消、GPU显存预算 |
-| 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs、MPWVolumeSurfaceProjection.cs | Raymarch/Host E；Surface点云GL framebuffer与WPF回退E，H待实测 | 完整Mesh/CAD混合绘制、硬件像素对照 |
+| 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs、MPWVolumeSurfaceProjection.cs | Raymarch/Host E；Surface点/索引Mesh双渲染E，硬件H待实测 | Mesh与Volume遮挡/透明混合、CAD与GPU像素对照 |
 | 06 | MPR与任意切 | R25 | FVO/MVI | FVO/Slicing/FVOSliceImageBuilder.cs | 正交/任意切E+T | 曲面重切、厚层投影与真实RAW |
 | 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T；统一Camera E | 鼠标/DPI/窗口变化与视角保真 |
 | 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVI/Volume/MVI3DSceneState.cs | 场景对象引用/选择E；3D ROI编辑P | 专业ROI编辑/持久化/Undo/物理坐标回环 |
 | 09 | 动画/时序 | R28、R54–56 | MVI/MPW/MEM | MPW/Volume/Views/MPWVolumeSliceSceneControl.cs | 相机E；完整动画P | 关键帧/时间轴/装配动画/视频与重开 |
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
-| 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 原值离散边界E，MPW Surface点叠加E；本批自动回归待核 | 亚体素表面、网格拓扑、精度/工业真值 |
-| 12 | 点云/网格 | R31 | FGE/CT3D | FGE/ [拟新增3D Mesh] | P | 网格拓扑/修补/点云重建质量 |
+| 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、CT3DVoxelBoundaryMeshExtractor.cs | 原值离散点及体素外露面E；早期UInt16 Mesh --volume T | 亚体素等值面、材料边界与工业真值 |
+| 12 | 点云/网格 | R31 | FGE/CT3D | FGE/Meshes/FGETriangleMesh3D.cs；CT3D/Analysis/CT3DVoxelBoundaryMeshExtractor.cs | 真实双精度共享顶点/索引Mesh、法向、封闭/非流形/体积E；固定SHA UInt16真值T | 亚体素、修补/简化/LOD、真实GPU面片与精度实测 |
 | 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、FNU/LinearAlgebra/FNULinearAlgebra.cs | SVD球拟合/残差E；其他专业拟合P | 约束/鲁棒/退化、工业标准件残差与不确定度 |
 | 14 | 几何配准 | R33、R48 | CT3D/FGE/FNU | FNU/LinearAlgebra/FNULinearAlgebra.cs | 基础数值E；ICP P | 变换已知真值/坐标链/收敛残差 |
 | 15 | 尺寸测量 | R34、R51 | CT3D/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 球径毫米初步数值E；完整工业计量P | 基准/标定/精度/不确定度与量具对照 |
@@ -868,6 +868,9 @@ sequenceDiagram
 ---
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
+
+> **2026-10-28 三维Mesh V02源码与验收**：FGE正式新增`FGETriangleMesh3D`（双精度顶点、索引、法向、面积、封闭/非流形统计、带符号/绝对体积），CT3D`CT3DVoxelBoundaryMeshExtractor`从FVO UInt16/Byte/Float32原值租约生成共享角点六邻域三角面；MPW采用体素角点物理投影，WPF索引Mesh和GL三角VBO分别实际绘制，MVI登记Mesh可视引用。**已固定验证**：`f7a9c771` Windows Imaging run `40681318710`的Release x64、`--volume`及该次UInt16方块面积24/体积8、镜像/拓扑负例测试通过；之后追加的各向异性、带符号体积、WPF/GL Mesh渲染与工作台入口**须依各SHA后续工作流升级证据**。完整状态见`DOCS/Implementation/CxVisual_通用三维视觉工作台#V02原值三角Mesh与拓扑质量闭环_V1.0.md`，未宣称亚体素表面、CAD、工业计量和真实GPU像素已验收。
+
 
 > **2026-10-28 Surface显示增量**：CT3D球拟合产生的来源版本化离散边界点，经`MPWVolumeSurfaceProjection`映射到标准化体空间；既有`MPWVolumeOpenGlControl`新增同帧GL点绘制/独立VBO，`MPWVolumeSliceSceneControl`新增批量WPF点Mesh，TestCenter真正调用分析并接通`MVI3DSceneState`显隐和Volume切换清理。窗口UInt16合成球与WPF/GL回退路径测试已写入。编译/窗口/真显卡需核对应版本Actions；记录见`DOCS/Implementation/CxVisual_通用三维视觉工作台#V01原值边界球拟合与MVI多对象引用首包_V1.0.md`。**不是已完成Mesh/CAD叠加、全部场景样式或工业计量认证。**
 
