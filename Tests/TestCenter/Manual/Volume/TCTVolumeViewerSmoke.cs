@@ -816,6 +816,15 @@ namespace CxVisual.TestCenter.UI
                         Check(frame.GpuControlForHardwareTest.SurfacePreviewPointCount==
                               frame.SurfaceDisplayedPointCount,
                             "有真实GPU时Surface也必须提交到GL framebuffer");
+                    Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
+                    frame.ViewState.Scene3D.SetVisibility(selectedSurface,false);
+                    Check(frame.SurfaceDisplayedPointCount==0 &&
+                          (!frame.IsGpuVolumeRendering ||
+                           frame.GpuControlForHardwareTest.SurfacePreviewPointCount==0),
+                        "MVI Scene显隐必须同步WPF专业Surface层与实际GPU顶点");
+                    frame.ViewState.Scene3D.SetVisibility(selectedSurface,true);
+                    Check(frame.SurfaceDisplayedPointCount>100,
+                        "恢复显示不能从R8预览重新生成计量Surface");
                     int before=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
                     Check(frame.SurfaceDisplayedPointCount==before &&
