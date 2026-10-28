@@ -88,7 +88,9 @@ namespace CxVisual.TestCenter.UI
                 else DisableGpu();
             };
             _gpuPanel.SaveFrameRequested+=()=>SaveGpuFrame();
-            _gpuPanel.OptionsChanged+=transferChanged=>UpdateGpuSettings(transferChanged);
+            // GPU参数面板只报告“发生输入变化”；是否失效LUT由专业CT3D判定。
+            // FVO控制点编辑器仍通过UpdateGpuSettings(true)明确通知原始曲线变化。
+            _gpuPanel.OptionsChanged+=transferChanged=>UpdateGpuSettings();
             sidebar.Children.Add(_gpuPanel);
         }
 
