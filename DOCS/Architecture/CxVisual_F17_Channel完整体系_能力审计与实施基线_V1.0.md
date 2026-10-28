@@ -142,3 +142,13 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 - **配置扩展**：已有`FTRReconnectController`只在创建时冻结MaxAttempts、InitialDelay、Backoff、MaxDelay，避免外部FCM运行期篡改策略（`489c7f3b`，F17 Windows #40661871142 success）。这不等于15类全部配置都已冻结生效。
 - **高性能**：`FTRChannelBase.SendAsync`增加切片重载、`FTRByteStreamAdapter`复用单次独立快照（`27d934b5`、`3a549615`、`8fb97eb9`）。不更改现有IFTR契约，不声称整个FTR→MPA→MDS零复制；异步预算仍在快照分配前接纳。
 - **未完成P0**：HTTP/WS多端接收总内存额度、专业大数据Handle、共享区跨重启恢复、全部通道参数行为矩阵、长期负载、跨PC/HIL继续作为明确缺口。每个新提交须独立CI，绝不将历史绿灯泛化为14项全面完成。
+
+
+### 8.6 六重点能力P0：多客户端资源预算与物理身份不丢失（2026-10-28）
+
+- HTTP Server把`SubChannelId`绑定到**请求**，WS/TCP/NamedPipe Server绑定到**连接**；收到的`FTRSubChannelAddress`包含父ChannelId、子ID、Generation，Connector原`PayloadReceivedFrom`继续保留来源。地址只能用于运行时会话及定向回复，不能冒充认证用户身份。HTTP用原`RespondAsync(address)`定向请求，WS在Peer发送门内按地址发送。
+- 现有单消息上限不足以控制多客户端内存。新`FTRBufferedByteBudget`为每个Channel合计管理HTTP请求聚合与响应副本、WS各Peer读缓冲和聚合，以及必要的Received独立上下文快照。采用租约先预留后分配并记录峰值/拒绝；不建第二套业务队列或传输调度。FCM新增HTTP/WS `TotalBufferedBytes`（默认32MiB），TestCenter显示正式Diagnostics。
+- HTTP总额度满503、单请求体超限413；WS超额隔离对应SubChannel，原Peer可继续完整收发。不假设网络写入就是业务确认，也不在自动恢复时重发未知命令。
+- 原`ReceiveBytes/ReceiveFrom`新增Count切片重载；HTTP/WS借用MemoryStream缓冲消除一次ToArray大副本，保留旧事件独立数据快照。此预算只覆盖FTR列明的在途托管分配，不覆盖HttpListener内部、用户自留副本、MPA/MDS专业缓存或全进程GC峰值；后者必须作为后续跨Owner资源SLA单独验收。
+- SharedMemory不自动沿用崩溃进程遗弃的Side Mutex：旧MMF可能存放未知结果。新增强制退出的真实子进程回归，新共享区/新Session才可恢复。
+- 仍待：HTTP/WS极端并发与长期稳定性、各类通道FCM逐项实际生效、跨层CT/图像DataHandle低复制链路、跨PC和24h现场验证。旧WS预算测试失败及新修订验证状态记录于Testing，不得抹除失败或提前宣称14项工业级完成。
