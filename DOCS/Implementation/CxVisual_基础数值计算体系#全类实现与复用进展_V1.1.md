@@ -216,3 +216,10 @@ double conditionNumber = solved.ConditionNumber;
 - `FNUTensorBuffer.Slice(axis,start,length)` 现在委托View的无拷贝Slice与游标`CopyToBuffer`，仍然返回**独立所有权副本**，而不是把旧API悄然变成活视图。
 - 45组固定随机Shape与全部轴的独立坐标参考验证，另测部分切片、空切片、所有权隔离、数值相消、空轴和溢出原子性；新增`ReduceSumInto`与分配式的实际ms/op和bytes/op基准。
 - 代码增量以固定SHA Windows .NET48构建/专项/基准结果判定；不把运行时数据或F17的全量故障认定为本模块数值失败。
+
+## 二十三、本轮Buffer路径固定SHA验收与性能（2026-10-28）
+
+- 原始代码SHA：`720608490623456229b355e844639e79b50865b9`，对应[Numerics #40647612288](https://github.com/oudream/cx-visual-x3/actions/runs/40647612288)：Windows .NET48/x64 全解决方案构建、Owner/DAG、--numerics(60组Buffer广播数值对照)、独立Benchmark均PASS；完整ArchitectureSmoke在其他Owner的`F17.PIPE_BULK child exit failure`失败。
+- 随后连续归约/切片改动通过安全的单文件提交合并：`2b8685b`(TensorMath)、`6f28c7b`(TensorBuffer)、`74cfb52`(45组新增测试)、`626cb78`(新增基准)；整批代码SHA `626cb78a48d95454cccd2790eefc00919f8e5e9d` 的[Windows CI #40648092926](https://github.com/oudream/cx-visual-x3/actions/runs/40648092926) 已完成：全方案构建、Owner/DAG、Numerics专项、60+45组随机数值对照、独立性能基准**全部PASS**；全量回归仍在F17.PIPE_BULK失败，工作流最终结论failure。
+- 该次CI Runner，256×256固定样本：`AddInto(buffer cursor,reused)` **0.7265ms/次、144B/次**；`MultiplyInto` **0.6750ms、144B**。`ReduceSumInto(buffer reused)` **0.7487ms、4456B**；`ReduceSum(buffer allocated)` **0.6672ms、6696B**。后两者证明减少约2240B/次分配，但**本轮未证明ReduceSumInto更快**。
+- 切片游标路径的性能未单独做前后微基准。现有证据仅说明功能兼容、所有权复制及质量测试通过，不宣称实际切片加速幅度。GC/p95、持续运行、各规模矩阵验证仍未完成。
