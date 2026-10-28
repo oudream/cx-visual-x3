@@ -19,7 +19,8 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualVolumeViewerFrame
     {
         private Grid _gpuSlot;
-        private MPWVolumeOpenGlControl _gpu;
+        private MPWVolumeRenderHost _gpuHost;
+        private MPWVolumeOpenGlControl _gpu {get{return _gpuHost==null?null:_gpuHost.CurrentGpu;}}
         private readonly CT3DRenderingSettings _gpuSettings = new CT3DRenderingSettings();
         private bool _gpuTransferDirty=true;
         private readonly MPWVolumeRenderingParametersControl _gpuPanel =
@@ -149,68 +150,80 @@ namespace CxVisual.TestCenter.UI
                 _gpuSettings.Material.Specular,_gpuSettings.Material.SpecularPower);
         }
 
+        private void EnsureGpuHost()
+        {
+            if(_gpuHost!=null)return;
+            _gpuHost=new MPWVolumeRenderHost(_gpuSlot,_scene);
+            _gpuHost.StateChanged+=OnGpuHostStateChanged;
+        }
+
         public void TryEnableGpu()
         {
-            if (_gpu != null || _gpuSlot == null) return;
+            if(_gpu!=null || _gpuSlot==null)return;
             HasAttemptedGpuRendering=true;
-            if (_volume == null) LoadDemo();
+            if(_volume==null)LoadDemo();
             _gpuSettings.Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
                 CT3DRenderingPresetKind.SlicerLikeGrayscale);
-            try
+            EnsureGpuHost();
+            _gpuInfo.Text="正在核实OpenGL 3.3 Core Profile与旧GLSL...";
+            SetGpuModeLabel("3D / GPU体绘启动中",_gpuInfo.Text);
+            _gpuHost.Enable(_state==null?null:_state.Camera,gpu=>
             {
-                MPWVolumeOpenGlControl gpu=new MPWVolumeOpenGlControl();
-                if(_state!=null)gpu.BindCamera(_state.Camera);
-                gpu.AvailabilityChanged+=OnGpuAvailabilityChanged;
                 gpu.SetVolume(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
                 _gpuTransferDirty=false;
-                _gpu=gpu;
-                _gpuInfo.Text="正在核实显卡 OpenGL 3.3 Core Profile 与旧GLSL...";
-                SetGpuModeLabel("3D / GPU体绘启动中","正在检测OpenGL 3.3与GLSL");
-                _gpuSlot.Children.Add(gpu);
-                _scene.Visibility=Visibility.Collapsed;
-            }
-            catch(Exception error) { GpuFallback("GPU初始化失败："+error.Message); }
+            });
         }
 
-        private void OnGpuAvailabilityChanged(object sender,EventArgs e)
+        private void OnGpuHostStateChanged(object sender,EventArgs e)
         {
-            if (!Object.ReferenceEquals(sender,_gpu))return;
-            if (!_gpu.IsAvailable) { GpuFallback(_gpu.FailureReason); return; }
-            try
+            if(!Object.ReferenceEquals(sender,_gpuHost))return;
+            if(_gpuHost.State==MPWVolumeRenderHost.GpuState.Ready && _gpu!=null)
             {
-                _gpu.SetOrientationVisible(_orientationEnabled.IsChecked==true);
-                ApplyGpuUniforms();
-                RefreshOblique();
-                _gpuInfo.Text="真实GPU体绘已启用："+_gpu.DriverVersion;
-                SetGpuModeLabel("3D / OpenGL GPU体绘",_gpuInfo.Text);
-                _gpu.RenderFrame();
+                try
+                {
+                    _gpu.SetOrientationVisible(_orientationEnabled.IsChecked==true);
+                    ApplyGpuUniforms();
+                    RefreshOblique();
+                    _gpuInfo.Text="真实GPU体绘已启用："+_gpu.DriverVersion;
+                    SetGpuModeLabel("3D / OpenGL GPU体绘",_gpuInfo.Text);
+                    _gpu.RenderFrame();
+                }
+                catch(Exception error){GpuFallback("GPU着色失败："+error.Message);}
             }
-            catch(Exception error) { GpuFallback("GPU着色失败："+error.Message); }
+            else if(_gpuHost.State==MPWVolumeRenderHost.GpuState.Fallback)
+            {
+                string reason=_gpuHost.FailureReason;
+                if(!string.IsNullOrEmpty(reason))
+                {
+                    _gpuInfo.Text="GPU不可用，已恢复WPF空间切面："+reason;
+                    SetGpuModeLabel("3D / WPF切面（GPU失败）",_gpuInfo.Text);
+                    if(_enableGpu.IsChecked==true)_enableGpu.IsChecked=false;
+                }
+                else SetGpuModeLabel("3D / WPF空间切面","已手动关闭GPU体绘");
+            }
         }
 
         private void GpuFallback(string reason)
         {
-            DisableGpu();
-            _gpuInfo.Text="GPU不可用，已恢复WPF空间切面："+reason;
-            SetGpuModeLabel("3D / WPF切面（GPU失败）",_gpuInfo.Text);
-            if (_enableGpu.IsChecked==true) _enableGpu.IsChecked=false;
+            if(_gpuHost!=null)_gpuHost.Fail(reason);
+            else
+            {
+                _gpuInfo.Text="GPU不可用，已恢复WPF空间切面："+reason;
+                SetGpuModeLabel("3D / WPF切面（GPU失败）",_gpuInfo.Text);
+                _scene.Visibility=Visibility.Visible;
+                if(_enableGpu.IsChecked==true)_enableGpu.IsChecked=false;
+            }
         }
 
         private void DisableGpu()
         {
-            if (_gpu != null)
-            {
-                MPWVolumeOpenGlControl previous=_gpu; _gpu=null;
-                previous.AvailabilityChanged-=OnGpuAvailabilityChanged;
-                previous.BindCamera(null);
-                if (_gpuSlot!=null) _gpuSlot.Children.Remove(previous);
-                previous.Dispose();
-            }
-            _scene.Visibility=Visibility.Visible;
-            if(_gpuModeHeader!=null && _gpuModeHeader.Text.IndexOf("GPU失败",StringComparison.Ordinal)<0)
+            if(_gpuHost!=null)_gpuHost.Disable();
+            else _scene.Visibility=Visibility.Visible;
+            if(_gpuModeHeader!=null &&
+               _gpuModeHeader.Text.IndexOf("GPU失败",StringComparison.Ordinal)<0)
                 SetGpuModeLabel("3D / WPF空间切面","已手动关闭GPU体绘");
         }
 
