@@ -13,13 +13,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class MPWModuleCapabilityView
     {
         public MPWModuleCapabilityView(string id,string name,string category,
-            MFMModuleKind? kind,int version,bool resolved,bool demonstration,string moduleId=null)
+            MFMModuleKind? kind,int version,bool resolved,bool demonstration,string moduleId=null,
+            bool described=true,bool resolverChecked=true)
         {
             if(String.IsNullOrWhiteSpace(id)||String.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("module.capability.identity");
             Id=id;Name=name;Category=category??"";Kind=kind;
             Version=version;Resolved=resolved;Demonstration=demonstration;
             ModuleId=String.IsNullOrWhiteSpace(moduleId)?null:moduleId.Trim();
+            Described=described;ResolverChecked=resolverChecked;
         }
         public string Id {get;private set;}
         public string Name {get;private set;}
@@ -30,9 +32,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public bool Demonstration {get;private set;}
         /// <summary>Explicit MFM association, null for an unbound capability.</summary>
         public string ModuleId {get;private set;}
+        /// <summary>True only if the existing MOC directory was queried and held the definition.</summary>
+        public bool Described {get;private set;}
+        /// <summary>False means no resolver was checked for this configuration-only scope.</summary>
+        public bool ResolverChecked {get;private set;}
         public string Label {get{return Name+" · "+Id+(ModuleId==null?"":" · "+ModuleId);}}
-        public string Status {get{return Demonstration?"未绑定正式模块的演示Resolver，非设备就绪":
-            Resolved?"运行解析存在，非授权确认":"未验证运行处理者";}}
+        public string Status {get{
+            if(Demonstration)return "未绑定正式模块的演示Resolver，非设备就绪";
+            if(!ResolverChecked)return "仅声明；MOC描述/Runtime解析均未核实";
+            if(!Described)return "MOC未发现能力描述，不可视为技术支持";
+            return Resolved?"Runtime解析存在（非业务就绪或授权）":"MOC已描述，但未解析运行处理者";
+        }}
     }
 
     /// <summary>Shared WPF host surface; FCM/MHS, MEM, MOC, MRK remain the only owners.</summary>
@@ -128,7 +138,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     item.Name+" / V"+item.Version+" / "+item.Category+" · "+
                     (item.Kind.HasValue?item.Kind.Value.ToString():"未归属五类正式模块")+" · "+
                     (item.ModuleId??"无正式模块身份")+" · "+item.Status+
-                    "。Declared、Supported、Available、Authorized需独立核验。";
+                    "；Declared="+(item.ModuleId==null?"未绑定模块":"已声明")+
+                    "，Described="+(!item.ResolverChecked?"未核实":item.Described?"是":"否")+
+                    "，RuntimeResolved="+(!item.ResolverChecked?"未核实":item.Resolved?"是":"否")+
+                    "；Supported、Available、Authorized仍需目标Owner独立核验。";
             };
             SetCapabilities(null,"未注入运行能力；仅配置操作可用");
         }
