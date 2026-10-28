@@ -49,8 +49,15 @@ namespace CxVisual.TestCenter.Cases
 
             byte[] corrupt = protocol.PrepareSend(new byte[] { 0x0A, 0x0B }, null);
             corrupt[4] ^= 0xff;
-            test.AssertThrows<InvalidDataException>(() => pair[0].Send(corrupt),
-                "CRC错误由正式Protocol拒绝，而不是通道伪装解析");
+            // FTR的Received观察者异常必须隔离，不再穿透物理Send；
+            // CRC拒绝由MPA自行证明，不能要求Channel把协议异常当成IO异常。
+            pair[0].Send(corrupt);
+            MPALengthFrameParser corruptParser = new MPALengthFrameParser();
+            corruptParser.PushBytes(corrupt);
+            byte[] rejectedPayload;
+            test.AssertThrows<InvalidDataException>(
+                () => corruptParser.TryReadFrame(out rejectedPayload),
+                "CRC错误由正式Protocol拒绝，FTR发送不传播观察者异常");
             test.AssertEqual(FTRChannelState.Open, pair[1].State,
                 "规约数据CRC错误不会使物理通道错误断开");
             protocol.Reset(receiverAddress);
