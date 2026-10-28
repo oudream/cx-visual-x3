@@ -1287,3 +1287,9 @@ try {
 - **正反例**：`RuntimeDataCompilerUnificationTests.R08_ParallelDependentSchedulingAndBoundedReclamation` 使用80轮、8路Foreach、每轮6个有依赖的真实MDS输出节点，在2048B逻辑预算内验证逐轮释放、每节点只执行一次、同引擎第二条Flow身份隔离；默认KeepAll在同预算应明确失败。`TCT.MDS.033`增补4轮2路并行Join保留历史及KeepAll压力拒绝。
 - **实现提交**：调度修复 `8f8c9c32eb77516ceea4d2abf19d36cc3a777c77`。该固定SHA的MDS专项 [#40658777363](https://github.com/oudream/cx-visual-x3/actions/runs/40658777363) 和统一Runtime [#40658777405](https://github.com/oudream/cx-visual-x3/actions/runs/40658777405) 因并行Studio提交引入的 `StudioShellSelfTests.cs(225)` 局部变量重名 `CS0136` 在全解阶段失败，**尚未执行MDS专项测试，不能当作P1测试失败或成功**。该编译问题由其它Owner随后在 `75292b176422d5b44a654ce52e7f7999e14a01cd` 修复。本节所增回归仍需以新源码SHA的Windows x64全解、ArchitectureSmoke、TestCenter及统一Runtime复验结果为准。
 - **边界**：动态Join只能对明确声明的 `KeepForJoin(stepIds)` 保留历史；未声明消费的安全自动推导、Retry/Break/Continue与取消超时组合矩阵、长稳RSS及真实专业外部资源仍待验证。默认KeepAll始终不变。
+
+### 19.7 P1正式导出驱动的自动保留推导（2026-10-28）
+
+- 只有循环体 `MRKExecutionPlan.DataExports` 所声明的生产者是可以在编译时安全确认的跨轮保留集合。新增 `MRKLoopDataRetention.KeepDeclaredExports(body)` 从已验证的具名导出映射生成原有策略，仍由 `MRKLoopRegion` 校验和 `MRKExecutionEngine` 执行；默认不变，未声明的任意回调访问不能被自动认定为合法消费者。
+- 正反例 `R08_DeclaredExportRetentionIsInferred`：图像→测量循环中只保留正式导出的测量节点，4轮后Join读取完整历史、放弃图像历史提示 `history_not_retained`，同200B预算必须完成；null编译体拒绝。动态隐式访问、跨专业外部完成和完整自动最后消费者推导仍未解决。
+- **前轮固定SHA证据**：`4a2fbf1872083bc18a4fd4932f1c0f880784eb86` 的 [MDS Windows专项 #40659054686](https://github.com/oudream/cx-visual-x3/actions/runs/40659054686) 与 [统一Runtime #40659054760](https://github.com/oudream/cx-visual-x3/actions/runs/40659054760) 均为Success。新增 `KeepDeclaredExports` 的源码和测试需使用本轮新SHA重新编译/验收，不能沿用前轮绿灯。

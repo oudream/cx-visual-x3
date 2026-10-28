@@ -157,6 +157,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
         { get { return new MRKLoopDataRetention(false, null); } }
         public static MRKLoopDataRetention KeepForJoin(params string[] stepIds)
         { return new MRKLoopDataRetention(false, stepIds); }
+        /// <summary>
+        /// 仅从已编译循环体的正式DataExports推导必须跨轮保留的生产者。
+        /// 其它隐式Join/调试消费者无法证明，仍须显式KeepForJoin或KeepAll。
+        /// 此入口是opt-in，不改变兼容默认保留行为。
+        /// </summary>
+        public static MRKLoopDataRetention KeepDeclaredExports(MRKExecutionPlan body)
+        {
+            if (body == null) throw new ArgumentNullException("body");
+            return new MRKLoopDataRetention(false, body.DataExports.Values.Select(source =>
+                source.Substring(0, source.LastIndexOf('.'))));
+        }
         public bool KeepAllOutputs { get; private set; }
         public IList<string> RetainedStepIds
         { get { return Array.AsReadOnly(_keep.OrderBy(x => x, StringComparer.Ordinal).ToArray()); } }

@@ -30,6 +30,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_DynamicLoopReclaimsOnlyUnretainedHistory();
             R08_ParallelForeachReclaimsWithoutBreakingJoin();
             R08_ParallelDependentSchedulingAndBoundedReclamation();
+            R08_DeclaredExportRetentionIsInferred();
             R08_InvalidHistoryPolicyRejected();
         }
 
@@ -213,6 +214,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(conservative.State == MRKFlowState.Failed &&
                     conservative.CommittedOutputs.Count == 0,
                     "80轮KeepAll应在相同2048B预算下拒绝无界历史");
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>编译期正式导出端口足以证明需要保留的历史生产者，无需重复列节点名。</summary>
+        private static void R08_DeclaredExportRetentionIsInferred()
+        {
+            var body = new MRKExecutionPlan("r08.exported.body", new[] {
+                new MRKExecutionStep("image", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[64]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Image", typeof(byte[]) } }),
+                new MRKExecutionStep("measure", new[] { "image" }, (ctx, ct) =>
+                {
+                    ctx.Data.Return("Count",
+                        ctx.Data.Get<byte[]>("Input").Length + ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, inputs: new[] { new MRKExecutionInput("Input",
+                    MRKInputSource.StepOutput, "image.Image", typeof(byte[])) },
+                    dataOutputs: Output("Count"))
+            }, new Dictionary<string, string> { { "PublicCount", "measure.Count" } });
+            MRKLoopDataRetention retention = MRKLoopDataRetention.KeepDeclaredExports(body);
+            Check(retention.Retains("measure") && !retention.Retains("image") &&
+                retention.RetainedStepIds.Count == 1,
+                "只能从正式声明的DataExports证明跨轮保留的生产者");
+            bool nullRejected = false;
+            try { MRKLoopDataRetention.KeepDeclaredExports(null); }
+            catch (ArgumentNullException) { nullRejected = true; }
+            Check(nullRejected, "自动推导不得接受缺失的编译体");
+
+            var loop = new MRKLoopRegion(body, 4, (ctx, i) => i < 4,
+                dataRetention: retention);
+            var root = new MRKExecutionPlan("r08.exported.root", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true), loopRegion: loop),
+                new MRKExecutionStep("join", new[] { "loop" }, (ctx, ct) =>
+                {
+                    var rows = ctx.CollectLoopOutputs<int>("loop", "measure", "Count");
+                    bool blocked = false;
+                    try { ctx.CollectLoopOutputs<byte[]>("loop", "image", "Image"); }
+                    catch (InvalidOperationException ex)
+                    { blocked = ex.Message.Contains("history_not_retained"); }
+                    Check(blocked, "未声明的隐式消费者只能得到可解释拒绝");
+                    ctx.Data.Return("Total", rows.Sum(x => x.Value));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Total"))
+            }, new Dictionary<string, string> { { "Result", "join.Total" } });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 16),
+                dataPayloadBudgetBytes: 200);
+            try
+            {
+                MRKFlowResult result = engine.StartFlow(root)
+                    .Completion.GetAwaiter().GetResult();
+                Check(result.State == MRKFlowState.Completed &&
+                    result.GetCommittedOutput<int>("Result") == 262,
+                    "声明的唯一正式导出应保留全部Join历史并逐轮释放临时64B图像：" +
+                    (result.Error == null ? "" : result.Error.ToString()));
             }
             finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
         }
