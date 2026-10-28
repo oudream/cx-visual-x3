@@ -74,3 +74,10 @@
 **核心合同：** 平面拟合为最小正交距离（PCA/SVD，理论上平面点阵秩2），不是 `z=ax+by`，不依赖特定坐标轴或在FGE中内建毫米。CT3D把来源Frame与mm语义加在专业结果上；法向是**无向几何法向**，其符号按最大绝对分量为正进行确定性规范化，非自动外法线。平面质量只包含样本RMS/最大残差、条件数和法向/次切向奇异值比，真实设备不确定度、抽样策略、离群值与基准特征仍待专业验证。
 
 **证据划分**：FGE Mesh原有固定SHA Windows通过记录仍有效；本轮平面新源码提交`62e2f3e8`（FNU）、`77421a34`（CT3D）、`f5d228f6`（初版Headless测试）及后续WPF与回归修复`e2ae3798`，**必须以这些源码后续实际Windows Build/--volume/窗口级Job结果升级验收，不借用旧SHA成功结论**。曾在早期中间提交出现CS0819/CS0136，已在`e2ae3798`修复；真实GPU、CAD、GD&T仍未验。
+
+## 九、V03固定SHA Windows验收与CI路径补强（2026-10-28）
+
+- **固定通过证据**：提交`24497fe20daa6925e5c07048230dae2532f5c6ad`对应的 <https://github.com/oudream/cx-visual-x3/actions/runs/40691495873> 已完成 **SUCCESS**。该提交包含FNU PCA-SVD平面、CT3D局部Mesh平面特征、原值UInt16三维几何Headless及真实WPF端面拟合窗口案例、MVI Measurement引用、重新计算Mesh时旧Measurement失效与有符号偏差的正式实现。流水线明确通过 **Release x64编译、Owner依赖检查、WPF二维窗口、FIM/MVI/--volume/默认Smoke、WPF三维工作台验收**。
+- **不得跨版本误标**：`3a27e161`之后补充的“±1mm偏差、绝对值及跨Frame拒绝”专项断言，以及其后的文档/CI路径补强，不属于固定SHA `24497fe2`已执行的测试内容，须等待后续工作流证据。
+- **触发修复**：原`imaging-foundation-windows.yml`没有监听`CT3DVoxelMeshTests.cs`等CT3D专项测试文件，因此仅提交测试改动不会触发Imaging专项。提交`dc58b341`将CT3D Mesh、CT3DVolumeLoad、MPWVolumeSource、MVIVolumeView四个现有专项测试文件纳入Windows push路径过滤；对应提交的完整CI需按最新Run查询。
+- **边界仍在**：局部端面PCA拟合的RMS和点到面偏差是基于体素阶梯面/来源标定的算法数值，不代表工业量具溯源、表面法向选择、圆柱/CAD配准或GD&T工业报告已通过。
