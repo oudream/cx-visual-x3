@@ -133,3 +133,12 @@
 原F17完整`--channel-transport`仍同时执行UML、协议集成、SharedMemory崩溃回归、真实HTTP/WS双端预算和TCP/NamedPipe容量测试；`--channel-bulk-long`独立双向各2GiB。新便捷层不会代替Connection/Protocol/MDS各自Owner、也不会推断远端业务已确认。
 
 **现场缺口持续保留**：所有15类型参数生效矩阵、HTTP/WS峰值内存与GC/CPU SLA、CT/X-Ray到专业DataHandle低复制闭环、24小时和跨PC真实设备及断线竞争测试。代码已提交并不等于全部验收通过。
+
+
+### V3.1 便利健康视图与HTTP分段消息原子性补强（2026-10-28）
+
+- `804733c1`、`3530a41e`：HTTP Client的`Send(data,segmentBytes:n)`不能拆成多条POST；同步/异步统一`PostAsync`、单次请求正文带offset/count；真实回环37字节、segmentBytes=3严格验证一条POST与两次同步/异步各一条请求，关闭时等待PendingSends。
+- `46d8a101`、`a20a3f4e`：对`IFTRChannelTransport`开放`ReadHealth()`便利调用，无需Factory返回者强转具体类型；真实FTR基类重用原Health，Custom Provider回退标准状态、会话、Peer目录、Diagnostics，测试覆盖Virtual和MultiPeer。
+- `0445dc9b`、`10f5e418`：PeerRemoved单个观察者异常应记`Observer/Operation`，其余观察者仍得到通知，父Channel仍Open；该正反例已纳入便利测试。
+- `eee8cd6a`：TestCenter健康监控增加`LastFailure.Address`的子客户端ID与Generation呈现，使用正式诊断而非独立记录。
+- **此组最新固定SHA Windows CI尚未结束**；新测试不因更早`350bab076`成功而自动记为通过。全部工控/CT/设备长稳SLA仍待单独验收。
