@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void Wait(Func<bool> condition, string message, int timeout = 10000)
         { Check(SpinWait.SpinUntil(condition, timeout), message); }
         private static string Name() { return "f17-bulk-" + Guid.NewGuid().ToString("N"); }
+        private static string ReleaseEventName(string pipeName) { return @"Local\CxVisual.F17.PipeRelease." + pipeName; }
         private static FTRNamedPipeServerChannelConfiguration Config(string name)
         { return new FTRNamedPipeServerChannelConfiguration { Id = "pipe-bulk-server", PipeName = name, MaxClients = 16,
             ReceiveBufferBytes = 65536, ReceiveByteBudget = 262144, QueueCapacity = 4, CapturePayloadEvidence = false,
@@ -92,7 +93,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     " managedDelta=" + (GC.GetTotalMemory(false) - managed) + " workingSet=" + process.WorkingSet64 +
                     " gc0=" + (GC.CollectionCount(0) - gen0) + " gc2=" + (GC.CollectionCount(2) - gen2));
                 // 控制台父进程经stdin完成同步，数据本身只走NamedPipe。
-                if (Console.ReadLine() != "release") throw new IOException("Pipe child release missing");
+                using (var release = new EventWaitHandle(false, EventResetMode.ManualReset, ReleaseEventName(pipeName)))
+                    if (!release.WaitOne(10000)) throw new IOException("Pipe child release event timed out");
                 client.Close();
             }
             return 0;
@@ -100,13 +102,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void CrossProcessDuplex(long bytes)
         {
             string name = Name();
+            using (var release = new EventWaitHandle(false, EventResetMode.ManualReset, ReleaseEventName(name)))
             using (var server = new FTRNamedPipeServerChannel(Config(name)))
             {
                 var checker = new Checker(7); server.BufferReceived += checker.Receive; server.Open();
                 var start = new ProcessStartInfo(Assembly.GetExecutingAssembly().Location,
                     "--channel-pipe-child " + name + " " + bytes.ToString(CultureInfo.InvariantCulture)) {
                     UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
-                    RedirectStandardError = true, RedirectStandardInput = true };
+                    RedirectStandardError = true };
                 using (var child = Process.Start(start))
                 {
                     Check(child != null && child.Id != Process.GetCurrentProcess().Id, "not a real child process");
@@ -123,7 +126,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(checker.Bytes == bytes && checker.Error == null && checker.Dedicated, "parent stream integrity: " + checker.Error);
                         Check(childLine.Wait(120000) && childLine.Result.StartsWith("PIPE_CHILD_PASS", StringComparison.Ordinal),
                             "child did not verify full stream");
-                        child.StandardInput.WriteLine("release"); child.StandardInput.Flush();
+                        release.Set();
                         Check(child.WaitForExit(10000) && child.ExitCode == 0,
                              "child exit failure; exit=" + (child.HasExited ? child.ExitCode.ToString() : "timeout") +
                              "; stderr=" + (child.HasExited ? errors.GetAwaiter().GetResult() : "child still running"));
