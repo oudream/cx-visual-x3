@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using AvalonDock.Layout;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.TestCenter.Cases;
 using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Execution;
@@ -20,6 +21,15 @@ namespace CxVisual.TestCenter.UI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            // F16正式日志入口由宿主初始化；不能让普通/CI工作台的首次算法调用失败。
+            // 日志放用户可写的数据目录，不写回参考仓、版本化安装目录或图像源目录。
+            if (!FLDLogHelper.IsInitialized)
+            {
+                string logRoot=Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "CxVisual","TestCenter","Logs");
+                FLDLogHelper.Initialize(logRoot);
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--variable-workspace-smoke")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -751,6 +761,12 @@ namespace CxVisual.TestCenter.UI
                 exit = 2;
             }
             Shutdown(exit);
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            try { if (FLDLogHelper.IsInitialized) FLDLogHelper.Stop(); }
+            finally { base.OnExit(e); }
         }
     }
 }
