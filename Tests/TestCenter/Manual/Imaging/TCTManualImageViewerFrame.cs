@@ -316,27 +316,11 @@ namespace CxVisual.TestCenter.UI
                 long version = _viewer.Session.SourceVersion;
                 CancellationToken token = request.Token;
                 Show("正在使用现有MRK运行CPU视觉检测（真实处理图、阈值Mask与区域）…");
-                CxVisionRunSummary evidence = await Task.Run(async () =>
-                {
-                    token.ThrowIfCancellationRequested();
-                    var inputs = CxVisionImageInterop.ToCpuInspectionInputs(original, depth);
-                    var plan = CxVisionDataFlow.CreateCpuInspectionPlanWithMeasuredArtifacts(options);
-                    var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
-                    try
-                    {
-                        MRKFlowHandle handle = engine.StartFlow(plan, inputs);
-                        using (token.Register(() => handle.RequestCancel()))
-                        {
-                            MRKFlowResult result = await handle.Completion.ConfigureAwait(false);
-                            token.ThrowIfCancellationRequested();
-                            if (result.State != MRKFlowState.Completed)
-                                throw new InvalidOperationException("MRK运行失败：" + result.State +
-                                    (result.Error == null ? "" : " / " + result.Error.Message));
-                            return CxVisionRunSummary.FromCpuFlow(result, sourceId);
-                        }
-                    }
-                    finally { await engine.StopAsync().ConfigureAwait(false); }
-                }, token);
+                // TestCenter只负责输入/当前Source验证与结果选择；MRK生命周期、
+                // 已提交产物、取消和测量语义归Professional统一无界面API。
+                CxVisionRunSummary evidence = await Task.Run(() =>
+                    CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                        original, options, sourceId, token), token);
                 if (token.IsCancellationRequested ||
                     !ReferenceEquals(request, _cpuRunCancellation) ||
                     !ReferenceEquals(original, _viewer.Session.Original) ||
