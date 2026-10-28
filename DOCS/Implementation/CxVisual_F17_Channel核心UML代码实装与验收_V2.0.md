@@ -74,3 +74,14 @@
 - HTTP/WS/Serial分别在实际Open成功路径启用新配置；此处限制的是**异步发送快照入场**，不宣称限制HTTP业务响应Pending载荷的整个生命周期或WS接收多Peer聚合内存。后者仍须独立的端到端总预算设计。
 - `FTRReconnectController`冻结有效重连策略，诊断累积计数仍持续；不存在复制的Recovery Runtime。
 - `TCTManualChannelFrame`每秒WPF DispatcherTimer读取现有`FTRChannelBase.Health`，`OnWorkspaceClosed`停止计时；新增`channel.health`手动操作与`TCT.Channel.Health`自动化标识。不暗中打开非Virtual设备，不建立第二套Socket读取者。
+
+
+## 8. V3.0 末轮代码增量：Peer故障范围与异步切片单复制
+
+- `54ac4bef`：`FTRChannelBase.Health`在同锁中采样State/Session，只有Open才计ActivePeers。离线TestCenter登记的目录Peer不冒充在线物理连接。
+- `7735ef1e`：保留`RecordReceiveError(Exception)`委托签名，新增加`RecordReceiveError(Exception,FTRFaultScope)`；TCP/NamedPipe/HTTP/WS多端接收故障指定SubChannel，HTTP/WS超报文预算使用明确的`FTRBudgetExceededException`，HTTP仍按413处理，Server监听与错误Peer相互隔离。观察者异常仍独立归Observer/Operation。
+- `b95ff48a`：真实WS双客户端OS回环覆盖一个超额Peer退出、另一Peer正常交付且Server Open，见测试矩阵。
+- `27d934b5`：`FTRChannelBase.SendAsync(byte[],offset,count,address,ct)`为新增重载，不变更`IFTRChannel`，先占用原异步数量/字节额度，再`Buffer.BlockCopy`调用方切片一次并保留直到发送结算；原三参数Async API转用此实现。
+- `3a549615`：`FTRByteStreamAdapter.WriteAsync`检测正式`FTRChannelBase`时走单快照切片API，第三方IFTRChannelTransport仍沿用原接口回退，不额外建立OS接收者。`8fb97eb9`补按有效count结算与源缓冲后修改不污染发送的回归。
+- `56fc61cf`：原无池化Reader的HTTP Client新增入场拒绝负例，证明超预算时不建立实际网络请求，不复制传入数组。
+- 这些是六项能力的增量，不等于消除HTTP/WS接收端MemoryStream/ToArray、跨MPA/MDS零复制以及现场24h长稳的完整任务。Windows CI必须逐固定SHA记录，不能借旧版本成功冒充后续代码通过。
