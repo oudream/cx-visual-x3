@@ -29,6 +29,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DeveloperBuilderCanEnableStaticOutputReclamation();
             R08_DynamicLoopReclaimsOnlyUnretainedHistory();
             R08_ParallelForeachReclaimsWithoutBreakingJoin();
+            R08_ParallelDependentSchedulingAndBoundedReclamation();
             R08_InvalidHistoryPolicyRejected();
         }
 
@@ -151,6 +152,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(conservative.State == MRKFlowState.Failed &&
                     conservative.CommittedOutputs.Count == 0,
                     "默认KeepAll不得悄悄更改，容量不足时必须明确失败");
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>并行Foreach的共享依赖必须只调度一次，且每轮结束后归还MDS预算。</summary>
+        private static void R08_ParallelDependentSchedulingAndBoundedReclamation()
+        {
+            int executed = 0;
+            var steps = new List<MRKExecutionStep>();
+            for (int i = 0; i < 6; i++)
+            {
+                int index = i;
+                string[] dependencies = i == 0 ? new string[0] :
+                    new[] { "work" + (i - 1) };
+                steps.Add(new MRKExecutionStep("work" + i, dependencies, (ctx, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    Interlocked.Increment(ref executed);
+                    ctx.Data.Return("Value", ctx.IterationIndex + index);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Value")));
+            }
+            var body = new MRKExecutionPlan("r08.concurrent.body", steps);
+            var input = new Dictionary<string, object> {
+                { "Items", Enumerable.Range(0, 80).ToArray() }
+            };
+            var boundedRegion = new MRKLoopRegion(body, 80,
+                collectionInput: "Items", maxParallelIterations: 8,
+                dataRetention: MRKLoopDataRetention.ReleaseAfterIteration);
+            var boundedPlan = new MRKExecutionPlan("r08.concurrent.bounded", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true),
+                    loopRegion: boundedRegion)
+            });
+            var conservativePlan = new MRKExecutionPlan("r08.concurrent.keepall", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true),
+                    loopRegion: new MRKLoopRegion(body, 80,
+                        collectionInput: "Items", maxParallelIterations: 8))
+            });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(8, 128),
+                dataPayloadBudgetBytes: 2048);
+            try
+            {
+                MRKFlowResult bounded = engine.StartFlow(boundedPlan, input)
+                    .Completion.GetAwaiter().GetResult();
+                Check(bounded.State == MRKFlowState.Completed &&
+                    Volatile.Read(ref executed) == 480,
+                    "80轮×6个依赖节点应只运行一次，逐轮回收后不得累积预算：" +
+                    (bounded.Error == null ? "" : bounded.Error.ToString()));
+                MRKFlowResult conservative = engine.StartFlow(conservativePlan, input)
+                    .Completion.GetAwaiter().GetResult();
+                Check(conservative.State == MRKFlowState.Failed &&
+                    conservative.CommittedOutputs.Count == 0,
+                    "80轮KeepAll应在相同2048B预算下拒绝无界历史");
             }
             finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
         }

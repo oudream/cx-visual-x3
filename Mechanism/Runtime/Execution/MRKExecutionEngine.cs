@@ -1058,23 +1058,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
         {
             MRKExecutionContext context = flow.Context;
-            Dictionary<string, Task<object>> tasks =
-                new Dictionary<string, Task<object>>(StringComparer.Ordinal);
+            // 静态DAG也可能由多个依赖完成续体并发请求同一节点。
+            var tasks = new ConcurrentDictionary<string, Lazy<Task<object>>>(
+                StringComparer.Ordinal);
             StageLeaseBatch stages=new StageLeaseBatch(plan,_groups);
             MRKCommittedOutputReclaimer reclaimer =
                 plan.ReclaimCommittedWhenConsumersSettle
                     ? new MRKCommittedOutputReclaimer(plan, context.DataStack)
                     : null;
             Func<string, Task<object>> schedule = null;
-            schedule = id =>
-            {
-                Task<object> existing;
-                if (tasks.TryGetValue(id, out existing)) return existing;
-                Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token,
-                    schedule, control, stages, reclaimer);
-                tasks.Add(id, task);
-                return task;
-            };
+            schedule = id => tasks.GetOrAdd(id, key =>
+                new Lazy<Task<object>>(
+                    () => RunStepAsync(plan.GetStep(key), context, flow.Token,
+                        schedule, control, stages, reclaimer),
+                    LazyThreadSafetyMode.ExecutionAndPublication)).Value;
             MRKFlowState finalState = MRKFlowState.Completed;
             Exception finalError = null;
             IDictionary<string, object> committedFlowOutputs = null;
@@ -1092,7 +1089,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 {
                     Task<object> scheduled = schedule(step.Id);
                 }
-                await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+                await Task.WhenAll(tasks.Values.Select(x => x.Value).ToArray()).ConfigureAwait(false);
                 flow.Token.ThrowIfCancellationRequested();
                 Dictionary<string, object> exports =
                     new Dictionary<string, object>(StringComparer.Ordinal);
@@ -1258,24 +1255,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKExecutionDebugController control,
             MRKLoopDataRetention retention=null)
         {
-            Dictionary<string,Task<object>> tasks=
-                new Dictionary<string,Task<object>>(StringComparer.Ordinal);
-            // 每个真实Iteration/Invocation建立自己的Stage引用计数，不按MaxIterations展开Plan。
+            // 并行依赖续体可能同时调度同一节点；Lazy保证每个真实Invocation
+            // 恰好创建并执行一次任务。不得在普通Dictionary上并发读写。
+            var tasks = new ConcurrentDictionary<string, Lazy<Task<object>>>(
+                StringComparer.Ordinal);
             StageLeaseBatch stages=new StageLeaseBatch(body,_groups);
             Func<string,Task<object>> schedule=null;
-            schedule=id=>
-            {
-                Task<object> existing;
-                if(tasks.TryGetValue(id,out existing))return existing;
-                Task<object> current=RunStepAsync(body.GetStep(id),scope,
-                    cancellation,schedule,control,stages);
-                tasks.Add(id,current);
-                return current;
-            };
+            schedule=id=>tasks.GetOrAdd(id,key=>
+                new Lazy<Task<object>>(
+                    ()=>RunStepAsync(body.GetStep(key),scope,
+                        cancellation,schedule,control,stages),
+                    LazyThreadSafetyMode.ExecutionAndPublication)).Value;
             foreach(MRKExecutionStep item in body.Steps)schedule(item.Id);
             try
             {
-                await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+                await Task.WhenAll(tasks.Values.Select(x=>x.Value).ToArray())
+                    .ConfigureAwait(false);
             }
             finally
             {
