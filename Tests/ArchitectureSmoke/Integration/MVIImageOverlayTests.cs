@@ -9,6 +9,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         public static void Run()
         {
+            // GoF State：两线四点保留唯一阶段，不把鼠标/WPF事件注入MVI。
+            MVIImageLinePairGesture gesture=new MVIImageLinePairGesture();
+            Ensure(gesture.Stage==MVIImageLinePairStage.FirstStart && gesture.PointCount==0,
+                "初始阶段必须等待第一条线起点");
+            Ensure(!gesture.Append(new FGEPoint2D(0.5,0.5),10,10) &&
+                gesture.Stage==MVIImageLinePairStage.FirstEnd,
+                "第一点后必须等待第一条线终点");
+            Fail<ArgumentException>(()=>gesture.Append(new FGEPoint2D(0.5,0.5),10,10),
+                "第一条线不接受退化端点");
+            Fail<ArgumentOutOfRangeException>(()=>gesture.Append(
+                new FGEPoint2D(double.NaN,2),10,10),"不接受NaN源坐标");
+            Ensure(gesture.PointCount==1,"无效输入不得改变阶段或已有起点");
+            Ensure(!gesture.Append(new FGEPoint2D(4.5,0.5),10,10) &&
+                gesture.Stage==MVIImageLinePairStage.SecondStart,
+                "第二点后等待第二条线起点");
+            Ensure(!gesture.Append(new FGEPoint2D(4.5,0.5),10,10) &&
+                gesture.Stage==MVIImageLinePairStage.SecondEnd,
+                "两段允许共享端点，不错误拒绝交点");
+            Fail<ArgumentException>(()=>gesture.Append(new FGEPoint2D(4.5,0.5),10,10),
+                "第二条线不接受退化端点");
+            Ensure(gesture.PointCount==3 &&
+                gesture.Append(new FGEPoint2D(4.5,3.5),10,10) &&
+                gesture.Stage==MVIImageLinePairStage.Complete &&
+                gesture.Points[2].Equals(new FGEPoint2D(4.5,0.5)),
+                "第四点完成同一原图四点手势");
+            Fail<InvalidOperationException>(()=>gesture.Append(new FGEPoint2D(5,5),10,10),
+                "完成后不得隐式覆盖未提交的四点结果");
+            gesture.Reset();
+            Ensure(gesture.Stage==MVIImageLinePairStage.FirstStart &&
+                gesture.PointCount==0,"切工具、取消或提交后真实状态必须归零");
+            Fail<ArgumentOutOfRangeException>(()=>gesture.Append(
+                new FGEPoint2D(-1,0),10,10),"原图越界拒绝");
+            Ensure(gesture.PointCount==0,"复位后异常不污染状态");
+            Console.WriteLine("PASS MVI ImageOverlay: Ls2Ls状态转移、退化/越界反证与取消复位");
+
             MVIImageOverlayItem pairItem=new MVIImageOverlayItem(
                 MVIImageOverlayKind.LinePairMeasurement,MVIImageOverlayLayer.Measurement,
                 new FGERect2D(0,0,4,3),new[]{
