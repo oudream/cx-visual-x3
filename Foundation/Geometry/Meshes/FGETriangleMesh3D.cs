@@ -51,6 +51,8 @@ namespace CxVisual.Foundation.Geometry
         public double SurfaceArea {get;private set;}
         /// <summary>仅闭合、朝向一致时有值，否则为null；单位为输入坐标单位的三次方。</summary>
         public double? EnclosedVolume {get;private set;}
+        /// <summary>闭合一致朝向网格的带符号体积；正数表示外向绕序，负数提示全局法向翻转。</summary>
+        public double? SignedEnclosedVolume {get;private set;}
         public int BoundaryEdgeCount {get;private set;}
         public int NonManifoldEdgeCount {get;private set;}
         public int InconsistentWindingEdgeCount {get;private set;}
@@ -121,7 +123,10 @@ namespace CxVisual.Foundation.Geometry
                 else if(count.DirectionSum!=0)InconsistentWindingEdgeCount++;
             }
             if(IsClosedOrientedManifold)
+            {
+                SignedEnclosedVolume=volume6/6.0;
                 EnclosedVolume=Math.Abs(volume6)/6.0;
+            }
             var output=new List<FGEVector3D>(positions.Count);
             for(int i=0;i<positions.Count;i++)
             {
