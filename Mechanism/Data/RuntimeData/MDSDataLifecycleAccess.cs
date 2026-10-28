@@ -162,6 +162,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (record != null)
             {
                 if (record.Users != 0) reasons.Add("ActiveConsumers");
+                if (record.Policy.Lifetime.ConsumerBound && !record.Closed)
+                    reasons.Add("FutureConsumersMayEnter");
                 if (record.Holds != 0)
                 {
                     reasons.Add("RetentionHolds");
