@@ -36,6 +36,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk") >= 0) { FTRTcpBulkTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk-long") >= 0) { FTRTcpBulkTests.RunVolumeScale(); FTRNamedPipeBulkTests.RunVolumeScale(); return 0; }
+                if (Array.IndexOf(args, "--runtime-data-lifecycle") >= 0)
+                {
+                    RuntimeDataLifecycleTests.Run();
+                    RuntimeDataStorageTests.Run();
+                    RuntimeDataHardeningTests.Run();
+                    RuntimeDataCompilerUnificationTests.Run();
+                    Console.WriteLine("PASS MDS RuntimeData lifecycle, storage, hardening and compiler");
+                    return 0;
+                }
                 if (Array.IndexOf(args, "--variables") >= 0) { ModuleFoundationSmokeTests.RunVariableSuite(); return 0; }
                 if (Array.IndexOf(args, "--variable-benchmark") >= 0) { VariableThroughputBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
