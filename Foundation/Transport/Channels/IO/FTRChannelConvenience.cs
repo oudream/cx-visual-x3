@@ -121,8 +121,9 @@ namespace CxVisual.Foundation.Transport
         {
             if(channel==null)throw new ArgumentNullException("channel");
             if(bytes==null)throw new ArgumentNullException("bytes");
-            if(address==null||address.ChannelId!=channel.Id)
-                throw new ArgumentException("目标地址必须属于当前Channel","address");
+            if(address==null||address.ChannelId!=channel.Id ||
+                (channel.Topology==FTRChannelTopology.MultiPeer && !address.HasSubChannel))
+                throw new ArgumentException("目标地址必须属于当前Channel，多客户端必须指定子客户端和代次","address");
             channel.Send(bytes,0,bytes.Length,address,cancellation);
         }
 
@@ -132,8 +133,9 @@ namespace CxVisual.Foundation.Transport
         {
             if(channel==null)throw new ArgumentNullException("channel");
             if(bytes==null)throw new ArgumentNullException("bytes");
-            if(address==null||address.ChannelId!=channel.Id)
-                throw new ArgumentException("目标地址必须属于当前Channel","address");
+            if(address==null||address.ChannelId!=channel.Id ||
+                (channel.Topology==FTRChannelTopology.MultiPeer && !address.HasSubChannel))
+                throw new ArgumentException("目标地址必须属于当前Channel，多客户端必须指定子客户端和代次","address");
             return channel.SendAsync(bytes,address,cancellation);
         }
 
@@ -152,8 +154,9 @@ namespace CxVisual.Foundation.Transport
             if(received==null)throw new ArgumentNullException("received");
             if(bytes==null)throw new ArgumentNullException("bytes");
             FTRSubChannelAddress address=received.Address;
-            if(address==null||address.ChannelId!=channel.Id)
-                throw new ArgumentException("请求来源不属于当前Channel","received");
+            if(address==null||address.ChannelId!=channel.Id ||
+                (channel.Topology==FTRChannelTopology.MultiPeer && !address.HasSubChannel))
+                throw new ArgumentException("请求来源不属于当前Channel或缺少子客户端身份","received");
             // 长驻Channel重开后，同一ChannelId不能使旧Session请求投递到新物理会话。
             // Guid.Empty代表旧第三方Provider未提供会话来源，维持兼容行为。
             if(received.SessionId!=Guid.Empty && received.SessionId!=channel.SessionId)
