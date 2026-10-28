@@ -255,3 +255,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 | `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs`、`Tests/ArchitectureSmoke/Integration/MVIImageDisplayTests.cs` | 真正WPF按钮点击+参数变更+原像素反证，错误窗下限“b”、非法Gamma、四分类选中互斥与高亮、输出PNG数值差异、Reset Slider；MVI单次通知与非法无部分写入 | 测试源码存在不代表Windows已执行通过 |
 
 **固定SHA的Windows追踪**：[Imaging #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082)及[TestCenter #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116)对应9394e3b，首次登记时in_progress（未取得成功/失败结论）。任何后续CI需在完整Job日志明确证明WPF和--imaging运行通过后才能登记G3/G4，人工截图反馈只证明缺陷场景而非复测通过。
+
+### 17.1 实际Windows结果与Gray8补丁（固定SHA，2026-10-28）
+
+- **已实际通过的Windows证据**：[Imaging #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082) 对应代码SHA `9394e3b0d8c88bdaad4483460307daf3bb41eea5`，job `imaging-foundation` **success**，包括Windows x64全项目构建、结构/Owner DAG、真实二维WPF ImageViewer和PNG回环、FIM/MVI专项与默认回归、三维WPF切片。此证据仅证明该固定SHA，不覆盖之后新增的位深默认值修复。
+- **实际失败但非Vision Owner**：[TestCenter #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116) 对应同SHA，Windows构建后在 `Verify real Windows UI Automation user workflow` 失败；实际日志报 `Channel UIA did not verify real TX/RX/error evidence from Connectivity; ... viewerPresent=False`，属于Channel工作区UIA/可见性失败，不是本轮二维WPF像素测试失败。保留完整失败，不通过跳过测试伪装成功。
+- **后续真实代码提交**：[eb9d453](https://github.com/oudream/cx-visual-x3/commit/eb9d4532d21cb57debd5e4ef182dceb448de2675)（新Gray8原图默认0..255，防止沿用Gray16的65535窗口）、[884b75c](https://github.com/oudream/cx-visual-x3/commit/884b75cc1a9e1002f7a59fecc884f1635fe0863e)（真实Gray8 WPF PNG与原像素反证）、[3661cca](https://github.com/oudream/cx-visual-x3/commit/3661ccad0bcbd882499ac261bdecf97ad3440079)（载入新图同步Gamma/亮度/对比度文本、滑块及反色/自动对比度控件）。对应 [Imaging #40683998349](https://github.com/oudream/cx-visual-x3/actions/runs/40683998349) / [TestCenter #40683998312](https://github.com/oudream/cx-visual-x3/actions/runs/40683998312) 初次登记时均in_progress，不冒充新SHA验收成功。
