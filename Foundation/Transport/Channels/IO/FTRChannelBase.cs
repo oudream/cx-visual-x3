@@ -199,10 +199,10 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             {
                 try{OnSendSynchronous(bytes,offset,count,address,ct,segmentBytes);}
                 finally{ExitSend(count,false);}
-                _diagnostics.RecordSend(count);Record(FTRFrameDirection.Tx,bytes,correlation,null,offset,count);
+                _diagnostics.RecordSend(count);Record(FTRFrameDirection.Tx,bytes,correlation,null,offset,count,address);
             }
             catch(Exception error)
-            {_diagnostics.RecordError(error,"Send",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,bytes,correlation,error.Message,offset,count);throw;}
+            {_diagnostics.RecordError(error,"Send",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,bytes,correlation,error.Message,offset,count,address);throw;}
         }
         protected virtual void OnSendSynchronous(byte[] bytes,int offset,int count,
             FTRSubChannelAddress address,CancellationToken ct,int segmentBytes)
@@ -246,12 +246,12 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 }
                 finally{ExitSend(count,true);}
                 _diagnostics.RecordSend(count);
-                Record(FTRFrameDirection.Tx,owned,null,null);
+                Record(FTRFrameDirection.Tx,owned,null,null,0,-1,address);
             }
             catch(Exception error)
             {
                 _diagnostics.RecordError(error,"Send",FTRFaultScope.Operation);
-                Record(FTRFrameDirection.Error,owned,null,error.Message);
+                Record(FTRFrameDirection.Error,owned,null,error.Message,0,-1,address);
                 throw;
             }
         }
@@ -314,7 +314,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 if(lease!=null)lease.Reserve(count);
                 var context=new FTRChannelReceiveContext(address,bytes,count,correlationId);
                 _diagnostics.RecordReceive(count);
-                Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count);
+                Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count,address);
                 Action<FTRChannelReceiveContext> handler=Received;
                 if(handler!=null)handler(context);
             }
@@ -350,7 +350,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             if(peers!=null&&buffer.Address.HasSubChannel&&peers.FindSubChannel(buffer.Address)==null)
             {RecordReceiveError(new IOException("已显式移除的SubChannel接收块被拒绝"));return;}
             _diagnostics.RecordReceive(buffer.Count);
-            Record(FTRFrameDirection.Rx,buffer.WritableBuffer,null,null,0,buffer.Count);
+            Record(FTRFrameDirection.Rx,buffer.WritableBuffer,null,null,0,buffer.Count,buffer.Address);
             var borrowed=BufferReceived;
             if(borrowed!=null)foreach(Action<FTRReceiveBuffer> listener in borrowed.GetInvocationList())
                 using(var lease=buffer.Retain())
@@ -372,7 +372,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             Record(FTRFrameDirection.Error, new byte[0], null, error.Message);
         }
         private void Record(FTRFrameDirection direction, byte[] bytes, string correlation, string error,
-            int offset=0,int count=-1)
+            int offset=0,int count=-1,FTRSubChannelAddress address=null)
         {
             byte[] evidence = bytes ?? new byte[0];
             if(count<0)count=evidence.Length;
@@ -389,7 +389,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             lock (_gate)
             {
                 entry = new FTRChannelFrame(++_sequence, SessionId, Id, direction, evidence,
-                    correlation, error, null);
+                    correlation, error, null,address);
                 while (_frames.Count > 0 &&
                        (_frames.Count >= MaxEvidenceFrames ||
                         _retainedEvidenceBytes + entry.StoredByteCount > MaxEvidenceBytes))
