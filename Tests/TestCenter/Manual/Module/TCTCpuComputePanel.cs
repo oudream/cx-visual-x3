@@ -44,6 +44,7 @@ namespace CxVisual.TestCenter.UI
         private readonly Button _cancel=Button("TCT.Cpu.Cancel","取消");
         private string _moduleId;
         private CxVisionThresholdProvider _provider;
+        private string _moduleVersion;
         private MEMEngineeringSession _session;
         private CancellationTokenSource _running;
         public CxVisionCpuRun LastReport {get;private set;}
@@ -122,7 +123,7 @@ namespace CxVisual.TestCenter.UI
         {
             if(_running!=null)throw new InvalidOperationException("正在检测，禁止切换模块");
             if(_moduleId==id)return;
-            _moduleId=id;_provider=null;_session=null;LastReport=null;
+            _moduleId=id;_provider=null;_moduleVersion=null;_session=null;LastReport=null;
             _regions.ItemsSource=null;_trace.ItemsSource=null;
             _regions.Visibility=Visibility.Collapsed;_trace.Visibility=Visibility.Collapsed;
             _status.Text=String.IsNullOrEmpty(id)?"请先打开正式Compute配置":
@@ -147,19 +148,23 @@ namespace CxVisual.TestCenter.UI
             if(_hasUnsavedDraft())throw new InvalidOperationException("请先保存正式Compute模块配置草稿");
             return _moduleId;
         }
-        private void RequireFormalCompute(string id)
+        private PVCComputeModuleConfiguration RequireFormalCompute(string id,out string version)
         {
             var section=_service.OpenExisting<PVCComputeModuleConfiguration>(new FCMConfigIdentity(
                     "CxVisual.Module.Compute","module",id));
             PVCComputeModuleConfiguration config;
             using(var capture=section.CaptureForTask("cpu-panel-config"))
                 config=capture.Get();
-            if(config.Device!=PVCComputeDevicePreference.Cpu ||
+            version=section.EffectiveVersion;
+            if(!config.Enabled ||
+                config.Device!=PVCComputeDevicePreference.Cpu ||
                 config.ProviderTypeId!=CxVisionThresholdProvider.CapabilityId ||
                 config.CapabilityIds==null ||
                 !config.CapabilityIds.Contains(CxVisionThresholdProvider.CapabilityId))
                 throw new InvalidOperationException(
-                    "正式Compute Effective配置须指定CPU、真实ProviderTypeId及CapabilityIds后再执行");
+                    "正式Compute Effective须启用且指定CPU与真实ProviderTypeId/CapabilityIds");
+            config.Validate();
+            return config;
         }
         public async Task SaveEffectiveAsync()
         {
@@ -181,7 +186,7 @@ namespace CxVisual.TestCenter.UI
                     committed.ErrorCode??"FCM验证/提交失败");
                 if(section.HasPendingApply&&!section.ApplyPendingAtTaskBoundary())
                     throw new InvalidOperationException("MHS任务边界未能生效");
-                _provider=null;
+                _provider=null;_moduleVersion=null;
                 _status.Text="Vision已保存并生效："+section.EffectiveVersion+
                     "，请重新显式读取Effective；这不是设备运行。";
             }
@@ -190,11 +195,12 @@ namespace CxVisual.TestCenter.UI
         public void LoadEffective()
         {
             if(_running!=null){_status.Text="检测运行中不可切换配置";return;}
-            _provider=null;
+            _provider=null;_moduleVersion=null;
             try
             {
                 string id=RequireScope();
-                RequireFormalCompute(id);
+                string moduleVersion;
+                RequireFormalCompute(id,out moduleVersion);
                 var vision=_service.OpenExisting<CxVisionInspectionOptions>(new FCMConfigIdentity(
                         "Vision.Inspection","module",id));
                 _provider=CxVisionThresholdProvider.FromEffectiveConfiguration(vision);
@@ -202,6 +208,7 @@ namespace CxVisual.TestCenter.UI
                 if(!_provider.TryGetCapabilityVersion(
                     CxVisionThresholdProvider.CapabilityId,out version))
                     throw new InvalidOperationException("CPU Provider未解析有效版本");
+                _moduleVersion=moduleVersion;
                 _status.Text="已读取正式Compute/Vision Effective "+version+
                     "；仅本地CPU软件操作，不代表硬件授权。";
             }
@@ -216,7 +223,10 @@ namespace CxVisual.TestCenter.UI
             {
                 string id=RequireScope();
                 if(_provider==null)throw new InvalidOperationException("先显式读取有效配置");
-                RequireFormalCompute(id);
+                string moduleVersion;
+                var compute=RequireFormalCompute(id,out moduleVersion);
+                if(!String.Equals(moduleVersion,_moduleVersion,StringComparison.Ordinal))
+                    throw new InvalidOperationException("Compute Effective版本已变化，请重新读取");
                 string version;
                 if(!_provider.TryGetCapabilityVersion(
                     CxVisionThresholdProvider.CapabilityId,out version))
@@ -224,10 +234,15 @@ namespace CxVisual.TestCenter.UI
                 int w=int.Parse(_width.Text,CultureInfo.InvariantCulture);
                 int h=int.Parse(_height.Text,CultureInfo.InvariantCulture);
                 string filename=_path.Text.Trim();
+                long pixelBytes=(long)w*h*(_provider.PixelDepth==CxVisionPixelDepth.Bits8?1:2);
+                if(w<=0||h<=0||pixelBytes<=0||pixelBytes>64000000L||
+                   pixelBytes*6L>(long)compute.MemoryBudgetMb*1048576L)
+                    throw new InvalidOperationException("输入尺寸无效或超出正式Compute内存预算");
                 // The shared professional runner validates/reads RAW on the worker
                 // BEFORE mutating MEM. Do not read a large file twice or block the UI.
                 if(_session==null)_session=MEMEngineering.Create("TCT Compute "+id);
                 _running=new CancellationTokenSource();
+                _running.CancelAfter(compute.TimeoutMs);
                 _run.IsEnabled=false;_save.IsEnabled=false;_load.IsEnabled=false;
                 _cancel.IsEnabled=true;_status.Text="实际CPU算法/原MOC-MRK执行中…";
                 var report=await Task.Run(()=>CxVisionRawCpuRunner.ExecuteAsync(
