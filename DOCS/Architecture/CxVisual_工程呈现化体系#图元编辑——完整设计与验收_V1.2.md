@@ -268,6 +268,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **GE-03 Path多轮廓创建增量（2026-10-27）**：原有单轮廓Path点绘继续保持。Path工具在单轮廓至少两个点后按N，仅设置WPF瞬时`next contour`；下一次点击创建新轮廓起点，Ghost跳过跨轮廓线段；双击/Enter在所有轮廓合法时才经`MVIShapeCatalog.CreateDrawnContours`生成独立Move命令，以`MVIVisualEditor.DrawPathContours`走现有MEM单次AddShape事务。Esc/工具切换、未完成第二轮廓不会留下对象、Revision或预览。Core增测真实双轮廓/非法未完成，WPF STA Smoke增测N分段、拒绝未完成、一次Revision、Undo/Redo和保存重开。后续复杂闭合洞、Boolean操作和系统级真实键鼠仍按GE-03验收，不能以本增量替代。
 
+**GE-03 多轮廓收尾与异常输入加固（2026-10-28）**：固定源码提交 [`bfed8ae2`](https://github.com/oudream/cx-visual-x3/commit/bfed8ae2e00e517f02b13c3117be251bc27ff540) 在既有 `SceneView` Path 手势中修复 `N` 后新轮廓尚无点时 `Enter` 无法提交此前合法轮廓的问题；待开始轮廓只显示指针 Ghost，各轮廓起点独立标记且无跨轮廓连线。`MVIShapeCatalog.CreateDrawnContours` 新增连续重复点拒绝，WPF STA Smoke 增测 `KeyDown` 路由的 N/Enter/Esc、单点尾轮廓拒绝、Revision/对象数量及取消清理；ArchitectureSmoke 新增纯几何反证。**对应 Windows CI 已实测通过**：Graphics [`40613961662`](https://github.com/oudream/cx-visual-x3/actions/runs/40613961662)（TestCenter 构建、真实 WPF Frame/事务/磁盘回归）与 Engineering Organization [`40613961628`](https://github.com/oudream/cx-visual-x3/actions/runs/40613961628)（Release 全解决方案、默认 ArchitectureSmoke 等），均对应 `bfed8ae2`。WPF `RaiseEvent` 键盘路由不等于外部系统注入；多 DPI、复杂 Bezier/Arc 分阶段点绘、完整 GE-01～15 仍待单独验收。
+
 **GE-03 多轮廓编辑门禁增量（2026-10-27）**：现有FGE不可变Path操作成为WPF菜单的合法性预检（`CanApplyPathOperation`）；无效的二点闭合、删除后轮廓不足、相同命令类型或无变化Open/Close不向MEM派发操作，也不会让用户看见无效菜单项。MVI仍是正式权限和Revision唯一判定层。TestCenter WPF STA补齐多轮廓第二子路径拒绝闭合、首子路径独立闭合、右键菜单、Undo/Redo及保存重开行为，系统级外部鼠标注入仍待验收。
 
 ### 6.4 Arc、Rect、Circle 与特殊参数
