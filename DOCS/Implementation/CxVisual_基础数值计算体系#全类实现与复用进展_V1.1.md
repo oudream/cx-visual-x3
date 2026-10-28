@@ -112,3 +112,11 @@ double conditionNumber = solved.ConditionNumber;
 | `9c0fb6d` | [Numerics #40612824905](https://github.com/oudream/cx-visual-x3/actions/runs/40612824905) | 截至补录时：全方案构建、Owner DAG、--numerics及默认ArchitectureSmoke **每步成功**；最终Workflow状态须点击Actions核对 |
 
 不能把现有CPU密集张量API等同于GPU/多类型Tensor能力，也不能把编译和数值回归当作性能吞吐测试。F13下一质量门槛仍为低分配基准、跨规模矩阵对照、极端溢出处理与更多数据类型/视图合同。 
+
+## 十一、F13 无拷贝只读视图（2026-10-28）
+
+- 新增 `FNUTensorBuffer.AsView()` 与 `FNUTensorView`：共享现有Buffer数值数据，仅复制少量Shape/Stride元数据，支持只读 `Get`、无索引数组的 `Get2D`、`GetFlat`、`Slice`、`Transpose`；`CopyToBuffer` 才产生独立数值副本。
+- View是**实时引用**，Owner.Set会立即影响View；外部并发修改必须自行同步。原Buffer.Slice和Reshape仍表示复制，保持已交付API的所有权语义。
+- `FNUTensorMath.SumView` 与 `MatMulViews/MatMulViewsInto` 可直接处理非连续步长输入；Into会检查输出不能引用输入任一底层Owner，结果溢出可能留下部分输出。
+- 测试覆盖转置-切片组合、步长/行序、活视图与快照、独立MatMul参考、别名、错误维度与空视图。
+- 本次源码/自动化需按实际代码提交SHA的Windows CI单独验证；视图不是GPU/多dtype Tensor，也不保证多线程写安全。

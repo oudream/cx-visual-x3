@@ -218,6 +218,73 @@ namespace CxVisual.Foundation.Numerics
             n = b.Shape.DimensionAt(1);
         }
 
+        /// <summary>Neumaier sum over a non-contiguous view without materialization.</summary>
+        public static double SumView(FNUTensorView view)
+        {
+            if (view == null) throw new ArgumentNullException("view");
+            double sum = 0, correction = 0;
+            for (int i = 0; i < view.ElementCount; ++i)
+            {
+                double value = view.GetFlat(i), next = sum + value;
+                correction += Math.Abs(sum) >= Math.Abs(value)
+                    ? (sum - next) + value : (value - next) + sum;
+                sum = next;
+            }
+            double answer = sum + correction;
+            if (double.IsNaN(answer) || double.IsInfinity(answer))
+                throw new OverflowException("View reduction overflow.");
+            return answer;
+        }
+
+        public static FNUTensorBuffer MatMulViews(FNUTensorView a, FNUTensorView b)
+        {
+            int m, k, n;
+            ValidateViewMatMul(a, b, out m, out k, out n);
+            var output = new FNUTensorBuffer(new FNUTensorShape(m, n));
+            MatMulViewsInto(a, b, output);
+            return output;
+        }
+
+        /// <summary>Multiply arbitrary-stride views; overflow may partially update output.</summary>
+        public static void MatMulViewsInto(FNUTensorView a, FNUTensorView b, FNUTensorBuffer output)
+        {
+            int m, k, n;
+            ValidateViewMatMul(a, b, out m, out k, out n);
+            if (output == null) throw new ArgumentNullException("output");
+            if (ReferenceEquals(output, a.Owner) || ReferenceEquals(output, b.Owner))
+                throw new ArgumentException("Output cannot alias backing input storage.", "output");
+            if (output.Shape.Rank != 2 ||
+                output.Shape.DimensionAt(0) != m || output.Shape.DimensionAt(1) != n)
+                throw new ArgumentException("Output must have shape (m,n).", "output");
+            for (int row = 0; row < m; ++row)
+                for (int col = 0; col < n; ++col)
+                {
+                    double sum = 0, correction = 0;
+                    for (int inner = 0; inner < k; ++inner)
+                    {
+                        double value = a.Get2D(row, inner) * b.Get2D(inner, col);
+                        double next = sum + value;
+                        correction += Math.Abs(sum) >= Math.Abs(value)
+                            ? (sum - next) + value : (value - next) + sum;
+                        sum = next;
+                    }
+                    double answer = sum + correction;
+                    if (double.IsNaN(answer) || double.IsInfinity(answer))
+                        throw new OverflowException("View matrix multiplication overflow.");
+                    output.Put(row * n + col, answer);
+                }
+        }
+
+        private static void ValidateViewMatMul(FNUTensorView a, FNUTensorView b,
+            out int m, out int k, out int n)
+        {
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            if (a.Rank != 2 || b.Rank != 2 || a.DimensionAt(1) != b.DimensionAt(0))
+                throw new ArgumentException("View MatMul requires (m,k) and (k,n).");
+            m = a.DimensionAt(0); k = a.DimensionAt(1); n = b.DimensionAt(1);
+        }
+
         public static FNUTensorBuffer Transpose2D(FNUTensorBuffer input)
         {
             if (input == null) throw new ArgumentNullException("input");

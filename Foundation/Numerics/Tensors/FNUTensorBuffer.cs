@@ -32,6 +32,12 @@ namespace CxVisual.Foundation.Numerics
             _values[Shape.Offset(indices)] = value;
         }
         public double[] CopyValues() { return (double[])_values.Clone(); }
+        /// <summary>Creates a live read-only view without copying tensor data.</summary>
+        public FNUTensorView AsView()
+        {
+            return new FNUTensorView(this, Shape.CopyDimensions(), Shape.CopyStrides(), 0);
+        }
+
         /// <summary>改变连续存储的形状，返回新的独占缓冲区，不共享原数据。</summary>
         public FNUTensorBuffer Reshape(FNUTensorShape newShape)
         {

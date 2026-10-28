@@ -17,6 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             AdvancedNumericsQuality();
             TensorShapeAndBufferReuse();
             TensorBroadcastInto();
+            TensorViewQuality();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -267,6 +268,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FNUTensorMath.MatMulInto(leftEmpty, rightEmpty, zeroDot);
             Near(FNUTensorMath.Sum(zeroDot), 0, 0, "zero-inner-dimension matmul");
             Console.WriteLine("PASS FNU tensor Into: add/multiply broadcasting and zero-size cases");
+        }
+
+        private static void TensorViewQuality()
+        {
+            var owner = new FNUTensorBuffer(new FNUTensorShape(2,3),
+                new double[] { 1,2,3,4,5,6 });
+            var original = owner.AsView();
+            var transposed = original.Transpose(0,1);
+            Check(transposed.Rank == 2 && transposed.DimensionAt(0) == 3 &&
+                transposed.DimensionAt(1) == 2, "view transpose shape");
+            Check(transposed.StrideAt(0) == 1 && transposed.StrideAt(1) == 3,
+                "view stride permutation");
+            Near(transposed.Get2D(2,1),6,0,"transposed index");
+            for (int i = 0; i < transposed.ElementCount; ++i)
+                Near(transposed.GetFlat(i),transposed.Get2D(i/2,i%2),0,"view flat index");
+            var slice = transposed.Slice(0,1,2);
+            Near(slice.Get2D(0,1),5,0,"view slice index");
+            Near(slice.Get2D(1,0),3,0,"view slice last");
+            var snapshot = slice.CopyToBuffer();
+            owner.Set(50,1,1);
+            Near(slice.Get2D(0,1),50,0,"live view sees owner update");
+            Near(snapshot.Get(0,1),5,0,"explicit snapshot is independent");
+            Near(FNUTensorMath.SumView(slice),61,0,"sum noncontiguous view");
+            Near(original.Transpose(0,1).Transpose(0,1).Get(1,1),50,0,
+                "double transpose");
+
+            var data = new FNUTensorBuffer(new FNUTensorShape(2,3),
+                new double[] { 1,2,3,4,5,6 });
+            var left = data.AsView().Transpose(0,1);
+            var right = data.AsView();
+            var product = FNUTensorMath.MatMulViews(left,right);
+            Check(product.Shape.DimensionAt(0)==3 && product.Shape.DimensionAt(1)==3,
+                "view matrix product shape");
+            for (int row=0;row<3;row++)
+                for (int col=0;col<3;col++)
+                {
+                    double value=0;
+                    for(int k=0;k<2;k++)
+                        value+=left.Get2D(row,k)*right.Get2D(k,col);
+                    Near(product.Get(row,col),value,1e-12,"view MatMul oracle");
+                }
+            var outBuffer = new FNUTensorBuffer(new FNUTensorShape(3,3));
+            FNUTensorMath.MatMulViewsInto(left,right,outBuffer);
+            Near(outBuffer.Get(0,0),product.Get(0,0),0,"view MatMulInto");
+            Near(outBuffer.Get(2,2),product.Get(2,2),0,"view MatMulInto last");
+            Throws<ArgumentException>(()=>FNUTensorMath.MatMulViewsInto(left,right,data),
+                "view output alias");
+            Throws<ArgumentOutOfRangeException>(()=>transposed.Get2D(3,0),
+                "view bounds");
+            Throws<ArgumentException>(()=>original.Get(0),"view wrong index rank");
+            Throws<ArgumentOutOfRangeException>(()=>original.Slice(1,3,1),
+                "view invalid slice");
+            var empty=original.Slice(1,3,0);
+            Check(empty.ElementCount==0,"view empty slice");
+            Throws<ArgumentOutOfRangeException>(()=>empty.GetFlat(0),"empty view access");
+            Near(FNUTensorMath.SumView(empty),0,0,"empty view sum");
+            Console.WriteLine("PASS FNU read-only live view / slice / transpose / matmul");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)
