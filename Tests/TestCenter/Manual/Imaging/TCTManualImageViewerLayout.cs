@@ -28,6 +28,8 @@ namespace CxVisual.TestCenter.UI
         // 仅保存可视按钮映射；真实工具状态仍以唯一MPW.ToolMode为准。
         private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
             _regionToolButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
+        private readonly System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>
+            _layerColorButtons=new System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>();
         private Slider _windowWidthSlider,_windowCenterSlider;
         private readonly TextBox _windowWidthInput=new TextBox { Width=72,Text="65535",Margin=new Thickness(2) };
         private readonly TextBox _windowCenterInput=new TextBox { Width=72,Text="32767.5",Margin=new Thickness(2) };
@@ -341,6 +343,27 @@ namespace CxVisual.TestCenter.UI
             StackPanel content = Column();
             content.Children.Add(Heading("图层显示与交互"));
             content.Children.Add(Hint("工具在【区域】【测量】【标注】等专业页签及顶部快捷栏操作，左侧图像直接绘制。"));
+            content.Children.Add(Heading("图层默认颜色 · 点击弹出系统色板"));
+            WrapPanel palettes=Row();
+            foreach(var entry in new[] {
+                Tuple.Create("ROI",MVIImageOverlayLayer.Roi),
+                Tuple.Create("测量",MVIImageOverlayLayer.Measurement),
+                Tuple.Create("标注",MVIImageOverlayLayer.Annotation),
+                Tuple.Create("缺陷",MVIImageOverlayLayer.Defect) })
+            {
+                MVIImageOverlayLayer layer=entry.Item2;
+                Button pick=Action(palettes,"设"+entry.Item1+"色","OverlayColor."+entry.Item1,
+                    ()=>ChooseOverlayLayerColor(layer));
+                pick.Width=69;pick.MinHeight=32;pick.Height=32;
+                pick.Padding=new Thickness(1,2,1,2);
+                uint value=unchecked((uint)_viewer.GetOverlayLayerColor(layer));
+                pick.Background=new SolidColorBrush(Color.FromArgb(
+                    (byte)(value>>24),(byte)(value>>16),(byte)(value>>8),(byte)value));
+                pick.Foreground=Brushes.White;
+                pick.ToolTip="点击打开系统颜色对话框，修改"+entry.Item1+"图层默认色及未锁定图元颜色";
+                _layerColorButtons[layer]=pick;
+            }
+            content.Children.Add(palettes);
             WrapPanel visibility = Row(_showRoi,_showMeasurements,_showAnnotations,_showDefects);
             foreach (CheckBox check in visibility.Children.OfType<CheckBox>())
                 check.Margin = new Thickness(8,5,10,5);
