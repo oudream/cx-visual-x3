@@ -7,7 +7,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// <summary>Reproducible diagnostics, not timing pass/fail gates.</summary>
     internal static class FNUNumericsBenchmarks
     {
-        private static volatile double _checksum;
+        private static double _checksum; // consumed after timing, not a volatile field
 
         public static void Run()
         {
