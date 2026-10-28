@@ -11,6 +11,7 @@ on:
       - 'Tests/ArchitectureSmoke/Transport/**'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
+      - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
       - 'Tests/TestCenter/Manual/Channel/**'
       - 'Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs'
       - '.github/workflows/f17-channel-windows.yml'
