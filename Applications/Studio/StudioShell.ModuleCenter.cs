@@ -32,6 +32,8 @@ namespace CxVisual.Studio
             // Professional code remains the algorithm Owner. The Studio host only composes
             // this software provider for discovery; no background worker or device is started.
             var vision=new CxVisionThresholdProvider(visionOptions,0,_simulation);
+            CxVisionThresholdProvider selectedProvider=vision;
+            bool effectiveLoaded=false;
             ProjectStudioModuleCenterCapabilities(control,vision,
                 "CPU计算Provider：开发预设参数；尚未载入MHS Effective");
             var header=new StackPanel();
@@ -65,6 +67,8 @@ namespace CxVisual.Studio
                     var loaded=LoadStudioEffectiveVisionProvider();
                     ProjectStudioModuleCenterCapabilities(control,loaded.Item1,
                         "MHS Effective "+loaded.Item2+"（真实配置快照，仅软件能力发现）");
+                    selectedProvider=loaded.Item1;
+                    effectiveLoaded=true;
                     effectiveStatus.Text="已从正式MHS读取 Effective "+loaded.Item2+
                         "；CPU Provider版本 "+loaded.Item1.ReleaseVersion+
                         "。未运行、未授权发布，也未创建MEM模块资源。";
@@ -81,6 +85,49 @@ namespace CxVisual.Studio
                 }
             };
             actions.Children.Add(loadEffective);
+            var addFlow=new Button {
+                Content="加入当前主流程",Padding=new Thickness(12,5,12,5),
+                Margin=new Thickness(3,1,6,1),
+                ToolTip="选中正式Compute能力并读取MHS Effective后才写入已有MEM主Content；必须继续连线、MOC构建和MRK授权"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(addFlow,
+                "Studio.ModuleCenter.AddToFlow");
+            addFlow.Click+=(sender,args)=>{
+                try {
+                    MPWModuleCapabilityView selected=control.SelectedCapability;
+                    if(selected==null||selected.Demonstration||
+                        selected.Kind!=MFMModuleKind.Compute||
+                        selected.Id!=CxVisionThresholdProvider.CapabilityId||
+                        !selected.Described||!selected.Resolved)
+                        throw new InvalidOperationException("请先选中已注册的真实Compute算法能力");
+                    if(!effectiveLoaded)
+                        throw new InvalidOperationException("请先读取当前MHS生效配置，再加入工程流程");
+                    if(_logicRunning)throw new InvalidOperationException("运行中的主流程不可编辑");
+                    // Re-check MHS version and permissions on the pinned Provider.
+                    string version;
+                    if(!selectedProvider.TryGetCapabilityVersion(selected.Id,out version))
+                        throw new InvalidOperationException("当前Provider版本无法确认");
+                    var page=_viewModel.ActivePage;
+                    if(page==null)throw new InvalidOperationException("请先选择有效工程页面");
+                    var catalog=new MOCCapabilityCatalog(
+                        new IMOCCapabilityProvider[]{_simulation,selectedProvider},selectedProvider);
+                    var capability=catalog.Find(selected.Id);
+                    if(capability==null||!capability.RuntimeAvailable)
+                        throw new InvalidOperationException("MOC当前无法解析此软件能力");
+                    MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                        builder=>builder.Step(capability.Definition));
+                    RefreshScene();
+                    OpenStudioDocument("doc.flow");
+                    effectiveStatus.Text="已加入当前MEM主流程："+selected.Id+
+                        " / "+version+"。这是未连线的能力节点，需完成输入绑定、MOC构建与MRK授权后才能执行。";
+                }
+                catch(UnauthorizedAccessException) {
+                    effectiveStatus.Text="配置读取权限已撤销，不允许新增该版本的流程能力。";
+                }
+                catch(Exception ex) {
+                    effectiveStatus.Text="加入流程被拒绝："+ex.Message;
+                }
+            };
+            actions.Children.Add(addFlow);
             var flow=new Button {Content="打开主流程编排",Padding=new Thickness(12,5,12,5),
                 Margin=new Thickness(3,1,6,1),
                 ToolTip="打开原MOL流程编辑器；不会跳过MOC构建、MRK执行和授权"};
