@@ -39,7 +39,7 @@ jobs:
       - name: Run UML core HTTP Server, WebSocket Server and cross-process SharedMemory
         shell: pwsh
         run: |
-          $output = & .\\Output\\Release\\x64\\CxVisual.Tests.ArchitectureSmoke.exe --channel-uml-core 2>&1
+          $output = & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --channel-uml-core 2>&1
           $status = $LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
           if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.UML_CORE_PASS' -or
