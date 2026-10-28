@@ -869,6 +869,9 @@ sequenceDiagram
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
 
+> **2026-10-28 本轮实装补录（源码 D1；后续Windows/硬件结果须按实际Run升级）**：MPW正式新增`MPWVolumeRenderScheduler`，现有`MPWVolumeRenderHost`已接入`Revision/AppliedRevision/ContextEpoch`，TestCenter将CT3D ChangeSet映射到LUT/Uniform/Scene刷新；FVO新增`FVOVolumeSpatialFrame`并由`FVOVolumeData.SpatialFrame`唯一持有，默认未标定、显式变换具备双精度与正反例；FVO新增`FVOOriginalScalarLease`并公开`AcquireOriginalScalarLease()`，后台算法可在Volume释放后依赖SafeHandle租约读取真实RAW。实现与负例见`DOCS/Implementation/` P2/C02记录和`Tests/ArchitectureSmoke/Integration/`的FVO/MPW专项。上述实装不意味着FGE通用三维CAD Frame Owner已裁决，也不表示Surface/测量/CAD功能或NVIDIA/AMD/Intel硬件已通过验收。
+
+
 > **2026-10-28 代码增量（R4 主文同步）**：`b5b9ca8e` 已提交FVO严格原值、安全缓冲接管、MVI3DCameraState与WPF/GL BindCamera（Windows Imaging在该SHA的Release x64、`--volume`、`--imaging`已通过，但默认ExecutionPolicyTests失败，整体Workflow为FAIL）；`47ec90e9` 将MPWVolumeRenderHost状态机/启停/释放迁回正式MPW，其Windows Graphics工作流PASS；`35dcaa52` 在TCT消费CT3D变化集并加固GPU清理后WPF回退，完整CI仍以对应SHA后续具体Job记录为准。上述证据**不等于真实GPU或工业CT已验收**。
 
 
