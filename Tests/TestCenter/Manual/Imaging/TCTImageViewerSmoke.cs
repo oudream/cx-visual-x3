@@ -879,12 +879,12 @@ namespace CxVisual.TestCenter.UI
                 propertyTabs.SelectedIndex=0;
                 window.UpdateLayout();
                 Button colorDialogButton=FindControl<Button>(frame,"TCT.Imaging.ChooseOverlayColor");
-                TextBox argbField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayArgb");
-                Button applyProperties=FindControl<Button>(frame,"TCT.Imaging.ApplyOverlayProperties");
-                if(colorDialogButton==null || argbField==null || applyProperties==null)
+                TextBox selectedColorArgbField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayArgb");
+                Button selectedColorApplyButton=FindControl<Button>(frame,"TCT.Imaging.ApplyOverlayProperties");
+                if(colorDialogButton==null || selectedColorArgbField==null || selectedColorApplyButton==null)
                     throw new InvalidOperationException("选中图元没有真实颜色对话框或属性编辑入口");
-                argbField.Text="FF0DA6C3";
-                applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                selectedColorArgbField.Text="FF0DA6C3";
+                selectedColorApplyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 MVIImageOverlayItem recolored=frame.Viewer.Overlays.Find(statsPolygon.Id);
                 if(recolored==null || recolored.Id!=statsPolygon.Id ||
                     recolored.Argb!=unchecked((int)0xff0da6c3) ||
