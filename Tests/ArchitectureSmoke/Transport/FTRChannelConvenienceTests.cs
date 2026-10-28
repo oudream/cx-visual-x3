@@ -70,8 +70,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(replies==1,"单端快捷ReplyAsync应回原Channel且不持有业务任务");
 
                     Guid session=right.SessionId;
+                    FTRChannelReceiveContext staleMessage=last;
                     right.Close();
                     right.Open();
+                    bool staleSessionRejected=false;
+                    try { right.ReplyAsync(staleMessage,new byte[]{45}).GetAwaiter().GetResult(); }
+                    catch(InvalidOperationException) { staleSessionRejected=true; }
+                    Check(staleSessionRejected && replies==1,
+                        "旧Session收到的请求不得跨Close/Open误回复到新物理会话");
                     Check(right.SessionId!=session && right.State==FTRChannelState.Open,
                         "同一Channel对象须支持正常Close/Open刷新Session而不是每次创建实例");
                     left.SendBytesAsync(new byte[]{5},CancellationToken.None).GetAwaiter().GetResult();
