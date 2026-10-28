@@ -185,6 +185,12 @@ namespace CxVisual.TestCenter.UI
             {
                 _volume = volume;
                 _state = MVIVolumeViewState.CreateCentered(volume);
+                // 只登记当前显示体的会话引用；稳定工程资源身份仍由MEM负责。
+                string sourceRef=string.IsNullOrWhiteSpace(volume.SourceFilePath)
+                    ? "session:volume:"+Guid.NewGuid().ToString("N")
+                    : volume.SourceFilePath;
+                _state.Scene3D.Add(MVI3DSceneKind.Volume,sourceRef,0,
+                    "volume:physical-frame");
                 _scene.BindCamera(_state.Camera);
                 if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
