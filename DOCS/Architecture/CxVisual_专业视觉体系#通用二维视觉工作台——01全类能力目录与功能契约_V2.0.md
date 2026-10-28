@@ -531,3 +531,18 @@
 ## 5. 版本演进规则
 
 新增功能必须先判断是否属于已有二级能力，再新增三级ID；确有独立语义才新增二级；新增一级必须经过Owner与能力分类ADR。旧ID永不重用；废弃标记Deprecated并提供替代映射。修改类定义时同步更新02 UML、对应专题、Implementation及Testing；现有60项需求及ReferTo迁移表必须持续向这些ID追溯，不替代历史原始需求。
+
+## 6. 架构深化后的全类落位和新增类型审查规则
+
+26类/260个V2D-XX.YY是首版稳定需求编号，**不是每类只有10个能力的上限**；出现新独立功能应在原类别增编号，不另立新的公共Owner。一个正式机制可服务多个类别，避免按每个功能项造一个类、接口或Manager。
+
+| 功能群 | 首选对象关系 | 不允许的捷径 |
+|---|---|---|
+| A 01—04 | FIMImageBuffer/专业帧→FDT/MDS数据引用/预算→FrameRef目标 | byte[]就是完整FrameStream；再造ImageHeap |
+| B 05—09 | MVI会话/Overlay/Viewport+MPW渲染，正式标注由MEM/MRC持有 | Canvas元素兼任算法结果和工程定义 |
+| C 10—17 | FIM/FGE基础运算、PVC专业能力；类型/参数用MPM/MPC | 每个按钮自建算法与参数体系 |
+| D 18—20 | MEMContent/MOL→MOC→MRK/MDS的专业执行 | 第二Graph、第二通用Executor、第二DataStack |
+| E 21—23 | Run/ResultItem/ArtifactRef→显示投影；正式编辑走MEM | 把Overlay当作历史Run/工程Store |
+| F 24—26 | Studio/TestCenter/SDK/独立Runtime共享专业合同 | TestCenter页面成为唯一业务逻辑 |
+
+新增类型须说明（1）现有Owner是否已有同等职责，（2）实际两个不同消费者，（3）写入权限与生命周期，（4）错误/取消/版本和多线程反证，（5）项目DAG及测试。具体设计证据见00§11、02 X01—X07、03—08深化章节。
