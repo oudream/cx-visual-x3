@@ -567,6 +567,16 @@ namespace CxVisual.TestCenter.UI
             Show("已修改选中对象颜色："+item.Kind+" · "+item.Id);
         }
 
+        private sealed class ColorDialogOwner : System.Windows.Forms.IWin32Window
+        {
+            public IntPtr Handle { get; private set; }
+            public ColorDialogOwner(System.Windows.Window owner)
+            {
+                Handle=owner==null ? IntPtr.Zero :
+                    new System.Windows.Interop.WindowInteropHelper(owner).Handle;
+            }
+        }
+
         /// <summary>复用成熟WinForms的系统颜色对话框，只修改选中MVI图元；取消则不提交。</summary>
         private void ChooseOverlayColor()
         {
@@ -577,7 +587,8 @@ namespace CxVisual.TestCenter.UI
                 Color=System.Drawing.Color.FromArgb(item.Argb),
                 FullOpen=true,AllowFullOpen=true,AnyColor=true })
             {
-                if(dialog.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;
+                if(dialog.ShowDialog(new ColorDialogOwner(System.Windows.Window.GetWindow(this)))!=
+                    System.Windows.Forms.DialogResult.OK)return;
                 // Windows色板不控制Alpha，保留原有透明度。
                 Color color=Color.FromArgb((byte)((uint)item.Argb>>24),
                     dialog.Color.R,dialog.Color.G,dialog.Color.B);
@@ -1187,7 +1198,13 @@ namespace CxVisual.TestCenter.UI
                double.IsNaN(center)||double.IsInfinity(center)||
                double.IsInfinity(center-width/2)||double.IsInfinity(center+width/2))
                 throw new ArgumentException("窗宽/窗位必须是有限数字，且窗宽大于0。");
+            // 手动窗位与自动拉伸互斥；UI和MVI实际渲染必须描述同一模式。
+            if(_viewer.DisplayState.IsAutoContrast)
+                _viewer.DisplayState.SetAutoContrast(false);
             _viewer.SetDisplayWindow(center-width/2,center+width/2);
+            _syncingDisplayInputs=true;
+            try { _autoContrast.IsChecked=false; }
+            finally { _syncingDisplayInputs=false; }
             _syncingWindowControls=true;
             try
             {
