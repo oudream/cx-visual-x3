@@ -194,6 +194,14 @@ namespace CxVisual.Studio
             var vision=new CxVisionThresholdProvider(visionOptions,0,_simulation);
             CxVisionThresholdProvider selectedProvider=vision;
             bool effectiveLoaded=false;
+            Guid loadedProjectId=Guid.Empty;
+            string loadedScopeKey=null;
+            Action invalidateEffective=()=>{
+                effectiveLoaded=false;loadedProjectId=Guid.Empty;loadedScopeKey=null;
+                selectedProvider=vision;
+                ProjectStudioModuleCenterCapabilities(control,vision,
+                    "当前仍为开发预设；请重新读取正确Scope的MHS Effective");
+            };
             ProjectStudioModuleCenterCapabilities(control,vision,
                 "CPU计算Provider：开发预设参数；尚未载入MHS Effective");
             var header=new StackPanel();
@@ -231,19 +239,24 @@ namespace CxVisual.Studio
                         "MHS Effective "+loaded.Item2+"（真实配置快照，仅软件能力发现）");
                     selectedProvider=loaded.Item1;
                     effectiveLoaded=true;
+                    loadedProjectId=_viewModel.ProjectSession.Project.Id;
+                    loadedScopeKey=loaded.Item3+"/"+loaded.Item4;
                     effectiveStatus.Text="已从正式MHS读取 Effective "+loaded.Item2+
                         "；CPU Provider版本 "+loaded.Item1.ReleaseVersion+
                         "。未运行、未授权发布，也未创建MEM模块资源。";
                 }
                 catch(UnauthorizedAccessException) {
+                    invalidateEffective();
                     effectiveStatus.Text="当前身份没有所选Scope的Effective配置读取权限。";
                 }
                 catch(FileNotFoundException) {
+                    invalidateEffective();
                     effectiveStatus.Text="该Scope还没有持久化的Vision配置；请先打开工程专业配置、完成验证和保存，再读取Effective。";
                 }
                 catch(Exception ex) {
+                    invalidateEffective();
                     effectiveStatus.Text="生效配置未加载："+ex.Message+
-                        "；仍保留原开发预设能力，未执行任何算法或设备动作。";
+                        "；旧Effective已解除绑定，未执行任何算法或设备动作。";
                 }
             };
             actions.Children.Add(loadEffective);
@@ -263,6 +276,9 @@ namespace CxVisual.Studio
                         throw new InvalidOperationException("请先选中已注册的真实Compute算法能力");
                     if(!effectiveLoaded)
                         throw new InvalidOperationException("请先读取当前MHS生效配置，再加入工程流程");
+                    if(loadedProjectId!=_viewModel.ProjectSession.Project.Id||
+                        loadedScopeKey!=CurrentStudioVisionScopeKey())
+                        throw new InvalidOperationException("工程或配置Scope已切换，请重新读取Effective");
                     if(_logicRunning)throw new InvalidOperationException("运行中的主流程不可编辑");
                     // Re-check MHS version and permissions on the pinned Provider.
                     string version;
@@ -331,6 +347,9 @@ namespace CxVisual.Studio
             runRaw.Click+=async (sender,args)=>{
                 if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
                 if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
+                if(loadedProjectId!=_viewModel.ProjectSession.Project.Id||
+                    loadedScopeKey!=CurrentStudioVisionScopeKey())
+                {rawStatus.Text="工程或配置Scope已变化，请重新读取MHS Effective";return;}
                 int w,h;
                 if(!Int32.TryParse(imageWidth.Text,out w)||
                     !Int32.TryParse(imageHeight.Text,out h)||w<=0||h<=0||
@@ -400,7 +419,17 @@ namespace CxVisual.Studio
         /// doc.config. An authenticated host uses only the MHS authorized session;
         /// forbidden reads must not fall back to the raw service.
         /// </summary>
-        private Tuple<CxVisionThresholdProvider,string> LoadStudioEffectiveVisionProvider()
+        private string CurrentStudioVisionScopeKey()
+        {
+            var choices=StudioConfigurationScopeChoices();
+            var selected=choices.FirstOrDefault(x=>
+                x.Kind==_studioConfigurationScopeKind&&
+                x.Id==_studioConfigurationScopeId)??choices.FirstOrDefault();
+            return selected==null?null:selected.Kind+"/"+selected.Id;
+        }
+
+        private Tuple<CxVisionThresholdProvider,string,string,string>
+            LoadStudioEffectiveVisionProvider()
         {
             if(HasStudioUnsavedConfiguration())
                 throw new InvalidOperationException("请先保存或放弃专业配置草稿");
@@ -436,7 +465,7 @@ namespace CxVisual.Studio
                 provider=CxVisionThresholdProvider.FromEffectiveConfiguration(section,_simulation);
                 version=section.EffectiveVersion;
             }
-            return Tuple.Create(provider,scope.Label+" / "+version);
+            return Tuple.Create(provider,scope.Label+" / "+version,scope.Kind,scope.Id);
         }
 
         private void ProjectStudioModuleCenterCapabilities(MPWModuleCenterControl control,
