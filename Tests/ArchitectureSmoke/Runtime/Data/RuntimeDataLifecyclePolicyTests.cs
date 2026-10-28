@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConcurrentBorrowProtectsOwnerAndBudget();
             InvalidCombinationsRejected();
             FileCacheExpiryKeepsLocator();
+            BudgetPressureOnlyEvictsIdleCache();
         }
         private static void Check(bool value, string reason)
         {
@@ -175,6 +176,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally { File.Delete(path); }
         }
 
+        private static void BudgetPressureOnlyEvictsIdleCache()
+        {
+            var budget = new MDSDataBudget(100);
+            using (var heap = new MDSDataHeap(null, budget))
+            {
+                heap.Set("Cache", new byte[70]);
+                heap.Lifecycle.Configure("Cache", MDSDataLifecyclePolicy.Default
+                    .WithRetention(MDSDataRetentionPolicy.CacheFor(TimeSpan.FromHours(1)))
+                    .WithReclamation(MDSDataReclamationPolicy.OnPressure));
+                using (heap.Lifecycle.AcquireUse("Cache"))
+                {
+                    Reject<MDSDataException>(() => heap.Set("New", new byte[50]));
+                    Check(heap.Contains("Cache") && budget.RetainedBytes == 70,
+                        "活跃消费者阻止预算压力驱逐，写入失败不得改变原数据");
+                }
+                heap.Set("New", new byte[50]);
+                Check(!heap.Contains("Cache") && heap.Contains("New") &&
+                    budget.RetainedBytes == 50,
+                    "预算不足时仅回收闲置可驱逐缓存，成功提交新数据");
+                Check(heap.Lifecycle.SweepPressure(20) == 0,
+                    "未登记为可驱逐的普通数据不能被压力扫描释放");
+            }
+            string path = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllBytes(path, new byte[70]);
+                var budget2 = new MDSDataBudget(100);
+                using (var heap = new MDSDataHeap(null, budget2))
+                {
+                    heap.SetFile<byte[]>("CT.Locator", path, new MDSLimitedBinaryFileLoader(100));
+                    heap.Lifecycle.Configure("CT.Locator", MDSDataLifecyclePolicy.Default
+                        .WithRetention(MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(5)))
+                        .WithReclamation(MDSDataReclamationPolicy.OnPressure));
+                    heap.LoadAsync<byte[]>("CT.Locator").GetAwaiter().GetResult();
+                    heap.Set("Other", new byte[50]);
+                    Check(heap.Contains("CT.Locator") &&
+                        heap.Inspect("CT.Locator").LoadState == MDSDataLoadState.Unloaded &&
+                        budget2.RetainedBytes == 50,
+                        "压力释放文件载荷不应把路径Locator误删");
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
         private static void InvalidCombinationsRejected()
         {
             Reject<ArgumentException>(() => MDSDataLifecyclePolicy.Default
@@ -186,6 +231,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 .WithLifetime(MDSDataLifetimePolicy.UntilLastConsumer())
                 .WithReclamation(MDSDataReclamationPolicy.AfterLastConsumer));
             Reject<ArgumentOutOfRangeException>(() => MDSDataRetentionPolicy.CacheFor(TimeSpan.Zero));
+            Reject<ArgumentException>(() => MDSDataLifecyclePolicy.Default
+                .WithReclamation(MDSDataReclamationPolicy.OnPressure));
         }
     }
 }
