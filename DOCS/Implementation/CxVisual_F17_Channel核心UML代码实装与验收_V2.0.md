@@ -142,3 +142,12 @@ channel.Dispose();
 - `FTRMultiClientBudgetTests.HttpConcurrentResponses`：真实HTTP双请求的回复改用便利`ReplyAsync(packet,...)`，验证仍按请求子ID、预算正确。
 - `FTRWebSocketAtomicTests.OversizedPeerIsolated`：超限错误的`LastFailure.Address`必须指向真实子客户端和代次。
 - 以上增量都接到原`--channel-transport`门禁；**新SHA尚须分别看Windows日志**，不得用早期.csproj编译成功宣称最新长驻、异常隔离与HTTP/WS回归已通过。
+
+
+### 10.4 长期HTTP Client消息原子性与同步/异步同底层（2026-10-28）
+
+审计发现原`FTRHttpClientChannel`未覆盖`OnSendSynchronous`，基类按`segmentBytes`循环调用`OnSendAsync`，使单次`Send(data,segmentBytes:3)`可能被拆成多次独立POST。现通过`804733c1`改为同一个`PostAsync(byte[],offset,count,ct)`：同步Send等待完整一次POST，异步Send复用同一方法和`_sendGate`；`ByteArrayContent(bytes,offset,count)`在同步借用期内使用调用方源切片，不按网络分段拆分HTTP请求。保留原HTTP响应预算及上层消息边界。
+
+`OnCloseAsync`先Dispose HttpClient中止正在进行的请求，随后`WaitForPendingSends(StopTimeoutMs)`结算已接纳操作；来自HTTP响应`Received`事件内部的同步Close用`IsAdditionalTransportThread`显式拒绝，避免观察者自等待死锁。消息观察者报错继续遵守统一Observer隔离规则。
+
+`3530a41e`新增真实HTTP Client + Server操作系统回环：37字节正文用3字节分段提示同步Send，须恰好接到一次POST且原子正文完整、使用原请求SubChannelId应答；第二次SendBytesAsync复用同一路径。此为**源码及自动化断言已提交**，对应固定SHA Windows CI结束前不得认定通过。对外跨PC HTTP及24h高负载仍需另行验收。
