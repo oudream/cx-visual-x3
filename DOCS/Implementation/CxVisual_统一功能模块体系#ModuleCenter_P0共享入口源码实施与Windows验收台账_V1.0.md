@@ -84,3 +84,15 @@
 - 并行开发的中间提交在ArchitectureSmoke缺失`System.Net.Http`引用时报过编译错误；后续主线已补引用，必须按最终固定SHA复验，不得把中间CI失败隐去，也不得把它当作专业算法本身失败。
 
 下一步应使用正式MHS `Effective` 版本加载CPU Provider，并通过真实MEM模块/资源绑定在MOC唯一能力目录形成可用性、依赖与授权证据；先完成一项端到端再逐类推广。
+
+## 6. P0专项收口与最新Windows证据（2026-10-28）
+
+- [bced4fd Studio Windows S1 #40648271048](https://github.com/oudream/cx-visual-x3/actions/runs/40648271048)：**成功**，包含真正软件Compute能力查询和Studio快捷按钮源码。
+- [6069083 Studio Windows S1 #40648562112](https://github.com/oudream/cx-visual-x3/actions/runs/40648562112)：**成功**，增加对配置与流程快捷按钮的WPF实际Click导航与原Owner文档复用验证。
+- [6069083](https://github.com/oudream/cx-visual-x3/commit/60690832891d15e319bb60b81e7bb552f0ef6cae)：为Studio中心的`OpenConfiguration/OpenFlow`增加真实事件及原`doc.config/doc.flow`的STA断言，不自动绑定MFM能力到MEM。
+- [d36262a](https://github.com/oudream/cx-visual-x3/commit/d36262af71db765faa0e49e1fa70bf7f5d560fa3)：TestCenter MHS保存成功才刷新本模块CapabilityIds只读目录；失败不改变可见能力。
+- [c865020](https://github.com/oudream/cx-visual-x3/commit/c865020ae6ce8e2da47069b28daa63cfe963c654)：MPW能力详情明确`Declared / Described / RuntimeResolved`的证据及来源；`Supported/Available/Authorized`仍为目标Owner待核。
+- [0d10e26](https://github.com/oudream/cx-visual-x3/commit/0d10e268e7eb507e57406a70d21621a06115db67)：TestCenter按FCM草稿`Describe()`获取当前正式MFM模块Id/版本；若没有查询MOC则明示“未核实”，不把未知当不支持。
+- [f399ba0](https://github.com/oudream/cx-visual-x3/commit/f399ba06e8708b1c7bb5e2c3d510ae7fba1791e3)：模块名为空、能力ID重复等非法编辑草稿不向MPW返回假模块，也不让界面冒出未处理异常；原FCM验证仍为最终权威。
+
+本节最后四项状态投影与异常保护变更在编写时**尚未取得对应SHA的全部Windows UIA通过结果**，不能与前述Studio S1通过混同。另有并行代码曾使ArchitectureSmoke于`System.Net.Http`程序集引用缺失时编译失败，当前主线已补引用，但该独立问题的CI仍按固定SHA验收。
