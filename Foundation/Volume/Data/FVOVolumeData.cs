@@ -45,6 +45,7 @@ namespace CxVisual.Foundation.Volume
             SpacingX = spacingX;
             SpacingY = spacingY;
             SpacingZ = spacingZ;
+            SpatialFrame=FVOVolumeSpatialFrame.UncalibratedAxisAligned(spacingX,spacingY,spacingZ);
             ScalarMin = scalarMin;
             ScalarMax = scalarMax;
             SourceFilePath = sourceFilePath;
@@ -80,6 +81,20 @@ namespace CxVisual.Foundation.Volume
         public float SpacingY { get; private set; }
 
         public float SpacingZ { get; private set; }
+
+        /// <summary>唯一FVO原始体素空间映射。默认未标定，必须用可信来源明确设置才能用于全局CAD坐标。</summary>
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+
+        /// <summary>更新源坐标信息，但不允许替换与已载入RAW间距矛盾的Frame。</summary>
+        public void SetSpatialFrame(FVOVolumeSpatialFrame frame)
+        {
+            if(frame==null)throw new ArgumentNullException("frame");
+            if(Math.Abs(frame.SpacingX-SpacingX)>Math.Max(1e-6,Math.Abs(SpacingX)*1e-6)||
+               Math.Abs(frame.SpacingY-SpacingY)>Math.Max(1e-6,Math.Abs(SpacingY)*1e-6)||
+               Math.Abs(frame.SpacingZ-SpacingZ)>Math.Max(1e-6,Math.Abs(SpacingZ)*1e-6))
+                throw new ArgumentException("空间Frame间距必须与FVO原始Volume一致。","frame");
+            SpatialFrame=frame;
+        }
 
         public float ScalarMin { get; private set; }
 
