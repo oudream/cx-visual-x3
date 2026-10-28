@@ -73,6 +73,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(var c=new FlakyChannel(99))
             using(var control=new FTRReconnectController(c,limited))
             {
+                // 构造后外部FCM变化不能偷偷改写当前运行恢复策略。
+                limited.ReconnectMaxAttempts=100;
+                limited.ReconnectInitialDelayMs=1000;
                 control.Start();
                 Check(SpinWait.SpinUntil(()=>control.Snapshot().Exhausted,3000),
                     "重试上限必须停止恢复循环");

@@ -9,7 +9,9 @@ namespace CxVisual.Foundation.Transport
     public sealed class FTRReconnectController : IDisposable
     {
         private readonly FTRSingleChannelBase _channel;
-        private readonly FTRChannelConfiguration _policy;
+        // 运行期只用不可变策略值；外部FCM配置修改必须显式重建控制器才生效。
+        private readonly int _maxAttempts,_initialDelayMs,_maxDelayMs;
+        private readonly double _backoff;
         private readonly object _gate = new object();
         // 恢复任务的异步上下文：事件回调中停止不能等待自己的恢复任务。
         private readonly AsyncLocal<bool> _inRecovery = new AsyncLocal<bool>();
@@ -30,10 +32,14 @@ namespace CxVisual.Foundation.Transport
         public FTRReconnectController(FTRSingleChannelBase channel, FTRChannelConfiguration policy)
         {
             _channel = channel ?? throw new ArgumentNullException("channel");
-            _policy = policy ?? throw new ArgumentNullException("policy");
+            if(policy==null)throw new ArgumentNullException("policy");
             policy.Validate();
-            if (channel.Id != policy.Id)
+            if(channel.Id!=policy.Id)
                 throw new ArgumentException("恢复策略的通道Id必须与实例一致");
+            _maxAttempts=policy.ReconnectMaxAttempts;
+            _initialDelayMs=policy.ReconnectInitialDelayMs;
+            _maxDelayMs=policy.ReconnectMaxDelayMs;
+            _backoff=policy.ReconnectBackoff;
         }
         public FTRReconnectSnapshot Snapshot()
         {
@@ -99,17 +105,17 @@ namespace CxVisual.Foundation.Transport
                 while (!cancellation.IsCancellationRequested)
                 {
                     if (_channel.State==FTRChannelState.Open) return;
-                    if (!_policy.CanReconnect(retries))
+                    if (_maxAttempts>0 && retries>=_maxAttempts)
                     {
                         lock (_gate) _exhausted=true;
                         NotifyExhausted();
                         return;
                     }
                     // 遵循配置的初始重连延迟与指数退避，避免持续故障时高速打满设备。
-                    double computed=_policy.ReconnectInitialDelayMs==0 ? 0 :
-                        _policy.ReconnectInitialDelayMs*Math.Pow(_policy.ReconnectBackoff,retries);
-                    int delay=double.IsInfinity(computed) || computed>=_policy.ReconnectMaxDelayMs
-                        ? _policy.ReconnectMaxDelayMs : (int)computed;
+                    double computed=_initialDelayMs==0 ? 0 :
+                        _initialDelayMs*Math.Pow(_backoff,retries);
+                    int delay=double.IsInfinity(computed) || computed>=_maxDelayMs
+                        ? _maxDelayMs : (int)computed;
                     if(delay>0) await Task.Delay(delay,cancellation).ConfigureAwait(false);
                     cancellation.ThrowIfCancellationRequested();
                     Stopwatch recoveryTimer=Stopwatch.StartNew();
