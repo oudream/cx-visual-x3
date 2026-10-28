@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FileCacheExpiryKeepsLocator();
             BudgetPressureOnlyEvictsIdleCache();
             ParallelIndependentConfigurationsDoNotLoseDimensions();
+            ExternalUnknownOperationFailsClosedUntilValidConfirmation();
         }
         private static void Check(bool value, string reason)
         {
@@ -29,6 +31,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (T) { return; }
             throw new InvalidOperationException("预期异常未抛出：" + typeof(T).Name);
         }
+        private static void ExternalUnknownOperationFailsClosedUntilValidConfirmation()
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                heap.Set("GPU.Texture", new byte[] { 1, 2, 3 });
+                MDSExternalOperationLease external = heap.Lifecycle.BeginExternalOperation(
+                    "GPU.Texture", "GPU.Renderer", 17);
+                Check(external.State == MDSExternalOperationState.InFlight &&
+                    heap.Lifecycle.Inspect("GPU.Texture").RetentionReasons
+                        .Any(x => x.StartsWith("External:GPU.Renderer:17",
+                            StringComparison.Ordinal)),
+                    "外部GPU操作必须以原数据保留凭证登记，而非第二份Owner");
+                external.Dispose(); // 取消托管等待并不代表GPU执行已结算
+                Check(external.State == MDSExternalOperationState.Unknown &&
+                    !heap.Lifecycle.ReleaseEligible("GPU.Texture"),
+                    "没有真实完成ACK必须保留Unknown并拒绝回收");
+                Reject<MDSDataException>(() => heap.Remove("GPU.Texture"));
+                Reject<MDSDataException>(() => heap.Dispose());
+                Reject<InvalidOperationException>(() => external.ConfirmCompletion(16));
+                Check(heap.Contains("GPU.Texture") &&
+                    heap.Lifecycle.Inspect("GPU.Texture").RetentionHolds == 1,
+                    "旧代次异步回包不能解开新代次的释放屏障");
+                Check(external.ConfirmCompletion(17) &&
+                    external.State == MDSExternalOperationState.Confirmed &&
+                    !external.ConfirmCompletion(17),
+                    "正确确认只允许结算一次，不双重释放");
+                Check(heap.Lifecycle.ReleaseEligible("GPU.Texture") &&
+                    !heap.Contains("GPU.Texture"),
+                    "只有已确认的外部操作才允许MDS生命周期实际释放");
+            }
+        }
+
         private static void IndependentEntryPointsAndCombinedPolicies()
         {
             var budget = new MDSDataBudget(1024);
