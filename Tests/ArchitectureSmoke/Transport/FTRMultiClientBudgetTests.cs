@@ -85,7 +85,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         if(input[0]==1)
                         {
                             firstAddress=packet.Address;
-                            server.RespondAsync(firstAddress,200,firstPayload,CancellationToken.None)
+                            server.ReplyAsync(packet,firstPayload,CancellationToken.None)
                                 .GetAwaiter().GetResult();
                             firstReady.Set();
                             if(!releaseFirst.Wait(10000))
@@ -96,11 +96,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             secondAddress=packet.Address;
                             try
                             {
-                                server.RespondAsync(secondAddress,200,firstPayload,CancellationToken.None)
+                                server.ReplyAsync(packet,firstPayload,CancellationToken.None)
                                     .GetAwaiter().GetResult();
                             }
                             catch(InvalidOperationException){secondBudgetRejected=true;}
-                            server.RespondAsync(secondAddress,200,new byte[]{22},CancellationToken.None)
+                            server.ReplyAsync(packet,new byte[]{22},CancellationToken.None)
                                 .GetAwaiter().GetResult();
                             secondDone.Set();
                         }
