@@ -152,3 +152,19 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 - 原`ReceiveBytes/ReceiveFrom`新增Count切片重载；HTTP/WS借用MemoryStream缓冲消除一次ToArray大副本，保留旧事件独立数据快照。此预算只覆盖FTR列明的在途托管分配，不覆盖HttpListener内部、用户自留副本、MPA/MDS专业缓存或全进程GC峰值；后者必须作为后续跨Owner资源SLA单独验收。
 - SharedMemory不自动沿用崩溃进程遗弃的Side Mutex：旧MMF可能存放未知结果。新增强制退出的真实子进程回归，新共享区/新Session才可恢复。
 - 仍待：HTTP/WS极端并发与长期稳定性、各类通道FCM逐项实际生效、跨层CT/图像DataHandle低复制链路、跨PC和24h现场验证。旧WS预算测试失败及新修订验证状态记录于Testing，不得抹除失败或提前宣称14项工业级完成。
+
+
+### 8.7 V3.1 六项能力代码收敛审计：长期驻留、便利API与故障归属（2026-10-28）
+
+| 目标 | 已有正式增量 | 完整工业验收缺口 |
+|---|---|---|
+| 29 超时与取消 | TCP统一Deadline；HTTP Client在Close时中止请求并等待已接纳Send；HTTP响应回调内自Close拒绝 | 15种类型的连接/收/发/停止取消竞态及资源结算矩阵 |
+| 30 并发与多端 | Server SubChannelId+Generation定向，WS消息原子发送，HTTP/WS多端共享额度；便利`SendTo`显式目标/禁止MultiPeer隐式广播 | 极端多端上下线、弱消费、关闭重连竞争的长期测试 |
+| 31 可靠与容错 | 原ReconnectController、故障可恢复性分类、共享内存崩溃Side标记；Subscriber与PeerRemoved异常隔离，故障不伪装为网络断开 | 真实设备/跨PC恢复效果、会话与命令不确定性证明 |
+| 32 诊断与监控 | 原Health/Snapshot+TestCenter，最新`LastFailure.Address`与ErrorFrame传子ID/代次，便利`ReadHealth`支持IFTR接口 | Peer级长历史、分位延迟、CPU/GC及异常定位的完整生产观察体系 |
+| 34 配置与扩展 | FCM/Factory/Provider、15类型发现；便利扩展无需新的公开IFTR契约，遵守既定Owner | 每种配置实际行为和专业Provider/现场验证矩阵 |
+| 35 高性能大数据 | 池租约/Retain、背压、ByteStream一次异步快照、HTTP/WS消息切片和全局临时内存预算、历史2GiB软件回归；长期低复制订阅`SubscribeBuffers` | CT/X-Ray至MPA/MDS/Professional端到端Handle交付、24h连续流、全进程工作集与GC、跨机压力SLA |
+
+**长期使用合同**：Channel对象可由Host在内存中持有，正常Close/Open产生新SessionId，外部订阅令牌可以跨Session存在且不会Dispose/Close Channel；`FTRByteStreamAdapter`仍是一代连接的视图，重开应重新创建Adapter。对外同步Send在调用期借用源数组；异步Send独立快照并受原FTR预算控制；对端执行结果未知时不得自动重发业务命令。高性能BufferReceived借用回调期有效，跨线程须Retain且Dispose。
+
+源码增量：`FTRChannelConvenience`（无额外收发线程、队列或业务Owner）、消息Received和PeerRemoved观察者隔离、HTTP Client统一一次POST同步/异步物理路径、`FTRFailureInfo.Address`、TestCenter子ID展示。真实回归分别为`FTRChannelConvenienceTests`、`FTRPersistentChannelTests`（真实TCP多轮重开）、`FTRMultiClientBudgetTests.HttpClientSegmentedPost`、WS超额地址断言；**仍按固定SHA Windows日志区分已验证与待运行，不能宣称工业级全面完成**。
