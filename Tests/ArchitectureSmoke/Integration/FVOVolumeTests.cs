@@ -65,6 +65,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "修改宿主托管源数组不应影响已构建FVO");
                     raw16[1022]=(byte)(1511 & 0xff);raw16[1023]=(byte)(1511 >> 8);
                 }
+                // FVO原值SourceLease独立于Volume释放：专业后台算法不得因UI切换体数据悬空读取。
+                FVOOriginalScalarLease retainedLease;
+                FVOVolumeData ownerForLease=FVORawVolumeLoader.LoadFromMemory(
+                    raw16,memory16,64,CancellationToken.None);
+                retainedLease=ownerForLease.AcquireOriginalScalarLease();
+                ownerForLease.Dispose();
+                try
+                {
+                    Check(retainedLease.ReadScalar(7,7,7)==1511f &&
+                          retainedLease.Format==FVORawVoxelFormat.UInt16 &&
+                          retainedLease.SpatialFrame!=null,
+                        "Volume已释放但租约仍持有SafeHandle真实RAW，不重新打开源文件");
+                    Expect<ArgumentOutOfRangeException>(()=>retainedLease.ReadScalar(8,0,0),
+                        "租约读取索引必须严格越界拒绝");
+                }
+                finally {retainedLease.Dispose();retainedLease.Dispose();}
+                Expect<ObjectDisposedException>(()=>retainedLease.ReadScalar(7,7,7),
+                    "租约释放后不允许继续访问RAW");
                 // 原生指针入口同样必须完整拷贝；宿主释放原内存后仍能读取真实标量。
                 IntPtr hostMemory=System.Runtime.InteropServices.Marshal.AllocHGlobal(raw16.Length);
                 try
@@ -204,6 +222,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     float actual;
                     Check(!previewOnly.TryGetOriginalScalar(3,3,3,out actual),
                         "无完整原始数据的显示预览不能提供工业计量原值");
+                    Expect<InvalidOperationException>(()=>previewOnly.AcquireOriginalScalarLease(),
+                        "仅显示预览不得创建无损算法读取租约");
                     Expect<InvalidOperationException>(()=>previewOnly.GetOriginalScalarRequired(3,3,3),
                         "预览不可用时专业计量必须拒绝");
                     Expect<ArgumentOutOfRangeException>(()=>previewOnly.TryGetOriginalScalar(-1,3,3,out actual),
