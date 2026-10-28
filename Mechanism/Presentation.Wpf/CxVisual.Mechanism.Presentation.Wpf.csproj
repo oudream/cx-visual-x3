@@ -32,7 +32,7 @@
     <Compile Include="Themes\MPWWorkspaceVisuals.cs"/>
     <Compile Include="Modules\MPWModuleCenterPages.cs"/>
     <Compile Include="Modules\MPWModuleCenterControl.cs"/>
-    <Compile Include="Visual\MPWVisualOperationPanel.cs"/><Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Renderers\MPWVisualAssetRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="MPWMoveEventArgs.cs"/><Compile Include="MPWNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="Variables\MPWVariableWorkspaceViewModel.cs"/><Compile Include="Variables\MPWVariableWorkspaceControl.xaml.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/><Compile Include="Imaging\MPWImageViewerControl.xaml.cs"/>
+    <Compile Include="Visual\MPWVisualOperationPanel.cs"/><Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Renderers\MPWVisualAssetRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="MPWMoveEventArgs.cs"/><Compile Include="MPWNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="Variables\MPWVariableWorkspaceViewModel.cs"/><Compile Include="Variables\MPWVariableWorkspaceControl.xaml.cs"/><Compile Include="RuntimeData\MPWDataLifecycleWorkspaceControl.xaml.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/><Compile Include="Imaging\MPWImageViewerControl.xaml.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeShaderSources.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeGeometry.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeOpenGlControl.cs"/>
@@ -57,6 +57,7 @@
     <Page Include="Themes\MPWVisualPalette.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="Themes\MPWWorkspaceControls.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="Variables\MPWVariableWorkspaceControl.xaml"><Generator>MSBuild:Compile</Generator></Page>
+    <Page Include="RuntimeData\MPWDataLifecycleWorkspaceControl.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="LogViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Page Include="SystemMonitorControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Page Include="Imaging\MPWImageViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
