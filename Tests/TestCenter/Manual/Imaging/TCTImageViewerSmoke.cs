@@ -437,6 +437,9 @@ namespace CxVisual.TestCenter.UI
                     evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Mask)!=1||
                     evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Image)!=1||
                     evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Region)!=1||
+                    evidence.Items.Count(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Measurement)!=1||
+                    evidence.Items.Single(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Measurement)
+                        .IntegerValue!=7||
                     evidence.Items.Single(i=>i.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Region)
                         .Region.PixelArea!=7||
                     frame.Viewer.Session.Result==null||
@@ -462,6 +465,9 @@ namespace CxVisual.TestCenter.UI
                 var regionRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
                     ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
                     CxVisual.Professional.Vision.CxVisionResultKind.Region);
+                var measurementRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
+                    ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
+                    CxVisual.Professional.Vision.CxVisionResultKind.Measurement);
                 cpuResults.SelectedItem=imageRow;
                 if(frame.Viewer.Session.Result==null ||
                     frame.Viewer.Session.Result.PixelFormat!=FIMPixelFormat.Gray16 ||
@@ -477,6 +483,14 @@ namespace CxVisual.TestCenter.UI
                 if(!ReferenceEquals(frame.Viewer.Session.Result,selectedMask) ||
                     frame.CpuEvidence==null)
                     throw new InvalidOperationException("选中区域证据时不应改写图像结果或丢失Run");
+                cpuResults.SelectedItem=measurementRow;
+                var measurement=(CxVisual.Professional.Vision.CxVisionResultItem)measurementRow.Tag;
+                if(measurement.IntegerValue!=7 || measurement.Unit!="px²" ||
+                    measurement.OutputPort!="AcceptedRegionPixelArea" ||
+                    measurement.RunId!=evidence.RunId ||
+                    !ReferenceEquals(frame.Viewer.Session.Result,selectedMask))
+                    throw new InvalidOperationException(
+                        "点击真实MRK面积测量项不能丢失Run身份或替换Mask显示");
                 // 复用已存在的FIM.MaskContours：实际点击按钮，从本次MRK
                 // ThresholdMask抽取原图格点轮廓，并验证带符号面积等于像素面积。
                 outputTabs.SelectedIndex=3;
