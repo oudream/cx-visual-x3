@@ -60,6 +60,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         view.State==FTRChannelState.Open && view.ActivePeers==1,
                         "工厂/接口视图须直接提供正式健康状态和Session");
                     Check(delivered==1 && last!=null && last.Address.ChannelId==right.Id &&
+                        last.SessionId==right.SessionId && last.SessionId!=Guid.Empty &&
                         right.Diagnostics.LastFailure!=null &&
                         right.Diagnostics.LastFailure.Stage=="Observer" &&
                         right.State==FTRChannelState.Open,
@@ -74,8 +75,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(right.SessionId!=session && right.State==FTRChannelState.Open,
                         "同一Channel对象须支持正常Close/Open刷新Session而不是每次创建实例");
                     left.SendBytesAsync(new byte[]{5},CancellationToken.None).GetAwaiter().GetResult();
-                    Check(delivered==2 && last.Data.SequenceEqual(new byte[]{5}),
-                        "订阅在Channel重开后仍可用，由Host显式控制存活期");
+                    Check(delivered==2 && last.Data.SequenceEqual(new byte[]{5}) &&
+                        last.SessionId==right.SessionId && last.SessionId!=session,
+                        "订阅在Channel重开后仍可用，接收上下文必须区分新旧Session");
                     good.Dispose();good.Dispose();
                     left.SendBytes(new byte[]{6});
                     Check(delivered==2 && right.State==FTRChannelState.Open,
