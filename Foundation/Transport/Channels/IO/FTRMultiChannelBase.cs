@@ -31,11 +31,14 @@ public abstract class FTRMultiChannelBase : FTRChannelBase, IFTRMultiPeerChannel
         }
         public FTRSubChannelInfo FindSubChannel(FTRSubChannelAddress address) { return _peers.FindSubChannel(address); }
         public FTRSubChannelInfo[] SnapshotSubChannels() { return _peers.SnapshotSubChannels(); }
-        protected void ReceiveFrom(FTRSubChannelAddress address, byte[] data, string correlation = null)
+        protected void ReceiveFrom(FTRSubChannelAddress address,byte[] data,string correlation=null)
+        {ReceiveFrom(address,data,data==null?0:data.Length,correlation);}
+        /// <summary>保持子客户端身份，支持消息聚合缓冲的有效长度切片。</summary>
+        protected void ReceiveFrom(FTRSubChannelAddress address,byte[] data,int count,string correlation=null)
         {
-            if (FindSubChannel(address) == null)
+            if(FindSubChannel(address)==null)
                 throw new InvalidOperationException("旧代次、非法或断开的 SubChannel");
-            ReceiveBytes(address, data, correlation);
+            ReceiveBytes(address,data,count,correlation);
         }
         protected sealed override Task OnSendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
         {
