@@ -77,6 +77,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FNUTensorMath.MultiplyInto(contiguous,contiguousRow,contiguousOutput);
                 return contiguousOutput.Get(0,0);
             });
+            var reduceOutput = new FNUTensorBuffer(new FNUTensorShape(width));
+            FNUTensorMath.ReduceSumInto(contiguous,1,reduceOutput);
+            Measure("ReduceSumInto(buffer reused)", iterations, delegate {
+                FNUTensorMath.ReduceSumInto(contiguous,1,reduceOutput);
+                return reduceOutput.Get(0);
+            });
+            Measure("ReduceSum(buffer allocated)", iterations, delegate {
+                return FNUTensorMath.ReduceSum(contiguous,1).Get(0);
+            });
             Console.WriteLine("PASS FNU benchmark diagnostics (timings are observations, not CI thresholds)");
         }
 
