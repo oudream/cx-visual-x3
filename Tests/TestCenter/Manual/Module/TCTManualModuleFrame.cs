@@ -205,6 +205,12 @@ namespace CxVisual.TestCenter.UI
             picker.Children.Add(_moduleKind);
             picker.Children.Add(new TextBlock {Text="模块 Id",VerticalAlignment=VerticalAlignment.Center});
             picker.Children.Add(_moduleId);
+            Button openModule=new Button {Content="创建/打开模块配置",
+                Margin=new Thickness(6,0,0,0),Padding=new Thickness(8,3,8,3)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(openModule,
+                "TCT.Module.Open");
+            openModule.Click+=(sender,args)=>OpenSelected();
+            picker.Children.Add(openModule);
             Button showCatalog=new Button {Content="显示已声明能力",Margin=new Thickness(9,0,0,0),
                 Padding=new Thickness(8,3,8,3)};
             System.Windows.Automation.AutomationProperties.SetAutomationId(showCatalog,
