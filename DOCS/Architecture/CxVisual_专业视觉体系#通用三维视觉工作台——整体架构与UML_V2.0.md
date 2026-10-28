@@ -5,7 +5,7 @@
 > **继承：** 在《整体架构与 UML V2.0 正式基线评审稿》（原核查基线 `642922d`）上原位改进；**保留六大能力域、26 项完整能力、Case/ViewSession、空间坐标、Scene/Renderer、专业算法、四条工业流程、GPU 生命周期、Owner 和已有类图**。R2 重点改进读者导航、六核心裁决、精度与资源合同、最新源码/CI实证和 90 条追踪。  
 > **状态词：**【E】源码确认、【R】现有类待调整、【N】拟新增但未实施、【P】远期规划、【T】有对应 SHA 自动测试证据、【H】真实 GPU 或工业样本尚待实证；不得把这些等级混写为“已完成”。  
 > **工程红线：** 既有 F/M/P + 28 项目/135 子方面 Owner 与唯一 MEM 工程真源；`ReferTo/Vision` 只读；TestCenter 只消费正式能力；无第二套数据/命令/执行/Undo/Scene工程树。未经 ADR 不新增工程或跨层引用。  
-> **审查限制：** 已核对 `AGENTS.md`、开发 Skill、`DOCS/00`、`DOCS/01`、三维 26 项映射、对应 FVO/MVI/MPW/CT3D/Geometry/Numerics 源码、旧 ReferTo 与 Windows CI；`DOCS/02～04` 大型 Excel 当前仍**未完成逐 Sheet 内容核验**。原始 90 条中只能逐字追溯截图 `R11～R59`，其他条文以“待原文”保留，不编造。  
+> **审查限制：** 已核对 `AGENTS.md`、开发 Skill、`DOCS/00`、`DOCS/01`、三维 26 项映射、对应 FVO/MVI/MPW/CT3D/Geometry/Numerics 源码、旧 ReferTo 与 Windows CI；`DOCS/02～04` 大型 Excel 当前仍**未完成逐 Sheet 内容核验**。原始 90 条中目前只得到截图可核对的 `R11～R59` 条，其他条文以“待原文”保留，不编造。  
 > **版本策略：** 本次只修正文档；文内“已实现”以该固定 SHA 源码为准，“Windows 已通过”必须附具体 SHA/Run。之后的并行提交不能自动视为已核实。
 
 ---
@@ -293,7 +293,7 @@ flowchart LR
   MPR --> GPU
   ALG --> RES["测量值/质量证据"]
   RES -. "引用和样式" .-> GPU
-  GPU -. "禁止反推专业真值" .- ALG
+  GPU --> NOTE["仅为显示投影，不能作为计量原值"]
 ```
 
 
