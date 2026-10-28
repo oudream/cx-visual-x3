@@ -213,3 +213,9 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 - 人工测试入口：`TestCenter → 专有测试 → 模块测试 → Compute → CPU真实检测`。预先在正式Compute FCM配置设 `Device=Cpu`、`ProviderTypeId=vision.cpu.threshold.inspect`、`CapabilityIds`包含同一ID且启用，再保存/生效；在CPU Tab选RAW、调整参数、保存Vision/Apply、读取Effective、执行、查看区域表和Trace、取消/重试。
 - 唯一Owner：MHS管理配置、MEM管理工程与Page、MOC编译及Stage、MRK执行及Trace、Professional.Vision计算、MPW/TestCenter只承载用户操作及结果投影；没有第二套数据/模块注册或执行引擎。
 - **软件G1闭环已验证；不等于五模块全类、工业G2/G3 HIL、全部TestCenter软件回归或持久RAW数据/结果历史自动重放。** 本轮最新全量TestCenter Windows运行 [#40667201278](https://github.com/oudream/cx-visual-x3/actions/runs/40667201278) 在记录时仍执行中，不得预报全绿。真正Driver需要设备和安全HIL。
+
+## 15. 同一固定SHA的完整TestCenter Windows验收通过
+
+- [TestCenter Windows .NET48 #40667201278](https://github.com/oudream/cx-visual-x3/actions/runs/40667201278)，提交 `1535a2ec49cb96662ce5b5f24e9bf1668bb5ffc7`：**Success**。全解决方案Windows x64 Debug Rebuild、原TestCenter WPF界面/UIA、Connector PointTable/DataMapping、MDS生命周期、NUnit及Native Worker、故障/重复运行/历史报告和证据归档均返回成功。此Run覆盖了Compute测试面板及运行约束所在版本的完整TestCenter回归。
+- 同一固定SHA [Compute独立真实WPF UIA #40667201069](https://github.com/oudream/cx-visual-x3/actions/runs/40667201069)：**Success**，报告明确包含不同MRK FlowId的两次真实RAW检测、阈值命中4像素、缺陷区域1和配置Effective版本；不是模拟执行或直接调用业务函数代替按钮的验证。
+- **G1完成范围**：TestCenter Compute CPU软件人工可用的“配置→输入→执行→缺陷明细→Trace→重复/错误输入”闭环，且全量TestCenter原有回归未被破坏。禁止把这两次G1成功推导为Driver硬件HIL、其他四类模块专业执行、跨进程权限或工业G2/G3通过。
