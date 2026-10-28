@@ -133,3 +133,7 @@
 **验收边界**：当前能安全添加待连接的Compute能力引用，**不是**整套工程资源绑定、数据映射、MOC成功编译和MRK授权执行。该入口真实WPF最终SHA CI仍处于排队/待验，禁止声称已通过。跨进程配置Effective刷新及已捕获Provider版本失效的实时一致性仍需独立验证。
 
 此前 [Studio S1 #40652167269](https://github.com/oudream/cx-visual-x3/actions/runs/40652167269)（5985ece）中模块中心专项S1-03C为PASS，但整个S1后续因统一配置组合1/2/3列响应式布局断言失败，需由对应配置UI Owner处理；不能把该流程的总体Failure误报为Success，也不能凭它认定本轮最新加入流程操作失败。
+
+### G06本轮固定Windows软件回归证据
+
+- [Windows Runtime TDD #40652205605](https://github.com/oudream/cx-visual-x3/actions/runs/40652205605) 对应 `b7e00c4`：**Success**；日志确认 Windows x64 全解构建、ArchitectureSmoke、并发编排、运行Host发布/恢复全部通过；包括本轮G06受权Effective、MOC/MRK真实CPU软件执行与缺失配置不初始化负例。此证据仍不能替代Studio新AddToFlow的WPF UIA或HIL。
