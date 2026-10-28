@@ -24,6 +24,7 @@
     <Compile Include="Imaging\MVIImageSession.cs"/>
     <Compile Include="Imaging\MVIImageViewport.cs"/>
     <Compile Include="Imaging\MVIImageToolMode.cs"/>
+    <Compile Include="Imaging\MVIImageLinePairGesture.cs"/>
     <Compile Include="Imaging\MVIImageDisplayState.cs"/>
     <Compile Include="Imaging\MVIImageTransformState.cs"/>
     <Compile Include="Imaging\MVIImageComparisonState.cs"/>
