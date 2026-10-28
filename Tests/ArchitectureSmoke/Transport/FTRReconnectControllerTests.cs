@@ -37,6 +37,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StopWithinRecoveryCallbacks();
             FTRChannelHealthTests.Run();
             FTRChannelConvenienceTests.Run();
+            FTRPersistentChannelTests.Run();
             Console.WriteLine("F17.RECONNECT_PASS configured retries, optional fault recovery, OS TCP reconnect, callback-safe stop and no command replay");
         }
         private static void BackoffAndLimit()
