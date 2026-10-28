@@ -292,3 +292,7 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - [788d5fe](https://github.com/oudream/cx-visual-x3/commit/788d5fec78111784052ef9080c72a42bcf369e1a)：真实WPF测试确认第一组分类已移除，第二组四按钮仍存在；API测试更新已有ROI颜色保Id，之后新ROI继承用户选色；当前图元独立属性编辑照旧。
 
 前一固定SHA [Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944) **success**，但不覆盖本四图层新能力；最新对应 [Imaging #40688664400](https://github.com/oudream/cx-visual-x3/actions/runs/40688664400) 和 [TestCenter #40688664402](https://github.com/oudream/cx-visual-x3/actions/runs/40688664402) 首次登记queued，实际验收须以Job结论为准。
+
+### 18.3 鼠标真实绘制与色板初始值一致性补正
+
+源码审计发现鼠标交互结束的`MPWImageViewerControl.CompleteDraw`原来直接调用`_overlays.Add`，绕过`AddOverlay`的新默认色分派，导致API创建多边形有效但真实鼠标创建依旧沿用红色构造默认。现 [0eeedc0](https://github.com/oudream/cx-visual-x3/commit/0eeedc0aa0843c4f886156bab0068c38600b91a0) 已将鼠标完成绘制统一进入`AddOverlay`。另外 [ec1e044](https://github.com/oudream/cx-visual-x3/commit/ec1e0445251bbb1c6097fbf4c257039e08019551) 保证未手动改色前新图元采用显示页四图层默认色，而不出现按钮示蓝绿、图元默认红的冲突；明确非默认ARGB仍保留。 [9d9a3a1](https://github.com/oudream/cx-visual-x3/commit/9d9a3a14458a89efd2bbd454f428187f3ed2dc8d) 修正默认色一致后先前WPF颜色回归的旧色比较前提。须以最新SHA重新执行Windows CI，不能使用788d5fe之前的记录覆盖这些增量。
