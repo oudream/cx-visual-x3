@@ -185,63 +185,8 @@ namespace CxVisual.Studio
                     Assert(window.TryCloseStudioDocument("doc.modules"),"模块中心关闭失败");
                     Assert(window.StudioEngineeringRevision==revision,"只读中心不应修改MEM");
                 });
-                CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环", () =>
-                {
-                    string folder=Path.Combine(Path.GetTempPath(),
-                        "cx-studio-cpu-closure-"+Guid.NewGuid().ToString("N"));
-                    Directory.CreateDirectory(folder);
-                    string filename=Path.Combine(folder,"real-5x3.raw");
-                    try
-                    {
-                        File.WriteAllBytes(filename,new byte[]{
-                            210,210,0,0,0,210,0,0,0,0,0,0,0,0,250});
-                        var session=MEMEngineering.Create("CPU RAW软件闭环专用工程");
-                        var config=new MHSConfigService(Path.Combine(folder,"Configs"))
-                            .ForProject(session.Project.Id.ToString("N"))
-                            .Open<CxVisionInspectionOptions>();
-                        var committed=config.UpdateAsync(c=>{
-                            c.PixelDepth=CxVisionPixelDepth.Bits8;
-                            c.GrayThreshold=200;
-                            c.MinDefectArea=2;
-                            c.MaxDefectArea=100;
-                            c.UseAi=false;
-                        },"Studio真实RAW软件验证",System.Threading.CancellationToken.None)
-                            .GetAwaiter().GetResult();
-                        Assert(committed.Success,"测试Effective配置保存失败");
-                        if(config.HasPendingApply)
-                            Assert(config.ApplyPendingAtTaskBoundary(),"Effective应用未成功");
-                        var provider=CxVisionThresholdProvider.FromEffectiveConfiguration(config);
-                        int before=session.Revision;
-                        bool badLengthDenied=false;
-                        try
-                        {
-                            MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
-                                filename,6,3,System.Threading.CancellationToken.None)
-                                .GetAwaiter().GetResult();
-                        }
-                        catch(InvalidDataException){badLengthDenied=true;}
-                        Assert(badLengthDenied&&session.Revision==before,
-                            "不匹配RAW长度意外修改了MEM或未被拒绝");
-                        var cpuReport=MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
-                            filename,5,3,System.Threading.CancellationToken.None)
-                            .GetAwaiter().GetResult();
-                        Assert(cpuReport.Inspection!=null &&
-                            cpuReport.Inspection.ThresholdPixelCount==4 &&
-                            cpuReport.Inspection.Regions.Count==1 &&
-                            cpuReport.Inspection.Regions[0].PixelArea==3 &&
-                            !cpuReport.Inspection.Passed &&
-                            cpuReport.Inspection.ConfigRevision==provider.ConfigurationRevision &&
-                            cpuReport.CompletedTraceEvents>0 && cpuReport.FlowId!=Guid.Empty &&
-                            cpuReport.PlanFingerprint.Length==64 &&
-                            session.Find(cpuReport.PageId) is MEMPage &&
-                            session.Revision>before,
-                            "真实RAW→MEM→MOC授权发布→MRK计算/Trace闭环未获得可复核输出");
-                    }
-                    finally
-                    {
-                        try{Directory.Delete(folder,true);}catch(IOException){}
-                    }
-                });
+                CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环",
+                    VerifyCpuVisionFileClosure);
                 CheckStep("S1-04 共用MPW主题及Dock视觉不修改工程", () =>
                 {
                     Assert(window.StudioDock.AnchorableHeaderTemplate != null &&
@@ -3159,6 +3104,76 @@ namespace CxVisual.Studio
             public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
             {return Safe;}
         }
+        // Shared by the full S1 shell run and the independent ModuleCenter
+        // CPU acceptance job. This is identical real MHS/MEM/MOC/MRK test work.
+        internal static bool RunCpuVisionOnly(string report)
+        {
+            Results.Clear();
+            bool ok=true;
+            try { CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环",
+                VerifyCpuVisionFileClosure); }
+            catch(Exception ex) { Results.Add("FAIL: "+ex);ok=false; }
+            File.WriteAllLines(report,Results);
+            return ok;
+        }
+        private static void VerifyCpuVisionFileClosure()
+        {
+                    string folder=Path.Combine(Path.GetTempPath(),
+                        "cx-studio-cpu-closure-"+Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(folder);
+                    string filename=Path.Combine(folder,"real-5x3.raw");
+                    try
+                    {
+                        File.WriteAllBytes(filename,new byte[]{
+                            210,210,0,0,0,210,0,0,0,0,0,0,0,0,250});
+                        var session=MEMEngineering.Create("CPU RAW软件闭环专用工程");
+                        var config=new MHSConfigService(Path.Combine(folder,"Configs"))
+                            .ForProject(session.Project.Id.ToString("N"))
+                            .Open<CxVisionInspectionOptions>();
+                        var committed=config.UpdateAsync(c=>{
+                            c.PixelDepth=CxVisionPixelDepth.Bits8;
+                            c.GrayThreshold=200;
+                            c.MinDefectArea=2;
+                            c.MaxDefectArea=100;
+                            c.UseAi=false;
+                        },"Studio真实RAW软件验证",System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Assert(committed.Success,"测试Effective配置保存失败");
+                        if(config.HasPendingApply)
+                            Assert(config.ApplyPendingAtTaskBoundary(),"Effective应用未成功");
+                        var provider=CxVisionThresholdProvider.FromEffectiveConfiguration(config);
+                        int before=session.Revision;
+                        bool badLengthDenied=false;
+                        try
+                        {
+                            MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
+                                filename,6,3,System.Threading.CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                        }
+                        catch(InvalidDataException){badLengthDenied=true;}
+                        Assert(badLengthDenied&&session.Revision==before,
+                            "不匹配RAW长度意外修改了MEM或未被拒绝");
+                        var cpuReport=MainWindow.ExecuteStudioCpuVisionFileAsync(session,provider,
+                            filename,5,3,System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Assert(cpuReport.Inspection!=null &&
+                            cpuReport.Inspection.ThresholdPixelCount==4 &&
+                            cpuReport.Inspection.Regions.Count==1 &&
+                            cpuReport.Inspection.Regions[0].PixelArea==3 &&
+                            !cpuReport.Inspection.Passed &&
+                            cpuReport.Inspection.ConfigRevision==provider.ConfigurationRevision &&
+                            cpuReport.CompletedTraceEvents>0 && cpuReport.FlowId!=Guid.Empty &&
+                            cpuReport.PlanFingerprint.Length==64 &&
+                            session.Find(cpuReport.PageId) is MEMPage &&
+                            session.Revision>before,
+                            "真实RAW→MEM→MOC授权发布→MRK计算/Trace闭环未获得可复核输出");
+                    }
+                    finally
+                    {
+                        try{Directory.Delete(folder,true);}catch(IOException){}
+                    }
+        }
+
         private static void CheckStep(string title, Action body)
         {
             body();
