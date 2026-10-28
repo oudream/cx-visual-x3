@@ -38,6 +38,26 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         private int _activeSends,_asyncSends,_sendCapacity;
         private long _pendingSendBytes,_sendByteBudget,_rejectedSends;
         private bool _boundedSend;
+        /// <summary>
+        /// Configure the existing bounded async send admission counters from the
+        /// authoritative Channel FCM configuration; no second queue is introduced.
+        /// Called before the physical channel starts accepting sends.
+        /// </summary>
+        protected void ConfigureSendAdmission(FTRChannelConfiguration configuration)
+        {
+            if(configuration==null)throw new ArgumentNullException("configuration");
+            if(configuration.SendQueueCapacity<1||configuration.SendByteBudget<1)
+                throw new ArgumentException("通道发送预算无效","configuration");
+            lock(_gate)
+            {
+                if(_activeSends!=0||_asyncSends!=0)
+                    throw new InvalidOperationException("发送仍在运行，无法重设通道预算");
+                _sendCapacity=configuration.SendQueueCapacity;
+                _sendByteBudget=configuration.SendByteBudget;
+                _boundedSend=true;
+                _pendingSendBytes=0;
+            }
+        }
         protected FTRChannelBase(string id, FTRChannelTopology topology)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("通道 Id 不可为空");
