@@ -152,7 +152,9 @@ namespace CxVisual.Studio
                         "Studio.ModuleCenter.LoadEffective");
                     Assert(load!=null,"模块中心缺少显式MHS Effective授权读取入口");
                     TextBlock effectiveStatus=moduleHeader.Children.OfType<TextBlock>()
-                        .LastOrDefault();
+                        .FirstOrDefault(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                                "Studio.ModuleCenter.EffectiveStatus");
                     Assert(effectiveStatus!=null&&
                         effectiveStatus.Text.Contains("需要显式操作"),
                         "模块中心首次发现不应该自动打开MHS并Apply");
