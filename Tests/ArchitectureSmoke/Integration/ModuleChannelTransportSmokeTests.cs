@@ -422,6 +422,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 b.Received += block=>{lock(gate){received.AddRange(block.Data);if(received.Count>=message.Length)arrivedB.Set();}};
                 a.Received += block=>{if(block.Data.SequenceEqual(new byte[]{23,42}))arrivedA.Set();};
                 a.Open();b.Open();
+                using(var duplicate=new FTRSharedMemoryChannel(new FTRSharedMemoryChannelConfiguration {
+                    Id="shared-duplicate",MapName=shared,Side=FTRSharedMemorySide.A,
+                    Slots=4,SlotBytes=4096,ReceiveBufferBytes=4096,ReceiveByteBudget=16384,QueueCapacity=4
+                }))
+                {
+                    bool rejected=false;
+                    try{duplicate.Open();}catch(InvalidOperationException){rejected=true;}
+                    Check(rejected && duplicate.State==FTRChannelState.Faulted,
+                        "SharedMemory同一Map与Side必须拒绝第二生产者/消费者，而不是并发争用同一环");
+                    duplicate.Close();
+                }
                 a.SendBuffer(message,0,message.Length,CancellationToken.None);
                 Check(arrivedB.Wait(5000),"SharedMemory必须按有界槽位传输超过单槽的完整字节序列");
                 lock(gate)Check(received.SequenceEqual(message),"共享环必须保持顺序、数据完整性及无额外字节");
