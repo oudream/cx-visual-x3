@@ -22,15 +22,40 @@ namespace CxVisual.Foundation.Transport
             config.Validate();_config=config as FTRSharedMemoryChannelConfiguration ??
                 throw new ArgumentException("需要FTRSharedMemoryChannelConfiguration");
         }
-        protected override Task OnOpenAsync(CancellationToken cancellation)
+        protected override async Task OnOpenAsync(CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
             _region=new FTRSharedMemoryRegion(_config);
             _stop=new CancellationTokenSource();
             StartBufferedReceive(_config);
-            _reader=new Thread(ReadLoop){IsBackground=true,Name="FTR.SharedMemory.Receive."+Id};
+            FTRSharedMemoryRegion region=_region;
+            var ready=new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _reader=new Thread(()=>
+            {
+                bool owned=false;
+                try
+                {
+                    region.AcquireSide();
+                    owned=true;
+                    ready.TrySetResult(null);
+                    ReadLoop();
+                }
+                catch(Exception error)
+                {
+                    if(!owned)ready.TrySetResult(error);
+                    else if(!_stop.IsCancellationRequested)Fault(error);
+                }
+                finally {if(owned)region.ReleaseSide();}
+            }){IsBackground=true,Name="FTR.SharedMemory.Receive."+Id};
             _reader.Start();
-            return Task.CompletedTask;
+            Task settled=await Task.WhenAny(ready.Task,Task.Delay(3000,cancellation)).ConfigureAwait(false);
+            if(settled!=ready.Task)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                throw new TimeoutException("共享内存端点独占锁获取未完成");
+            }
+            Exception startup=await ready.Task.ConfigureAwait(false);
+            if(startup!=null)throw new InvalidOperationException("共享内存端点启动被拒绝",startup);
         }
         private void ReadLoop()
         {
