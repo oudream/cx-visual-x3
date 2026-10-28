@@ -211,3 +211,57 @@ flowchart LR
 - **Gate-D 开放及工业**：通用/专业SDK的扩展点、真实批次/流、资源预算、安全与跨专业协议均具反证测试设计，未验证项不写为通过。
 
 *在A/B/C Gate的UML、契约、典型用例审定前，不应一次性批量创建260组实现类型。*
+
+## 12. 核心契约设计收敛与评审结论（2026-10-28）
+
+> 这是§11四平面/十二决议的进一步实施级解释，以下结论属于**架构方向已收敛、合同仍待代码验证**。正式API签名、新增C#类型、性能阈值和工业现场可用性不能仅凭本节宣称已批准/实现。02§13的Y01—Y04是这三条主线的跨体系UML，03§9、05§11、06§10提供详细对象与反证。
+
+### 12.1 “全类能力”需要共享三个可持续的核心合同
+
+| 纵向合同 | 输入到输出的明确对象链 | 当前已存在的Owner与真实类 | 仍待确认的最小专业对象 |
+|---|---|---|---|
+| **数据合同（Data）** | 源设备/文件→像素快照→Frame/ImageSet引用→Mask/Artifact | FIMImageBuffer/FIMPixelSpacing、FDTReadOnlyBuffer、MDSDataContext/数据预算、MVIImageSession | Frame身份/时间戳、Mask空间、Artifact/Lease和大图生命周期 |
+| **算法合同（Operation）** | 工程TypeId/端口/参数→专业算法Capability→MOC编译→MRK/MDS运行 | MPMTypeDescriptor/MPCPortDescriptor、MOCCapabilityDescriptor/MOCFlowBuilder、MOLWiringDefinition、MOCCompiledPlan、MRKExecutionInput/Output、PVC Provider | TypeId→CLR Type映射、Format/ROI/单位校验和专业结果关联 |
+| **结果合同（Evidence）** | RunId/固定输入→多具名类型结果→ArtifactRef/Trace→图窗/报告/Inspection | CxVisionInspectionResult、MDS数据提交机制、MVIOverlayStore、MEM/MRC/MTC工程编辑 | 专业RunRecord/ResultItem/ReviewRecord与Artifact存储归属 |
+
+**关键依赖**：这三条合同并非三个独立Project，互相靠稳定TypeId/SourceRef/ResourceRef/RunId衔接；所有数据大对象走已有数据机制，工程持久定义仍由MEM唯一管理。
+
+### 12.2 对对象架构的“可定/暂缓/禁止”裁决
+
+| 决策 | 状态 | 理由 |
+|---|---|---|
+| 26类260项能力编号与四逻辑平面 | **方向已定** | 全类目标与真实平台Owner对应，无新增项目需求 |
+| 工程型VisionPipeline优先MEMContent+MOL | **方向已定** | 已有工程/Logic唯一真源、MOC编译/SourceMap |
+| Operation端口优先MPM/MPC/MRK现有合同 | **方向已定** | 已有完整工程端口与运行期CLR端口；Vision只补专业校验 |
+| FIM与PVC双像素类型的互通策略 | **待数值/内存验证** | Gray8/16语义可对照，但不同Stride/格式和复制策略未全部实测 |
+| 专业FrameRef/MaskRef/ArtifactRef具体CLR结构 | **暂缓具体类名** | 需检查FDT/MDS资产引用/内存生命周期，防止并行对象 |
+| VisionRunRecord/ResultItem具体结果Schema | **方向明确、签名暂缓** | 需验证与现有专业Result、MDS产物/Report/Inspection兼容 |
+| SceneProjection/WorkbenchController类 | **非必须** | MVI/MPW+宿主先组合，只有跨两个以上真实消费方才抽象 |
+| 第二Graph/Undo/数据堆/调度器/注册库 | **禁止** | 违反宪法与28项目135子方面唯一Owner |
+| 软件运行调度等于设备硬实时安全 | **禁止** | Runtime与PLC/控制器权限和工业安全边界不同 |
+
+### 12.3 完整专业工作台的第一条验收场景
+
+**CASE-ARCH-01（Gray16专业算法实验）**：
+
+1. 文件/内存引入含Stride的Gray16，保留原像素、SourceId、Format、Spacing状态。
+2. 在MPW中使用MVI原图坐标画ROI，生成临时草稿，尚不写工程。
+3. 使用专业TypeId/Capability目录确定增强、阈值、连通域和测量四类Operation，参数经过MPM Schema校验，端口映射已有MPC/MRK。
+4. 如果用户选择保存算法流程，则通过MEMContent+MOL写入正式资源，MOC按固定Revision编译；若只做单算法快速预览，可直接调用既有FIM函数，但也应使用相同输入/结果语义。
+5. MRK执行，MDS/FDT安全捕获数据、管理已提交载荷预算，PVC/FIM计算获得Image/Mask/Region/Measurement不同输出。
+6. 专业Run结果带RunId、ResultItemId、SourceRef、参数/算法版本、单位、Trace，结果与中间Mask可逐项查看。
+7. 用户切换图像/参数后旧Run不得更新当前图窗，历史Run依然可查询；结果投影不能把另一图的Mask叠到当前图。
+8. 用户显式把ROI写为工程标注时走MEM/MTC事务、Undo和保存重开；人工复核作为派生记录，不改写原始算法结果。
+9. 未标定时不能输出毫米数值；异常、取消、空结果、失效引用和无效权限得到明确不同状态。
+
+**其价值**：一个用例同时检验数据、算法、结果、Viewer、工程、调试、API及数值正确性；这才是验证“一个架构支撑26类”的最小代表性闭环，不能只开发一个大型UI工具面板。
+
+### 12.4 下一阶段开始编码前，必须完成的评审清单
+
+- 重新核对最新master、DOCS/02—04中相应Owner Sheet和代码DAG，确认候选专业类型确实没有重名实现。
+- 为CASE-ARCH-01填完整的输入/输出类型表和每个节点的MPM TypeId、MOC CapabilityId、MRK DataOutput映射；当前示例ID不是已注册项目代码。
+- 决定Image/Mask、RunResult及Artifact的可序列化范围和安全复制/借用模式，给出线程、内存、失效/取消与异常处理。
+- 定义同样本数值真值与Windows .NET Framework4.8 x64的专项构建、FIM/MVI/MRK/MDS测试、真实WPF/UIA证据。
+- 对八个端到端CASE-01—08检查共用合同的缺口，允许专业扩展但拒绝重复平台机制。
+
+**明确当前进展**：完成架构主线和UML关系设计，未把这套新增候选编译成正式公共API；对应Windows CI、生产吞吐、设备与SDK专项验收仍待实际代码阶段完成。
