@@ -204,3 +204,19 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **内存与生命周期**：额外输出确实引入托管像素分配和FIM拷贝，FDT只按实际`Stride×Height`逻辑载荷估算，完整CPU工作区与GPU/SDK暂存另计。结果投影没有创建全局缓存、长期保留策略或资源数据库；消费者保存`CxVisionRunSummary`时会持有图像对象直到释放引用。后续完整Image/Mask Artifact索引、跨Run持久、显式租约、Studio图窗产品化显示仍待实现和实测。
 
 **后续方向**：结合已有MVI/MPW图窗用`ResultItem.Image`投影真实图像及Mask；再按MEM/MOC正式资源版本和RunRef实现浏览/错误状态/导出，先做同源图注册与取消/旧回写安全，不能把Viewer缓存当ResultStore。
+
+## 15. P3 TestCenter 真正可交互的CPU检测、Mask/图像与轮廓测量闭环（2026-10-28）
+
+**实施状态：源码已提交，Windows完整验收尚待本轮固定SHA的CI。** 代码提交：[`ee62cdf`](https://github.com/oudream/cx-visual-x3/commit/ee62cdf54488084df4a6135663e60998ab975f5f)（真实MRK调用/来源令牌/取消）、[`cd38af2`](https://github.com/oudream/cx-visual-x3/commit/cd38af252fff40661d7155bae3d2e8b7bb509cd6)（处理页操作按钮）、[`63d3945`](https://github.com/oudream/cx-visual-x3/commit/63d39450648ce689f7c0ece492088f914936e677)与[`6d64979`](https://github.com/oudream/cx-visual-x3/commit/6d649797ba88f7ba60c95fd0ba3388499401d0ab)（类型化结果列表、输出页）、[`a9bd0dc`](https://github.com/oudream/cx-visual-x3/commit/a9bd0dc9bb023055043dd85dabac67bc4f7d7c53)（Mask→轮廓→面积真实WPF操作测试）、[`4f91211`](https://github.com/oudream/cx-visual-x3/commit/4f91211fb3b14fcd2ad9009d3f143228996ee5a6)（带孔洞面积与有效Spacing下mm²显示）。固定Windows [Imaging #40666425061](https://github.com/oudream/cx-visual-x3/actions/runs/40666425061) 在本节首次登记时仍排队，**不冒充CI全绿**。
+
+| 实体Owner和文件 | 真实调用/可见操作 | 明确限制 |
+|---|---|---|
+| `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs` | 新`RunCpuVision`：`FIMImageBuffer`原图→`CxVisionImageInterop.ToCpuInspectionInputs`→`CxVisionDataFlow.CreateCpuInspectionPlanWithArtifacts`→现有`MRKExecutionEngine`→`CxVisionRunSummary.FromCpuFlow`→`MPWImageViewerControl.ShowResult` | 仅CPU Gray8/Gray16 RAW像素；无相机SDK、AI硬件或实时流 |
+| `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerLayout.cs` | 处理页灰度阈值/最小面积/执行/取消；输出页类型化结果ListBox及Run项查看 | 不新增第七工作台或第二结果Storage |
+| `TCTManualImageViewerFrame.cs` | `_cpuSourceId`本次Viewer来源代次、`MVIImageSession.SourceVersion`、原图引用及CTS校验；旧异步结果不能覆盖新图；原图/显示结果被替换时清理证据 | SourceId是**TestCenter会话临时令牌**，不是摄像机硬件SN、内容Hash或可持久FrameRef |
+| `TCTImageViewerSmoke.cs` | 真实WPF点击CpuVisionRun，核对Gray16输入、0/255 Mask、Area=7 Region、Image/Mask结果项选择；再点击既有ExtractMaskContours核对轮廓面积7；重载相同FIM图后清空旧结果 | WPF测试仍需本SHA的Actions实际运行；不能把代码存在当作UIA验收 |
+| `TCTManualImageViewerFrame.cs`既有FIM轮廓功能 | FIMImageMaskContours.Trace保留外环/孔洞；所有环SignedArea求和得到真实像素面积；有FIMPixelSpacing时用sx×sy换算mm²；否则拒绝伪物理单位 | 无配准或畸变矫正的完整3D/非线性校准；mm²仅按用户当前的独立像素间距 |
+
+**跨模块CI阻塞信息**：早期P2相关[Imaging #40663246695](https://github.com/oudream/cx-visual-x3/actions/runs/40663246695)为failure：`Professional/Vision/CxVisionDataFlow.cs`曾有CS0136局部变量同名错误；当前master已将lambda参数改为`imagePixels`，需以修复后的固定SHA实际CI验证。后继[Imaging #40665129173](https://github.com/oudream/cx-visual-x3/actions/runs/40665129173)因并行`Foundation.Transport`的`ConfigureSendAdmission`缺失（CS0103）失败，不属于此轮Vision Owner，此文件不代替其Owner跨模块修复。以上两种错误和CI状态不能混为一谈。
+
+**下一阶段仍未完成**：工业FrameRef/Artifact持久化、正式Studio端图像算法实验UI、RunItem持久审计/人工ReviewRecord、真正设备HIL、AI推理及工业性能长时验证。现阶段测试页已可操作，但不能称通用二维视觉工作台全部260项能力已完成。
