@@ -36,6 +36,36 @@ namespace CxVisual.Foundation.Transport
             return new Subscription(()=>channel.Received-=filter);
         }
 
+        /// <summary>
+        /// 高速数据低复制订阅。事件提供的租约只在回调内有效；
+        /// 需要长期持有或跨线程移交时请先Retain，再由持有者Dispose。
+        /// 不生成第二个物理读取者或中间业务队列。
+        /// </summary>
+        public static IDisposable SubscribeBuffers(this IFTRChannelTransport channel,
+            Action<FTRReceiveBuffer> observer)
+        {
+            if(channel==null)throw new ArgumentNullException("channel");
+            if(observer==null)throw new ArgumentNullException("observer");
+            channel.BufferReceived+=observer;
+            return new Subscription(()=>channel.BufferReceived-=observer);
+        }
+
+        /// <summary>按SubChannelId及Generation过滤低复制块；旧Peer的Buffer不会误入新Peer。</summary>
+        public static IDisposable SubscribeBuffersFrom(this IFTRChannelTransport channel,
+            FTRSubChannelAddress address,Action<FTRReceiveBuffer> observer)
+        {
+            if(channel==null)throw new ArgumentNullException("channel");
+            if(address==null||address.ChannelId!=channel.Id)
+                throw new ArgumentException("接收地址与Channel不匹配","address");
+            if(observer==null)throw new ArgumentNullException("observer");
+            Action<FTRReceiveBuffer> filter=buffer=>
+            {
+                if(address.Equals(buffer.Address))observer(buffer);
+            };
+            channel.BufferReceived+=filter;
+            return new Subscription(()=>channel.BufferReceived-=filter);
+        }
+
         /// <summary>长期订阅状态变化；回调不负责业务恢复，令牌不拥有Channel。</summary>
         public static IDisposable SubscribeState(this IFTRChannelTransport channel,
             Action<FTRChannelState> observer)
