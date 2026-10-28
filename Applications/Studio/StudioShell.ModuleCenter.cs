@@ -209,6 +209,8 @@ namespace CxVisual.Studio
             var effectiveStatus=new TextBlock {
                 Text="当前为开发预设；读取生效配置需要显式操作。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,2,4,5)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(effectiveStatus,
+                "Studio.ModuleCenter.EffectiveStatus");
             loadEffective.Click+=(sender,args)=>{
                 try {
                     var loaded=LoadStudioEffectiveVisionProvider();
