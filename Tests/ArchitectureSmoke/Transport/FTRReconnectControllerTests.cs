@@ -15,12 +15,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private sealed class FlakyChannel : FTRSingleChannelBase
         {
             internal int Failures,Opens,Closes;
+            internal Exception InjectedFailure;
             internal FlakyChannel(int failures):base("reconnect-flaky"){Failures=failures;}
             internal void Break(){Fault(new IOException("simulated disconnected link"));}
             protected override Task OnOpenAsync(CancellationToken ct)
             {
                 Interlocked.Increment(ref Opens);
-                if(Opens<=Failures)throw new IOException("connect refused");
+                if(Opens<=Failures)throw InjectedFailure ?? new IOException("connect refused");
                 return Task.CompletedTask;
             }
             protected override Task OnCloseAsync(CancellationToken ct)
@@ -31,6 +32,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             BackoffAndLimit();
+            FatalFailureStopsRetries();
             RealTcpRecovery();
             StopWithinRecoveryCallbacks();
             FTRChannelHealthTests.Run();
@@ -53,6 +55,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "按配置的初始延迟、退避和总次数恢复成功");
                 Check(c.Opens==3&&failed==2&&restored==1&&!control.Snapshot().Exhausted,
                     "失败次数、成功通知及诊断必须正确");
+                var recovery=control.Snapshot();
+                Check(recovery.FailedAttemptsTotal==2 && recovery.SuccessfulRecoveries==1 &&
+                    recovery.LastRecoveredUtc.HasValue && recovery.LastRecoveryDurationMs>=0 &&
+                    recovery.LastFailure.Kind==FTRFailureKind.TransportIO,
+                    "必须保留失败分类、实际恢复耗时与累计次数");
                 control.StopAsync().GetAwaiter().GetResult();
                 c.Break();
                 Thread.Sleep(100);
@@ -75,6 +82,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 c.Close();
             }
         }
+        private static void FatalFailureStopsRetries()
+        {
+            var config=new FTRVirtualChannelConfiguration{
+                Id="reconnect-flaky",ReconnectMaxAttempts=10,
+                ReconnectInitialDelayMs=5,ReconnectMaxDelayMs=20,ReconnectBackoff=2
+            };
+            using(var channel=new FlakyChannel(99){InjectedFailure=new UnauthorizedAccessException("port denied")})
+            using(var control=new FTRReconnectController(channel,config))
+            {
+                int exhausted=0;
+                control.Exhausted+=()=>Interlocked.Increment(ref exhausted);
+                control.Start();
+                Check(SpinWait.SpinUntil(()=>control.Snapshot().Exhausted,3000),
+                    "不可恢复权限错误应停止重试");
+                control.StopAsync().GetAwaiter().GetResult();
+                var snap=control.Snapshot();
+                Check(channel.Opens==1 && snap.Attempts==1 &&
+                    snap.LastFailure.Kind==FTRFailureKind.PermissionDenied &&
+                    snap.FailedAttemptsTotal==1 && snap.SuccessfulRecoveries==0 &&
+                    Volatile.Read(ref exhausted)==1,
+                    "不可恢复错误不应消耗全部重试额度且必须记录分类");
+                channel.Close();
+            }
+        }
+
         /// <summary>恢复任务同步事件中关闭维护不能等待自身；外部停止仍须完成清理。</summary>
         private static void StopWithinRecoveryCallbacks()
         {
