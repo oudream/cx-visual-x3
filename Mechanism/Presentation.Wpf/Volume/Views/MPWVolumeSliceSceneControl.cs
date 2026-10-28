@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -21,6 +23,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
     {
         private readonly Viewport3D _viewport = new Viewport3D();
         private readonly Model3DGroup _models = new Model3DGroup();
+        // 独立于三刀/任意切Mesh，防止换层时清除专业可视点。
+        private readonly ModelVisual3D _surfaceOverlay = new ModelVisual3D();
+        private double _displaySx=1,_displaySy=1,_displaySz=1;
+        public int SurfacePreviewPointCount {get;private set;}
         private readonly PerspectiveCamera _camera = new PerspectiveCamera();
         private readonly Canvas _orientation = new Canvas { Width=108,Height=108,
             HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom,
@@ -66,6 +72,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _models.Children.Add(new AmbientLight(Colors.White));
             ModelVisual3D scene = new ModelVisual3D { Content = _models };
             _viewport.Children.Add(scene);
+            _viewport.Children.Add(_surfaceOverlay);
             _viewport.Camera = _camera;
             Children.Add(_viewport);
             Border label = new Border
@@ -165,6 +172,52 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         public void Clear()
         {
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
+            ClearSurfacePoints();
+        }
+
+        /// <summary>专业数值输出转为仅供显示的标准化三维顶点，保留现有三刀和相机。</summary>
+        public void SetSurfacePoints(IReadOnlyList<Vector3> normalizedPoints)
+        {
+            Dispatcher.VerifyAccess();
+            if(normalizedPoints==null)throw new ArgumentNullException("normalizedPoints");
+            if(normalizedPoints.Count>12000)
+                throw new ArgumentOutOfRangeException("normalizedPoints","请先使用MPW显示抽样，不能无限生成WPF Mesh。");
+            // 每个点采用小四面体实心标记，使用一个批量Mesh而不是上万个Visual3D实例。
+            var positions=new Point3DCollection();
+            var triangles=new Int32Collection();
+            const double radius=.0024;
+            for(int i=0;i<normalizedPoints.Count;i++)
+            {
+                Vector3 p=normalizedPoints[i];
+                if(float.IsNaN(p.X)||float.IsNaN(p.Y)||float.IsNaN(p.Z)||
+                   float.IsInfinity(p.X)||float.IsInfinity(p.Y)||float.IsInfinity(p.Z)||
+                   Math.Abs(p.X)>.50001||Math.Abs(p.Y)>.50001||Math.Abs(p.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("normalizedPoints","显示点超出当前标准化Volume。");
+                int start=positions.Count;
+                double x=p.X*_displaySx,y=-p.Y*_displaySy,z=p.Z*_displaySz;
+                positions.Add(new Point3D(x,y+radius,z));
+                positions.Add(new Point3D(x-radius,y-radius,z-radius));
+                positions.Add(new Point3D(x+radius,y-radius,z-radius));
+                positions.Add(new Point3D(x,y-radius,z+radius));
+                int[] faces={0,1,2,0,2,3,0,3,1,1,3,2};
+                foreach(int face in faces)triangles.Add(start+face);
+            }
+            if(positions.Count==0)
+            {
+                ClearSurfacePoints();
+                return;
+            }
+            var mesh=new MeshGeometry3D{Positions=positions,TriangleIndices=triangles};
+            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(255,198,56)));
+            _surfaceOverlay.Content=new GeometryModel3D(mesh,material){BackMaterial=material};
+            SurfacePreviewPointCount=normalizedPoints.Count;
+        }
+
+        public void ClearSurfacePoints()
+        {
+            Dispatcher.VerifyAccess();
+            _surfaceOverlay.Content=null;
+            SurfacePreviewPointCount=0;
         }
 
         public void ResetCamera()
@@ -195,6 +248,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             double sx = width * spacingX, sy = height * spacingY, sz = depth * spacingZ;
             double divisor = Math.Max(sx, Math.Max(sy, sz));
             sx /= divisor; sy /= divisor; sz /= divisor;
+            _displaySx=sx;_displaySy=sy;_displaySz=sz;
             double x = sx * (Clamp(positionX, width) - 0.5);
             double y = sy * (0.5 - Clamp(positionY, height));
             double z = sz * (Clamp(positionZ, depth) - 0.5);
