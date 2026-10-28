@@ -28,41 +28,6 @@ namespace CxVisual.Studio
     /// </summary>
     public partial class MainWindow
     {
-        private sealed class StudioRawPixelSource : IMOCCapabilityProvider,IMRKVersionedCapabilityResolver
-        {
-            internal const string Id="vision.studio.raw.pixels";
-            private readonly byte[] _pixels;
-            private readonly string _version;
-            private readonly IMRKVersionedCapabilityResolver _vision;
-            private readonly MRKResolvedCapability _resolved;
-            internal StudioRawPixelSource(byte[] pixels,IMRKVersionedCapabilityResolver vision)
-            {
-                if(pixels==null||pixels.Length==0)throw new ArgumentException("empty RAW input");
-                _pixels=(byte[])pixels.Clone();_vision=vision;
-                using(var sha=SHA256.Create())
-                    _version="raw.sha256."+BitConverter.ToString(sha.ComputeHash(_pixels)).Replace("-","");
-                _resolved=new MRKResolvedCapability((ctx,token)=>{
-                    token.ThrowIfCancellationRequested();
-                    return Task.FromResult((object)((byte[])_pixels.Clone()));
-                },new MRKExecutionOutput(typeof(byte[])));
-            }
-            public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
-            {
-                return new[]{new MOCCapabilityDescriptor(Id,"本次RAW文件数据","Vision/Input",
-                    new[]{new MPCPortDescriptor("Pixels",MPCPortDirection.Output,"byte[]",
-                        MPCPortKind.Data)})};
-            }
-            public bool TryResolve(string id,out MRKResolvedCapability result)
-            {
-                if(id==Id){result=_resolved;return true;}
-                return _vision.TryResolve(id,out result);
-            }
-            public bool TryGetCapabilityVersion(string id,out string version)
-            {
-                if(id==Id){version=_version;return true;}
-                return _vision.TryGetCapabilityVersion(id,out version);
-            }
-        }
         internal sealed class StudioCpuTraceRecord
         {
             public long Sequence {get;set;}
@@ -80,111 +45,27 @@ namespace CxVisual.Studio
             public CxVisionInspectionResult Inspection;
             public CxVisionRunSummary Evidence;
         }
-        private static byte[] ReadStudioRaw(string path,int width,int height,
-            CxVisionPixelDepth depth,CancellationToken token)
-        {
-            long count=(long)width*height;
-            if(width<=0||height<=0||count>32000000L)
-                throw new ArgumentOutOfRangeException("width/height");
-            if(depth!=CxVisionPixelDepth.Bits8&&depth!=CxVisionPixelDepth.Bits16)
-                throw new ArgumentException("Invalid Effective pixel depth");
-            int length=checked((int)(count*(depth==CxVisionPixelDepth.Bits8?1:2)));
-            using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
-            {
-                if(stream.Length!=length)throw new InvalidDataException(
-                    "RAW长度与宽、高、当前Effective位深不匹配");
-                byte[] bytes=new byte[length];int done=0;
-                while(done<length)
-                {
-                    token.ThrowIfCancellationRequested();
-                    int read=stream.Read(bytes,done,length-done);
-                    if(read<=0)throw new EndOfStreamException("RAW truncated");
-                    done+=read;
-                }
-                if(stream.ReadByte()!=-1)throw new InvalidDataException("RAW grew during read");
-                return bytes;
-            }
-        }
         /// <summary>
-        /// Software-only full path: real RAW -> MEM page/typed MOC graph -> version
-        /// attested MRK authorized software release -> CPU inspection -> SourceMap trace.
-        /// The manual RAW bytes live only during this call; on reopen they must be
-        /// supplied again. No device, hidden scheduler or new result owner.
+        /// Studio delegates the real CPU operation to the same professional runner used by
+        /// TestCenter. MEM/MOC/MRK algorithm/release logic must have only one implementation.
         /// </summary>
         internal static async Task<StudioCpuVisionReport> ExecuteStudioCpuVisionFileAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider provider,
-            string path,int width,int height,CancellationToken token)
+            string path,int width,int height,CancellationToken cancellation)
         {
-            if(session==null||provider==null)throw new ArgumentNullException("session/provider");
-            token.ThrowIfCancellationRequested();
-            string version;
-            if(!provider.TryGetCapabilityVersion(CxVisionThresholdProvider.CapabilityId,out version))
-                throw new InvalidOperationException("CPU Provider version missing");
-            // Fail validation before modifying the MEM engineering project.
-            byte[] input=ReadStudioRaw(path,width,height,provider.PixelDepth,token);
-            var source=new StudioRawPixelSource(input,provider);
-            token.ThrowIfCancellationRequested();
-            var page=session.AddPage("CPU RAW检测 · "+Path.GetFileName(path));
-            Guid inspect=Guid.Empty;
-            MOCFlowBuilder.Edit(session,page.RootContent,b=>{
-                Guid inputBlock=b.Step(source.DescribeCapabilities().Single());
-                inspect=b.Step(provider.DescribeCapabilities().Single());
-                b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
-                b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
-                b.Connect(inputBlock,"Done",inspect,"Start",MPCPortKind.Control);
-                b.Connect(inputBlock,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
-            });
-            string sourceVersion;
-            source.TryGetCapabilityVersion(StudioRawPixelSource.Id,out sourceVersion);
-            var versions=new Dictionary<string,string>(StringComparer.Ordinal){
-                {StudioRawPixelSource.Id,sourceVersion},
-                {CxVisionThresholdProvider.CapabilityId,version}};
-            MEMProjectSnapshot snapshot=session.GetSnapshot();
-            var candidate=MOCProjectRelease.Prepare(snapshot,page.RootContent.Id,source,versions);
-            token.ThrowIfCancellationRequested();
-            var compiled=StageCpuSoftwareRelease(candidate,session.GetSnapshot(),source,
-                versions,new StudioCpuSoftwarePolicy());
-            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
-            try
-            {
-                var defaults=compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value,
-                    StringComparer.Ordinal);
-                MRKFlowHandle flow=engine.StartFlow(compiled.Plan,defaults);
-                using(token.Register(()=>flow.RequestCancel()))
-                {
-                    MRKFlowResult result=await flow.Completion.ConfigureAwait(false);
-                    if(result.State!=MRKFlowState.Completed)
-                        throw new InvalidOperationException("MRK未完成："+result.State+
-                            (result.Error==null?"":" / "+result.Error.Message));
-                    object rawResult;
-                    if(!result.Results.TryGetValue("w"+inspect.ToString("N"),out rawResult))
-                        throw new InvalidOperationException("MRK缺少检测StepResult");
-                    var inspection=rawResult as CxVisionInspectionResult;
-                    if(inspection==null||inspection.Width!=width||inspection.Height!=height||
-                        inspection.ConfigRevision!=provider.ConfigurationRevision)
-                        throw new InvalidOperationException("MRK结果尺寸、类型或配置版本不匹配");
-                    var trace=compiled.ReadTrace(flow,0);
-                    int completed=trace.Events.Count(e=>e.Origin.BlockId==inspect&&
-                        e.Transition.State==MRKStepState.Completed);
-                    if(completed==0||trace.LostCount!=0)
-                        throw new InvalidOperationException("检测完成Trace缺失或丢失");
-                    return new StudioCpuVisionReport {
-                        PageId=page.Id,FlowId=result.FlowId,InspectId=inspect,
-                        EngineeringRevision=snapshot.Revision,
-                        PlanFingerprint=candidate.Fingerprint,ConfigVersion=version,
-                        Inspection=inspection,
-                        Evidence=CxVisionRunSummary.FromInspection(result.FlowId,path,inspection,
-                            planFingerprint:candidate.Fingerprint,
-                            capabilityVersion:version,completedUtc:result.CompletedUtc),
-                        CompletedTraceEvents=completed,
-                        TraceRecords=trace.Events.Take(300).Select(e=>new StudioCpuTraceRecord{
-                            Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
-                            BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
-                            TimestampUtc=e.Transition.TimestampUtc}).ToArray()
-                    };
-                }
-            }
-            finally{await engine.StopAsync(true).ConfigureAwait(false);}
+            CxVisionCpuRun report=await CxVisionRawCpuRunner.ExecuteAsync(session,provider,
+                path,width,height,cancellation).ConfigureAwait(false);
+            return new StudioCpuVisionReport {
+                PageId=report.PageId,FlowId=report.FlowId,InspectId=report.InspectBlockId,
+                EngineeringRevision=report.EngineeringRevision,
+                CompletedTraceEvents=report.CompletedTraceEvents,
+                PlanFingerprint=report.Fingerprint,ConfigVersion=report.ConfigVersion,
+                Inspection=report.Inspection,Evidence=report.Evidence,
+                TraceRecords=report.Trace.Select(x=>new StudioCpuTraceRecord {
+                    Sequence=x.Sequence,StepId=x.StepId,BlockId=x.BlockId,
+                    State=x.State,TimestampUtc=x.TimestampUtc
+                }).ToArray()
+            };
         }
 
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
