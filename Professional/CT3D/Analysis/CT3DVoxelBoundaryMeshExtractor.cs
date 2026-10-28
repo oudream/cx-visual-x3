@@ -25,7 +25,8 @@ namespace CxVisual.Professional.CT3D
         public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
         public bool TouchesVolumeBoundary {get;private set;}
         public string Method {get{return "binary-voxel-face-6-neighbor";}}
-        public bool IsMeasurementReady
+        /// <summary>仅表示源标定且封闭不截断；仍需不确定度/标准件验证方可用于工业量值。</summary>
+        public bool HasCalibratedClosedGeometry
         {
             get{return SpatialFrame.IsCalibrated && !TouchesVolumeBoundary &&
                 Mesh.IsClosedOrientedManifold;}
