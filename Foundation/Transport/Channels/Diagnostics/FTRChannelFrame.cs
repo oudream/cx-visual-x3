@@ -11,9 +11,10 @@ public sealed class FTRChannelFrame
         private readonly byte[] _payload;
         internal FTRChannelFrame(long sequence, Guid sessionId, string channelId,
             FTRFrameDirection direction, byte[] data, string correlation, string error,
-            byte[] decodedPayload)
+            byte[] decodedPayload,FTRSubChannelAddress address=null)
         {
             Sequence = sequence; SessionId = sessionId; ChannelId = channelId;
+            Address=address ?? new FTRSubChannelAddress(channelId);
             Direction = direction; TimestampUtc = DateTime.UtcNow;
             _bytes = (byte[])(data ?? new byte[0]).Clone();
             _payload = decodedPayload == null ? null : (byte[])decodedPayload.Clone();
@@ -22,6 +23,8 @@ public sealed class FTRChannelFrame
         public long Sequence { get; private set; }
         public Guid SessionId { get; private set; }
         public string ChannelId { get; private set; }
+        /// <summary>真实子客户端/请求地址，含Generation；兼容原ChannelId。</summary>
+        public FTRSubChannelAddress Address {get;private set;}
         public FTRFrameDirection Direction { get; private set; }
         public DateTime TimestampUtc { get; private set; }
         public string CorrelationId { get; private set; }
