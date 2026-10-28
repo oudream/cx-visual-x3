@@ -270,3 +270,9 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - **UI-UX-12修订**：原第2组四图层颜色按钮不应删除；应不依赖选中对象而打开WinForms系统`ColorDialog`，取消不变，确认后改变现有同层未锁定图元与后续默认绘制，不改变明确指定的算法产物ARGB，保留原图及Id。当前选中对象单独颜色编辑仍在区域属性页。
 - 测试源码 [788d5fe](https://github.com/oudream/cx-visual-x3/commit/788d5fec78111784052ef9080c72a42bcf369e1a)：WPF四入口存在、移除第一组按钮、`MPW.SetOverlayLayerColor`改变现有和后续多边形ROI且Id不变，并维持属性编辑；系统模态色板仍需现场鼠标选择作人工确认。
 - 前版 [Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944) success不等于新色板四入口已过。新固定`788d5fe`对应 [Imaging #40688664400](https://github.com/oudream/cx-visual-x3/actions/runs/40688664400) / [TestCenter #40688664402](https://github.com/oudream/cx-visual-x3/actions/runs/40688664402)，初次登记queued；未经实跑不得标记G4完成。
+
+### 17.3 图层颜色视觉一致性补充约束
+
+- 新增默认ROI/测量/标注/缺陷图元（包括鼠标`CompleteDraw`、开发者`AddOverlay/AddPolygonRoi`）应统一进入MPW当前层默认色，不得出现按钮与新对象颜色不同；未显式选择色也需与预设色相符。
+- 显式指定非默认ARGB的外来算法产物不得被UI预设改写；修改同层颜色更新现有未锁定对象且保留Id/几何，锁定对象不因UI设置而被改色；普通`MVIImageOverlayItem`本身的属性身份与基础默认值不变。
+- 源码：[0eeedc0](https://github.com/oudream/cx-visual-x3/commit/0eeedc0aa0843c4f886156bab0068c38600b91a0)、[ec1e044](https://github.com/oudream/cx-visual-x3/commit/ec1e0445251bbb1c6097fbf4c257039e08019551)、[9d9a3a1](https://github.com/oudream/cx-visual-x3/commit/9d9a3a14458a89efd2bbd454f428187f3ed2dc8d)；Windows最新固定SHA待实际CI执行结论，原色板模态操作仍待人工截图。
