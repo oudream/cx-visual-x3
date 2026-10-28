@@ -95,3 +95,50 @@
 4. `FTRChannelBase.ReceiveBytes`与`FTRMultiChannelBase.ReceiveFrom`兼容地增加有效长度重载；HTTP/WS以`MemoryStream.GetBuffer()`借用源切片，去除`ToArray`整消息副本，同时保持旧Received独立拷贝与SubChannel/Generation。未声明跨MPA/MDS全链路零复制。
 5. 新`FTRMultiClientBudgetTests`验证真实Windows HTTP并发双请求、两种预算拒绝与状态码、WS双客户端单播、跨消息分片占用和独立存活。`FTRSharedMemoryCrashTests`新子进程命令`--channel-shm-crash-child`验证异常遗弃锁拒绝旧MMF，并以新Map恢复双向收发；不重播未知业务数据。
 6. 均挂入原`--channel-uml-core`、`--channel-transport`，传统.csproj保持不新增项目。上述为源码完成/新CI待验收状态，旧WS预算测试失败证据见正式Testing文档；24h跨PC/现场设备和全量工作集GC SLA仍未达标。
+
+
+## 10. V3.1 长期驻留Channel与便利接口实施（2026-10-28）
+
+### 10.1 真实复用（不增加Transport Runtime）
+
+在原`FTRChannelBase`保留唯一Socket读者、独立接收与同步Send；`FTRChannelConvenience`只提供扩展方法：`SubscribeReceived`、`SubscribeFrom`、`SubscribeState`、`SubscribeBuffers`、`SubscribeBuffersFrom`、`SendBytes`、`SendBytesAsync`、`SendTo`、`SendToAsync`、`ReplyAsync`。没有队列、线程、连接管理器、业务重试或隐藏的物理Open。
+
+所有订阅方法返回`IDisposable`令牌，Dispose只撤销观察者，**不夺取Channel所有权**；同一个Channel对象正常Close/Open后，未注销的订阅继续有效，SessionId刷新。指定Peer订阅比较`FTRSubChannelAddress`完整地址（含Generation），旧代消息不能进入新代。订阅解除不能取消已进入正在执行的事件回调，调用方需做好并发收尾。MultiPeer单端便利Send主动拒绝，必须显式用`SendTo/ReplyAsync`保留子客户端ID，禁止隐式广播。HTTP的`ReplyAsync`委托原`IFTRRequestResponseIO.RespondAsync`，仅表示响应接纳，非物理交付或业务确认。
+
+消息型`ReceiveBytes`逐个隔离`Received`观察者异常（与池化接收路径一致），避免一个长期驻留插件报错导致其他订阅收不到数据或WS/HTTP误断线。TCP/Pipe/HTTP/WS的Peer级错误通过`FTRFailureInfo.Address`和`FTRChannelFrame.Address`携带`SubChannelId + Generation`。既有三参数故障API、原`IFTRChannel`、`IFTRChannelTransport`与Owner保持兼容。
+
+### 10.2 开发者典型用法（长期驻留由Host控制生命周期）
+
+```csharp
+// channel由Host/模块持有，不能在每次Send时临时new/dispose。
+IFTRChannelTransport channel = factory.Create(configuration);
+IDisposable received = channel.SubscribeReceived(message =>
+{
+    // 收到message.Address就是回包目标，含SubChannelId和Generation；
+    // 对于HTTP使用channel.ReplyAsync(message, response)提交传输级应答。
+    HandleMessage(message.Address, message.Data);
+});
+IDisposable lowCopy = channel.SubscribeBuffers(buffer =>
+{
+    // Segment仅在回调借用期内有效。异步保存必须Retain并最终Dispose。
+    Inspect(buffer.Segment);
+});
+channel.Open();
+// 单端：channel.SendBytes(data);
+// 多端：channel.SendTo(message.Address, data);
+// 仅在最终退出或不再监听时解除订阅：
+received.Dispose();
+lowCopy.Dispose();
+channel.Close();
+channel.Dispose();
+```
+
+以上是API用法示例；具体异常恢复/自动重连仍由Host及现有`FTRReconnectController`管理，FTR不得自动重发未知结果的命令。ByteStreamAdapter按Session建立视图，重连需要重新绑定视图，不能误当可无限重用的物理Reader。
+
+### 10.3 可执行质量门禁
+
+- `FTRChannelConvenienceTests`：Virtual长期驻留、观察者异常隔离、重复订阅解除、Host所有权、按接收上下文回复、MultiPeer无广播与旧Generation拒绝。
+- `FTRPersistentChannelTests`：真实TCP Server/Client同实例连续四轮Open/Close、Session更新、双向定向数据、原订阅跨代有效、交付线程停止、外部Retain跨Close及池预算归零。
+- `FTRMultiClientBudgetTests.HttpConcurrentResponses`：真实HTTP双请求的回复改用便利`ReplyAsync(packet,...)`，验证仍按请求子ID、预算正确。
+- `FTRWebSocketAtomicTests.OversizedPeerIsolated`：超限错误的`LastFailure.Address`必须指向真实子客户端和代次。
+- 以上增量都接到原`--channel-transport`门禁；**新SHA尚须分别看Windows日志**，不得用早期.csproj编译成功宣称最新长驻、异常隔离与HTTP/WS回归已通过。
