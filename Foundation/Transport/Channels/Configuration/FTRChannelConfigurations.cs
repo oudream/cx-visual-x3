@@ -22,6 +22,7 @@ public static class FTRChannelConfigurations
                 case FTRChannelKind.NamedPipeClient: return typeof(FTRNamedPipeClientChannelConfiguration);
                 case FTRChannelKind.NamedPipeServer: return typeof(FTRNamedPipeServerChannelConfiguration);
                 case FTRChannelKind.WebSocketClient: return typeof(FTRWebSocketClientChannelConfiguration);
+                case FTRChannelKind.WebSocketServer: return typeof(FTRWebSocketServerChannelConfiguration);
                 case FTRChannelKind.Replay: return typeof(FTRReplayChannelConfiguration);
                 case FTRChannelKind.UdpMulticast: return typeof(FTRUdpMulticastChannelConfiguration);
                 default: throw new ArgumentOutOfRangeException("kind");

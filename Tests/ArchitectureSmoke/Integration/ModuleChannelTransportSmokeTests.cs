@@ -102,6 +102,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             NamedPipeLoopback();
             WebSocketConfigSmoke();
             WebSocketLoopback();
+            WebSocketServerLoopback();
             ReplayFileLoopback();
             MulticastConfigurationSmoke();
             HttpLoopback();
@@ -133,7 +134,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRWebSocketClientChannelConfiguration { Id = "matrix-websocket" },
                 new FTRReplayChannelConfiguration { Id = "matrix-replay" },
                 new FTRUdpMulticastChannelConfiguration { Id = "matrix-multicast" },
-                new FTRHttpServerChannelConfiguration { Id = "matrix-http-server" }
+                new FTRHttpServerChannelConfiguration { Id = "matrix-http-server" },
+                new FTRWebSocketServerChannelConfiguration { Id = "matrix-ws-server" }
             };
             IFTRChannel[] channels = {
                 virtualPair[0],
@@ -148,7 +150,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRWebSocketClientChannel(configurations[9]),
                 new FTRReplayChannel(configurations[10]),
                 new FTRUdpMulticastChannel(configurations[11]),
-                new FTRHttpServerChannel(configurations[12])
+                new FTRHttpServerChannel(configurations[12]),
+                new FTRWebSocketServerChannel(configurations[13])
             };
             Check(configurations.Length == Enum.GetValues(typeof(FTRChannelKind)).Length - 1,
                 "所有正式FTR ChannelKind必须都有装配测试（Custom没有内置Provider）");
@@ -180,7 +183,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (NotSupportedException) { wrongTypeRejected = true; }
             Check(wrongTypeRejected, "配置与实际Channel类型不匹配必须拒绝");
             // LengthFrame仅适用于ByteStream；HTTP/WebSocket/Replay Message不得绕过协议能力门禁。
-            foreach (int i in new[] { 6, 9, 10, 12 })
+            foreach (int i in new[] { 6, 9, 10, 12, 13 })
             {
                 MCNConnectorConfiguration invalid = new MCNConnectorConfiguration {
                     DisplayName = "错误协议能力拒绝",
@@ -210,7 +213,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch (NotSupportedException) { noProvider = true; }
             Check(noProvider, "Custom未注册Provider不能装配成功");
-            Console.WriteLine("CHANNEL.CONNECTOR: 13 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
+            Console.WriteLine("CHANNEL.CONNECTOR: 14 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
         }
 
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
@@ -339,6 +342,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(channel.SnapshotSubChannels().Length==0,"HTTP Server应回收请求SubChannel");
             }
             Console.WriteLine("F17.HTTP_SERVER PASS: real OS HTTP request/response, stale address and stop");
+        }
+
+
+        private static void WebSocketServerLoopback()
+        {
+            int port=FreePort(false);
+            var config=new FTRWebSocketServerChannelConfiguration {
+                Id="ws-server-loopback",Prefix="http://localhost:"+port+"/ws/",
+                MaxClients=2,MaxMessageBytes=1024
+            };
+            using(var server=new FTRWebSocketServerChannel(config))
+            using(var client=new System.Net.WebSockets.ClientWebSocket())
+            {
+                FTRSubChannelAddress address=null;
+                server.Received += data => {
+                    address=data.Address;
+                    server.Send(new byte[]{7,8,9},0,3,data.Address,CancellationToken.None);
+                };
+                server.Open();
+                using(var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                {
+                client.ConnectAsync(new Uri("ws://localhost:"+port+"/ws/"),deadline.Token).GetAwaiter().GetResult();
+                byte[] bytes={1,2,3};byte[] buffer=new byte[32];
+                client.SendAsync(new ArraySegment<byte>(bytes),System.Net.WebSockets.WebSocketMessageType.Binary,true,
+                    deadline.Token).GetAwaiter().GetResult();
+                var reply=client.ReceiveAsync(new ArraySegment<byte>(buffer),deadline.Token).GetAwaiter().GetResult();
+                Check(reply.MessageType==System.Net.WebSockets.WebSocketMessageType.Binary &&
+                    reply.EndOfMessage && reply.Count==3 && buffer[0]==7 && buffer[1]==8 && buffer[2]==9,
+                    "WebSocket Server必须真正完成RFC6455握手与双向二进制收发");
+                Check(address!=null && address.HasSubChannel,"WebSocket Server请求地址必须有Generation");
+                server.Close();
+                }
+                Check(server.SnapshotSubChannels().Length==0,"WebSocket Server停止后必须移除所有真实对端");
+            }
+            Console.WriteLine("F17.WEBSOCKET_SERVER PASS: RFC6455 OS loopback, multi-peer address and close");
         }
 
         private static byte[] ReadExactly(NetworkStream stream, int count)

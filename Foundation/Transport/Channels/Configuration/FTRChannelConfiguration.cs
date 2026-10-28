@@ -135,6 +135,9 @@ public abstract class FTRChannelConfiguration : IFCMConfigVariantSelector
                 case FTRChannelKind.NamedPipeServer:
                     return new FTRChannelTypeDescriptor("pipe.server", FTRChannelTopology.MultiPeer,
                         FTRIOCapabilities.ByteStream | FTRIOCapabilities.Listener);
+                case FTRChannelKind.WebSocketServer:
+                    return new FTRChannelTypeDescriptor("websocket.server",FTRChannelTopology.MultiPeer,
+                        FTRIOCapabilities.Message | FTRIOCapabilities.Listener);
                 case FTRChannelKind.WebSocketClient:
                     return new FTRChannelTypeDescriptor("websocket.client", FTRChannelTopology.SinglePeer,
                         FTRIOCapabilities.Message);

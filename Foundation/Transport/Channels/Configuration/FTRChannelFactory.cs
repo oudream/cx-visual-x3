@@ -122,6 +122,7 @@ namespace CxVisual.Foundation.Transport
                 case FTRChannelKind.NamedPipeClient: return new FTRNamedPipeClientChannel(configuration);
                 case FTRChannelKind.NamedPipeServer: return new FTRNamedPipeServerChannel(configuration);
                 case FTRChannelKind.WebSocketClient: return new FTRWebSocketClientChannel(configuration);
+                case FTRChannelKind.WebSocketServer: return new FTRWebSocketServerChannel(configuration);
                 case FTRChannelKind.Replay: return new FTRReplayChannel(configuration);
                 case FTRChannelKind.UdpMulticast: return new FTRUdpMulticastChannel(configuration);
                 case FTRChannelKind.Virtual: throw new NotSupportedException("Virtual需通过CreateVirtualPair显式装配两个端点");
@@ -164,6 +165,7 @@ namespace CxVisual.Foundation.Transport
                 case FTRChannelKind.NamedPipeClient: matches = channel is FTRNamedPipeClientChannel; break;
                 case FTRChannelKind.NamedPipeServer: matches = channel is FTRNamedPipeServerChannel; break;
                 case FTRChannelKind.WebSocketClient: matches = channel is FTRWebSocketClientChannel; break;
+                case FTRChannelKind.WebSocketServer: matches = channel is FTRWebSocketServerChannel; break;
                 case FTRChannelKind.Replay: matches = channel is FTRReplayChannel; break;
                 case FTRChannelKind.UdpMulticast: matches = channel is FTRUdpMulticastChannel; break;
             }

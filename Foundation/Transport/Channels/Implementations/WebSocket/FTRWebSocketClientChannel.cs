@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Foundation.Transport
 {
-public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase
+public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase, IFTRMessageIO
     {
         private readonly FTRWebSocketClientChannelConfiguration _config;
         private readonly SemaphoreSlim _sendGate = new SemaphoreSlim(1, 1);
@@ -63,6 +63,9 @@ public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase
             }
             catch (Exception error) { if (!ct.IsCancellationRequested) Fault(error); }
         }
+
+        public Task SendMessageAsync(byte[] bytes,FTRSubChannelAddress target,CancellationToken ct)
+        {return SendAsync(bytes,target,ct);}
 
         protected override async Task OnSendAsync(byte[] bytes, FTRSubChannelAddress target, CancellationToken ct)
         {
