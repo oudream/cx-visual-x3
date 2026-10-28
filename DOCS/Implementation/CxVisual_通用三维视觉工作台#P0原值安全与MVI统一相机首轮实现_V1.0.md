@@ -22,3 +22,12 @@
 - 本包在提交前进行了源代码标记与依赖核查，**不应宣称已编译或自动测试已通过**。
 - 主要Windows专项：`.github/workflows/imaging-foundation-windows.yml` 应执行Release x64、ArchitectureSmoke --volume、真实WPF空间切片；另查TestCenter Windows .NET48。
 - 实际NVIDIA/AMD/Intel真实GPU、显存、工业CT标定/计量、GPU画质/性能尚待现场验证。
+
+## C01 SourceLease补充（2026-10-28）
+
+- 正式新增`Foundation/Volume/Memory/FVOOriginalScalarLease.cs`；`FVOVolumeData.AcquireOriginalScalarLease()`提供针对已加载原始RAW（Byte、UInt16、Float32）的只读租约。
+- 租约取得时`DangerousAddRef`固定原始SafeHandle，在`FVOVolumeData.Dispose()`或体数据切换后仍可读取，不重新打开源文件、也不复制大体积缓冲；`Dispose`归还引用并带最终回收保护。
+- `ReadScalar(x,y,z)`严格检查索引与租约状态，并持有获取时的空间Frame快照；任务应通过`using`归还租约，不能与`ReadScalar`并发调用`Dispose`。
+- 只有预览或未取得真实RAW时拒绝创建租约，不能静默恢复8位预览为专业原值；完整Byte托管缓存仍可使用已有严格标量读取API，但本RAW租约仅针对SafeHandle来源。
+- `FVOVolumeTests`新增释放Volume后继续读取UInt16末像素1511、索引错误、两次Dispose、已释放后拒绝访问、无原值拒绝租约的反例。
+- 完整Windows Release x64与工业大RAW长时间并行计算验收仍待同SHA CI及实际场景验证；不冒称跨任务并发Dispose安全或超大数据性能已经通过。
