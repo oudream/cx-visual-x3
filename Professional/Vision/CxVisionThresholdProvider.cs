@@ -43,7 +43,7 @@ namespace CxVisual.Professional.Vision
         private readonly long _configRevision;
         private readonly IMRKCapabilityResolver _fallback;
         private readonly MRKResolvedCapability _capability;
-        private readonly MHSConfigSection<CxVisionInspectionOptions> _effectiveSource;
+        private readonly Func<string> _effectiveVersionReader;
         private readonly string _capturedEffectiveVersion;
 
         /// <summary>
@@ -60,21 +60,45 @@ namespace CxVisual.Professional.Vision
                 section.CaptureForTask("vision-cpu-provider-"+Guid.NewGuid().ToString("N")))
             {
                 string version=snapshot.Version;
-                long revision;
-                if(string.IsNullOrEmpty(version)||version[0]!='v'||
-                    !long.TryParse(version.Substring(1),NumberStyles.None,
-                        CultureInfo.InvariantCulture,out revision)||revision<0)
-                    throw new InvalidOperationException("vision.provider.invalid_effective_version");
+                long revision=ParseEffectiveVersion(version);
                 return new CxVisionThresholdProvider(snapshot.Get(),revision,fallback,
-                    section,version);
+                    () => section.EffectiveVersion,version);
             }
         }
 
+        /// <summary>
+        /// Authorized entry: reading Effective requires MHS permissions. Subsequent
+        /// version checks re-evaluate the same policy; revoke => fail closed.
+        /// </summary>
+        public static CxVisionThresholdProvider FromEffectiveConfiguration(
+            MHSConfigAuthorizedSection<CxVisionInspectionOptions> section,
+            IMRKCapabilityResolver fallback=null)
+        {
+            if(section==null)throw new ArgumentNullException("section");
+            using(MHSConfigSnapshot<CxVisionInspectionOptions> snapshot=
+                section.CaptureForTask("vision-authorized-"+Guid.NewGuid().ToString("N")))
+            {
+                return new CxVisionThresholdProvider(snapshot.Get(),
+                    ParseEffectiveVersion(snapshot.Version),fallback,
+                    () => section.Revision.EffectiveVersion,snapshot.Version);
+            }
+        }
+
+        private static long ParseEffectiveVersion(string version)
+        {
+            long revision;
+            if(string.IsNullOrEmpty(version)||version[0]!='v'||
+                !long.TryParse(version.Substring(1),NumberStyles.None,
+                    CultureInfo.InvariantCulture,out revision)||revision<0)
+                throw new InvalidOperationException("vision.provider.invalid_effective_version");
+            return revision;
+        }
+
         private CxVisionThresholdProvider(CxVisionInspectionOptions options,long revision,
-            IMRKCapabilityResolver fallback,MHSConfigSection<CxVisionInspectionOptions> source,
+            IMRKCapabilityResolver fallback,Func<string> effectiveVersionReader,
             string capturedEffectiveVersion):this(options,revision,fallback)
         {
-            _effectiveSource=source;
+            _effectiveVersionReader=effectiveVersionReader;
             _capturedEffectiveVersion=capturedEffectiveVersion;
         }
 
@@ -101,8 +125,8 @@ namespace CxVisual.Professional.Vision
             if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
             {
                 // 新发布不许复用旧Effective Provider；原运行中的不可变算法实例仍可完成。
-                if(_effectiveSource!=null&&
-                    !string.Equals(_effectiveSource.EffectiveVersion,_capturedEffectiveVersion,
+                if(_effectiveVersionReader!=null&&
+                    !string.Equals(_effectiveVersionReader(),_capturedEffectiveVersion,
                         StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         "vision.provider.effective_version_changed");
