@@ -113,6 +113,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 throw new ArgumentException("末消费者自动回收需要ConsumerBound生命周期");
             if (Reclamation.ReleaseOnExpiry && !Retention.TimeToLive.HasValue)
                 throw new ArgumentException("到期回收需要明确的TTL缓存保留策略");
+            if (Reclamation.ReleaseOnPressure && !Retention.TimeToLive.HasValue)
+                throw new ArgumentException("容量压力回收只允许显式声明的可驱逐缓存");
             if (Retention.IsPinned && (Reclamation.ReleaseAfterConsumers ||
                 Reclamation.ReleaseOnExpiry || Reclamation.ReleaseOnPressure))
                 throw new ArgumentException("永久Pinned保留不能同时配置自动回收");
