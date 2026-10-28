@@ -50,8 +50,11 @@ namespace CxVisual.Foundation.Transport
             Volatile.Write(ref _receiveThread, current);
         }
         internal void Publish(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint)
+        {Publish(address,buffer,count,remoteEndpoint,Guid.Empty);}
+        internal void Publish(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,
+            string remoteEndpoint,Guid sessionId)
         {
-            buffer.Seal(address,count,remoteEndpoint);
+            buffer.Seal(address,count,remoteEndpoint,sessionId);
             lock(_gate)
             {
                 if(_complete)throw new InvalidOperationException("Receive pipeline completed");
