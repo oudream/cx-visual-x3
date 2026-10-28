@@ -192,3 +192,11 @@ double conditionNumber = solved.ConditionNumber;
 - 使用物理偏移与输出轴Stride游标，一次分配输入坐标/按输出单元的补偿数组。Neumaier累计保留小量抵消精度，先完成全部计算及非有限检查后才写Into输出；溢出情况下输出保持不变。
 - 测试覆盖3D转置与Slice再按轴求和、独立逐项参考、Into结果复用、Rank1、零长归约轴、剩余空轴、错误形状与别名、极端大数抵消及溢出原子性。
 - 不涉及FDT实体、业务生命周期及GPU；性能结论必须来自同SHA基准，不能仅按代码路径推断。
+
+## 二十、F13视图全组合专项证据（2026-10-28）
+
+- `e320018` [CI #40643223710](https://github.com/oudream/cx-visual-x3/actions/runs/40643223710)：.NET48/x64全方案Build、Owner/DAG、Numerics专项和性能诊断均PASS；F13的直接视图广播Add/Multiply/Into正反例PASS；完整ArchitectureSmoke被**F17.PIPE_BULK**阻断，Workflow整体failure。
+- `47381cd` [CI #40643343028](https://github.com/oudream/cx-visual-x3/actions/runs/40643343028)：同上专项PASS；F13按轴ReduceSumView/Into、Rank1/空轴/别名/溢出原子性反例PASS；完整回归仍被**F17.PIPE_BULK**阻断。
+- `2c11eaf` [CI #40643586096](https://github.com/oudream/cx-visual-x3/actions/runs/40643586096) 首次执行：全方案Build、Owner/DAG、Numerics专项、30组随机View广播/3轴归约独立对照和基准均PASS；完整回归中出现**运行时数据 M1/M2 验收**失败，Workflow整体failure。已请求同SHA失败任务复跑，复跑结论须另行核实。
+- 该次 Windows Runner 观测：256×256 `AddViewsInto` **0.8605 ms/次、176 B/次**，`AddViews`分配结果 **0.9735 ms/次、525468 B/次**；`ReduceSumViewInto` **0.4860 ms/次、4272 B/次**，分配式 `ReduceSumView` **0.4927 ms/次、6512 B/次**。观测仅对当前机器/样本有效，不代表跨平台保证或已通过吞吐验收。
+- Numerics模块未修改F17或运行时数据Owner测试来规避失败；属于不同机制模块的独立追踪问题。此处只确认Numerics数值自测，不冒称全平台验收成功。

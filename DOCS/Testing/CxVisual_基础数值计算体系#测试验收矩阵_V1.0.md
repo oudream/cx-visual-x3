@@ -145,3 +145,13 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 | N47 | 独立`--numerics-benchmark`对比AddViewsInto/分配式、ReduceSumViewInto/分配式 | 同机输出ms/op和bytes/op；不以波动速度阈值判CI |
 
 验收必须以对应代码SHA的GitHub Actions实际Windows步骤为准；数值专项通过与完整ArchitectureSmoke通过分别记录。原F17.PIPE_BULK阻断不在Numerics改动范围。
+
+## N43～N47固定代码SHA验收与运行基准（2026-10-28）
+
+| 代码SHA | 固定Windows运行 | Numerics专项 / Perf | 全量ArchitectureSmoke |
+|---|---|---|---|
+| `e320018` | [#40643223710](https://github.com/oudream/cx-visual-x3/actions/runs/40643223710) | PASS：N43、N44；编译与DAG PASS | FAIL：F17.PIPE_BULK |
+| `47381cd` | [#40643343028](https://github.com/oudream/cx-visual-x3/actions/runs/40643343028) | PASS：N43～N45；编译与DAG PASS | FAIL：F17.PIPE_BULK |
+| `2c11eaf` | [#40643586096](https://github.com/oudream/cx-visual-x3/actions/runs/40643586096) 第一轮 | PASS：N43～N47，30组固定随机Oracle、独立基准；编译与DAG PASS | FAIL：运行时数据M1/M2预算验收；同SHA复跑已请求，结论未核实 |
+
+单次Windows Runner数值：`AddViewsInto(reused)`0.8605ms/176B，`AddViews(allocating)`0.9735ms/525468B；`ReduceSumViewInto(reused)`0.4860ms/4272B，`ReduceSumView(allocating)`0.4927ms/6512B。数据是诊断性结果，不构成p95或不同CPU上的性能验收。不可将其他Owner的F17或M1/M2失败归为Numerics代码失败，也不可反过来把Numerics专项PASS说成整个工作流PASS。
