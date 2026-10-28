@@ -118,7 +118,16 @@ namespace CxVisual.Foundation.Transport
         }
         public Task SendMessageAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken cancellation)
         {return SendAsync(bytes,address,cancellation);}
-        protected override async Task SendToPeerAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken cancellation)
+        // 同Peer发送门贯穿整条逻辑Message；多分片不允许与并发Message交错。
+        protected override void OnSendSynchronous(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress address,CancellationToken cancellation,int segmentBytes)
+        {
+            WriteMessageAsync(bytes,offset,count,address,segmentBytes,cancellation).GetAwaiter().GetResult();
+        }
+        protected override Task SendToPeerAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken cancellation)
+        {return WriteMessageAsync(bytes,0,bytes.Length,address,0,cancellation);}
+        private async Task WriteMessageAsync(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress address,int segmentBytes,CancellationToken cancellation)
         {
             if(address==null || FindSubChannel(address)==null)
                 throw new InvalidOperationException("已失效的WebSocket对端地址");
@@ -129,7 +138,15 @@ namespace CxVisual.Foundation.Transport
             try
             {
                 if(peer.Socket.State!=WebSocketState.Open)throw new IOException("WebSocket对端已关闭");
-                await peer.Socket.SendAsync(new ArraySegment<byte>(bytes),WebSocketMessageType.Binary,true,cancellation).ConfigureAwait(false);
+                int chunk=segmentBytes>0?segmentBytes:16384;
+                for(int sent=0;sent<count;)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    int n=Math.Min(chunk,count-sent);
+                    await peer.Socket.SendAsync(new ArraySegment<byte>(bytes,offset+sent,n),
+                        WebSocketMessageType.Binary,sent+n==count,cancellation).ConfigureAwait(false);
+                    sent+=n;
+                }
             }
             finally{peer.SendGate.Release();}
         }
