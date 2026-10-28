@@ -203,3 +203,13 @@
 ### 人工操作
 
 TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute配置并将ProviderTypeId和CapabilityIds设置为`vision.cpu.threshold.inspect`、Device=CPU，保存/生效。选择“CPU真实检测”Tab，填RAW文件与参数，显式保存Vision参数、读取Effective、点击执行；检查真实区域/Trace，随后重复执行或提供坏输入以检查错误与拒绝。不得以ACK、目录声明、保存配置或演示输出代替真实执行。
+
+## 14. TestCenter Compute真实WPF界面闭环G1专项验收（2026-10-28）
+
+**第一条完整的人工可操作Compute软件测试链已通过实际 Windows UI Automation，不再是“仅源码/待UIA”。**
+
+- [TestCenter Compute CPU Real WPF UI #40666584107](https://github.com/oudream/cx-visual-x3/actions/runs/40666584107)（固定提交 `50843e58593c537a630c0c4b542b887752624134`）：**Success**。Windows .NET Framework 4.8 TestCenter及真实依赖编译通过，独立WPF窗口通过InvokePattern/ValuePattern/SelectionItemPattern操作正式Compute模块、保存/读取MHS Effective、真实5×3 RAW输入，调用统一Professional.Vision → MEM → MOC → MRK，产出像素/缺陷区域和SourceMap Trace。错误宽度拒绝、重复运行得到不同FlowId；报告归档。
+- [TestCenter Compute CPU Real WPF UI #40667201069](https://github.com/oudream/cx-visual-x3/actions/runs/40667201069)（固定提交 `1535a2ec49cb96662ce5b5f24e9bf1668bb5ffc7`）：**Success**。包含[正式Compute约束修订](https://github.com/oudream/cx-visual-x3/commit/1535a2ec49cb96662ce5b5f24e9bf1668bb5ffc7)：运行前检查模块Enabled、真实Provider/CapabilityIds、固定Compute Effective版本、MemoryBudgetMb与TimeoutMs。UIA日志再次报告阈值像素4、区域1、Effective config:2以及两个不同MRK FlowId。测试没有分别注入每一种限额/超时负例，不能宣称它们的各项专项异常验证均已完成。
+- 人工测试入口：`TestCenter → 专有测试 → 模块测试 → Compute → CPU真实检测`。预先在正式Compute FCM配置设 `Device=Cpu`、`ProviderTypeId=vision.cpu.threshold.inspect`、`CapabilityIds`包含同一ID且启用，再保存/生效；在CPU Tab选RAW、调整参数、保存Vision/Apply、读取Effective、执行、查看区域表和Trace、取消/重试。
+- 唯一Owner：MHS管理配置、MEM管理工程与Page、MOC编译及Stage、MRK执行及Trace、Professional.Vision计算、MPW/TestCenter只承载用户操作及结果投影；没有第二套数据/模块注册或执行引擎。
+- **软件G1闭环已验证；不等于五模块全类、工业G2/G3 HIL、全部TestCenter软件回归或持久RAW数据/结果历史自动重放。** 本轮最新全量TestCenter Windows运行 [#40667201278](https://github.com/oudream/cx-visual-x3/actions/runs/40667201278) 在记录时仍执行中，不得预报全绿。真正Driver需要设备和安全HIL。
