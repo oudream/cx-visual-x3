@@ -1150,3 +1150,56 @@ using (var heap = new MDSDataHeap())
 ### 17.3 完成判据
 
 继续按上节 LC01～LC10 验收。独立类存在、API可以编译或部分CI绿色均不等于全部完成。只有五维各自可配置且有真实运行效果、组合行为正确、动态MRK消费者/内存资源可安全结算、Studio/TestCenter自然操作、工业外部资源及压力/故障完成对应等级实测，才能称完整完好。实机不可用时列 HARDWARE_PENDING，不伪称通过。
+
+
+## 18. W3：CommittedOutput逐帧结算与静态DAG自动回收（2026-10-28）
+
+> 本章是**已提交源码与分级验收说明**，不是W3全类完成。默认保留既有Flow作用域、现有MDS单一数据Owner及MRK执行引擎；新机制明确opt-in。
+
+### 18.1 五维协作与真实使用入口
+
+| Owner | 新源码及真实入口 | 已实现行为 |
+|---|---|---|
+| Mechanism.Data / MDSDataStack | ReleaseCommittedOutputs(invocationId) | 单个已关闭调用帧的所有Committed输出安全释放；活动帧拒绝、不存在返回false、预算按帧归还；其它帧及FlowHeap保持 |
+| Mechanism.Data / MDSDataStack | CommittedFrameCount | 已保留调用帧数的只读运行指标 |
+| Mechanism.Runtime / MRKExecutionPlan | reclaimCommittedWhenConsumersSettle: true | 在构建静态DAG计划时显式启用；默认false不改变旧流程 |
+| Mechanism.Runtime / MRKCommittedOutputReclaimer | 内部真实节点终态结算 | 依赖图按不同消费节点计数；Completed/Skipped/Failed/Cancelled都结算；最后消费者完成且生产Frame已关闭后释放；DataExports保留直到FlowResult成功捕获 |
+| Mechanism.Runtime / MRKCodeFlowBuilder | ReclaimConsumedData() | 开发者一行启用，经原MRKFlowCompileDefinition / OrchestrationCompiler生成同一个MRKExecutionPlan |
+
+### 18.2 代码优先的便捷使用（现有API）
+
+~~~csharp
+var builder = new MRKCodeRuntimeBuilder()
+    .DataCapability("Acquire", (ctx, ct) => {
+        ctx.Data.Return("Image", imageBytes);
+        return Task.FromResult((object)true);
+    }, new Dictionary<string, Type> { { "Image", typeof(byte[]) } })
+    .DataCapability("Inspect", (ctx, ct) => {
+        ctx.Data.Return("Count", ctx.Data.Get<byte[]>("Input").Length);
+        return Task.FromResult((object)true);
+    }, new Dictionary<string, Type> { { "Count", typeof(int) } },
+       new[] { new MRKCapabilityInput("Input", typeof(byte[])) })
+    .Flow("Flow", f => f.ReclaimConsumedData()
+       .Step("image", "Acquire")
+       .StepData("inspect", "Inspect", new[] {
+           new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+               "image.Image", typeof(byte[]))
+       }, "image")
+       .Export("Result", "inspect.Count"));
+~~~
+
+普通算法代码依然只用Get/Set/Return，开发者不需管理内部帧及引用计数。仅在完整消费关系由具名StepOutput和DataExports声明时建议显式启用。手动ReleaseCommittedOutputs需由调用方证明所有后续合法访问已结束。
+
+### 18.3 安全边界与缺口
+
+- 当前自动优化严格限定**静态DAG**。开启优化的Plan遇到Loop、Foreach、Try或ControlRegion时明确抛ArgumentException；这些区域仍保留Flow级Committed历史，避免提前破坏CollectLoopOutputs<T>、动态Join与Retry。不能宣称动态场景已闭环。
+- 业务若需要未声明的后续历史访问、断点调试或Inspect，应维持保守默认，后续补正式有界诊断保留合同。
+- 外部GPU、SDK Buffer、SHM、跨进程AI所需Fence/ACK/Generation不由静态节点结算推断；受控外部资源仍归对应专业Owner。
+- 该优化针对MDS已提交的**托管逻辑载荷预算**；不代表总RSS、GC暂存、显存和外部专业资源占用量。
+- 长循环逐轮回收、跨Session结果交接、Studio/编排者策略选择、自动回收观测与长稳p95/p99，仍属后续独立工作，不能用目前的类名或短时测试冒充完成。
+
+### 18.4 固定源码验收
+
+- 固定源码SHA fa3a541dcb89：MDS生命周期Windows CI [#40644037833](https://github.com/oudream/cx-visual-x3/actions/runs/40644037833) **Success**；包含.NET48 Release x64全解、RuntimeData存储加固、静态DAG双消费者正反例、TestCenter独立用例与真实WPF测试。按当前FDTDataSize保守逻辑标量每项32B计费，150B测试预算能证明最后消费后释放使流程成功，而默认整Flow保留在相同预算下明确失败。
+- 后续MRKCodeFlowBuilder便利入口及Loop拒绝反例为更晚提交，必须在其固定SHA CI通过后另行标注；不得将旧绿灯冒充最新验证。
+- 完整Runtime统一回归若在其它模块失败，须区分本阶段MDS专项成功与全解回归未通过。
