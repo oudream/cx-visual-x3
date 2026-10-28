@@ -61,7 +61,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         {
             if(_gl==null || _surfaceVbo==0)return;
             _gl.BindBuffer(0x8892,_surfaceVbo);
-            UploadFloats(_surfaceVertices);
+            if(_surfaceVertices.Length==0)
+                _gl.BufferData(0x8892,IntPtr.Zero,IntPtr.Zero,0x88E4);
+            else
+                UploadFloats(_surfaceVertices);
         }
         private bool _showOrientation=true;
         private uint _obliqueTexture;
