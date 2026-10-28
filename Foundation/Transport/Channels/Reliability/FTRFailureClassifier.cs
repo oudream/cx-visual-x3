@@ -29,7 +29,7 @@ namespace CxVisual.Foundation.Transport
                 kind=FTRFailureKind.PermissionDenied;
             else if(current is ArgumentException || current is NotSupportedException)
                 kind=FTRFailureKind.InvalidConfiguration;
-            else if(current is OutOfMemoryException)
+            else if(current is FTRBudgetExceededException || current is OutOfMemoryException)
                 kind=FTRFailureKind.ResourceExhausted;
             else if(current is SocketException)
             {

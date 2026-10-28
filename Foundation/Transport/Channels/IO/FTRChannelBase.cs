@@ -179,7 +179,13 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             if (bytes == null || (bytes.Length == 0 && !SupportsEmptySend)) throw new ArgumentException("数据不能为空");
             if (address == null || address.ChannelId != Id) throw new ArgumentException("通道身份不匹配");
             ct.ThrowIfCancellationRequested();
-            EnterSend(bytes.Length,true);
+            // 容量拒绝发生在快照分配之前，也必须进入统一故障诊断。
+            try{EnterSend(bytes.Length,true);}
+            catch(FTRBudgetExceededException error)
+            {
+                _diagnostics.RecordError(error,"SendAdmission",FTRFaultScope.Operation);
+                throw;
+            }
             byte[] owned=null;
             try
             {
@@ -201,7 +207,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             {
                 if(_state!=FTRChannelState.Open)throw new InvalidOperationException("通道尚未打开");
                 if(_boundedSend&&snapshot&&(_asyncSends>=_sendCapacity||bytes>_sendByteBudget-_pendingSendBytes))
-                {_rejectedSends++;throw new InvalidOperationException("异步发送预算已满，尚未接纳或发送；请分块或稍后提交");}
+                {_rejectedSends++;throw new FTRBudgetExceededException("异步发送预算已满，尚未接纳或发送；请分块或稍后提交");}
                 _activeSends++;if(snapshot){_asyncSends++;_pendingSendBytes+=bytes;}
             }
         }

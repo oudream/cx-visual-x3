@@ -24,6 +24,12 @@ namespace CxVisual.Foundation.Transport
         Channel
     }
 
+    /// <summary>额度耗尽是可观察的资源拒绝，不伪装为OutOfMemoryException。</summary>
+    internal sealed class FTRBudgetExceededException : InvalidOperationException
+    {
+        internal FTRBudgetExceededException(string message):base(message){}
+    }
+
     /// <summary>诊断值对象，仅记录有限的非载荷证据，不持有原始异常或大数据缓存。</summary>
     public sealed class FTRFailureInfo
     {

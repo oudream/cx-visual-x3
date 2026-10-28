@@ -81,7 +81,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 bool full=false;
                 try{channel.SendAsync(new byte[]{2},address,CancellationToken.None).GetAwaiter().GetResult();}
                 catch(InvalidOperationException){full=true;}
-                Check(full&&channel.Calls==1&&channel.Diagnostics.RejectedSends==1,
+                Check(full&&channel.Calls==1&&channel.Diagnostics.RejectedSends==1 &&
+                    channel.Diagnostics.LastFailure.Kind==FTRFailureKind.ResourceExhausted &&
+                    channel.Diagnostics.LastFailure.Stage=="SendAdmission" &&
+                    channel.Diagnostics.LastFailure.Scope==FTRFaultScope.Operation,
                     "full async send queue allocated or invoked unadmitted transport work");
                 channel.Release.SetResult(true);first.GetAwaiter().GetResult();
                 bool oversized=false;
