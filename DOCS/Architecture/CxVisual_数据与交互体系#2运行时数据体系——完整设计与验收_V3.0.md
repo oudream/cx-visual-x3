@@ -1130,7 +1130,8 @@ using (var heap = new MDSDataHeap())
 - 普通算法仍使用 Get / Set / Return，不必配置五维；高级开发者才选按条目配置。
 - Ownership、Lifetime、Retention、Transfer、Reclamation 五种 Policy 均可分别配置；组合策略需要相容，未设置ConsumerBound不能使用AfterLastConsumer，未设置TTL不能使用OnExpiry，Pinned不能与自动回收组合。
 - AcquireUse、AcquireRead<T>、Retain(reason)、CloseConsumerAdmission、GetPolicy、Inspect、GetBlockers、ReleaseEligible、Sweep 是原Heap附着的便利方法，不另建数据Owner；移动、复制仍用原 Heap.MoveTo/CopyTo。
-- 活跃读取/保留会阻止删除、覆盖、转移、卸载、关闭Heap；只读Copy允许复制且不使旧值失效。TTL到期的文件缓存只清载荷、保留Locator，之后可按需Load。
+- 活跃读取/保留会阻止删除、覆盖、转移、卸载、关闭Heap；ConsumerBound尚未关闭入场时还会显示FutureConsumersMayEnter并禁止自动回收。只读Copy允许复制且不使旧值失效。TTL到期的文件缓存只清载荷、保留Locator，之后可按需Load。
+- 容量压力：Reclamation.OnPressure或OnExpiryOrPressure必须配合明确的TTL可驱逐缓存；原Heap.Set/Replace及文件Load预算不足时先试着释放**闲置合格缓存**，预算最终仍由MDSDataBudget原子拒绝。MDSDataLifecycleAccess.SweepPressure(requiredBytes)提供独立手动压力入口，返回真实释放的**逻辑载荷字节数**。不会跨其它Heap、GPU、SDK或运行中MRK CommittedOutput强制回收。
 - 时间策略的含义：CacheFor从配置生效时或文件重新加载完成时计时。调试日期注入仅用于确定性测试。ExternalBorrow、GPU Fence、SHM与远程AI并未因此获得真实释放安全保证。
 
 ### 17.2 实际状态与待做边界
