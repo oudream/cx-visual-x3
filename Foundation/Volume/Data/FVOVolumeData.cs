@@ -269,6 +269,19 @@ namespace CxVisual.Foundation.Volume
         }
 
         /// <summary>
+        /// 为多步算法取得无需拷贝的原始RAW租约；即使本Volume被关闭，
+        /// 已获得的租约在Dispose前仍可安全读取。调用者必须using释放。
+        /// </summary>
+        public FVOOriginalScalarLease AcquireOriginalScalarLease()
+        {
+            FVOUnmanagedRawVolumeBuffer source=_rawBuffer;
+            if(source==null || !SourceFormat.HasValue)
+                throw new InvalidOperationException("原始RAW尚未加载，不得从R8显示预览创建专业读取租约。");
+            return new FVOOriginalScalarLease(source,SourceFormat.Value,
+                OriginalWidth,OriginalHeight,OriginalDepth,SpatialFrame);
+        }
+
+        /// <summary>
         /// 计量/专业算法唯一可用的精确标量入口：绝不回退R8预览。
         /// 仅原始RAW或明确为Byte格式的完整原始字节缓存被视为真实源。
         /// </summary>
