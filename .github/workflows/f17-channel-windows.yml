@@ -10,6 +10,7 @@ on:
       - 'Tests/ArchitectureSmoke/Integration/ModuleChannelTransportSmokeTests.cs'
       - 'Tests/ArchitectureSmoke/Transport/**'
       - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
       - 'Tests/TestCenter/Manual/Channel/**'
       - 'Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs'
       - '.github/workflows/f17-channel-windows.yml'
