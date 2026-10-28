@@ -96,3 +96,28 @@
 - [f399ba0](https://github.com/oudream/cx-visual-x3/commit/f399ba06e8708b1c7bb5e2c3d510ae7fba1791e3)：模块名为空、能力ID重复等非法编辑草稿不向MPW返回假模块，也不让界面冒出未处理异常；原FCM验证仍为最终权威。
 
 本节最后四项状态投影与异常保护变更在编写时**尚未取得对应SHA的全部Windows UIA通过结果**，不能与前述Studio S1通过混同。另有并行代码曾使ArchitectureSmoke于`System.Net.Http`程序集引用缺失时编译失败，当前主线已补引用，但该独立问题的CI仍按固定SHA验收。
+
+## 7. P0 MHS Effective与真实MOC输入输出（2026-10-28）
+
+本节追加实际源码及证据，不改变六份主规格。**P0软件进展不等于五类真实Provider全部验收或工业就绪。**
+
+| 提交 | 已落地范围 | 限制 |
+|---|---|---|
+| [a36ecc2](https://github.com/oudream/cx-visual-x3/commit/a36ecc2a55625ad6d5ea231ca59efe00f72d7845)、[be7ad21](https://github.com/oudream/cx-visual-x3/commit/be7ad2130fb25e32fe1346f364ff2d853456f658) | CxVisionThresholdProvider增加MHS AuthorizedSection读取Effective快照与后续版本/权限再核；修正真实FCMConfigRevision.Effective成员名 | 不将Saved冒充Effective；撤权禁止新的MOC版本发布，不替代硬件安全 |
+| [a55f432](https://github.com/oudream/cx-visual-x3/commit/a55f43243327b4f98ecb74c35642657f7cd54cb0) | G06新增无Read拒绝、授权后版本一致、撤权后拒绝旧Provider发布的测试 | 测试源码存在不代表对应CI已通过 |
+| [b56e33b](https://github.com/oudream/cx-visual-x3/commit/b56e33b43cd9cd93b6764aeca1ba74fcb52ddeca)、[14f0af8](https://github.com/oudream/cx-visual-x3/commit/14f0af81e7325c9316234f6628644cac858f6e97) | Studio模块中心增加显式读取当前MHS Effective入口，沿用原配置Scope及IAM权限路径，只更新原MOC能力投影 | 不自动Apply/启动设备/写入MEM模块资源 |
+| [9b26126](https://github.com/oudream/cx-visual-x3/commit/9b261261ee18e4279f492e43da97c6ee1cb3b5e3) | WPF验证实际点击后获取Effective版本、Compute仍可发现 | 中间SHA曾因不存在的EffectiveVersion成员编译失败，后续已修正 |
+| [6487bfd](https://github.com/oudream/cx-visual-x3/commit/6487bfdd49130d2a534d7a3ec7f91cd6ba40e3a6)、[94a9ada](https://github.com/oudream/cx-visual-x3/commit/94a9adad729006e6d8a11f836d8101e6f2c3d073)、[2ff9325](https://github.com/oudream/cx-visual-x3/commit/2ff9325c3d5fccb3c37ffa31d918b2a5bdcd2caa) | MPW从真实MOCCapabilityDescriptor.Ports展示RawPixels byte[]、Width int、Height int等强类型输入/必填字段，Studio添加WPF断言 | 没有正式定义的输出不生成虚假输出端口 |
+| [3412cb1](https://github.com/oudream/cx-visual-x3/commit/3412cb15c763bc93ae184e49774c1e887486dba1)、[f44b663](https://github.com/oudream/cx-visual-x3/commit/f44b663e5ca9c2a4a662839f3c61225032901e8c) | MHS Service和AuthorizedSession增加OpenExisting，只读缺失配置时拒绝创建默认Section，损坏元数据拒绝，授权先检查Read | 原Open创建/编辑语义不改，仍是唯一MHS配置Owner |
+| [5985ece](https://github.com/oudream/cx-visual-x3/commit/5985ecec0e08454208421c71eb29cb519d041347)、[b7e00c4](https://github.com/oudream/cx-visual-x3/commit/b7e00c42f0023797a258893aba73abc2ec62a6bf) | Studio改用不隐式创建配置的OpenExisting；G06增加缺失时不创建目录的负例 | 尚未取得相应完整Windows CI绿灯时只能列为源码已提交 |
+
+### 固定SHA实际Windows状态
+
+- [Studio S1 #40651853606](https://github.com/oudream/cx-visual-x3/actions/runs/40651853606)（14f0af8）：完整编译通过、S1-03C模块中心**PASS**，但后续配置组合响应式1/2/3列布局断言**失败**，不能宣称整个S1成功。
+- [配置公共底座 #40651843551](https://github.com/oudream/cx-visual-x3/actions/runs/40651843551)（14f0af8）：**Success**。
+- 中间提交a36ecc2曾在编译中因不存在的FCMConfigRevision.EffectiveVersion属性报错，已修为Effective。
+- 最后新增OpenExisting及其负例、MOC端口投影和WPF测试在本节写入时仍缺固定最终SHA全部Windows成功证据。
+
+### 继续开发的明确缺口
+
+现阶段已能真实发现Compute软件Provider、显式读取已存在的MHS Effective、按MOC展示强类型端口；**尚未**完成正式MEM模块资源关联、工程数据输入到MOC/MRK执行/Trace的Studio UI闭环，亦未完成其它四类模块真实Provider与G2/G3实机工业验收。不得把RuntimeResolved当作Supported/Available/Authorized。
