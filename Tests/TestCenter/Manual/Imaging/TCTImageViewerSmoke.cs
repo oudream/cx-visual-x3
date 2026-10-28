@@ -417,6 +417,44 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("分割轮廓未包含在正式CSV导出中");
                 }
                 finally {if(File.Exists(contourCsv))File.Delete(contourCsv);}
+                // 双轮廓批量WPF入口：两个正式PolygonAnnotation只引发一次Store事件。
+                MVIImageOverlayItem contourA=new MVIImageOverlayItem(
+                    MVIImageOverlayKind.PolygonAnnotation,MVIImageOverlayLayer.Annotation,
+                    new FGERect2D(0,0,2,2),new[]{
+                        new FGEPoint2D(0,0),new FGEPoint2D(2,0),new FGEPoint2D(0,2)});
+                MVIImageOverlayItem contourB=new MVIImageOverlayItem(
+                    MVIImageOverlayKind.PolygonAnnotation,MVIImageOverlayLayer.Annotation,
+                    new FGERect2D(1,1,2,2),new[]{
+                        new FGEPoint2D(1,1),new FGEPoint2D(3,1),new FGEPoint2D(1,3)});
+                int batchChanges=0;
+                EventHandler onBatchChanged=(s,e)=>batchChanges++;
+                frame.Viewer.Overlays.Changed+=onBatchChanged;
+                try
+                {
+                    int priorCount=frame.Viewer.Overlays.Items.Count;
+                    if(frame.Viewer.AddOverlays(new[]{contourA,contourB})!=2 ||
+                        batchChanges!=1 ||
+                        frame.Viewer.Overlays.Items.Count!=priorCount+2 ||
+                        frame.Viewer.Overlays.Find(contourA.Id)==null ||
+                        frame.Viewer.Overlays.Find(contourB.Id)==null ||
+                        contourCanvas.Children.OfType<System.Windows.Shapes.Polygon>().Count()<2)
+                        throw new InvalidOperationException(
+                            "双轮廓批量WPF添加未一次发布并完整渲染两个多边形");
+                    bool duplicateRejected=false;
+                    try {frame.Viewer.AddOverlays(new[]{contourA});}
+                    catch(InvalidOperationException) {duplicateRejected=true;}
+                    if(!duplicateRejected || batchChanges!=1 ||
+                        frame.Viewer.Overlays.Items.Count!=priorCount+2)
+                        throw new InvalidOperationException(
+                            "双轮廓重复ID没有原子拒绝或污染WPF观察通知");
+                }
+                finally
+                {
+                    frame.Viewer.Overlays.Changed-=onBatchChanged;
+                    frame.Viewer.Overlays.Remove(contourA.Id);
+                    frame.Viewer.Overlays.Remove(contourB.Id);
+                }
+                Console.WriteLine("PASS TCT Imaging: 双轮廓批量WPF单次Observer通知与拒绝反证");
                 thresholdLow.Text="20";thresholdHigh.Text="10";
                 regionThreshold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(!ReferenceEquals(frame.Viewer.Session.Result,polygonMask))
