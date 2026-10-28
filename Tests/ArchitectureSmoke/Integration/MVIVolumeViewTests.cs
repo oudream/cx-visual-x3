@@ -42,7 +42,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var beforeStyle=scene3d.Snapshot();
                 scene3d.SetOpacity(resultRef,.5);
                 scene3d.SetOpacity(resultRef,.5);
-                MVI3DSceneItem updated;
+                MVI3DSceneItem updated=default(MVI3DSceneItem);
                 Check(scene3d.Revision==3 && scene3d.TryGet(resultRef,out updated) &&
                       updated.Opacity==.5 && beforeStyle[1].Opacity==.7,
                     "可视快照不可变、重复属性设置不得重复提升Revision");
