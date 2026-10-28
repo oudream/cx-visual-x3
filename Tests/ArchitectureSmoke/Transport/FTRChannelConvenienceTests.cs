@@ -169,6 +169,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     try{server.SendBytes(new byte[]{1});}
                     catch(InvalidOperationException){multicastRejected=true;}
                     Check(multicastRejected,"MultiPeer便利发送必须禁止丢失子客户端ID导致广播");
+                    var missingPeer=new FTRSubChannelAddress(server.Id);
+                    bool syncRejected=false,asyncRejected=false,replyRejected=false;
+                    try { server.SendTo(missingPeer,new byte[]{2}); }
+                    catch(ArgumentException) {syncRejected=true;}
+                    try { server.SendToAsync(missingPeer,new byte[]{3}).GetAwaiter().GetResult(); }
+                    catch(ArgumentException) {asyncRejected=true;}
+                    try {
+                        server.ReplyAsync(new FTRChannelReceiveContext(missingPeer,new byte[]{4}),
+                            new byte[]{5}).GetAwaiter().GetResult();
+                    }
+                    catch(ArgumentException) {replyRejected=true;}
+                    Check(syncRejected&&asyncRejected&&replyRejected,
+                        "MultiPeer不得通过仅ChannelId的同步、异步或回复便利入口隐式广播");
                     server.Deliver(peer,new byte[]{7});
                     Check(((IFTRChannelTransport)server).ReadHealth().ActivePeers==1,
                         "MultiPeer健康视图应使用正式子客户端目录");
