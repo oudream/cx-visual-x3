@@ -240,3 +240,18 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **固定工作流追踪**：首次参数清理源码 [Imaging #40672434612](https://github.com/oudream/cx-visual-x3/actions/runs/40672434612)、[TestCenter #40672434709](https://github.com/oudream/cx-visual-x3/actions/runs/40672434709)；加入MVI无头断言后 [Imaging #40672538011](https://github.com/oudream/cx-visual-x3/actions/runs/40672538011)；含孔洞测量最新代码 [Imaging #40672752671](https://github.com/oudream/cx-visual-x3/actions/runs/40672752671)、[TestCenter #40672752691](https://github.com/oudream/cx-visual-x3/actions/runs/40672752691)。**首次登记时以上均queued，尚无本SHA的自动测试成功证据。** 较早 [Imaging #40671851110](https://github.com/oudream/cx-visual-x3/actions/runs/40671851110) 实际success但其SHA早于上述改动，不得用于宣称新P3已通过。
 
 **当前限制**：这里只完善TestCenter CPU试验的Result槽和测量状态，不等于持久Artifact/FrameRef/ReviewRecord、正式Studio全面工作区、孔洞复合ROI工程持久化、工业现场HIL或全类260项完成；现场操作与性能G5/G6继续独立验收。
+
+## 17. TestCenter二维工作台可操作性修复：窗位、灰阶、工具分类（2026-10-28）
+
+**反馈证据**：人工截图明确反映窗宽/窗位、Gamma/亮度/对比度使用不便，以及“显示”页彩色 ROI/测量/标注/缺陷按钮无法选择工具。实际源码证实旧四按钮仅调用`SetSelectedOverlayColor`，必须预先选中一个Overlay；这与用户想先选择绘制类别的意图不一致。原灰阶底层`MVIImageDisplayState`和`FIMImageToneMapping`存在，不另建图窗或图像处理副本。
+
+**代码提交**：[593e007d6ba0ba6e4a99bcf6548e5eabf4354d7b](https://github.com/oudream/cx-visual-x3/commit/593e007d6ba0ba6e4a99bcf6548e5eabf4354d7b)（增加四个真正的绘制分类按钮，并与唯一MPW.ToolMode/ComboBox及高亮同步；改色操作迁到单独“选中对象改色”；窗位输入数字边界/Enter/自动实际灰度范围；Gamma/亮度/对比度/反色/自动对比度交互入口；MVI SetTone整组参数单次通知减少大图多重重绘；真实WPF/ArchitectureSmoke反例）、[4dd52be](https://github.com/oudream/cx-visual-x3/commit/4dd52be557a6c7c1f10e17fb58367f3b2afe7da5)（修正ResetDisplay滑块刷新顺序）、[1a8a288](https://github.com/oudream/cx-visual-x3/commit/1a8a28875ee69cbfb560cc6b9c4f9a5c60cb5a64)（数值像素与重置滑块专项断言）、[9394e3b](https://github.com/oudream/cx-visual-x3/commit/9394e3b0d8c88bdaad4483460307daf3bb41eea5)（WPF测试MPW命名空间编译引用）。
+
+| 源码和归属 | 实际行为 | 范围限制 |
+|---|---|---|
+| `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerLayout.cs` | 彩色分类按钮`SelectMode.ROI/测量/标注/缺陷`分别选择矩形ROI/距离/点标注/缺陷框；已有改色`OverlayColor.*`继续处理已选图元样式；显示分类与图层可见性独立；滑块Thumb拖动结束、键盘和输入框Enter执行 | 不把色块当作完整图元编辑器，不替代已有测量/标注子工具 |
+| `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs` | 窗位明确检查已加载灰度图、数字有限性及上限大于下限；自动对比度以已存在MVI与FIM显示处理为主；Gamma等输入有合法性拒绝与真实可见结果；复位后滑块与当前参数一致 | UI显示变换不改变原像素；彩色不支持单通道窗位；大图真实P95仍需专项 |
+| `Mechanism/Visual/Imaging/MVIImageDisplayState.cs` | `SetTone`先校验全部参数后原子更新，最多发一次Changed；无变化不发；与原逐项API共存 | 只改状态通知粒度，不引入新缓存或第二绘制内核 |
+| `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs`、`Tests/ArchitectureSmoke/Integration/MVIImageDisplayTests.cs` | 真正WPF按钮点击+参数变更+原像素反证，错误窗下限“b”、非法Gamma、四分类选中互斥与高亮、输出PNG数值差异、Reset Slider；MVI单次通知与非法无部分写入 | 测试源码存在不代表Windows已执行通过 |
+
+**固定SHA的Windows追踪**：[Imaging #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082)及[TestCenter #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116)对应9394e3b，首次登记时in_progress（未取得成功/失败结论）。任何后续CI需在完整Job日志明确证明WPF和--imaging运行通过后才能登记G3/G4，人工截图反馈只证明缺陷场景而非复测通过。
