@@ -470,6 +470,31 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 throw new InvalidCastException("非空值类型不能读取null：" + name);
             return (T)FDTDataValueSafety.Capture(value, _dataAdapters);
         }
+        /// <summary>
+        /// 将成功提交的指定Flow输出复制到另一个MDS Heap。
+        /// 目标Heap以自己的Adapter和预算进行值安全复制，源结果始终保留。
+        /// 外部GPU/SHM/SDK资源仍须使用受控专业协议，而不是此托管交接。
+        /// </summary>
+        public void CopyCommittedOutputTo<T>(string outputName, MDSDataHeap target,
+            string targetName, bool overwrite = false)
+        {
+            if (target == null) throw new ArgumentNullException("target");
+            if (State != MRKFlowState.Completed)
+                throw new InvalidOperationException("流程未成功，不能转交未提交输出");
+            if (string.IsNullOrWhiteSpace(outputName))
+                throw new ArgumentException("必须指定正式导出名称", "outputName");
+            object original;
+            if (!_committedOutputs.TryGetValue(outputName, out original))
+                throw new KeyNotFoundException("流程输出未声明或未提交：" + outputName);
+            if (original != null && !(original is T))
+                throw new InvalidCastException("流程导出类型不匹配：" + outputName);
+            if (original == null && typeof(T).IsValueType &&
+                Nullable.GetUnderlyingType(typeof(T)) == null)
+                throw new InvalidCastException("非空值类型不能转交null：" + outputName);
+            // 直接由目标Heap冻结原内部快照，避免先GetCommittedOutput的大数据重复复制。
+            if (overwrite) target.Replace<T>(targetName, (T)original);
+            else target.Set<T>(targetName, (T)original);
+        }
         public IDictionary<string, MRKStepState> StepStates { get; private set; }
     }
 
