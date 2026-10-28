@@ -32,6 +32,31 @@ namespace CxVisual.Mechanism.Visual
             return item;
         }
 
+        /// <summary>
+        /// 原子地追加一组临时覆盖项：先物化并验证全部身份，再写入唯一Store。
+        /// 批内或与现有项重复、空项或枚举异常一律零写入；成功仅通知一次。
+        /// 本方法不涉及MEM工程事务或Undo；由所属UI线程串行调用。
+        /// </summary>
+        public int AddRange(IEnumerable<MVIImageOverlayItem> items)
+        {
+            if (items == null) throw new ArgumentNullException("items");
+            // 先完整枚举并检查：任何枚举器异常不得造成部分提交。
+            MVIImageOverlayItem[] pending = items.ToArray();
+            if (pending.Length == 0) return 0;
+            HashSet<Guid> identities = new HashSet<Guid>(_items.Select(item => item.Id));
+            foreach (MVIImageOverlayItem item in pending)
+            {
+                if (item == null)
+                    throw new ArgumentException("批量叠加项不能包含null。", "items");
+                if (!identities.Add(item.Id))
+                    throw new InvalidOperationException("批量叠加项包含重复或已存在的ID。");
+            }
+            // 本次只执行已经验证的追加；不在提交中执行用户回调或枚举器。
+            _items.AddRange(pending);
+            Notify();
+            return pending.Length;
+        }
+
         public MVIImageOverlayItem Find(Guid id)
         { return _items.FirstOrDefault(x => x.Id == id); }
 
