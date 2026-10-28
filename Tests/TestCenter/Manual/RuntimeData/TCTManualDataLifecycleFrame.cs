@@ -345,6 +345,13 @@ namespace CxVisual.TestCenter.UI
                 frame.Commands.Single(x => x.Id == "lifecycle.ownership").Execute();
                 if (frame.LastError != null || frame._heap.Lifecycle.GetPolicy("Image").Ownership.AllowMove)
                     throw new InvalidOperationException("独立Ownership设置未生效");
+                frame._modes[4].SelectedIndex = 3;
+                frame._applyAll.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                if (frame.LastError != null ||
+                    !frame._heap.Lifecycle.GetPolicy("Image").Reclamation.ReleaseOnPressure)
+                    throw new InvalidOperationException("WPF容量压力组合策略没有落地：" + frame.LastError);
+                frame.Commands.Single(x => x.Id == "lifecycle.pressure").Execute();
+                if (frame.HasImage) throw new InvalidOperationException("WPF压力按钮没有真实释放闲置可驱逐缓存");
             }
             finally { frame.OnWorkspaceClosed(); }
             if (!frame.IsClosed) throw new InvalidOperationException("关闭五维工作区未完成清理");
