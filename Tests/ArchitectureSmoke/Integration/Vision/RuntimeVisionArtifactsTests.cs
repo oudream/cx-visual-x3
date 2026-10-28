@@ -47,6 +47,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Gray16FIMStrideArtifacts();
             LegacyDefaultsAndAtomicFailure();
             ConcurrentFlowOwnership();
+            MeasuredArtifactsRemainSourceCorrect();
             MviImageMaskProjection();
         }
 
@@ -177,6 +178,70 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<InvalidOperationException>(
                     () => CxVisionRunSummary.FromCpuFlow(bad, "bad"),
                     "执行失败不得生成有效Run结果");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>
+        /// CASE-ARCH-01测量首包：真正MRK下游节点消费面积筛选后的Inspection；
+        /// 不把筛选前Mask命中像素或包围盒面积误称为接受区域测量。
+        /// </summary>
+        private static void MeasuredArtifactsRemainSourceCorrect()
+        {
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(4,16));
+            try
+            {
+                byte[] raw = { 210,210,0,0,0, 210,0,0,0,0, 0,0,0,0,250 };
+                var plan = CxVisionDataFlow.CreateCpuInspectionPlanWithMeasuredArtifacts(
+                    Options(CxVisionPixelDepth.Bits8,200),91);
+                MRKFlowResult flow=engine.StartFlow(plan,Inputs(raw,5,3))
+                    .Completion.GetAwaiter().GetResult();
+                Check(flow.State==MRKFlowState.Completed,
+                    "带测量节点的MRK实际执行失败："+(flow.Error==null?"":flow.Error.ToString()));
+                Check(flow.CommittedOutputs.Count==6 &&
+                    flow.GetCommittedOutput<long>("AcceptedRegionPixelArea")==3 &&
+                    flow.GetCommittedOutput<CxVisionInspectionResult>("Inspection")
+                        .ThresholdPixelCount==4 &&
+                    flow.GetCommittedOutput<FIMImageBuffer>("ThresholdMask")
+                        .GetGrayValue(4,2)==255,
+                    "接受区域像素面积3不得冒充阈值Mask命中总量4");
+                var evidence=CxVisionRunSummary.FromCpuFlow(flow,"camera-1/frame-1");
+                var area=evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement);
+                var region=evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Region);
+                Check(area.IntegerValue==3 && area.Unit=="px²" &&
+                    area.OutputPort=="AcceptedRegionPixelArea" &&
+                    area.RunId==flow.FlowId && area.SourceId==evidence.SourceId &&
+                    region.Region.PixelArea==3 &&
+                    evidence.Items.Select(x=>x.ItemId).Distinct().Count()==evidence.Items.Count,
+                    "测量Item必须归属真实Run/端口/Source且ID不冲突");
+                Check(!evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Measurement &&
+                      x.Unit=="mm²"),"未标定不得冒充物理面积");
+                raw[0]=0;
+                Check(area.IntegerValue==3 &&
+                    flow.GetCommittedOutput<FIMImageBuffer>("PreparedImage")
+                        .GetGrayValue(0,0)==210,
+                    "外部源数组被修改后正式测量与FIM原像素不可变化");
+
+                var clean=engine.StartFlow(plan,Inputs(new byte[15],5,3))
+                    .Completion.GetAwaiter().GetResult();
+                Check(clean.State==MRKFlowState.Completed &&
+                    clean.GetCommittedOutput<long>("AcceptedRegionPixelArea")==0,
+                    "无候选区域仍须合法提交面积0而非运行失败");
+                var cleanEvidence=CxVisionRunSummary.FromCpuFlow(clean,"camera-1/frame-2");
+                Check(cleanEvidence.HasNoRegions &&
+                    cleanEvidence.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                        .IntegerValue==0 &&
+                    cleanEvidence.RunId!=evidence.RunId,
+                    "空结果应保留独立Run身份并发布明确0面积");
+
+                var invalid=engine.StartFlow(plan,Inputs(new byte[] { 1 },5,3))
+                    .Completion.GetAwaiter().GetResult();
+                Check(invalid.State==MRKFlowState.Failed &&
+                    invalid.CommittedOutputs.Count==0,
+                    "输入损坏不能发布面积或部分Image/Mask结果");
+                Reject<InvalidOperationException>(
+                    ()=>CxVisionRunSummary.FromCpuFlow(invalid,"invalid"),
+                    "失败Run不得伪造Measurement项");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
