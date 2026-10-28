@@ -338,6 +338,7 @@ namespace CxVisual.TestCenter.UI
                 frame._sweep.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (!frame.HasImage) throw new InvalidOperationException("TTL在读者仍活跃时提前释放");
                 frame._releaseUse.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                frame.Commands.Single(x => x.Id == "lifecycle.close-admission").Execute();
                 frame._sweep.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 if (frame.HasImage) throw new InvalidOperationException("TTL到期后未真实释放数据");
                 frame.Commands.Single(x => x.Id == "lifecycle.reset").Execute();
@@ -350,6 +351,7 @@ namespace CxVisual.TestCenter.UI
                 if (frame.LastError != null ||
                     !frame._heap.Lifecycle.GetPolicy("Image").Reclamation.ReleaseOnPressure)
                     throw new InvalidOperationException("WPF容量压力组合策略没有落地：" + frame.LastError);
+                frame.Commands.Single(x => x.Id == "lifecycle.close-admission").Execute();
                 frame.Commands.Single(x => x.Id == "lifecycle.pressure").Execute();
                 if (frame.HasImage) throw new InvalidOperationException("WPF压力按钮没有真实释放闲置可驱逐缓存");
             }
