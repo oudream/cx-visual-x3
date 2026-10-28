@@ -26,6 +26,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_ParallelFailureWaitsForUncooperativeTail();
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
+            DeveloperBuilderCanEnableStaticOutputReclamation();
+        }
+
+        private static void DeveloperBuilderCanEnableStaticOutputReclamation()
+        {
+            MRKCodeRuntimeBlueprint blueprint = new MRKCodeRuntimeBuilder()
+                .DataCapability("Emit", (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[] { 1, 2, 3 });
+                    return Task.FromResult((object)true);
+                }, new Dictionary<string, Type> { { "Image", typeof(byte[]) } })
+                .DataCapability("Count", (ctx, ct) =>
+                {
+                    ctx.Data.Return("Size", ctx.Data.Get<byte[]>("Input").Length);
+                    return Task.FromResult((object)true);
+                }, new Dictionary<string, Type> { { "Size", typeof(int) } },
+                    new[] { new MRKCapabilityInput("Input", typeof(byte[])) })
+                .Flow("simple", f => f
+                    .ReclaimConsumedData()
+                    .Step("producer", "Emit")
+                    .StepData("count", "Count", new[] {
+                        new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+                            "producer.Image", typeof(byte[]))
+                    }, "producer")
+                    .Export("Final", "count.Size"))
+                .Freeze();
+            MRKFlowCompileDefinition definition;
+            Check(blueprint.TryGet("simple", out definition) &&
+                definition.ReclaimCommittedWhenConsumersSettle,
+                "代码编排一行启用回收策略必须进入正式只读编译定义");
+            MRKDevelopmentRuntime runtime = blueprint.BuildForDevelopment(new FCRWorkerOptions(2, 8));
+            try
+            {
+                MRKFlowResult result = runtime.RunAsync("simple",
+                    new Dictionary<string, object>()).GetAwaiter().GetResult();
+                Check(result.State == MRKFlowState.Completed &&
+                    result.GetCommittedOutput<int>("Final") == 3,
+                    "代码优先入口必须真实经过MRK编译/数据端口/结果导出");
+            }
+            finally { runtime.StopAsync().GetAwaiter().GetResult(); }
         }
 
         private static void Check(bool ok, string name)
