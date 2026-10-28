@@ -73,6 +73,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(fail.State == FTRChannelState.Closed,
                 "Faulted 关闭后可回到 Closed");
         }
+        // 模拟物理重启：旧LengthFrame半包不能污染同一Connector的新会话。
+        private static void ChannelSessionIsolation()
+        {
+            FTRVirtualChannel[] pair=FTRVirtualChannel.CreatePair("session-left","session-right");
+            using(var left=pair[0]) using(var right=pair[1])
+            {
+                var config=new MCNConnectorConfiguration {
+                    DisplayName="Protocol跨运行会话隔离",
+                    Channel=new FTRVirtualChannelConfiguration {Id="session-left"},
+                    Protocol=new MPAProtocolConfiguration("session-protocol","length.frame")
+                };
+                var connector=new MCNConnectorModule(
+                    config.Describe("session-module",MFMModuleKind.Connector),
+                    config,left,new MPALengthFrameProtocol());
+                byte[] received=null;int count=0;
+                connector.PayloadReceived+=payload=>{received=payload;Interlocked.Increment(ref count);};
+                right.Open();
+                connector.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                var encoded=new MPALengthFrameCodec().Encode(new byte[]{9,10});
+                right.Send(encoded.Take(3).ToArray());
+                Check(count==0,"原会话未完整长度帧不得提前解析");
+                Guid before=left.SessionId;
+                left.Close();
+                left.Open();
+                Check(left.SessionId!=before,"重新打开同一Channel必须生成新的物理SessionId");
+                right.Send(new MPALengthFrameCodec().Encode(new byte[]{77,88}));
+                Check(count==1 && received.SequenceEqual(new byte[]{77,88}),
+                    "旧半包不得混入新会话的完整长度帧");
+                connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                right.Close();
+            }
+            Console.WriteLine("F17.SESSION_ISOLATION_PASS: new SessionId and Protocol parser reset after reconnect");
+        }
+
         private static int FreePort(bool udp)
         {
             if (udp)
@@ -94,6 +128,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "所有正式Channel契约、配置与实现必须由Foundation.Transport唯一拥有");
             ConnectorAllChannelKinds();
             LifecycleStateMachine();
+            ChannelSessionIsolation();
             BoundedEvidence();
             TcpLoopback();
             ByteStreamAdapterLoopback();
