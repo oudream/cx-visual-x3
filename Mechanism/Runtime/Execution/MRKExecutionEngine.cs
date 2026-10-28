@@ -1005,13 +1005,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Dictionary<string, Task<object>> tasks =
                 new Dictionary<string, Task<object>>(StringComparer.Ordinal);
             StageLeaseBatch stages=new StageLeaseBatch(plan,_groups);
+            MRKCommittedOutputReclaimer reclaimer =
+                plan.ReclaimCommittedWhenConsumersSettle
+                    ? new MRKCommittedOutputReclaimer(plan, context.DataStack)
+                    : null;
             Func<string, Task<object>> schedule = null;
             schedule = id =>
             {
                 Task<object> existing;
                 if (tasks.TryGetValue(id, out existing)) return existing;
                 Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token,
-                    schedule, control, stages);
+                    schedule, control, stages, reclaimer);
                 tasks.Add(id, task);
                 return task;
             };
@@ -1269,7 +1273,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
             CancellationToken cancellation, Func<string, Task<object>> schedule,
-            MRKExecutionDebugController control, StageLeaseBatch stages=null)
+            MRKExecutionDebugController control, StageLeaseBatch stages=null,
+            MRKCommittedOutputReclaimer reclaimer=null)
         {
             bool dependencyFailed = false;
             try
@@ -1456,9 +1461,18 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
             finally
             {
-                if(stages!=null && !string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
-                    _groups.GetScope(step.ExecutionGroup)==MRKExecutionGroupScope.Stage)
-                    stages.CompleteStep(step.ExecutionGroup);
+                try
+                {
+                    if(stages!=null && !string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                        _groups.GetScope(step.ExecutionGroup)==MRKExecutionGroupScope.Stage)
+                        stages.CompleteStep(step.ExecutionGroup);
+                }
+                finally
+                {
+                    // 任何结果都属于终态：成功、Skipped、Failed、Cancelled。
+                    // Frame已经关闭且输入消费者业务执行结束后才结算资源。
+                    if (reclaimer != null) reclaimer.StepSettled(step.Id);
+                }
             }
         }
     }
