@@ -132,6 +132,8 @@ namespace CxVisual.TestCenter.UI
             return editor.Draft;
         }
         public string StatusMessage { get { return _status.Text; } }
+        // Exposes the real Compute test surface for focused WPF UI automation.
+        public TCTCpuComputePanel CpuTestPanel {get{return _cpuPanel;}}
         public void SelectModuleKind(MFMModuleKind kind)
         {
             if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
@@ -167,9 +169,10 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
-        public TCTManualModuleFrame()
+        public TCTManualModuleFrame(string configRoot = null)
         {
-            string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            string root = configRoot ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CxVisual", "TestCenter", "ModuleConfigurations");
             _service = new MHSConfigService(root);
             _cpuPanel=new TCTCpuComputePanel(_service,()=>HasUnsavedDraft);
