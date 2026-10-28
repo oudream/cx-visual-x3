@@ -137,3 +137,9 @@
 ### G06本轮固定Windows软件回归证据
 
 - [Windows Runtime TDD #40652205605](https://github.com/oudream/cx-visual-x3/actions/runs/40652205605) 对应 `b7e00c4`：**Success**；日志确认 Windows x64 全解构建、ArchitectureSmoke、并发编排、运行Host发布/恢复全部通过；包括本轮G06受权Effective、MOC/MRK真实CPU软件执行与缺失配置不初始化负例。此证据仍不能替代Studio新AddToFlow的WPF UIA或HIL。
+
+## 10. 本轮Studio真实UI专项验收（固定SHA）
+
+- [Studio Windows S1 #40652752253](https://github.com/oudream/cx-visual-x3/actions/runs/40652752253)（提交 b1717cd）：Windows构建已完成，`S1-03C Studio模块中心与TestCenter共享MPW组件` **PASS**，其中本轮包含真实MHS Effective显式读取、端口展示和新增MOL入口未选中时拒绝且不修改MEM Revision的STA测试。**整条Workflow仍Failure**：之后统一配置组合响应式1/2/3列容器断言失败。不得把本条写为整体成功。
+- [Studio Windows S1 #40652707576](https://github.com/oudream/cx-visual-x3/actions/runs/40652707576)（提交 fc2564f）：Module Center S1-03C **PASS**，整条仍在同一配置布局断言失败。
+- 后续TestCenter/Studio最新主线CI、物理设备HIL和跨进程Effective版本一致性仍需单独证据。完整G06软件侧Windows Runtime TDD成功证据仍以 #40652205605 固定SHA为准。
