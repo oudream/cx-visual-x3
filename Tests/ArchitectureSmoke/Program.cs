@@ -39,6 +39,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk") >= 0) { FTRTcpBulkTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk-long") >= 0) { FTRTcpBulkTests.RunVolumeScale(); FTRNamedPipeBulkTests.RunVolumeScale(); return 0; }
+                if (Array.IndexOf(args, "--runtime-data-soak") >= 0)
+                {
+                    int index = Array.IndexOf(args, "--runtime-data-soak");
+                    int iterations = index + 1 < args.Length
+                        ? int.Parse(args[index + 1], System.Globalization.CultureInfo.InvariantCulture)
+                        : 20000;
+                    RuntimeDataLifecycleTests.RunSoak(iterations);
+                    return 0;
+                }
                 if (Array.IndexOf(args, "--runtime-data-lifecycle") >= 0)
                 {
                     RuntimeDataLifecycleTests.Run();
