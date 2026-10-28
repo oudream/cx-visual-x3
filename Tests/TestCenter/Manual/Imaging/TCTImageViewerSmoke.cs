@@ -76,9 +76,11 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("区域工具互斥切换未清除旧高亮状态");
             primary.SelectedIndex=0;
             window.UpdateLayout();
-            if(FindControl<Button>(frame,"TCT.Imaging.SelectMode.ROI")!=null ||
-                FindControl<Button>(frame,"TCT.Imaging.OverlayColor.ROI")!=null)
-                throw new InvalidOperationException("显示页仍保留重复的分类及固定颜色按钮");
+            if(FindControl<Button>(frame,"TCT.Imaging.SelectMode.ROI")!=null)
+                throw new InvalidOperationException("显示页仍保留重复的绘图类别按钮");
+            foreach(string layerName in new[]{"ROI","测量","标注","缺陷"})
+                if(FindControl<Button>(frame,"TCT.Imaging.OverlayColor."+layerName)==null)
+                    throw new InvalidOperationException("原WinForms四图层颜色选择按钮未移植："+layerName);
             ComboBox selector=FindControl<ComboBox>(frame,"TCT.Imaging.ImageTool");
             if(selector==null)
                 throw new InvalidOperationException("精简显示页后未保留完整工具选择控件");
@@ -874,6 +876,19 @@ namespace CxVisual.TestCenter.UI
                 MVIImageOverlayItem statsPolygon=frame.Viewer.AddPolygonRoi(new[]{
                     new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
                     new FGEPoint2D(0,3.6)});
+                frame.Viewer.SelectOverlay(statsPolygon.Id);
+                // 四图层色板与已选对象颜色分开：未选对象也可修改图层预设；
+                // MPW必须保证已存在图元保留Id并影响后续默认绘制。
+                int layerColor=unchecked((int)0xff348abb);
+                frame.Viewer.SetOverlayLayerColor(MVIImageOverlayLayer.Roi,layerColor);
+                if(frame.Viewer.GetOverlayLayerColor(MVIImageOverlayLayer.Roi)!=layerColor ||
+                   frame.Viewer.Overlays.Find(statsPolygon.Id).Argb!=layerColor)
+                    throw new InvalidOperationException("修改ROI图层色未影响现有图元或丢失身份");
+                var nextColoredRoi=frame.Viewer.AddPolygonRoi(new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(2,0),new FGEPoint2D(0,2)});
+                if(nextColoredRoi.Argb!=layerColor)
+                    throw new InvalidOperationException("用户设置的图层色未用于后续绘制");
+                frame.Viewer.Overlays.Remove(nextColoredRoi.Id);
                 frame.Viewer.SelectOverlay(statsPolygon.Id);
                 TabControl propertyTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
                 propertyTabs.SelectedIndex=0;
