@@ -263,3 +263,10 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 固定`e77cae8d91d14f2f54358c3c912dc93605029745`的 [Imaging Windows #40687637635](https://github.com/oudream/cx-visual-x3/actions/runs/40687637635) 结论**success**，Windows构建/WPF ImageViewer/png roundtrip/FIM MVI/default/3D slice全部job步骤通过；UI-UX-07～11有此固定SHA的自动测试证据，UI-UX-12原色板对话框仍需现场人工选择确认。
 最新Owner修复提交[4d6c558](https://github.com/oudream/cx-visual-x3/commit/4d6c558cddf78e8c9af367e27aca731b03bf59aa)绑定ColorDialog到真实WPF窗口，触发[Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944)和[TestCenter #40687957971](https://github.com/oudream/cx-visual-x3/actions/runs/40687957971)，待实际结束后再更新此固定SHA结论。工业长时、大图P95和人工拖拉手感仍独立验收。
+
+### 17.2 UI-UX-07/12 对应用户截图修正：第一组分类删除，第二组色板保留
+
+- **UI-UX-07修订**：原第1组四个彩色工具类别冗余且已删除，仍须保持WPF可访问的工具ComboBox、顶部高频工具、专业ROI/测量/标注/缺陷工具，图层可见性独立。
+- **UI-UX-12修订**：原第2组四图层颜色按钮不应删除；应不依赖选中对象而打开WinForms系统`ColorDialog`，取消不变，确认后改变现有同层未锁定图元与后续默认绘制，不改变明确指定的算法产物ARGB，保留原图及Id。当前选中对象单独颜色编辑仍在区域属性页。
+- 测试源码 [788d5fe](https://github.com/oudream/cx-visual-x3/commit/788d5fec78111784052ef9080c72a42bcf369e1a)：WPF四入口存在、移除第一组按钮、`MPW.SetOverlayLayerColor`改变现有和后续多边形ROI且Id不变，并维持属性编辑；系统模态色板仍需现场鼠标选择作人工确认。
+- 前版 [Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944) success不等于新色板四入口已过。新固定`788d5fe`对应 [Imaging #40688664400](https://github.com/oudream/cx-visual-x3/actions/runs/40688664400) / [TestCenter #40688664402](https://github.com/oudream/cx-visual-x3/actions/runs/40688664402)，初次登记queued；未经实跑不得标记G4完成。
