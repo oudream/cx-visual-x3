@@ -73,6 +73,10 @@ namespace CxVisual.TestCenter.UI
                         int n = _heap.Lifecycle.Sweep(DateTime.UtcNow.AddHours(1));
                         _status.Text = "模拟未来一小时TTL扫描，安全回收：" + n + " 项";
                     }), () => !_closed),
+                    new TCTWorkspaceAction("lifecycle.pressure", "触发预算压力回收", () => Guard(() => {
+                        long bytes = _heap.Lifecycle.SweepPressure(1);
+                        _status.Text = "安全释放缓存字节：" + bytes;
+                    }), () => !_closed),
                     new TCTWorkspaceAction("lifecycle.copy", "复制到目标Heap", () => Guard(() =>
                         _heap.CopyTo(SelectedName(), _target, SelectedName() + ".Copy", true)), () => !_closed),
                     new TCTWorkspaceAction("lifecycle.move", "移动到目标Heap", () => Guard(() =>
@@ -95,7 +99,7 @@ namespace CxVisual.TestCenter.UI
                 new[] { "Flow 生命周期", "最后消费者" },
                 new[] { "Flow 保留", "TTL 2分钟", "Pin 保留" },
                 new[] { "复制或移动", "仅复制", "仅移动" },
-                new[] { "显式回收", "消费者结束自动回收", "TTL 到期自动回收" }
+                new[] { "显式回收", "消费者结束自动回收", "TTL 到期自动回收", "预算压力回收", "TTL或压力回收" }
             };
             for (int i = 0; i < 5; i++)
             {
@@ -159,6 +163,7 @@ namespace CxVisual.TestCenter.UI
             controls = Line();
             controls.Children.Add(Button("关闭新消费者", "TCT.DataLifecycle.Close", () => Execute("lifecycle.close-admission")));
             controls.Children.Add(_sweep);
+            controls.Children.Add(Button("压力扫描", "TCT.DataLifecycle.Pressure", () => Execute("lifecycle.pressure")));
             controls.Children.Add(Button("安全释放", "TCT.DataLifecycle.Release", () => Execute("lifecycle.release-eligible")));
             controls.Children.Add(Button("Copy", "TCT.DataLifecycle.Copy", () => Execute("lifecycle.copy")));
             controls.Children.Add(Button("Move", "TCT.DataLifecycle.Move", () => Execute("lifecycle.move")));
@@ -213,6 +218,8 @@ namespace CxVisual.TestCenter.UI
             {
                 case 1: return MDSDataReclamationPolicy.AfterLastConsumer;
                 case 2: return MDSDataReclamationPolicy.OnExpiry;
+                case 3: return MDSDataReclamationPolicy.OnPressure;
+                case 4: return MDSDataReclamationPolicy.OnExpiryOrPressure;
                 default: return MDSDataReclamationPolicy.Explicit;
             }
         }
@@ -276,6 +283,7 @@ namespace CxVisual.TestCenter.UI
                     ", Move=" + snap.Policy.Transfer.AllowMove +
                     "\nReclamation: AfterConsumers=" + snap.Policy.Reclamation.ReleaseAfterConsumers +
                     ", OnExpiry=" + snap.Policy.Reclamation.ReleaseOnExpiry +
+                    ", OnPressure=" + snap.Policy.Reclamation.ReleaseOnPressure +
                     "\nBudget retained: " + _heap.Budget.RetainedBytes;
             }
             if (StateChanged != null) StateChanged();
