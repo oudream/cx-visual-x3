@@ -36,6 +36,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly HashSet<string> _active = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, IDictionary<string, object>> _committed =
             new Dictionary<string, IDictionary<string, object>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _committedCharges =
+            new Dictionary<string, long>(StringComparer.Ordinal);
         private long _committedCharge;
         public MDSDataBudget Budget { get; private set; }
         private bool _closed;
@@ -91,10 +93,21 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidOperationException("未活动或已结算的调用帧：" + invocationId);
                 if (_committed.ContainsKey(invocationId))
                     throw new MDSDataException(MDSDataErrorCode.OutputConflict, "该调用帧的输出已提交：" + invocationId, invocationId, invocationId);
+                long combined = checked(_committedCharge + charge);
                 if (Budget != null) Budget.Reserve(charge);
-                try { _committed.Add(invocationId, safe); }
-                catch { if (Budget != null) Budget.Release(charge); throw; }
-                _committedCharge = checked(_committedCharge + charge); // 所有Outputs同时可见
+                try
+                {
+                    _committed.Add(invocationId, safe);
+                    _committedCharges.Add(invocationId, charge);
+                    _committedCharge = combined; // 所有Outputs同时可见
+                }
+                catch
+                {
+                    _committed.Remove(invocationId);
+                    _committedCharges.Remove(invocationId);
+                    if (Budget != null) Budget.Release(charge);
+                    throw;
+                }
             }
         }
 
@@ -129,6 +142,36 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             return TryReadOutput<object>(invocationId, outputName, out value);
         }
 
+        /// <summary>
+        /// 在确定此调用的全部合法消费者已完成、且Flow导出不再依赖它之后释放具名输出。
+        /// 只在Frame关闭后才可释放；这是显式生命周期入口，不暗自改变既有保留语义。
+        /// 返回false表示没有已提交输出，不扣除任何预算。
+        /// </summary>
+        public bool ReleaseCommittedOutputs(string invocationId)
+        {
+            if (string.IsNullOrWhiteSpace(invocationId))
+                throw new ArgumentException("调用帧ID不能为空", "invocationId");
+            lock (_gate)
+            {
+                EnsureOpen();
+                if (_active.Contains(invocationId))
+                    throw new MDSDataException(MDSDataErrorCode.Busy,
+                        "调用帧仍在运行，不能提前回收输出：" + invocationId,
+                        invocationId, invocationId);
+                if (!_committed.ContainsKey(invocationId)) return false;
+                long charge = _committedCharges[invocationId];
+                // 先结算预算，账目错误不得使输出半回收。
+                if (Budget != null) Budget.Release(charge);
+                _committed.Remove(invocationId);
+                _committedCharges.Remove(invocationId);
+                _committedCharge -= charge;
+                return true;
+            }
+        }
+
+        public int CommittedFrameCount
+        { get { lock (_gate) { EnsureOpen(); return _committed.Count; } } }
+
         internal void FrameClosed(string invocationId)
         {
             lock (_gate)
@@ -157,6 +200,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new ObjectDisposedException("MDSDataStack.RootScope");
                 _closed = true;
                 _committed.Clear();
+                _committedCharges.Clear();
                 if (Budget != null) Budget.Release(_committedCharge);
                 _committedCharge = 0;
             }
