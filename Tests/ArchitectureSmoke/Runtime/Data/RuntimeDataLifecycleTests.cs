@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -291,6 +292,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        /// <summary>
+        /// MDS纯托管基准：每次真实OpenFrame/Commit/Dispose/Release；
+        /// 仅报告逻辑载荷、GC、p95/p99，不冒充GPU/SDK/实机长时间运行成绩。
+        /// </summary>
+        internal static void RunSoak(int iterations = 20000)
+        {
+            if (iterations < 1000 || iterations > 1000000)
+                throw new ArgumentOutOfRangeException("iterations");
+            var budget = new MDSDataBudget(128 * 1024);
+            long[] ticks = new long[iterations];
+            long peak = 0;
+            int gen0 = GC.CollectionCount(0);
+            int gen1 = GC.CollectionCount(1);
+            int gen2 = GC.CollectionCount(2);
+            long before = GC.GetTotalMemory(true);
+            var watch = Stopwatch.StartNew();
+            using (var stack = new MDSDataStack(null, null, "soak", budget))
+            {
+                for (int index = 0; index < iterations; index++)
+                {
+                    long began = Stopwatch.GetTimestamp();
+                    string id = "frame." + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    using (var frame = stack.OpenFrame(id, stack.RootScope.CreateChild(id),
+                        new Dictionary<string, object>(),
+                        new Dictionary<string, Type> { { "Pixels", typeof(byte[]) } }))
+                    {
+                        frame.Data.Return("Pixels", new byte[8192]);
+                        frame.CommitOutputs();
+                    }
+                    long live = budget.RetainedBytes;
+                    if (live > peak) peak = live;
+                    if (!stack.ReleaseCommittedOutputs(id) ||
+                        budget.RetainedBytes != 0 || stack.CommittedFrameCount != 0)
+                        throw new InvalidOperationException(
+                            "MDS_SOAK_LEAK frame=" + index + " bytes=" + budget.RetainedBytes);
+                    ticks[index] = Stopwatch.GetTimestamp() - began;
+                }
+            }
+            watch.Stop();
+            long after = GC.GetTotalMemory(true);
+            Array.Sort(ticks);
+            double unit = 1000000.0 / Stopwatch.Frequency;
+            double p95 = ticks[(int)Math.Ceiling(iterations * 0.95) - 1] * unit;
+            double p99 = ticks[(int)Math.Ceiling(iterations * 0.99) - 1] * unit;
+            double rate = iterations / Math.Max(0.001, watch.Elapsed.TotalSeconds);
+            Console.WriteLine("PASS MDS lifecycle SOAK iterations=" + iterations +
+                " throughput/s=" + rate.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) +
+                " p95_us=" + p95.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
+                " p99_us=" + p99.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
+                " peak_logical_bytes=" + peak +
+                " retained_after=0" +
+                " gc0=" + (GC.CollectionCount(0) - gen0) +
+                " gc1=" + (GC.CollectionCount(1) - gen1) +
+                " gc2=" + (GC.CollectionCount(2) - gen2) +
+                " managed_delta_bytes=" + (after - before));
+            Check(peak <= 8192, "逐帧消费后逻辑载荷峰值超出单帧数据预算");
         }
 
         private static void Check(bool condition, string reason)
