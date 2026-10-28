@@ -26,6 +26,17 @@ namespace CxVisual.TestCenter.UI
         private long _sphereEpoch;
         public CT3DSphereFitResult LastSphereFit {get;private set;}
         public int SurfaceDisplayedPointCount {get{return _scene.SurfacePreviewPointCount;}}
+        private IReadOnlyList<Vector3> SurfacePointsForPresentation
+        {
+            get
+            {
+                if(_state==null || !_surfaceSceneItemId.HasValue || _surfacePreviewPoints==null)
+                    return null;
+                MVI3DSceneItem item;
+                return _state.Scene3D.TryGet(_surfaceSceneItemId.Value,out item) && item.Visible
+                    ? _surfacePreviewPoints:null;
+            }
+        }
 
         private void CancelSurfaceAnalysis()
         {
