@@ -93,9 +93,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     receivedLeft.SequenceEqual(new byte[]{2,4,6,8}) &&
                     receivedRight.SequenceEqual(new byte[]{1,3,5}),
                     "独立新共享区未恢复双向完整通信");
-                left.Close();right.Close();
+                // 正常关闭清标记：A保持打开时，同名B重新Open必须能够正常收发。
+                right.Close();
+                arrivedLeft.Reset();
+                using(var restarted=new FTRSharedMemoryChannel(
+                    Configuration("shm-fresh-reopen-b",fresh,FTRSharedMemorySide.B)))
+                using(var reopenedReceived=new ManualResetEventSlim())
+                {
+                    byte[] observed=null;
+                    restarted.Received+=message=>{observed=message.Data;reopenedReceived.Set();};
+                    restarted.Open();
+                    left.Send(new byte[]{9,8,7});
+                    restarted.Send(new byte[]{6,5,4});
+                    Check(reopenedReceived.Wait(6000) && arrivedLeft.Wait(6000) &&
+                        observed.SequenceEqual(new byte[]{9,8,7}) &&
+                        receivedLeft.SequenceEqual(new byte[]{6,5,4}),
+                        "正常Close后同Side重新Open不得被误判为异常退出");
+                    restarted.Close();
+                }
+                left.Close();
             }
-            Console.WriteLine("F17.SHM_CRASH_PASS abandoned side rejects old region; fresh session duplex restored");
+            Console.WriteLine("F17.SHM_CRASH_PASS abandoned side rejects old region; fresh session duplex and clean side reopen restored");
         }
     }
 }
