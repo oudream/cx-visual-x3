@@ -32,7 +32,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             BackoffAndLimit();
             RealTcpRecovery();
-            Console.WriteLine("F17.RECONNECT_PASS configured retries, optional fault recovery, OS TCP reconnect and no command replay");
+            StopWithinRecoveryCallbacks();
+            Console.WriteLine("F17.RECONNECT_PASS configured retries, optional fault recovery, OS TCP reconnect, callback-safe stop and no command replay");
         }
         private static void BackoffAndLimit()
         {
@@ -71,6 +72,58 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "重试达到上限应保留最后故障并拒绝继续尝试");
                 control.StopAsync().GetAwaiter().GetResult();
                 c.Close();
+            }
+        }
+        /// <summary>恢复任务同步事件中关闭维护不能等待自身；外部停止仍须完成清理。</summary>
+        private static void StopWithinRecoveryCallbacks()
+        {
+            var failedConfig=new FTRVirtualChannelConfiguration {
+                Id="reconnect-flaky",ReconnectMaxAttempts=4,
+                ReconnectInitialDelayMs=10,ReconnectMaxDelayMs=20,ReconnectBackoff=2
+            };
+            using(var channel=new FlakyChannel(1))
+            using(var controller=new FTRReconnectController(channel,failedConfig))
+            using(var callbackDone=new ManualResetEventSlim())
+            {
+                Exception callbackError=null;
+                controller.AttemptFailed+=(attempt,error)=>
+                {
+                    try {controller.StopAsync().GetAwaiter().GetResult();}
+                    catch(Exception ex) {callbackError=ex;}
+                    finally {callbackDone.Set();}
+                };
+                controller.Start();
+                Check(callbackDone.Wait(3000),"失败回调内StopAsync不得自等待死锁");
+                Check(callbackError==null,"失败回调内停止不得抛出异常: "+callbackError);
+                // 其它线程调用应等待工作任务及取消源的最终清理。
+                controller.StopAsync().GetAwaiter().GetResult();
+                Check(channel.Opens==1 && !controller.Snapshot().Active,
+                    "失败回调请求停止后不得再打开下一次连接");
+                channel.Close();
+            }
+
+            var successConfig=new FTRVirtualChannelConfiguration {
+                Id="reconnect-flaky",ReconnectMaxAttempts=2,
+                ReconnectInitialDelayMs=10,ReconnectMaxDelayMs=20,ReconnectBackoff=2
+            };
+            using(var channel=new FlakyChannel(0))
+            using(var controller=new FTRReconnectController(channel,successConfig))
+            using(var callbackDone=new ManualResetEventSlim())
+            {
+                Exception callbackError=null;
+                controller.Reconnected+=()=>
+                {
+                    try {controller.Dispose();}
+                    catch(Exception ex) {callbackError=ex;}
+                    finally {callbackDone.Set();}
+                };
+                controller.Start();
+                Check(callbackDone.Wait(3000),"成功回调内Dispose不得自等待死锁");
+                Check(callbackError==null,"成功回调内Dispose不得抛出异常: "+callbackError);
+                controller.StopAsync().GetAwaiter().GetResult();
+                Check(channel.Opens==1 && !controller.Snapshot().Active,
+                    "成功回调释放后不得重新调度恢复");
+                channel.Close();
             }
         }
         private static void RealTcpRecovery()
