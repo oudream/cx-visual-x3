@@ -54,7 +54,7 @@ namespace CxVisual.Studio
             var loadEffective=new Button {
                 Content="读取当前生效配置",Padding=new Thickness(12,5,12,5),
                 Margin=new Thickness(3,1,6,1),
-                ToolTip="仅在点击时由原MHS读取当前Scope的Effective版本；遵守配置授权，不保存/Apply、不运行设备"};
+                ToolTip="只读取该Scope已经持久化的MHS Effective；尚无配置时提示先配置，不创建默认数据、不Apply或运行设备"};
             System.Windows.Automation.AutomationProperties.SetAutomationId(loadEffective,
                 "Studio.ModuleCenter.LoadEffective");
             var effectiveStatus=new TextBlock {
@@ -71,6 +71,9 @@ namespace CxVisual.Studio
                 }
                 catch(UnauthorizedAccessException) {
                     effectiveStatus.Text="当前身份没有所选Scope的Effective配置读取权限。";
+                }
+                catch(FileNotFoundException) {
+                    effectiveStatus.Text="该Scope还没有持久化的Vision配置；请先打开工程专业配置、完成验证和保存，再读取Effective。";
                 }
                 catch(Exception ex) {
                     effectiveStatus.Text="生效配置未加载："+ex.Message+
@@ -120,7 +123,7 @@ namespace CxVisual.Studio
             {
                 // Authorized capture and subsequent version check stay policy-bound.
                 var section=service.Authorize(_studioConfigPrincipal,_studioConfigAccessPolicy)
-                    .Open<CxVisionInspectionOptions>(identity);
+                    .OpenExisting<CxVisionInspectionOptions>(identity);
                 provider=CxVisionThresholdProvider.FromEffectiveConfiguration(section,_simulation);
                 version=section.Revision.Effective;
             }
@@ -128,7 +131,7 @@ namespace CxVisual.Studio
             {
                 // Raw service is used only by Studio's trusted local host in the
                 // same manner as the existing doc.config when no IAM is installed.
-                var section=service.Open<CxVisionInspectionOptions>(identity);
+                var section=service.OpenExisting<CxVisionInspectionOptions>(identity);
                 provider=CxVisionThresholdProvider.FromEffectiveConfiguration(section,_simulation);
                 version=section.EffectiveVersion;
             }
