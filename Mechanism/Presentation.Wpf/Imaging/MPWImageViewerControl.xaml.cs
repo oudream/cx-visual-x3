@@ -1802,12 +1802,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private MVIImageOverlayItem ApplyLayerDefaultColor(MVIImageOverlayItem item)
         {
             if(item==null)throw new ArgumentNullException("item");
-            int argb;
-            // 只有使用构造函数默认色的新增WPF图元采用用户层色。
-            // 保留算法证据/导入图元显式ARBG，不覆盖其专业语义。
-            if(!item.IsLocked && item.Argb==unchecked((int)0xffff4040) &&
-               _overlayLayerColors.TryGetValue(item.Layer,out argb))
-                return item.WithStyle(argb,item.LineWidth);
+            // 只有使用构造函数默认ARGB的新增图元采用本Viewer的图层颜色。
+            // 显式非默认颜色保持不变；未编辑色板前也与显示的默认色块一致。
+            if(!item.IsLocked && item.Argb==unchecked((int)0xffff4040))
+                return item.WithStyle(GetOverlayLayerColor(item.Layer),item.LineWidth);
             return item;
         }
         public MVIImageOverlayItem AddOverlay(MVIImageOverlayItem item)
