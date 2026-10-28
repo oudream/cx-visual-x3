@@ -101,3 +101,17 @@ GoF：Observer驱动Session/Store变更；LinePair按State思想；工程Command
 | D04-09 | Gray16显示调窗前后原像素不变、Mask锚定正确 |
 
 证据分级：已有Windows WPF合成控件smoke不等于物理鼠标/DPI及现场机台验收。
+
+## 9. 交互场景与正式工程三类所有权（架构深化）
+
+Vision Scene先定义为**工作台投影职责**，不是必须新建的SceneDatabase。图像/Mask/产物来自FIM+Vision Artifact，临时ROI来自MVIOverlayStore，正式ROI/标注来自MEM/MRC，选中和Viewport由MVI持有，MPW负责WPF渲染。一个ResultItem可投影多个Overlay；同一正式ROI可显示在两个Pane，但不复制MEM对象身份。
+
+| 操作 | 合法写入方 | 禁止行为 |
+|---|---|---|
+| 调窗、Zoom、切图 | MVI会话/视口 | 修改原图、Result证据或工程Revision |
+| 多阶段ROI草稿与临时提交 | MVI状态及OverlayStore | 在WPF MouseMove中产生工程事务 |
+| 检测轮廓高亮 | Vision Result→MVI显示投影 | 复制ResultId为MRC稳定Id |
+| 用户确认保存ROI | MEM/MRC/MTC事务 | OverlayStore.AddRange冒充Undo/工程Commit |
+| 多Pane同源图 | 各Viewport对SourceRef投影 | 屏幕DIP直接作为原图/物理坐标 |
+
+需要独立ToolContext或SceneProjection时，先证明两个以上真实工具/宿主存在可复用变化点；否则继续扩展现有MVI状态而非增建空Facade。关键反证是失去鼠标捕获/Esc/切图不会遗留半提交，双Pane坐标/DPI一致，临时Overlay可清除但正式资源与历史Run不受影响。
