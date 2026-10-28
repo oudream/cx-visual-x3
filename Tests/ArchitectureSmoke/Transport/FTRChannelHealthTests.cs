@@ -35,7 +35,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ClassifiedDiagnostics();
             ChannelLifecycleAndHealth();
             ObserverIsolation();
-            Console.WriteLine("F17.HEALTH_PASS typed failure, stage/scope, observer isolation, live rates and channel state");
+            HttpClientAdmissionWithoutNetwork();
+            Console.WriteLine("F17.HEALTH_PASS typed failure, stage/scope, observer isolation, no-reader send budgets, live rates and channel state");
         }
 
         private static void ClassifiedDiagnostics()
@@ -69,6 +70,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(end.Errors==4 && end.LastFailure.Kind==FTRFailureKind.Timeout &&
                 end.LastFailure.Stage=="Close" && end.LastError=="timed out",
                 "错误计数及最后一次故障详情");
+        }
+
+        // HTTP Client Open仅创建HttpClient，不发送请求；拒绝必须发生在网络/快照之前。
+        private static void HttpClientAdmissionWithoutNetwork()
+        {
+            var config=new FTRHttpClientChannelConfiguration {
+                Id="f17-http-admission",Url="http://127.0.0.1:1/",
+                SendQueueCapacity=1,SendByteBudget=16
+            };
+            using(var channel=new FTRHttpClientChannel(config))
+            {
+                channel.Open();
+                bool refused=false;
+                try
+                {
+                    channel.SendAsync(new byte[17],new FTRSubChannelAddress(channel.Id),
+                        CancellationToken.None).GetAwaiter().GetResult();
+                }
+                catch(InvalidOperationException){refused=true;}
+                var d=channel.Diagnostics;
+                Check(refused && d.RejectedSends==1 && d.PendingSendBytes==0 &&
+                    d.ReceiveQueue==null && d.LastFailure.Kind==FTRFailureKind.ResourceExhausted &&
+                    d.LastFailure.Stage=="SendAdmission",
+                    "未使用接收池的HTTP Client仍应先于快照和网络执行有界发送入场");
+                channel.Close();
+            }
         }
 
         private static void ObserverIsolation()
