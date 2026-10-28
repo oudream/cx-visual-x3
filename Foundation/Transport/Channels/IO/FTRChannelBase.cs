@@ -178,13 +178,19 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             }
         }
         protected virtual bool SupportsEmptySend { get { return false; } }
-        public async Task SendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
+        public Task SendAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken ct)
+        {return SendAsync(bytes,0,bytes==null?0:bytes.Length,address,ct);}
+
+        /// <summary>异步切片发送只复制一次；接纳预算覆盖克隆后整个待执行期。</summary>
+        public async Task SendAsync(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress address,CancellationToken ct)
         {
-            if (bytes == null || (bytes.Length == 0 && !SupportsEmptySend)) throw new ArgumentException("数据不能为空");
-            if (address == null || address.ChannelId != Id) throw new ArgumentException("通道身份不匹配");
+            if(bytes==null||offset<0||count<0||offset>bytes.Length-count||
+                (count==0&&!SupportsEmptySend))throw new ArgumentException("发送切片无效");
+            if(address==null||address.ChannelId!=Id)
+                throw new ArgumentException("通道身份不匹配");
             ct.ThrowIfCancellationRequested();
-            // 容量拒绝发生在快照分配之前，也必须进入统一故障诊断。
-            try{EnterSend(bytes.Length,true);}
+            try{EnterSend(count,true);}
             catch(FTRBudgetExceededException error)
             {
                 _diagnostics.RecordError(error,"SendAdmission",FTRFaultScope.Operation);
@@ -193,15 +199,20 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             byte[] owned=null;
             try
             {
-                try{owned=(byte[])bytes.Clone();await OnSendAsync(owned,address,ct).ConfigureAwait(false);}
-                finally{ExitSend(bytes.Length,true);}
-                _diagnostics.RecordSend(owned.Length);
-                Record(FTRFrameDirection.Tx, owned, null, null);
+                try
+                {
+                    owned=new byte[count];
+                    Buffer.BlockCopy(bytes,offset,owned,0,count);
+                    await OnSendAsync(owned,address,ct).ConfigureAwait(false);
+                }
+                finally{ExitSend(count,true);}
+                _diagnostics.RecordSend(count);
+                Record(FTRFrameDirection.Tx,owned,null,null);
             }
-            catch (Exception e)
+            catch(Exception error)
             {
-                _diagnostics.RecordError(e,"Send",FTRFaultScope.Operation);
-                Record(FTRFrameDirection.Error, owned, null, e.Message);
+                _diagnostics.RecordError(error,"Send",FTRFaultScope.Operation);
+                Record(FTRFrameDirection.Error,owned,null,error.Message);
                 throw;
             }
         }
