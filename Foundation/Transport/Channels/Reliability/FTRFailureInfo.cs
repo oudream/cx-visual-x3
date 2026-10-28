@@ -42,11 +42,13 @@ namespace CxVisual.Foundation.Transport
         public FTRFaultScope Scope { get; private set; }
         public string Stage { get; private set; }
         public string Message { get; private set; }
+        /// <summary>故障所属请求/子客户端地址，携带Generation，非认证用户身份。</summary>
+        public FTRSubChannelAddress Address {get;private set;}
         public DateTime TimestampUtc { get; private set; }
 
-        internal FTRFailureInfo(FTRFailureKind kind,FTRFaultScope scope,string stage,string message)
+        internal FTRFailureInfo(FTRFailureKind kind,FTRFaultScope scope,string stage,string message,FTRSubChannelAddress address=null)
         {
-            Kind=kind;Scope=scope;Stage=stage;Message=message;TimestampUtc=DateTime.UtcNow;
+            Kind=kind;Scope=scope;Stage=stage;Message=message;Address=address;TimestampUtc=DateTime.UtcNow;
         }
     }
 }

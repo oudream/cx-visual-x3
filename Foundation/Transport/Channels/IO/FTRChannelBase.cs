@@ -342,7 +342,12 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         protected void RecordReceiveError(Exception error)
         {RecordReceiveError(error,FTRFaultScope.Channel);}
         protected void RecordReceiveError(Exception error,FTRFaultScope scope)
-        {_diagnostics.RecordError(error,"Receive",scope);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
+        {RecordReceiveError(error,scope,null);}
+        protected void RecordReceiveError(Exception error,FTRFaultScope scope,FTRSubChannelAddress address)
+        {
+            _diagnostics.RecordError(error,"Receive",scope,address);
+            Record(FTRFrameDirection.Error,new byte[0],null,error.Message,0,-1,address);
+        }
         protected void RecordObserverError(Exception error)
         {_diagnostics.RecordError(error,"Observer",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
         private void DeliverBuffer(FTRReceiveBuffer buffer)

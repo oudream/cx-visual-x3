@@ -25,9 +25,9 @@ public sealed class FTRChannelDiagnostics
         }
         public void RecordError(Exception error)
         { RecordError(error,"Transport",FTRFaultScope.Channel); }
-        public void RecordError(Exception error,string stage,FTRFaultScope scope)
+        public void RecordError(Exception error,string stage,FTRFaultScope scope,FTRSubChannelAddress address=null)
         {
-            FTRFailureInfo failure=FTRFailureClassifier.Classify(error,stage,scope);
+            FTRFailureInfo failure=FTRFailureClassifier.Classify(error,stage,scope,address);
             lock (_gate)
             {
                 _errors++;

@@ -8,7 +8,7 @@ namespace CxVisual.Foundation.Transport
     /// <summary>仅解释传输异常事实，不代替恢复策略或Protocol判断业务请求能否重试。</summary>
     internal static class FTRFailureClassifier
     {
-        internal static FTRFailureInfo Classify(Exception error,string stage,FTRFaultScope scope)
+        internal static FTRFailureInfo Classify(Exception error,string stage,FTRFaultScope scope,FTRSubChannelAddress address=null)
         {
             if(error==null)throw new ArgumentNullException(nameof(error));
             Exception current=error;
@@ -58,7 +58,7 @@ namespace CxVisual.Foundation.Transport
                 kind=FTRFailureKind.TransportIO;
             return new FTRFailureInfo(kind,scope,string.IsNullOrWhiteSpace(stage)?"Transport":stage,
                 // 不持有Exception引用；消息只用于诊断，不作为业务协议的输入。
-                error.Message.Length>1024 ? error.Message.Substring(0,1024) : error.Message);
+                error.Message.Length>1024 ? error.Message.Substring(0,1024) : error.Message,address);
         }
     }
 }
