@@ -93,7 +93,7 @@ namespace CxVisual.Professional.Vision
                     if (publishArtifacts)
                         ctx.Data.Adapters.Register<FIMImageBuffer>(null,
                             immutable: true, kind: FDTDataKind.Image,
-                            sizeEstimator: image => checked((long)image.Stride * image.Height));
+                            sizeEstimator: imagePixels => checked((long)imagePixels.Stride * imagePixels.Height));
                     ctx.Data.Adapters.Register<CxVisionInspectionResult>(
                         CopyResult, kind: FDTDataKind.Object,
                         sizeEstimator: result => checked(128L + result.Regions.Count * 64L));
