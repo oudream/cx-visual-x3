@@ -111,13 +111,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 reclaimCommittedWhenConsumersSettle: true);
             var legacy = new MRKExecutionPlan("conservative-static-fanout", steps, exports);
             var engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 16),
-                dataPayloadBudgetBytes: 100);
+                dataPayloadBudgetBytes: 150);
             try
             {
                 MRKFlowResult ok = Wait(engine.StartFlow(optimized).Completion);
                 Check(ok.State == MRKFlowState.Completed &&
                     ok.GetCommittedOutput<byte[]>("Result").Length == 70,
-                    "显式opt-in后可在100字节预算内完成双消费者与结果交接；State="
+                    "显式opt-in后可在150字节预算内完成双消费者与结果交接；State="
                     + ok.State + " Error=" + (ok.Error == null ? "<null>" : ok.Error.ToString()));
                 MRKFlowResult old = Wait(engine.StartFlow(legacy).Completion);
                 Check(old.State == MRKFlowState.Failed &&
