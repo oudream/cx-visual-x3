@@ -154,6 +154,10 @@ namespace CxVisual.Foundation.Transport
             FTRSubChannelAddress address=received.Address;
             if(address==null||address.ChannelId!=channel.Id)
                 throw new ArgumentException("请求来源不属于当前Channel","received");
+            // 长驻Channel重开后，同一ChannelId不能使旧Session请求投递到新物理会话。
+            // Guid.Empty代表旧第三方Provider未提供会话来源，维持兼容行为。
+            if(received.SessionId!=Guid.Empty && received.SessionId!=channel.SessionId)
+                throw new InvalidOperationException("接收请求来自旧Session，禁止向新物理会话回复");
             cancellation.ThrowIfCancellationRequested();
             var requestResponse=channel as IFTRRequestResponseIO;
             if(requestResponse!=null)
