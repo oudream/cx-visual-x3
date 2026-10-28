@@ -22,7 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Modules\PVCComputeModuleContracts.cs"/><Compile Include="Modules\PVCComputeModuleOptions.cs"/><Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="Modules\PVCComputeModuleConfiguration.cs" /><Compile Include="CxVisionInspectionOptions.cs"/><Compile Include="CxVisionInspectionRuntime.cs"/><Compile Include="CxVisionDataFlow.cs"/><Compile Include="CxVisionThresholdProvider.cs"/><Compile Include="CxVisionImageInterop.cs"/></ItemGroup>
+    <Compile Include="Modules\PVCComputeModuleConfiguration.cs" /><Compile Include="CxVisionInspectionOptions.cs"/><Compile Include="CxVisionInspectionRuntime.cs"/><Compile Include="CxVisionDataFlow.cs"/><Compile Include="CxVisionThresholdProvider.cs"/><Compile Include="CxVisionImageInterop.cs"/><Compile Include="CxVisionRunSummary.cs"/></ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
