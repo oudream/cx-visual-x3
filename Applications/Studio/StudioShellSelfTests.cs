@@ -165,6 +165,15 @@ namespace CxVisual.Studio
                         x.Id==CxVisionThresholdProvider.CapabilityId&&x.Resolved&&
                         x.Kind==CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute),
                         "加载MHS有效配置后不应丢失MOC/MFM软件计算能力");
+                    Button addFlow=actions.FirstOrDefault(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.AddToFlow");
+                    Assert(addFlow!=null,"模块中心缺少正式MOL能力加入入口");
+                    int beforeRejectedAdd=window.StudioEngineeringRevision;
+                    addFlow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,addFlow));
+                    Assert(window.StudioEngineeringRevision==beforeRejectedAdd&&
+                        effectiveStatus.Text.Contains("请先选中"),
+                        "未选择真实Compute能力时不应新增MEM节点");
                     flow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,flow));
                     Assert(window.GetStudioContentIds().Contains("doc.flow"),
                         "模块中心流程入口没有打开原MOL Studio主流程");
