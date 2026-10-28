@@ -238,3 +238,9 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | UI-UX-05 / V2D-05,26 | MVI.SetTone一次设置所有显示参数只发一个Changed；幂等无通知；非法NaN完整拒绝且无部分状态发布，随后Reset可以恢复 | 已编码G2；ArchitectureSmoke Windows待结果 |
 
 **匹配工作流**：[Imaging #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082)、[TestCenter #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116)；首次登记为in_progress，尚不可写G3/G4/G5通过。后续需要核实WPF像素PNG与Auto Contrast失败日志、最终用户手工完整操作、工业大图性能，不得将单张截图当作验收完成。
+
+### 16.1 固定SHA执行结果与新Gray8反证
+
+- `9394e3b0d8c88bdaad4483460307daf3bb41eea5`：[Imaging Windows #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082) **success**：VS/.NET48 x64全项目构建、结构与依赖验证、真实WPF ImageViewer/PNG roundtrip、FIM/MVI专项/默认回归通过。此为UI-UX-01～05在该固定SHA的实际自动运行证据；不等于人工视觉体验或工业G6。
+- 同SHA [TestCenter Windows #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116) **failure**：步骤`Verify real Windows UI Automation user workflow`报Channel Connectivity `viewerPresent=False`、TX/RX/error无证据；未见本轮二维图窗编译/PNG测试阻断。须由Channel/TestCenter Owner核查，不修改或静默跳过。
+- **UI-UX-06**：Gray8原图重新载入后`WindowHigh=255`而非65535，真实点按Window并导出PNG黑0白255，原图255保持；新图同步Tone/CheckBox/Slider避免已输入非法旧值继续残留。代码 [884b75c](https://github.com/oudream/cx-visual-x3/commit/884b75cc1a9e1002f7a59fecc884f1635fe0863e)、[3661cca](https://github.com/oudream/cx-visual-x3/commit/3661ccad0bcbd882499ac261bdecf97ad3440079)。对应[Imaging #40683998349](https://github.com/oudream/cx-visual-x3/actions/runs/40683998349)，初次登记in_progress，尚未提升此新增项G3/G4。
