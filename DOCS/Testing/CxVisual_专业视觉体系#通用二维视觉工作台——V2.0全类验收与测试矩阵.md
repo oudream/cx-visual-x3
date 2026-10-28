@@ -244,3 +244,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - `9394e3b0d8c88bdaad4483460307daf3bb41eea5`：[Imaging Windows #40683606082](https://github.com/oudream/cx-visual-x3/actions/runs/40683606082) **success**：VS/.NET48 x64全项目构建、结构与依赖验证、真实WPF ImageViewer/PNG roundtrip、FIM/MVI专项/默认回归通过。此为UI-UX-01～05在该固定SHA的实际自动运行证据；不等于人工视觉体验或工业G6。
 - 同SHA [TestCenter Windows #40683606116](https://github.com/oudream/cx-visual-x3/actions/runs/40683606116) **failure**：步骤`Verify real Windows UI Automation user workflow`报Channel Connectivity `viewerPresent=False`、TX/RX/error无证据；未见本轮二维图窗编译/PNG测试阻断。须由Channel/TestCenter Owner核查，不修改或静默跳过。
 - **UI-UX-06**：Gray8原图重新载入后`WindowHigh=255`而非65535，真实点按Window并导出PNG黑0白255，原图255保持；新图同步Tone/CheckBox/Slider避免已输入非法旧值继续残留。代码 [884b75c](https://github.com/oudream/cx-visual-x3/commit/884b75cc1a9e1002f7a59fecc884f1635fe0863e)、[3661cca](https://github.com/oudream/cx-visual-x3/commit/3661ccad0bcbd882499ac261bdecf97ad3440079)。对应[Imaging #40683998349](https://github.com/oudream/cx-visual-x3/actions/runs/40683998349)，初次登记in_progress，尚未提升此新增项G3/G4。
+
+## 17. WinForms交互等价专项：WW/WL滑条、自动取窗、灰阶与选色（2026-10-28）
+
+| 用例 | 真实正反测试约束 | 当前状态 |
+|---|---|---|
+| UI-UX-07 | 取消显示页重复4彩色分类和4固定色块，保留可访问工具选择及各专业图元工具；图层勾选只影响可见性 | WPF反例源码G2 |
+| UI-UX-08 | Gray16 4×4样本窗宽15、窗位8.5产生原值10像素的有效灰度显示；非法数字必须拒绝、旧参数不被部分修改 | WPF与原像素反例源码G2 |
+| UI-UX-09 | WPF真实窗宽/窗位滑条设置12、6并用Thumb.DragCompleted提交，实际MVI WindowWidth/Center同步；原像素保持 | WPF事件反例源码G2 |
+| UI-UX-10 | 框选ROI(0..1,0..1)，真实统计1..6得到窗宽5、窗位3.5；关闭ROI后全图自动拉伸；需补多边形/锁定/大图性能 | WPF ROI专项源码G2 |
+| UI-UX-11 | Gamma滑条Thumb释放后变更MVI Gamma=2.5，亮度UI 26级映射26/255，非法Gamma保留旧值；反色及复位正常；Gray8换图后滑条/窗范围无旧状态 | WPF专项源码G2 |
+| UI-UX-12 | 区域页选中图元有真正Windows系统颜色对话框入口，取消不改变MVI，对象颜色/线宽/标签仍由原MVI属性流程提交 | 对话框接入源码G2，人工验收待证据 |
+| CI-UX-17 | [Imaging #40687637635](https://github.com/oudream/cx-visual-x3/actions/runs/40687637635) / [TestCenter #40687637624](https://github.com/oudream/cx-visual-x3/actions/runs/40687637624)，固定SHA`e77cae8d91d14f2f54358c3c912dc93605029745`；先前92986dc的Windows失败是测试局部重名CS0128，已改源码，不等于已重新运行通过 | 初次登记queued/in_progress |
+
+只改变展示/交互；不把Gamma、亮度、ROI自动取窗结果当成原始像素或算法Artifact。Windows截图、实际鼠标拖动和高位深大图性能仍需另证。
