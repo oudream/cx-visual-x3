@@ -124,7 +124,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(childLine.Wait(120000) && childLine.Result.StartsWith("PIPE_CHILD_PASS", StringComparison.Ordinal),
                             "child did not verify full stream");
                         child.StandardInput.WriteLine("release"); child.StandardInput.Flush();
-                        Check(child.WaitForExit(10000) && child.ExitCode == 0, "child exit failure");
+                        Check(child.WaitForExit(10000) && child.ExitCode == 0,
+                             "child exit failure; exit=" + (child.HasExited ? child.ExitCode.ToString() : "timeout") +
+                             "; stderr=" + (child.HasExited ? errors.GetAwaiter().GetResult() : "child still running"));
                         Check(errors.GetAwaiter().GetResult().Length == 0, "child stderr not empty");
                         var snapshot = server.Diagnostics;
                         Check(snapshot.ReceiveQueue.AllocatedBytes <= 262144 && snapshot.SentBytes == bytes && snapshot.ReceivedBytes == bytes &&

@@ -43,7 +43,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void BuiltInsAndPair()
         {
             var factory = new FTRChannelFactory();
-            Check(factory.Discover().Length == 14 && factory.Discover().Select(x => x.TypeId).Distinct().Count() == 14,
+            Check(factory.Discover().Length == 15 && factory.Discover().Select(x => x.TypeId).Distinct().Count() == 15,
                 "内置发现必须保持原12类型");
             foreach (FTRChannelKind kind in Enum.GetValues(typeof(FTRChannelKind)))
             {
@@ -86,7 +86,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var config = Config();
                 using (var channel = factory.Create(config))
                 {
-                    Check(factory.Discover().Length == 15, "扩展发现");
+                    Check(factory.Discover().Length == 16, "扩展发现");
                     Reject<NotSupportedException>(() => new FTRChannelFactory().DescribeAttached(config, channel), "跨Factory伪造");
                     var changed = Config(); changed.SendByteBudget++;
                     Reject<NotSupportedException>(() => factory.DescribeAttached(changed, channel), "配置改变不能冒充原凭据");

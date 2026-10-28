@@ -43,7 +43,7 @@ jobs:
           $output | ForEach-Object { Write-Host $_ }
           if ($status -ne 0) { throw "F17 Channel execution failed: $status" }
           $joined = $output -join "`n"
-          if ($joined -notmatch 'CHANNEL.CONNECTOR: 14 built-in FTR kinds' -or
+          if ($joined -notmatch 'CHANNEL.CONNECTOR: 15 built-in FTR kinds' -or
               $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback' -or
               $joined -notmatch 'F17.PIPE_BULK PASS' -or $joined -notmatch 'F17.PIPE_ADMISSION PASS' -or
               $joined -notmatch 'F17.NOTIFICATION PASS') {

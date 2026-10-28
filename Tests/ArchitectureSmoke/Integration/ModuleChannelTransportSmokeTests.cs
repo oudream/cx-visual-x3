@@ -103,6 +103,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             WebSocketConfigSmoke();
             WebSocketLoopback();
             WebSocketServerLoopback();
+            SharedMemoryLoopback();
             ReplayFileLoopback();
             MulticastConfigurationSmoke();
             HttpLoopback();
@@ -135,7 +136,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRReplayChannelConfiguration { Id = "matrix-replay" },
                 new FTRUdpMulticastChannelConfiguration { Id = "matrix-multicast" },
                 new FTRHttpServerChannelConfiguration { Id = "matrix-http-server" },
-                new FTRWebSocketServerChannelConfiguration { Id = "matrix-ws-server" }
+                new FTRWebSocketServerChannelConfiguration { Id = "matrix-ws-server" },
+                new FTRSharedMemoryChannelConfiguration { Id = "matrix-shm" }
             };
             IFTRChannel[] channels = {
                 virtualPair[0],
@@ -151,7 +153,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRReplayChannel(configurations[10]),
                 new FTRUdpMulticastChannel(configurations[11]),
                 new FTRHttpServerChannel(configurations[12]),
-                new FTRWebSocketServerChannel(configurations[13])
+                new FTRWebSocketServerChannel(configurations[13]),
+                new FTRSharedMemoryChannel(configurations[14])
             };
             Check(configurations.Length == Enum.GetValues(typeof(FTRChannelKind)).Length - 1,
                 "所有正式FTR ChannelKind必须都有装配测试（Custom没有内置Provider）");
@@ -183,7 +186,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (NotSupportedException) { wrongTypeRejected = true; }
             Check(wrongTypeRejected, "配置与实际Channel类型不匹配必须拒绝");
             // LengthFrame仅适用于ByteStream；HTTP/WebSocket/Replay Message不得绕过协议能力门禁。
-            foreach (int i in new[] { 6, 9, 10, 12, 13 })
+            foreach (int i in new[] { 6, 9, 10, 12, 13, 14 })
             {
                 MCNConnectorConfiguration invalid = new MCNConnectorConfiguration {
                     DisplayName = "错误协议能力拒绝",
@@ -213,7 +216,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch (NotSupportedException) { noProvider = true; }
             Check(noProvider, "Custom未注册Provider不能装配成功");
-            Console.WriteLine("CHANNEL.CONNECTOR: 14 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
+            Console.WriteLine("CHANNEL.CONNECTOR: 15 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
         }
 
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
@@ -377,6 +380,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(server.SnapshotSubChannels().Length==0,"WebSocket Server停止后必须移除所有真实对端");
             }
             Console.WriteLine("F17.WEBSOCKET_SERVER PASS: RFC6455 OS loopback, multi-peer address and close");
+        }
+
+
+        private static void SharedMemoryLoopback()
+        {
+            string shared="f17_"+Guid.NewGuid().ToString("N");
+            var configA=new FTRSharedMemoryChannelConfiguration {
+                Id="shared-a",MapName=shared,Side=FTRSharedMemorySide.A,
+                Slots=4,SlotBytes=4096,ReceiveBufferBytes=4096,ReceiveByteBudget=16384,QueueCapacity=4
+            };
+            var configB=new FTRSharedMemoryChannelConfiguration {
+                Id="shared-b",MapName=shared,Side=FTRSharedMemorySide.B,
+                Slots=4,SlotBytes=4096,ReceiveBufferBytes=4096,ReceiveByteBudget=16384,QueueCapacity=4
+            };
+            using(var a=new FTRSharedMemoryChannel(configA))
+            using(var b=new FTRSharedMemoryChannel(configB))
+            using(var arrivedA=new ManualResetEventSlim())
+            using(var arrivedB=new ManualResetEventSlim())
+            {
+                byte[] message=new byte[3*4096+17];for(int i=0;i<message.Length;i++)message[i]=(byte)(i%251);
+                var received=new List<byte>();object gate=new object();
+                b.Received += block=>{lock(gate){received.AddRange(block.Data);if(received.Count>=message.Length)arrivedB.Set();}};
+                a.Received += block=>{if(block.Data.SequenceEqual(new byte[]{23,42}))arrivedA.Set();};
+                a.Open();b.Open();
+                a.SendBuffer(message,0,message.Length,CancellationToken.None);
+                Check(arrivedB.Wait(5000),"SharedMemory必须按有界槽位传输超过单槽的完整字节序列");
+                lock(gate)Check(received.SequenceEqual(message),"共享环必须保持顺序、数据完整性及无额外字节");
+                b.Send(new byte[]{23,42});Check(arrivedA.Wait(5000),"SharedMemory必须支持独立反向传输");
+                Check(a.Diagnostics.ReceiveQueue!=null && b.Diagnostics.ReceiveQueue!=null,
+                    "共享内存接收必须真正接入FTR池预算与诊断");
+                a.Close();b.Close();
+            }
+            Console.WriteLine("F17.SHARED_MEMORY PASS: real named MMF two-ended bounded ring, integrity and close");
         }
 
         private static byte[] ReadExactly(NetworkStream stream, int count)

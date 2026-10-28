@@ -123,6 +123,9 @@ public abstract class FTRChannelConfiguration : IFCMConfigVariantSelector
                     return new FTRChannelTypeDescriptor("udp.server", FTRChannelTopology.MultiPeer, FTRIOCapabilities.Datagram);
                 case FTRChannelKind.Serial:
                     return new FTRChannelTypeDescriptor("serial", FTRChannelTopology.SharedBus, FTRIOCapabilities.ByteStream);
+                case FTRChannelKind.SharedMemory:
+                    return new FTRChannelTypeDescriptor("shared.memory",FTRChannelTopology.SinglePeer,
+                        FTRIOCapabilities.SharedBuffer);
                 case FTRChannelKind.HttpServer:
                     return new FTRChannelTypeDescriptor("http.server", FTRChannelTopology.MultiPeer,
                         FTRIOCapabilities.Message | FTRIOCapabilities.RequestResponse | FTRIOCapabilities.Listener);
