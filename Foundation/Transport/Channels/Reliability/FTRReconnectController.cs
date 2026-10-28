@@ -10,8 +10,11 @@ namespace CxVisual.Foundation.Transport
         private readonly FTRSingleChannelBase _channel;
         private readonly FTRChannelConfiguration _policy;
         private readonly object _gate = new object();
+        // 恢复任务的异步上下文：事件回调中停止不能等待自己的恢复任务。
+        private readonly AsyncLocal<bool> _inRecovery = new AsyncLocal<bool>();
         private CancellationTokenSource _stop;
         private Task _runner;
+        private Task _stopTask;
         private int _attempts;
         private bool _active, _exhausted, _disposed;
         private Exception _lastError;
@@ -39,6 +42,8 @@ namespace CxVisual.Foundation.Transport
             {
                 if (_disposed) throw new ObjectDisposedException("FTRReconnectController");
                 if (_active) throw new InvalidOperationException("恢复维护已经启动");
+                if (_stopTask != null && !_stopTask.IsCompleted)
+                    throw new InvalidOperationException("上次恢复维护尚未停止完成");
                 _stop = new CancellationTokenSource();
                 _active = true; _attempts = 0; _exhausted = false; _lastError = null;
                 _channel.StateChanged += OnStateChanged;
@@ -76,6 +81,7 @@ namespace CxVisual.Foundation.Transport
         }
         private async Task RecoverAsync(CancellationToken cancellation)
         {
+            _inRecovery.Value = true;
             try
             {
                 int retries=0;
@@ -121,6 +127,7 @@ namespace CxVisual.Foundation.Transport
                 NotifyFailure(Snapshot().Attempts,error);
                 NotifyExhausted();
             }
+            finally { _inRecovery.Value = false; }
         }
         private void NotifyFailure(int attempt,Exception error)
         {
@@ -140,23 +147,39 @@ namespace CxVisual.Foundation.Transport
             foreach(Action callback in handlers.GetInvocationList())
                 try{callback();}catch{ /* 隔离诊断观察者 */ }
         }
-        /// <summary>先解除故障订阅并取消工作，不关闭归调用者拥有的Channel。</summary>
-        public async Task StopAsync()
+        /// <summary>
+        /// 取消恢复并等待完成，不关闭调用者拥有的Channel。
+        /// 在恢复事件回调内调用时只请求停止，避免等待当前恢复任务造成死锁；
+        /// 其它调用者仍可等待 StopAsync 返回的任务完成清理。
+        /// </summary>
+        public Task StopAsync()
         {
-            Task runner;CancellationTokenSource stop;
+            Task stopping;
             lock (_gate)
             {
-                if (!_active) return;
-                _active=false;
-                _channel.StateChanged -= OnStateChanged;
-                stop=_stop;_stop=null;runner=_runner;
-                if (stop != null) stop.Cancel();
+                if (_active)
+                {
+                    _active=false;
+                    _channel.StateChanged -= OnStateChanged;
+                    CancellationTokenSource stop=_stop;
+                    _stop=null;
+                    Task runner=_runner;
+                    if (stop!=null) stop.Cancel();
+                    _stopTask=CompleteStopAsync(runner,stop);
+                }
+                stopping=_stopTask ?? Task.CompletedTask;
             }
+            // AttemptFailed / Reconnected / Exhausted 是恢复任务中的同步回调。
+            // 此处不能同步等待正在执行自身回调的 runner。
+            return _inRecovery.Value ? Task.CompletedTask : stopping;
+        }
+        private async Task CompleteStopAsync(Task runner,CancellationTokenSource stop)
+        {
             try {if(runner!=null) await runner.ConfigureAwait(false);}
             finally
             {
-                if(stop!=null) stop.Dispose();
-                lock (_gate) if(ReferenceEquals(_runner,runner))_runner=null;
+                if(stop!=null)stop.Dispose();
+                lock(_gate)if(ReferenceEquals(_runner,runner))_runner=null;
             }
         }
         public void Dispose()
