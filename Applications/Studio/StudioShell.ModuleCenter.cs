@@ -2,6 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
+using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 using System.Windows;
@@ -22,6 +28,147 @@ namespace CxVisual.Studio
     /// </summary>
     public partial class MainWindow
     {
+        private sealed class StudioRawPixelSource : IMOCCapabilityProvider,IMRKVersionedCapabilityResolver
+        {
+            internal const string Id="vision.studio.raw.pixels";
+            private readonly byte[] _pixels;
+            private readonly string _version;
+            private readonly IMRKVersionedCapabilityResolver _vision;
+            private readonly MRKResolvedCapability _resolved;
+            internal StudioRawPixelSource(byte[] pixels,IMRKVersionedCapabilityResolver vision)
+            {
+                if(pixels==null||pixels.Length==0)throw new ArgumentException("empty RAW input");
+                _pixels=(byte[])pixels.Clone();_vision=vision;
+                using(var sha=SHA256.Create())
+                    _version="raw.sha256."+BitConverter.ToString(sha.ComputeHash(_pixels)).Replace("-","");
+                _resolved=new MRKResolvedCapability((ctx,token)=>{
+                    token.ThrowIfCancellationRequested();
+                    return Task.FromResult((object)((byte[])_pixels.Clone()));
+                },new MRKExecutionOutput(typeof(byte[])));
+            }
+            public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+            {
+                return new[]{new MOCCapabilityDescriptor(Id,"本次RAW文件数据","Vision/Input",
+                    new[]{new MPCPortDescriptor("Pixels",MPCPortDirection.Output,"byte[]",
+                        MPCPortKind.Data)})};
+            }
+            public bool TryResolve(string id,out MRKResolvedCapability result)
+            {
+                if(id==Id){result=_resolved;return true;}
+                return _vision.TryResolve(id,out result);
+            }
+            public bool TryGetCapabilityVersion(string id,out string version)
+            {
+                if(id==Id){version=_version;return true;}
+                return _vision.TryGetCapabilityVersion(id,out version);
+            }
+        }
+        internal sealed class StudioCpuVisionReport
+        {
+            public Guid PageId,FlowId,InspectId;
+            public int EngineeringRevision,CompletedTraceEvents;
+            public string PlanFingerprint,ConfigVersion;
+            public CxVisionInspectionResult Inspection;
+        }
+        private static byte[] ReadStudioRaw(string path,int width,int height,
+            CxVisionPixelDepth depth,CancellationToken token)
+        {
+            long count=(long)width*height;
+            if(width<=0||height<=0||count>32000000L)
+                throw new ArgumentOutOfRangeException("width/height");
+            if(depth!=CxVisionPixelDepth.Bits8&&depth!=CxVisionPixelDepth.Bits16)
+                throw new ArgumentException("Invalid Effective pixel depth");
+            int length=checked((int)(count*(depth==CxVisionPixelDepth.Bits8?1:2)));
+            using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
+            {
+                if(stream.Length!=length)throw new InvalidDataException(
+                    "RAW长度与宽、高、当前Effective位深不匹配");
+                byte[] bytes=new byte[length];int done=0;
+                while(done<length)
+                {
+                    token.ThrowIfCancellationRequested();
+                    int read=stream.Read(bytes,done,length-done);
+                    if(read<=0)throw new EndOfStreamException("RAW truncated");
+                    done+=read;
+                }
+                if(stream.ReadByte()!=-1)throw new InvalidDataException("RAW grew during read");
+                return bytes;
+            }
+        }
+        /// <summary>
+        /// Software-only full path: real RAW -> MEM page/typed MOC graph -> version
+        /// attested MRK authorized software release -> CPU inspection -> SourceMap trace.
+        /// The manual RAW bytes live only during this call; on reopen they must be
+        /// supplied again. No device, hidden scheduler or new result owner.
+        /// </summary>
+        internal static async Task<StudioCpuVisionReport> ExecuteStudioCpuVisionFileAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider provider,
+            string path,int width,int height,CancellationToken token)
+        {
+            if(session==null||provider==null)throw new ArgumentNullException("session/provider");
+            token.ThrowIfCancellationRequested();
+            string version;
+            if(!provider.TryGetCapabilityVersion(CxVisionThresholdProvider.CapabilityId,out version))
+                throw new InvalidOperationException("CPU Provider version missing");
+            // Fail validation before modifying the MEM engineering project.
+            byte[] input=ReadStudioRaw(path,width,height,provider.PixelDepth,token);
+            var source=new StudioRawPixelSource(input,provider);
+            token.ThrowIfCancellationRequested();
+            var page=session.AddPage("CPU RAW检测 · "+Path.GetFileName(path));
+            Guid inspect=Guid.Empty;
+            MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                Guid inputBlock=b.Step(source.DescribeCapabilities().Single());
+                inspect=b.Step(provider.DescribeCapabilities().Single());
+                b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
+                b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
+                b.Connect(inputBlock,"Done",inspect,"Start",MPCPortKind.Control);
+                b.Connect(inputBlock,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+            });
+            string sourceVersion;
+            source.TryGetCapabilityVersion(StudioRawPixelSource.Id,out sourceVersion);
+            var versions=new Dictionary<string,string>(StringComparer.Ordinal){
+                {StudioRawPixelSource.Id,sourceVersion},
+                {CxVisionThresholdProvider.CapabilityId,version}};
+            MEMProjectSnapshot snapshot=session.GetSnapshot();
+            var candidate=MOCProjectRelease.Prepare(snapshot,page.RootContent.Id,source,versions);
+            token.ThrowIfCancellationRequested();
+            var compiled=StageCpuSoftwareRelease(candidate,session.GetSnapshot(),source,
+                versions,new StudioCpuSoftwarePolicy());
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+            try
+            {
+                var defaults=compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value,
+                    StringComparer.Ordinal);
+                MRKFlowHandle flow=engine.StartFlow(compiled.Plan,defaults);
+                using(token.Register(()=>flow.RequestCancel()))
+                {
+                    MRKFlowResult result=await flow.Completion.ConfigureAwait(false);
+                    if(result.State!=MRKFlowState.Completed)
+                        throw new InvalidOperationException("MRK未完成："+result.State+
+                            (result.Error==null?"":" / "+result.Error.Message));
+                    object rawResult;
+                    if(!result.Results.TryGetValue("w"+inspect.ToString("N"),out rawResult))
+                        throw new InvalidOperationException("MRK缺少检测StepResult");
+                    var inspection=rawResult as CxVisionInspectionResult;
+                    if(inspection==null||inspection.Width!=width||inspection.Height!=height||
+                        inspection.ConfigRevision!=provider.ConfigurationRevision)
+                        throw new InvalidOperationException("MRK结果尺寸、类型或配置版本不匹配");
+                    var trace=compiled.ReadTrace(flow,0);
+                    int completed=trace.Events.Count(e=>e.Origin.BlockId==inspect&&
+                        e.Transition.State==MRKStepState.Completed);
+                    if(completed==0||trace.LostCount!=0)
+                        throw new InvalidOperationException("检测完成Trace缺失或丢失");
+                    return new StudioCpuVisionReport {
+                        PageId=page.Id,FlowId=result.FlowId,InspectId=inspect,
+                        EngineeringRevision=snapshot.Revision,
+                        PlanFingerprint=candidate.Fingerprint,ConfigVersion=version,
+                        Inspection=inspection,CompletedTraceEvents=completed
+                    };
+                }
+            }
+            finally{await engine.StopAsync(true).ConfigureAwait(false);}
+        }
+
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
         { SafeStudioAction(()=>OpenStudioDocument("doc.modules")); }
 
@@ -128,6 +275,72 @@ namespace CxVisual.Studio
                 }
             };
             actions.Children.Add(addFlow);
+            var rawRow=new WrapPanel {Margin=new Thickness(4,3,4,2)};
+            rawRow.Children.Add(new TextBlock {Text="RAW宽",VerticalAlignment=VerticalAlignment.Center});
+            var imageWidth=new TextBox {Text="5",Width=64,Margin=new Thickness(5,0,10,0)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(imageWidth,
+                "Studio.ModuleCenter.RawWidth");
+            rawRow.Children.Add(imageWidth);
+            rawRow.Children.Add(new TextBlock {Text="高",VerticalAlignment=VerticalAlignment.Center});
+            var imageHeight=new TextBox {Text="3",Width=64,Margin=new Thickness(5,0,10,0)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(imageHeight,
+                "Studio.ModuleCenter.RawHeight");
+            rawRow.Children.Add(imageHeight);
+            var runRaw=new Button {Content="选择RAW并执行CPU检测",Padding=new Thickness(10,5,10,5),
+                Margin=new Thickness(4,0,0,0),
+                ToolTip="真实本地RAW文件，仅CPU软件验证；新建独立MEM检测页，MOC/MRK版本锁定执行并返回缺陷和Trace"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(runRaw,
+                "Studio.ModuleCenter.RunRaw");
+            rawRow.Children.Add(runRaw);
+            System.Threading.CancellationTokenSource activeRun=null;
+            var cancelRun=new Button {Content="取消检测",Padding=new Thickness(8,5,8,5),
+                Margin=new Thickness(5,0,0,0),IsEnabled=false};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(cancelRun,
+                "Studio.ModuleCenter.CancelRaw");
+            cancelRun.Click+=(sender,args)=>{if(activeRun!=null)activeRun.Cancel();};
+            rawRow.Children.Add(cancelRun);
+            var rawStatus=new TextBlock {Text="等待用户选择RAW文件；位深来自已读取的MHS Effective。",
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,3,4,5)};
+            runRaw.Click+=async (sender,args)=>{
+                if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
+                if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
+                int w,h;
+                if(!Int32.TryParse(imageWidth.Text,out w)||
+                    !Int32.TryParse(imageHeight.Text,out h)||w<=0||h<=0||
+                    (long)w*h>32000000L)
+                {rawStatus.Text="RAW图像宽高不合法";return;}
+                var dialog=new Microsoft.Win32.OpenFileDialog {
+                    Title="选择真实RAW灰度图像",Filter="RAW images (*.raw)|*.raw|全部文件 (*.*)|*.*",
+                    CheckFileExists=true};
+                if(dialog.ShowDialog(this)!=true)return;
+                activeRun=new System.Threading.CancellationTokenSource();
+                cancelRun.IsEnabled=true;runRaw.IsEnabled=false;_logicRunning=true;
+                try
+                {
+                    rawStatus.Text="真实RAW数据检查 / MEM-MOC-MRK CPU执行中…";
+                    var report=await ExecuteStudioCpuVisionFileAsync(
+                        _viewModel.ProjectSession,selectedProvider,dialog.FileName,w,h,
+                        activeRun.Token);
+                    var page=_viewModel.ProjectSession.Find(report.PageId) as MEMPage;
+                    if(page!=null)_viewModel.ActivePage=page;
+                    RefreshScene();OpenStudioDocument("doc.flow");
+                    rawStatus.Text="实际CPU检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
+                        "；阈值像素="+report.Inspection.ThresholdPixelCount+
+                        "，缺陷区域="+report.Inspection.Regions.Count+
+                        "，配置="+report.ConfigVersion+
+                        "，MRK FlowId="+report.FlowId.ToString("N")+
+                        "，工程Revision="+report.EngineeringRevision+
+                        "，Trace完成事件="+report.CompletedTraceEvents+
+                        "，MOC指纹="+report.PlanFingerprint.Substring(0,12)+
+                        "。MEM已生成独立检测页；RAW输入仅供本次运行，重开需重新绑定。";
+                }
+                catch(OperationCanceledException){rawStatus.Text="用户取消，未报告执行成功";}
+                catch(Exception ex){rawStatus.Text="真实CPU检测失败："+ex.Message;}
+                finally{
+                    _logicRunning=false;runRaw.IsEnabled=true;cancelRun.IsEnabled=false;
+                    activeRun.Dispose();activeRun=null;
+                }
+            };
             var flow=new Button {Content="打开主流程编排",Padding=new Thickness(12,5,12,5),
                 Margin=new Thickness(3,1,6,1),
                 ToolTip="打开原MOL流程编辑器；不会跳过MOC构建、MRK执行和授权"};
@@ -136,7 +349,9 @@ namespace CxVisual.Studio
             flow.Click+=(sender,args)=>SafeStudioAction(()=>OpenStudioDocument("doc.flow"));
             actions.Children.Add(flow);
             header.Children.Add(actions);
+            header.Children.Add(rawRow);
             header.Children.Add(effectiveStatus);
+            header.Children.Add(rawStatus);
             control.HeaderContent=header;
             return control;
         }
