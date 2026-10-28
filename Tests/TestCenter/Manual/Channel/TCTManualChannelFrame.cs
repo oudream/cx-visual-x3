@@ -183,7 +183,7 @@ namespace CxVisual.TestCenter.UI
             table.Columns.Add(new DataGridTextColumn { Header = "方向", Binding =
                 new System.Windows.Data.Binding("Direction"), Width = new DataGridLength(65) });
             table.Columns.Add(new DataGridTextColumn { Header = "通道", Binding =
-                new System.Windows.Data.Binding("Channel"), Width = new DataGridLength(90) });
+                new System.Windows.Data.Binding("Channel"), Width = new DataGridLength(190) });
             table.Columns.Add(new DataGridTextColumn { Header = "Raw HEX", Binding =
                 new System.Windows.Data.Binding("RawHex"), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
             table.Columns.Add(new DataGridTextColumn { Header = "Decoded / Error", Binding =
@@ -396,7 +396,8 @@ namespace CxVisual.TestCenter.UI
             if (_frames.Count >= 2000) _frames.RemoveAt(0);
             _frames.Add(new TCTManualFrameRow {
                 Timestamp = frame.TimestampUtc.ToString("HH:mm:ss.fff"),
-                Direction = frame.Direction.ToString(), Channel = frame.ChannelId,
+                Direction = frame.Direction.ToString(),
+                Channel = frame.Address==null ? frame.ChannelId : frame.Address.ToString(),
                 RawHex = BitConverter.ToString(frame.Bytes).Replace("-", " "),
                 Decoded = !string.IsNullOrEmpty(frame.Error) ? "ERROR: " + frame.Error :
                     frame.DecodedPayload == null ? "" : Encoding.UTF8.GetString(frame.DecodedPayload)
