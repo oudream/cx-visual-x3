@@ -54,6 +54,9 @@ namespace CxVisual.TestCenter.UI
                 Check(refusedEmpty && !File.Exists(emptyImage),
                     "未载入体数据时必须拒绝四视图PNG，不能输出空白截图");
                 frame.LoadDemo();
+                Check(frame.ViewState!=null && frame.ViewState.Scene3D.Count==1 &&
+                      frame.ViewState.Scene3D.Snapshot()[0].Kind==MVI3DSceneKind.Volume,
+                    "装载体数据必须通过正式MVI Scene记录资源引用，不由窗体维护第二数据树");
                 window.UpdateLayout();
                 frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
                     new Action(delegate { }));
