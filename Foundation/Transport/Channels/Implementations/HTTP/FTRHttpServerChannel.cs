@@ -171,7 +171,9 @@ namespace CxVisual.Foundation.Transport
                 throw new ArgumentException("响应超过预算或为空");
             if(FindSubChannel(address)==null)throw new InvalidOperationException("过期HTTP请求");
             // 响应属于原始SubChannel+Generation，容量从全部HTTP请求共用额度预留。
-            using(var lease=InFlightBudget.Lease())
+            var lease=InFlightBudget.Lease();
+            bool transferred=false;
+            try
             {
                 lease.Reserve(payload.Length);
                 var response=new Reply{StatusCode=statusCode,Payload=(byte[])payload.Clone(),Lease=lease};
@@ -183,10 +185,10 @@ namespace CxVisual.Foundation.Transport
                         throw new InvalidOperationException("HTTP请求不存在或代次已变化");
                     if(!pending.Response.TrySetResult(response))
                         throw new InvalidOperationException("HTTP请求已经响应");
+                    transferred=true;
                 }
-                // 已交由Serve唯一完成路径释放，不能在这里Dispose。
-                lease.Detach();
             }
+            finally {if(!transferred)lease.Dispose();}
             return Task.CompletedTask;
         }
         protected override Task SendToPeerAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken cancellation)
