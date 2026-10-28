@@ -435,6 +435,27 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 return new ReadOnlyDictionary<string, object>(safe);
             }
         }
+        /// <summary>
+        /// 会话可选保留需要先证明导出载荷具有可计费大小。仅计逻辑有效载荷，
+        /// 不能代表CLR对象头、GPU/SDK或其他外部资源的真实内存。
+        /// </summary>
+        public bool TryEstimateCommittedBytes(out long bytes)
+        {
+            long total = 0;
+            foreach (KeyValuePair<string, object> item in _committedOutputs)
+            {
+                long charge;
+                if (!FDTDataSize.TryEstimateBytes(item.Value, _dataAdapters, out charge))
+                {
+                    bytes = 0;
+                    return false;
+                }
+                total = checked(total + charge);
+            }
+            bytes = total;
+            return true;
+        }
+
         public T GetCommittedOutput<T>(string name)
         {
             if (State != MRKFlowState.Completed)
