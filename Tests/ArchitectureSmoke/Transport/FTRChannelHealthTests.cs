@@ -34,7 +34,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ClassifiedDiagnostics();
             ChannelLifecycleAndHealth();
-            Console.WriteLine("F17.HEALTH_PASS typed failure, stage/scope, bounded evidence, live rates and channel state");
+            ObserverIsolation();
+            Console.WriteLine("F17.HEALTH_PASS typed failure, stage/scope, observer isolation, live rates and channel state");
         }
 
         private static void ClassifiedDiagnostics()
@@ -68,6 +69,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(end.Errors==4 && end.LastFailure.Kind==FTRFailureKind.Timeout &&
                 end.LastFailure.Stage=="Close" && end.LastError=="timed out",
                 "错误计数及最后一次故障详情");
+        }
+
+        private static void ObserverIsolation()
+        {
+            using(var channel=new FaultProbe("f17-observer"))
+            {
+                channel.StateChanged+=state=>{throw new IOException("observer intentionally failed");};
+                channel.Open();
+                var health=channel.Health;
+                Check(health.State==FTRChannelState.Open &&
+                    health.Diagnostics.LastFailure.Stage=="Observer" &&
+                    health.Diagnostics.LastFailure.Scope==FTRFaultScope.Operation,
+                    "状态观察者异常不应改变传输状态或归为物理接收故障");
+                channel.Close();
+            }
         }
 
         private static void ChannelLifecycleAndHealth()

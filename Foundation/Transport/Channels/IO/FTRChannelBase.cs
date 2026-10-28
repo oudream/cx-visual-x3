@@ -67,7 +67,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             var handlers=StateChanged;if(handlers==null)return;
             FTRChannelState state=State;
             foreach(Action<FTRChannelState> listener in handlers.GetInvocationList())
-                try{listener(state);}catch(Exception error){_diagnostics.RecordError(error);}
+                try{listener(state);}catch(Exception error){_diagnostics.RecordError(error,"Observer",FTRFaultScope.Operation);}
         }
         public void Open() { OpenAsync(CancellationToken.None).GetAwaiter().GetResult(); }
         public void Close() { CloseAsync(CancellationToken.None).GetAwaiter().GetResult(); }
@@ -272,6 +272,8 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
         protected void RecordReceiveError(Exception error)
         {_diagnostics.RecordError(error,"Receive",FTRFaultScope.Channel);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
+        private void RecordObserverError(Exception error)
+        {_diagnostics.RecordError(error,"Observer",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
         private void DeliverBuffer(FTRReceiveBuffer buffer)
         {
             // 关闭先停止OS读取，然后排空已接纳数据；Closing不能丢掉已排入的可靠字节。
@@ -286,13 +288,13 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             var borrowed=BufferReceived;
             if(borrowed!=null)foreach(Action<FTRReceiveBuffer> listener in borrowed.GetInvocationList())
                 using(var lease=buffer.Retain())
-                    try{listener(lease);}catch(Exception error){RecordReceiveError(error);}
+                    try{listener(lease);}catch(Exception error){RecordObserverError(error);}
             var legacy=Received;
             if(legacy!=null)
             {
                 var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint);
                 foreach(Action<FTRChannelReceiveContext> listener in legacy.GetInvocationList())
-                    try{listener(context);}catch(Exception error){RecordReceiveError(error);}
+                    try{listener(context);}catch(Exception error){RecordObserverError(error);}
             }
         }
         protected void Fault(Exception error)
@@ -334,7 +336,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             }
             Action<FTRChannelFrame> handler = FrameRecorded;
             if (handler != null)foreach(Action<FTRChannelFrame> listener in handler.GetInvocationList())
-                try{listener(entry);}catch(Exception observerError){_diagnostics.RecordError(observerError);}
+                try{listener(entry);}catch(Exception observerError){_diagnostics.RecordError(observerError,"Observer",FTRFaultScope.Operation);}
         }
         protected abstract Task OnOpenAsync(CancellationToken ct);
         protected abstract Task OnCloseAsync(CancellationToken ct);
