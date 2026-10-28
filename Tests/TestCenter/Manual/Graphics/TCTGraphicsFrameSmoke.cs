@@ -414,6 +414,64 @@ namespace CxVisual.TestCenter.UI
                 frame.Execute("edit.redo");
                 if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
                     throw new InvalidOperationException("曲线转直线Redo未恢复段类型");
+
+                // GE-03/12/13：Backspace只回退WPF草稿点，不能误操作MEM的Undo栈。
+                frame.Execute("Polyline");
+                int backspaceBefore=frame.Revision,backspaceCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(110,430);
+                frame.Canvas.BeginDrawGesture(175,445);
+                frame.Canvas.BeginDrawGesture(225,480);
+                PressKey(frame.Canvas,Key.Back);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=backspaceBefore||
+                    frame.SceneCount!=backspaceCount)
+                    throw new InvalidOperationException("Polyline撤销草稿顶点不能修改工程");
+                PressKey(frame.Canvas,Key.Enter);
+                if(frame.Canvas.HasDrawPreview||
+                    frame.Revision!=backspaceBefore+1||
+                    frame.SceneCount!=backspaceCount+1||
+                    ((MRCShapeElement)frame.FindObject(frame.SceneIds.Last()))
+                        .Shape.Geometry.Commands.Count!=2)
+                    throw new InvalidOperationException("Polyline撤销最后一点后提交的几何不正确");
+                frame.Execute("Polygon");
+                int polygonRevision=frame.Revision,polygonCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(270,400);
+                frame.Canvas.BeginDrawGesture(340,400);
+                frame.Canvas.BeginDrawGesture(350,470);
+                PressKey(frame.Canvas,Key.Back);
+                PressKey(frame.Canvas,Key.Enter);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=polygonRevision||
+                    frame.SceneCount!=polygonCount)
+                    throw new InvalidOperationException("Polygon删点后不足三点，Enter不得部分提交");
+                frame.Canvas.BeginDrawGesture(320,465);
+                PressKey(frame.Canvas,Key.Enter);
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=polygonRevision+1||
+                    frame.SceneCount!=polygonCount+1)
+                    throw new InvalidOperationException("Polygon补点后应一次提交");
+                frame.Execute("Path");
+                int contourBackRevision=frame.Revision,contourBackCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(420,405);
+                frame.Canvas.BeginDrawGesture(480,435);
+                PressKey(frame.Canvas,Key.N);
+                PressKey(frame.Canvas,Key.Back); // 先撤销尚未开始的新轮廓。
+                PressKey(frame.Canvas,Key.N);
+                frame.Canvas.BeginDrawGesture(590,440);
+                PressKey(frame.Canvas,Key.Back); // 第二轮廓唯一顶点退回待建态。
+                PressKey(frame.Canvas,Key.Enter);
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=contourBackRevision+1||
+                    frame.SceneCount!=contourBackCount+1||
+                    ((MRCShapeElement)frame.FindObject(frame.SceneIds.Last()))
+                        .Shape.Geometry.FlattenContours().Count!=1)
+                    throw new InvalidOperationException("Path回退第二轮廓后Enter应保留合法首轮廓");
+                frame.Execute("Path");
+                int emptyBackRevision=frame.Revision,emptyBackCount=frame.SceneCount;
+                frame.Canvas.BeginDrawGesture(610,430);
+                PressKey(frame.Canvas,Key.Back);
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=emptyBackRevision||
+                    frame.SceneCount!=emptyBackCount)
+                    throw new InvalidOperationException("回退最后草稿顶点必须彻底清除Ghost");
+                PressKey(frame.Canvas,Key.Enter);
+                if(frame.Revision!=emptyBackRevision||frame.SceneCount!=emptyBackCount)
+                    throw new InvalidOperationException("空草稿Enter不得生成MEM工程对象");
                 // 真实WPF键盘路由：N只预备新轮廓，若直接Enter，已完成的
                 // 第一轮廓仍须一次提交，不能留下永远无法收尾的空草稿。
                 frame.Execute("Path");

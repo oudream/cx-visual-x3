@@ -128,6 +128,35 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_drawPoints.Count-start<2)return false;
             _nextPathContour=true;InvalidateVisual();return true;
         }
+
+        /// <summary>
+        /// Backspace仅撤销当前Polyline/Polygon/Path草稿顶点，不进入MEM Undo。
+        /// Path的N待建轮廓先撤销等待；新轮廓退回到零点时移除分界，
+        /// 后续Backspace仍可回退前一轮廓，避免形成不可完成的孤立Move。
+        /// </summary>
+        public bool RemoveLastDrawPoint()
+        {
+            if(!_designMode||!IsPointDrawTool(_drawTool)||!HasDrawPreview||
+                IsInlineTextEditing)return false;
+            if(_nextPathContour)_nextPathContour=false;
+            else
+            {
+                _drawPoints.RemoveAt(_drawPoints.Count-1);
+                if(_drawContourStarts.Count>0&&
+                    _drawPoints.Count==_drawContourStarts[_drawContourStarts.Count-1])
+                {
+                    _drawContourStarts.RemoveAt(_drawContourStarts.Count-1);
+                    _nextPathContour=true;
+                }
+            }
+            if(_drawPoints.Count==0)
+            {
+                _drawContourStarts.Clear();
+                _nextPathContour=false;
+            }
+            InvalidateVisual();
+            return true;
+        }
         private List<IReadOnlyList<FGEPoint2D>> DrawContours(IReadOnlyList<FGEPoint2D> points)
         {
             var contours=new List<IReadOnlyList<FGEPoint2D>>();
@@ -1860,6 +1889,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 else if(_geometryEditMode&&!_dragging&&!_handleDragging)
                 {_geometryEditMode=false;InvalidateVisual();}
                 else CancelInteraction();
+                e.Handled=true;
+            }
+            else if(_designMode&&e.Key==Key.Back&&
+                Keyboard.Modifiers==ModifierKeys.None&&
+                object.ReferenceEquals(e.OriginalSource,this)&&
+                RemoveLastDrawPoint())
+            {
+                // WPF内嵌TextBox的Backspace交给文本编辑器，不误删除草稿点。
                 e.Handled=true;
             }
             else if(_designMode&&e.Key==Key.N&&

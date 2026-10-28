@@ -235,6 +235,9 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **GE-12 失焦/隐藏增量（2026-10-27）**：`SceneView` 继续只使用既有 `CancelInteraction()` 清理临时 Gesture；通过宿主 `Window.Deactivated`、WPF `IsVisibleChanged`、`Unloaded` 和 `OnLostKeyboardFocus` 扩充取消触发，保证无鼠标捕获的连续点绘在工作区切换后也不会残留 Ghost。`TCTGraphicsFrameSmoke` 追加真实 WPF 隐藏/恢复与切换工具的反证；是否编译、运行成功必须以**本次修改对应的固定 SHA Windows CI**为准。外部系统键鼠注入、窗口真实焦点切换、完整四档 DPI 仍需独立验证。
 
+
+**GE-03/12/13 逐点绘制回退增量（2026-10-28，待固定 SHA Windows 验收）**：Polyline/Polygon/Path 在公共 `SceneView` 内支持 Backspace 删除最后一个已确认草稿顶点；Path 按 N 后尚未创建的新轮廓可先撤销待建状态，第二轮廓唯一顶点回退后不得留下空 `Move` 或隐式跨轮廓边。直到 Enter/双击正式完成前不创建 MEM 对象、不改变 Revision、不污染历史 Undo。嵌入式 TextBox 的 Backspace 仍由文本输入处理。Studio/TestCenter 继续共用公共画布和工具提示。新增 `TCTGraphicsFrameSmoke` WPF 键盘路由回归：折线删点提交、多边形不足三点拒绝、Path 第二轮廓退回、最后一个顶点退回清空及全部 Revision 不变量。此项**仅是源码+待运行测试**，不代替外部系统键盘注入、真实鼠标/DPI、GE-03/12/13 整项验收。
+
 ## 06. 九 Shape 与 Geometry 精细编辑：实现级算法
 
 ### 6.1 共用几何编辑合同
