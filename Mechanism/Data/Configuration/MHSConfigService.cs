@@ -61,6 +61,27 @@ namespace CxVisual.Mechanism.Data.Configuration
             return Open<T>(identity.ScopeKind, identity.ScopeId);
         }
         /// <summary>
+        /// Read an already-persisted section only. Unlike Open, this cannot
+        /// silently initialize defaults when a user only asks to inspect Effective.
+        /// A partial/corrupt persisted section fails closed; no recovery is guessed.
+        /// </summary>
+        public MHSConfigSection<T> OpenExisting<T>(FCMConfigIdentity identity) where T : new()
+        {
+            if(identity==null)throw new ArgumentNullException("identity");
+            FCMConfigSchema schema=FCMConfigSchemaBuilder.Describe<T>();
+            if(identity.SectionId!=schema.SectionId)
+                throw new InvalidOperationException("CONFIG_IDENTITY_SECTION_MISMATCH");
+            string folder=Path.Combine(_root,
+                Safe(identity.ScopeKind+":"+identity.ScopeId),Safe(schema.SectionId));
+            if(!File.Exists(Path.Combine(folder,"current.json")))
+                throw new FileNotFoundException("CONFIG_SECTION_NOT_INITIALIZED");
+            if(!File.Exists(Path.Combine(folder,"schema.contract"))||
+                !File.Exists(Path.Combine(folder,"effective.txt")))
+                throw new InvalidOperationException("CONFIG_SECTION_INCOMPLETE");
+            return Open<T>(identity);
+        }
+
+        /// <summary>
         /// Explicit trusted offline adoption of a JSON document created before
         /// the schema/effective journal existed. Never silently applies unknown
         /// historical formats and never rebuilds or overwrites committed history.
