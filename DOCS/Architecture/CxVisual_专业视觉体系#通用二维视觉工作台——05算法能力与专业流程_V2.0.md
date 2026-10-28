@@ -147,3 +147,73 @@ flowchart LR
 ~~~
 
 **批准新增类型之前的最小验证**：增强→阈值→区域分析→测量的2—4节点纵向链；定义各节点TypeId、参数、输入输出、错误/取消、Frame来源、参数和标定Revision；能从WPF和无头SDK以同一语义运行、输出Image+Mask+Measurement且保留RunId/Trace。仅当已有MPM/MPC/MRK契约无法表示且两种真实算法同时需要时，才审专业扩展，而非创建新框架。
+
+## 11. 算法能力定型：工程TypeId与执行CLR Type的双层合同
+
+> 2026-10-28再核实的E源码：MPMTypeDescriptor（TypeId/SchemaVersion/Properties/Ports/Aspects）、MPCPortDescriptor（MemberId/TypeId/Direction/Multiplicity/Contract）、MOCCapabilityDescriptor及MOCCapabilityCatalog、MOCFlowBuilder.Step/Connect/SetParameter/Build、MOCEngineeringCompiler.Compile(snapshot, entryContentId, resolver, instancePath)、MOCCompiledPlan、MRKExecutionInput/Output、CxVisionThresholdProvider、CxVisionDataFlow。以下是专业组合契约设计；不声称完整Vision工程已接线。
+
+### 11.1 工程期与执行期两种类型
+
+| 项目 | 现有工程层 | 现有运行层 | Vision应补足 |
+|---|---|---|---|
+| 算法身份 | MOCCapabilityDescriptor.Id/Version及Catalog（可发现但Provider可能Unavailable） | IMRKCapabilityResolver解析真实能力/版本 | 专业分类、输入像素、Provider约束、使用说明 |
+| 数据端口 | MPCPortDescriptor.TypeId和Direction/Contract | MRKExecutionInput.ValueType/Source/SourceName及Output Type | 图像格式、Mask坐标、CalibrationRef与所有权 |
+| 参数 | MPMPropertyDescriptor/MPMValue：String/Number/Integer/Boolean/Decimal/Resource等标量/引用 | 已校验运行时参数与绑定 | 类型依赖范围/单位/错误码，复杂数据走Ref |
+| 专业Graph | MEMContent的MOLWiringDefinition、Blocks/Links及参数/端口 | MOCCompiledPlan→MRKExecutionPlan | Vision专业规则检查、节点Result投影 |
+| 数据处理 | 工程静态资源与Hash，不包含运行像素 | MDS/FDT专业类型的安全捕获/尺寸估算 | 图像→Mask→Geometry→Measure合同 |
+| 算法实现 | Catalog描述而不含Vendor算法本体 | FIM/PVC真正执行算法 | 专业质量与失败/空/取消区分 |
+
+**重要**：MPC工程端口的TypeId是字符串，而MRK执行端口检查CLR Type。必须有可审计的TypeId→实际CLR ValueType/Adapter/版本映射；MRK已能检查CLR类型但不能自动理解Mask坐标或毫米单位。禁止额外新建VisionTypedPort通用框架。
+
+### 11.2 参数资源化原则
+
+MPMValue是工程期固定字面值，不能把Image/Mask大块数组、AI模型权重、SDK指针或FrameStream直接塞进去。Gray16阈值应是合法数值与格式相关的范围；ROI与Calibration由ResourceRef+专业坐标校验；Template或Model由带Hash/版本的AssetRef供运行时解析。复杂算法配置优先现有MPM属性、Aspect或专业Resource扩展点，不允许靠无版本随意JsonBag绕过Schema。
+
+### 11.3 一条四节点完整能力验证场景
+
+| 步骤 | 能力标识（设计候选非已注册ID） | 输入 | 具名输出 | 错误/边界 |
+|---|---|---|---|---|
+| A 增强 | vision.image.enhance | Gray16+KernelParams | EnhancedImage | 格式/边界/Cancel/预算 |
+| B 分割 | vision.image.threshold | EnhancedImage+ROI+Threshold | Mask | 阈值范围0—65535、ROI空间 |
+| C 区域 | vision.mask.components | Mask+Connectivity+MinArea | RegionSet | 空区域是Empty而非失败 |
+| D 测量 | vision.geometry.measure | RegionSet+CalibrationRef? | Measurements | 无标定不得输出mm，结果须带SourceRef |
+
+**规范**：四个CapabilityId只是待验证的专业算法命名草案，当前不得用作已存在API；实现前检查FIM/PVC算子的实际返回类型、MOC端口支持和参数映射。
+
+~~~mermaid
+sequenceDiagram
+  actor U as 工程师
+  participant E as MEMContent/MOL
+  participant T as MPM/MPC
+  participant C as MOC Compiler
+  participant R as MRK Plan
+  participant D as MDS Data
+  participant V as Vision FIM/PVC
+  U->>E: 定义四节点及参数引用
+  E->>T: 校验TypeId/Ports/Schema
+  E->>C: 固定Snapshot和入口Content
+  C-->>R: CompiledPlan/SourceMap
+  R->>D: 捕获Image/ROI/参数
+  R->>V: 增强/阈值/区域/测量
+  V-->>D: Image/Mask/Regions/Measures
+  D-->>R: Commit或Abort
+  R-->>U: 运行结果/Trace或拒绝
+~~~
+
+### 11.4 生产与实验都必须通过的七层校验
+
+1. Capability/Provider和Version可解析；目录显示不可用时明确拒绝而不伪造执行成功。
+2. 工程MPM TypeId与MRK CLR Type正确映射，Port Required、Source、Multiplicity及依赖顺序合法。
+3. 参数/单位/范围/NaN/Infinity/默认值/动态绑定合法，16位灰度不因显示窗位变成8位。
+4. 输入、输出FDT适配器遵守只读、深复制或不可变约定，载荷大小可估算。
+5. Mask/ROI/Measurement来源同一ImageRef和CoordinateSpace，或提供明确且合法的TransformRef。
+6. 单步/调试经MOCSourceMap回到专业节点ID；取消/过期/SDK失败可关联RunId并回收临时资源。
+7. 输出按ProducerNodeId/OutputPort/ResultKind/SourceRef发布，成功Empty、Cancelled、Failed、Stale互相区分。
+
+### 11.5 模式/实现退让规则
+
+优先MPMTypeDescriptor+MPCPortDescriptor+MOCCapabilityDescriptor；其次利用MPMAspect/Property/Resource绑定表达专业约束；然后在PVC中补最小专业校验/算法实现；仅在两个以上真实消费方都无法表达时新增专业类型。不得从概念UML直接创建并行算法图、参数库、调度器或结果堆。
+
+### 11.6 审查门禁ALG-G01—G06
+
+ALG-G01能力可发现和Unavailable正确提示；G02单算法参数/类型/异常；G03四节点Flow可编译并能取中间产物/SourceMap；G04非法格式/参数/ROI/端口和取消不污染已发布结果；G05无头API与WPF工作台同输入同数值；G06将CPU/专业SDK/AI能力替换时保持输入输出/版本/追溯合同。未执行Windows CI及真实完整四节点验证前不得提升验收等级。
