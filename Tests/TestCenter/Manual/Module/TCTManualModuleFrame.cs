@@ -191,6 +191,15 @@ namespace CxVisual.TestCenter.UI
             picker.Children.Add(_moduleKind);
             picker.Children.Add(new TextBlock {Text="模块 Id",VerticalAlignment=VerticalAlignment.Center});
             picker.Children.Add(_moduleId);
+            Button showCatalog=new Button {Content="显示已声明能力",Margin=new Thickness(9,0,0,0),
+                Padding=new Thickness(8,3,8,3)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(showCatalog,
+                "TCT.Module.ToggleCapabilities");
+            showCatalog.Click+=(sender,args)=>{
+                _center.ConfigurationOnly=!_center.ConfigurationOnly;
+                showCatalog.Content=_center.ConfigurationOnly?"显示已声明能力":"收起能力目录";
+            };
+            picker.Children.Add(showCatalog);
             header.Children.Add(picker);header.Children.Add(_status);
             _center.HeaderContent=header;
             // Preserve the full-width professional FCM editor tested by the original UIA.
