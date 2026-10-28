@@ -828,9 +828,9 @@ sequenceDiagram
 | № | 能力 | 可核要求编号* | Owner | 可查找入口（`Foundation/`等前缀省略） | 当前判定 | 下轮关键验收 |
 |---|---|---|---|---|---|---|
 | 01 | 多源输入 | R19–20 | FVO/CT3D | FVO/IO/FVORawVolumeLoader.cs | E+T；其他格式P | 原值多位深/RAW异常，DICOM/NRRD/CAD逐格式实测 |
-| 02 | 空间与质量 | R21、R52 | FVO/FGE/CT3D | FVO/Data/FVOVolumeData.cs | Spacing E；完整方向P | 各向异性、轴向、坐标回环、标定误差 |
+| 02 | 空间与质量 | R21、R52 | FVO/FGE/CT3D | FVO/Spatial/FVOVolumeSpatialFrame.cs | 物理Frame/方向与正逆变换E；可信源标定接入P | 各向异性/旋转/镜像、真实CT标定与回环误差 |
 | 03 | 处理与变换 | R22 | FVO/CT3D/FNU | FVO/Slicing/FVOObliqueSliceBuilder.cs | 插值E；通用3D处理P | 滤波重采样、原值容差与区域边界 |
-| 04 | 大数据/LOD | R23、R53 | FVO/MPW | FVO/Memory/FVOUnmanagedRawVolumeBuffer.cs | 映射E+T；GPU LOD P | >2GB压力、峰值内存、GPU预算/取消 |
+| 04 | 大数据/LOD | R23、R53 | FVO/MPW | FVO/Memory/FVOOriginalScalarLease.cs | SafeHandle原值租约E；GPU LOD P | >2GB压力、并发租约/取消、GPU显存预算 |
 | 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs、MPWVolumeSurfaceProjection.cs | Raymarch/Host E；Surface点云GL framebuffer与WPF回退E，H待实测 | 完整Mesh/CAD混合绘制、硬件像素对照 |
 | 06 | MPR与任意切 | R25 | FVO/MVI | FVO/Slicing/FVOSliceImageBuilder.cs | 正交/任意切E+T | 曲面重切、厚层投影与真实RAW |
 | 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T；统一Camera E | 鼠标/DPI/窗口变化与视角保真 |
