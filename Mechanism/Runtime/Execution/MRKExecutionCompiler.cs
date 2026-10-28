@@ -184,7 +184,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKCompileResult Compile(string planId, IEnumerable<MRKStepCompileRequest> source,
             IMRKCapabilityResolver resolver,
             IDictionary<string, string> dataExports = null,
-            IEnumerable<MRKControlRegion> regions = null)
+            IEnumerable<MRKControlRegion> regions = null,
+            bool reclaimCommittedWhenConsumersSettle = false)
         {
             if (resolver == null) throw new ArgumentNullException("resolver");
             if (string.IsNullOrWhiteSpace(planId)) throw new ArgumentException("Plan ID不能为空", "planId");
@@ -249,7 +250,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 // 稳定排序，输入枚举顺序不能改变Plan中可观察的节点排列。
                 MRKExecutionPlan compiled = new MRKExecutionPlan(planId,
-                    steps.OrderBy(x => x.Id, StringComparer.Ordinal), dataExports, regions);
+                    steps.OrderBy(x => x.Id, StringComparer.Ordinal), dataExports, regions,
+                    reclaimCommittedWhenConsumersSettle);
                 return new MRKCompileResult(compiled, errors);
             }
             catch (ArgumentException ex)
