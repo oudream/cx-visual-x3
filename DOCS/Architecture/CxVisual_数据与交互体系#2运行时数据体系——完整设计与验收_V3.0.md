@@ -1202,4 +1202,6 @@ var builder = new MRKCodeRuntimeBuilder()
 
 - 固定源码SHA fa3a541dcb89：MDS生命周期Windows CI [#40644037833](https://github.com/oudream/cx-visual-x3/actions/runs/40644037833) **Success**；包含.NET48 Release x64全解、RuntimeData存储加固、静态DAG双消费者正反例、TestCenter独立用例与真实WPF测试。按当前FDTDataSize保守逻辑标量每项32B计费，150B测试预算能证明最后消费后释放使流程成功，而默认整Flow保留在相同预算下明确失败。
 - 固定源码SHA 868b998fe02a 的 [MDS生命周期专项Windows CI #40644541079](https://github.com/oudream/cx-visual-x3/actions/runs/40644541079) **Success**：在上述基础上，确认 MRKCodeFlowBuilder.ReclaimConsumedData()、外部工程编译器同一回收合同、动态Loop拒绝反例和TestCenter TCT.MDS.032三项独立用例实际通过；完整Release x64全解与真实WPF操作亦通过。
+- 固定源码SHA be9ef73196cb 的 [MDS生命周期专项Windows CI #40644805645](https://github.com/oudream/cx-visual-x3/actions/runs/40644805645) **Success**：进一步覆盖三层内联子流程在静态回收下仍保持入口映射、子流程原子提交屏障和顶层Flow导出；完整Release x64全解、ArchitectureSmoke、TestCenter 030/031/032和真实STA WPF均成功。
+- **后续限制**：Loop/Foreach/动态Join的历史输出提前回收、Session/Result跨Owner交接、Studio工程编辑与GPU/SDK/SHM外部资源实机长稳仍未完成；不可用静态DAG绿灯代替这些验收。
 - 完整Runtime统一回归若在其它模块失败，须区分本阶段MDS专项成功与全解回归未通过。
