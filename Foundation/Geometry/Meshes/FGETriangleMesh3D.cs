@@ -38,7 +38,7 @@ namespace CxVisual.Foundation.Geometry
     {
         private struct EdgeCount
         {
-            internal int Count,DirectionSum;
+            internal int Count,DirectionSum,FirstTriangle;
         }
 
         // 对每个顶点构建link graph：一个三角面为其中心顶点的两个邻居加一条link边。
@@ -110,6 +110,8 @@ namespace CxVisual.Foundation.Geometry
         public int NonManifoldEdgeCount {get;private set;}
         /// <summary>局部面扇分裂成多个不连通分量的顶点数，包含仅以顶点接触的面壳。</summary>
         public int NonManifoldVertexCount {get;private set;}
+        /// <summary>三角面通过共享边连通的独立面壳数，单顶点接触不会合并两个面壳。</summary>
+        public int ConnectedFaceComponentCount {get;private set;}
         public int InconsistentWindingEdgeCount {get;private set;}
         public bool IsClosedOrientedManifold
         {
@@ -133,6 +135,9 @@ namespace CxVisual.Foundation.Geometry
             var normals=new double[checked(positions.Count*3)];
             var edges=new Dictionary<ulong,EdgeCount>();
             var vertexFans=new List<VertexLink>[positions.Count];
+            int triangleCount=indices.Count/3;
+            var faceParent=new int[triangleCount];
+            for(int i=0;i<faceParent.Length;i++)faceParent[i]=i;
             double minX=double.PositiveInfinity,minY=double.PositiveInfinity,minZ=double.PositiveInfinity;
             double maxX=double.NegativeInfinity,maxY=double.NegativeInfinity,maxZ=double.NegativeInfinity;
             foreach(FGEPoint3D p in positions)
@@ -162,7 +167,10 @@ namespace CxVisual.Foundation.Geometry
                 {
                     normals[i*3]+=nx;normals[i*3+1]+=ny;normals[i*3+2]+=nz;
                 }
-                AddEdge(edges,a,b);AddEdge(edges,b,c);AddEdge(edges,c,a);
+                int faceIndex=t/3;
+                AddEdge(edges,a,b,faceIndex,faceParent);
+                AddEdge(edges,b,c,faceIndex,faceParent);
+                AddEdge(edges,c,a,faceIndex,faceParent);
                 AddVertexLink(vertexFans,a,b,c);
                 AddVertexLink(vertexFans,b,c,a);
                 AddVertexLink(vertexFans,c,a,b);
@@ -182,6 +190,10 @@ namespace CxVisual.Foundation.Geometry
                 else if(count.DirectionSum!=0)InconsistentWindingEdgeCount++;
             }
             NonManifoldVertexCount=CountBowTieVertices(vertexFans);
+            var distinctFaceShells=new HashSet<int>();
+            for(int i=0;i<triangleCount;i++)
+                distinctFaceShells.Add(Find(faceParent,i));
+            ConnectedFaceComponentCount=distinctFaceShells.Count;
             if(IsClosedOrientedManifold)
             {
                 SignedEnclosedVolume=volume6/6.0;
@@ -198,12 +210,18 @@ namespace CxVisual.Foundation.Geometry
             _normals=output.AsReadOnly();
         }
 
-        private static void AddEdge(Dictionary<ulong,EdgeCount> edges,int a,int b)
+        private static void AddEdge(Dictionary<ulong,EdgeCount> edges,int a,int b,
+            int faceIndex,int[] faceParent)
         {
             int min=Math.Min(a,b),max=Math.Max(a,b);
             ulong key=((ulong)(uint)min<<32)|(uint)max;
             EdgeCount use;
-            edges.TryGetValue(key,out use);
+            if(edges.TryGetValue(key,out use))
+            {
+                int x=Find(faceParent,use.FirstTriangle),y=Find(faceParent,faceIndex);
+                if(x!=y)faceParent[x]=y;
+            }
+            else use.FirstTriangle=faceIndex;
             use.Count++;
             use.DirectionSum+=a<b?1:-1;
             edges[key]=use;
