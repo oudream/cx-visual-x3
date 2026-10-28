@@ -184,10 +184,11 @@ namespace CxVisual.TestCenter.UI
             SetGpuModeLabel("3D / GPU体绘启动中",_gpuInfo.Text);
             _gpuHost.Enable(_state==null?null:_state.Camera,gpu=>
             {
-                gpu.SetVolume(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
+                gpu.SetVolumeWithOriginalDimensions(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
-                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture(),
+                    _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth);
                 if(SurfacePointsForPresentation!=null)gpu.SetSurfacePoints(SurfacePointsForPresentation);
                 _gpuTransferDirty=false;
             });
@@ -277,10 +278,11 @@ namespace CxVisual.TestCenter.UI
             if (_gpu==null || _volume==null)return;
             try
             {
-                _gpu.SetVolume(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
+                _gpu.SetVolumeWithOriginalDimensions(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
-                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture(),
+                    _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth);
                 if(SurfacePointsForPresentation!=null)_gpu.SetSurfacePoints(SurfacePointsForPresentation);
                 _gpuTransferDirty=false;
                 ApplyGpuUniforms();
