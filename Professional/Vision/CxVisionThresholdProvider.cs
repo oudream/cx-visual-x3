@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Professional.Vision
@@ -12,9 +14,26 @@ namespace CxVisual.Professional.Vision
     /// G06：复用本专业已有真实CPU灰度阈值/四邻接检测。MRK只调度/追踪，
     /// 不重新实现图像算法；不假冒硬件采图、AI推理或设备互锁。
     /// </summary>
-    public sealed class CxVisionThresholdProvider : IMRKVersionedCapabilityResolver
+    public sealed class CxVisionThresholdProvider : IMRKVersionedCapabilityResolver, IMOCCapabilityProvider
     {
         public const string CapabilityId="vision.cpu.threshold.inspect";
+        /// <summary>
+        /// The professional Owner publishes exactly the same capability id/input contract
+        /// used by MRK TryResolve. MOC only indexes this declaration, never executes pixels.
+        /// </summary>
+        public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+        {
+            return new[] { new MOCCapabilityDescriptor(CapabilityId,
+                "CPU灰度阈值与连通区域检测","Vision/Compute",
+                new [] {
+                    new MPCPortDescriptor("RawPixels",MPCPortDirection.Input,
+                        "byte[]",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Width",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Height",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true)
+                }) };
+        }
         // 专业Owner给Host提供不可变的软件能力+配置Revision标识；不能冒充模型/设备版本。
         public long ConfigurationRevision{get{return _configRevision;}}
         public string ReleaseVersion{get{return "vision.cpu.threshold.v1/config:"+
