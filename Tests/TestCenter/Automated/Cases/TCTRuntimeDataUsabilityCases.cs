@@ -13,6 +13,62 @@ namespace CxVisual.TestCenter.Cases
 {
     public static class TCTRuntimeDataUsabilityCases
     {
+        [TCTTest("TCT.MDS.030", "生命周期五维独立入口与组合缓存回收",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataLifecyclePolicy")]
+        public static void LifecycleFiveDimensions(TCTTestContext t)
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                heap.Set("Image", new byte[] { 1, 2, 3 });
+                var policy = MDSDataLifecyclePolicy.Default
+                    .WithLifetime(MDSDataLifetimePolicy.UntilLastConsumer())
+                    .WithRetention(MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(1)))
+                    .WithTransfer(MDSDataTransferPolicy.CopyOnly)
+                    .WithReclamation(MDSDataReclamationPolicy.OnExpiry);
+                heap.Lifecycle.Configure("Image", policy);
+                heap.Lifecycle.ConfigureOwnership("Image",
+                    MDSDataOwnershipPolicy.Default.WithMove(false));
+                using (var reader = heap.Lifecycle.AcquireUse("Image"))
+                {
+                    t.AssertEqual(1, heap.Lifecycle.Inspect("Image").ActiveConsumers,
+                        "独立策略配置可通过统一入口诊断");
+                    t.AssertEqual(0, heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(2)),
+                        "活跃消费者不因TTL模拟到期而失去数据");
+                    t.AssertEqual(3, heap.Get<byte[]>("Image").Length, "数据仍保持有效");
+                }
+                t.AssertEqual(1, heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(2)),
+                    "无活跃消费者后到期释放");
+                t.AssertEqual(false, heap.Contains("Image"), "回收必须实际影响原Heap");
+            }
+        }
+
+        [TCTTest("TCT.MDS.031", "生命周期策略冲突与活跃使用拒绝",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataLifecycleAccess")]
+        public static void LifecycleFailureRoutes(TCTTestContext t)
+        {
+            using (var heap = new MDSDataHeap())
+            using (var other = new MDSDataHeap())
+            {
+                heap.Set("Result", 8);
+                heap.Lifecycle.ConfigureTransfer("Result", MDSDataTransferPolicy.CopyOnly);
+                t.AssertThrows<InvalidOperationException>(() =>
+                    heap.MoveTo("Result", other, "Moved"), "仅允许复制的策略必须拒绝Move");
+                using (var active = heap.Lifecycle.AcquireUse("Result"))
+                {
+                    t.AssertThrows<MDSDataException>(() => heap.Remove("Result"),
+                        "被借用的数据必须阻止外部移除");
+                    t.AssertEqual(false, heap.Lifecycle.ReleaseEligible("Result"),
+                        "自动与手动回收都遵守活跃保护");
+                }
+                t.AssertThrows<ArgumentException>(() =>
+                    MDSDataLifecyclePolicy.Default.WithReclamation(
+                        MDSDataReclamationPolicy.AfterLastConsumer),
+                    "未启用ConsumerBound时拒绝消费者自动回收的矛盾组合");
+                t.AssertEqual(true, heap.Lifecycle.ReleaseEligible("Result"),
+                    "解除活跃引用后可安全释放");
+            }
+        }
+
         private sealed class TCTExistingOwner : IMDSExternalBindingResolver
         {
             public object Resolve(MDSBindingSource source, string name, Type target)
