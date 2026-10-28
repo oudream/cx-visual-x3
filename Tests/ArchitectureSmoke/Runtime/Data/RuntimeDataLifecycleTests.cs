@@ -41,6 +41,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CommittedFrameReleaseAccountsBudget();
             StaticDagReclaimsAfterAllConsumers();
             DynamicRegionsMustRejectPrematureReclamation();
+            SessionResultsHaveBoundedRetentionAndExplicitHandoff();
         }
 
         private static void CommittedFrameReleaseAccountsBudget()
@@ -150,6 +151,69 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (ArgumentException) { rejected = true; }
             Check(rejected,
                 "动态Loop的CollectLoopOutputs仍可能引用历史Invocation，必须拒绝提前自动回收");
+        }
+
+        private static void SessionResultsHaveBoundedRetentionAndExplicitHandoff()
+        {
+            var plan = new MRKExecutionPlan("session.retention", new[] {
+                new MRKExecutionStep("emit", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[48]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Image", typeof(byte[]) } })
+            }, new Dictionary<string, string> { { "Image", "emit.Image" } });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 12));
+            var options = new MRKSessionResultRetentionOptions(1, 64, TimeSpan.FromSeconds(3));
+            var session = new MRKRuntimeSession("session.with.results", engine,
+                new MRKExecutionPlanSlot(plan, 1), maxInFlight: 2,
+                resultRetention: options);
+            session.Start();
+            try
+            {
+                MRKFlowHandle first = session.TryStartFlow();
+                MRKFlowResult a = Wait(first.Completion);
+                Check(a.State == MRKFlowState.Completed &&
+                    SpinWait.SpinUntil(() => session.Snapshot().RetainedResults == 1, 3000),
+                    "已成功提交的FlowResult应在Session里受控保留");
+                Check(session.Snapshot().RetainedPayloadBytes == 48,
+                    "Session保留账目按真实逻辑载荷记录");
+                MRKFlowResult second = Wait(session.TryStartFlow().Completion);
+                Check(second.State == MRKFlowState.Completed &&
+                    SpinWait.SpinUntil(() => session.Snapshot().RetentionRejected == 1, 3000),
+                    "Session上限不能悄悄扩大，应记录拒绝保留次数");
+                MRKFlowResult handed;
+                Check(session.TryTakeCompletedResult(first.FlowId, out handed) &&
+                    object.ReferenceEquals(a, handed) &&
+                    session.Snapshot().RetainedPayloadBytes == 0,
+                    "领取将Session唯一保留引用转交调用方，不再占Session缓存配额");
+                byte[] copy = handed.GetCommittedOutput<byte[]>("Image");
+                copy[0] = 9;
+                Check(handed.GetCommittedOutput<byte[]>("Image")[0] == 0,
+                    "领取结果不能暴露原MDS已提交可写数据");
+                Check(!session.TryTakeCompletedResult(first.FlowId, out handed) &&
+                    !session.ReleaseRetainedResult(first.FlowId),
+                    "重复领取和重复释放不能造成双重所有权");
+                MRKFlowHandle next = session.TryStartFlow();
+                Wait(next.Completion);
+                Check(SpinWait.SpinUntil(() => session.Snapshot().RetainedResults == 1, 3000),
+                    "取走结果后新的FlowResult可以重新占用预算");
+                Wait(session.StopAsync());
+                Check(session.Snapshot().RetainedResults == 0 &&
+                    session.Snapshot().RetainedPayloadBytes == 0 &&
+                    session.Snapshot().State == MRKRuntimeSessionState.Stopped,
+                    "Session停止会清理仍由会话保留的快照");
+                Check(a.GetCommittedOutput<byte[]>("Image").Length == 48,
+                    "原Completion的独立快照与Session停止无关");
+            }
+            finally
+            {
+                Wait(session.StopAsync(true));
+                Wait(engine.StopAsync(true));
+            }
+            bool invalid = false;
+            try { new MRKSessionResultRetentionOptions(0, 1, TimeSpan.FromSeconds(1)); }
+            catch (ArgumentOutOfRangeException) { invalid = true; }
+            Check(invalid, "无界或非法结果保留策略应拒绝");
         }
 
         private static void Check(bool condition, string reason)
