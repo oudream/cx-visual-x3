@@ -162,6 +162,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "触及原数据边界的离散闭面不可直接用于工业计量");
                 }
             }
+            // Float32非有限原始值：不允许NaN在阈值比较中被隐式解释为实体。
+            byte[] floatRaw=new byte[size*size*size*4];
+            int badIndex=4*(5+5*size+5*size*size);
+            Buffer.BlockCopy(BitConverter.GetBytes(float.NaN),0,floatRaw,badIndex,4);
+            var floatInfo=new FVORawVolumeInfo(size,size,size,1,1,1,
+                FVORawVoxelFormat.Float32,"invalid-raw-f32");
+            using(FVOVolumeData badFloat=FVORawVolumeLoader.LoadFromMemory(
+                floatRaw,floatInfo,64,CancellationToken.None))
+            {
+                using(FVOOriginalScalarLease original=badFloat.AcquireOriginalScalarLease())
+                {
+                    bool meshRejected=false,surfaceRejected=false;
+                    try
+                    {
+                        CT3DVoxelBoundaryMeshExtractor.Extract(
+                            original,"fixture:nan",9,1f,100,CancellationToken.None);
+                    }
+                    catch(InvalidOperationException){meshRejected=true;}
+                    try
+                    {
+                        CT3DSurfaceSphereAnalysis.SampleBoundary(
+                            original,"fixture:nan",9,1f,1,100,CancellationToken.None);
+                    }
+                    catch(InvalidOperationException){surfaceRejected=true;}
+                    Check(meshRejected && surfaceRejected,
+                        "Float32非有限原始值必须被Mesh/离散球拟合输入共同拒绝");
+                }
+            }
             Console.WriteLine("PASS CT3D UInt16 physical voxel mesh, topology, mirrored normals and negative cases");
         }
 
