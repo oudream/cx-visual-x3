@@ -440,10 +440,10 @@ namespace CxVisual.TestCenter.UI
                         contourCanvas.Children.OfType<System.Windows.Shapes.Polygon>().Count()<2)
                         throw new InvalidOperationException(
                             "双轮廓批量WPF添加未一次发布并完整渲染两个多边形");
-                    bool duplicateRejected=false;
+                    bool batchDuplicateRejected=false;
                     try {frame.Viewer.AddOverlays(new[]{contourA});}
-                    catch(InvalidOperationException) {duplicateRejected=true;}
-                    if(!duplicateRejected || batchChanges!=1 ||
+                    catch(InvalidOperationException) {batchDuplicateRejected=true;}
+                    if(!batchDuplicateRejected || batchChanges!=1 ||
                         frame.Viewer.Overlays.Items.Count!=priorCount+2)
                         throw new InvalidOperationException(
                             "双轮廓重复ID没有原子拒绝或污染WPF观察通知");
