@@ -371,10 +371,16 @@ namespace CxVisual.TestCenter.UI
                         !heap.Lifecycle.GetPolicy("Studio.Image").Transfer.AllowMove)
                         throw new InvalidOperationException("Studio未授权WPF入口修改了MDS生命周期");
                     editor.Bind(heap, true);
+                    var transfer = editor.FindName("TransferMode") as ComboBox;
+                    var apply = editor.FindName("ApplyAllButton") as Button;
+                    if (transfer == null || apply == null)
+                        throw new InvalidOperationException("Studio五维面板真实控件未加载");
+                    transfer.SelectedIndex = 1;
+                    apply.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                     if (editor.SelectedDataName != "Studio.Image" ||
-                        !editor.TryApplyPolicy(policy) ||
+                        editor.LastError != null ||
                         heap.Lifecycle.GetPolicy("Studio.Image").Transfer.AllowMove)
-                        throw new InvalidOperationException("Studio授权WPF入口没有实际修改唯一MDS Owner");
+                        throw new InvalidOperationException("Studio组合按钮未真正应用策略：" + editor.LastError);
                 }
                 finally { editor.Dispose(); }
             }
