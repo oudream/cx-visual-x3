@@ -46,12 +46,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     !control.GetPolicy("Image").Transfer.AllowMove &&
                     control.GetPolicy("Image").Reclamation.ReleaseOnExpiry,
                     "五个独立的便捷设置均应对同一个数据生效");
-                IDisposable use = control.AcquireUse("Image");
-                IDisposable hold = control.Retain("Image");
+                MDSDataUseLease<byte[]> typedUse = control.AcquireRead<byte[]>("Image");
+                IDisposable use = typedUse;
+                IDisposable hold = control.Retain("Image", "AuditViewer");
                 try
                 {
                     Check(control.Inspect("Image").ActiveConsumers == 1 &&
-                        control.Inspect("Image").RetentionHolds == 1, "活跃使用/保留理由可观察");
+                        control.Inspect("Image").RetentionHolds == 1 &&
+                        control.Inspect("Image").RetentionReasons.Contains("AuditViewer"),
+                        "活跃使用与具名保留理由可查询");
+                    Check(typedUse.Read()[0] == 1,
+                        "强类型租约提供合法安全数据读取而不暴露原始可变缓冲");
                     Check(!control.ReleaseEligible("Image"), "活跃对象不得被显式回收");
                     Reject<MDSDataException>(() => heap.Remove("Image"));
                     Reject<MDSDataException>(() => heap.Replace("Image", new byte[] { 9 }));
@@ -68,6 +73,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "即使TTL到期，活跃消费者与保留凭证也不许被驱逐");
                 }
                 finally { hold.Dispose(); use.Dispose(); }
+                Reject<ObjectDisposedException>(() => typedUse.Read());
                 Check(control.Sweep(DateTime.UtcNow.AddHours(1)) == 1 &&
                     !heap.Contains("Image") && budget.RetainedBytes == 0,
                     "全部消费者/保留理由结束后，TTL回收应释放真实数据和预算");
