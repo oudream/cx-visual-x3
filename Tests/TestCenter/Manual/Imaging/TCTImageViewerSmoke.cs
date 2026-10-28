@@ -1579,6 +1579,64 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.ClearOverlays();
                 if (frame.Viewer.VisibleOverlayCount != 0 || frame.Viewer.OverlayVisualCount != 0)
                     throw new InvalidOperationException("Overlay clear must remove all native WPF shapes");
+                // 真实CPU 3×3环形Mask→FIM有符号外环/孔洞→非等距FIM面积测量→WPF图元。
+                FIMImageBuffer donutSource=new FIMImageBuffer(3,3,FIMPixelFormat.Gray16,
+                    new byte[]{20,0,20,0,20,0,20,0,0,0,20,0,20,0,20,0,20,0});
+                frame.SetOriginal(donutSource);
+                frame.Viewer.PixelSpacing=new FIMPixelSpacing(0.2,0.4);
+                secondaryTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                cpuThreshold.Text="10";
+                cpuArea.Text="1";
+                cpuRun.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var donutWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && donutWait.ElapsedMilliseconds<15000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var donutRun=frame.CpuEvidence;
+                FIMImageBuffer donutMask=frame.Viewer.Session.Result;
+                if(donutRun==null || donutMask==null ||
+                    donutRun.Items.Single(i=>i.Name=="阈值命中像素数").IntegerValue!=8 ||
+                    donutRun.Items.Single(i=>i.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Region).Region.PixelArea!=8 ||
+                    donutMask.GetGrayValue(1,1)!=0 ||
+                    donutMask.GetGrayValue(0,0)!=255)
+                    throw new InvalidOperationException("CPU环形阈值Mask/候选区域未保留中心孔洞");
+                Button donutContoursButton=FindControl<Button>(frame,"TCT.Imaging.ExtractMaskContours");
+                if(donutContoursButton==null)
+                    throw new InvalidOperationException("环形CPU Mask缺少真实轮廓按钮");
+                donutContoursButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                donutWait.Restart();
+                while(frame.Viewer.Overlays.Items.Count<2 && donutWait.ElapsedMilliseconds<15000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var donutRings=frame.Viewer.Overlays.Items.Where(i=>
+                    i.Kind==MVIImageOverlayKind.PolygonAnnotation).ToArray();
+                if(donutRings.Length!=2 ||
+                    Math.Abs(donutRings.Sum(i=>FIMImageMaskContours.SignedArea(i.Points))-8)>1e-9 ||
+                    !donutRings.Any(i=>FIMImageMaskContours.SignedArea(i.Points)==9) ||
+                    !donutRings.Any(i=>FIMImageMaskContours.SignedArea(i.Points)==-1) ||
+                    Math.Abs(donutRings.Sum(i=>
+                        Math.Sign(FIMImageMaskContours.SignedArea(i.Points))*
+                        FIMImageMeasurement.GetPolygonAreaSquareMillimeters(
+                            i.Points,frame.Viewer.PixelSpacing).Value)-0.64)>1e-9 ||
+                    !ReferenceEquals(frame.Viewer.Session.Result,donutMask) ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,1)!=0)
+                    throw new InvalidOperationException(
+                        "环形Mask→孔洞轮廓→0.64mm²非等距测量或原图/结果槽不一致");
+                Console.WriteLine("PASS TCT CPU Mask donut: outer 9 minus hole 1 = 8 px² / 0.64 mm²");
                 Console.WriteLine("PASS TCT WPF overlays: rectangle/line/polygon/defect, layer hide, move, screenshot and release");
                 Console.WriteLine("PASS TCT WPF ImageViewer: real control/layout, 16-bit, ROI, zoom, window, PNG and FIM/MVI");
             }

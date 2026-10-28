@@ -1023,14 +1023,24 @@ namespace CxVisual.TestCenter.UI
                     Show("当前二值结果没有非零像素，也没有可生成的轮廓。");
                     return;
                 }
-                // 带符号面积保留孔洞：外环为正、内环为负，不用外接框估算。
-                double areaPixels = rings.Sum(points=>FIMImageMaskContours.SignedArea(points));
-                if(double.IsNaN(areaPixels) || double.IsInfinity(areaPixels) || areaPixels<=0)
-                    throw new InvalidOperationException("Mask轮廓面积不合法。");
+                // 面积由既有FIM测量合同计算，外环为正、孔洞为负；
+                // 不把分离的PolygonAnnotation当成自动填洞的面积ROI。
                 FIMPixelSpacing? spacing=_viewer.PixelSpacing;
-                double? areaMillimeters=spacing.HasValue ?
-                    (double?)(areaPixels*spacing.Value.MillimetersPerPixelX*
-                        spacing.Value.MillimetersPerPixelY) : null;
+                double areaPixels=0;
+                double? areaMillimeters=spacing.HasValue ? 0d : (double?)null;
+                foreach(IReadOnlyList<FGEPoint2D> points in rings)
+                {
+                    double signed=FIMImageMaskContours.SignedArea(points);
+                    double direction=signed<0 ? -1d : 1d;
+                    areaPixels+=direction*FIMImageMeasurement.GetPolygonAreaPixels(points);
+                    if(spacing.HasValue)
+                        areaMillimeters=areaMillimeters.Value+direction*
+                            FIMImageMeasurement.GetPolygonAreaSquareMillimeters(points,spacing).Value;
+                }
+                if(double.IsNaN(areaPixels) || double.IsInfinity(areaPixels) || areaPixels<=0 ||
+                    (areaMillimeters.HasValue &&
+                     (double.IsNaN(areaMillimeters.Value) || double.IsInfinity(areaMillimeters.Value))))
+                    throw new InvalidOperationException("Mask轮廓测量面积不合法。");
                 // 先完成数值和对象校验，再写入唯一Store，避免部分无效轮廓。
                 List<MVIImageOverlayItem> objects=new List<MVIImageOverlayItem>();
                 int outer=0,holes=0;
