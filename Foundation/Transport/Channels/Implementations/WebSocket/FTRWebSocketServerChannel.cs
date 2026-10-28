@@ -118,16 +118,10 @@ namespace CxVisual.Foundation.Transport
                             incoming.Write(buffer,0,result.Count);
                             if(result.EndOfMessage)
                             {
-                                int copyBytes=(int)incoming.Length;
-                                lease.Reserve(copyBytes);
-                                try
-                                {
-                                    byte[] message=incoming.ToArray();
-                                    _inReceiveCallback.Value=true;
-                                    try{ReceiveFrom(peer.Address,message);}
-                                    finally{_inReceiveCallback.Value=false;}
-                                }
-                                finally{lease.Release(copyBytes);}
+                                // 不再ToArray整消息；ReceiveFrom切片会创建有明确额度的独立上下文。
+                                _inReceiveCallback.Value=true;
+                                try{ReceiveFrom(peer.Address,incoming.GetBuffer(),(int)incoming.Length);}
+                                finally{_inReceiveCallback.Value=false;}
                                 int previous=incoming.Capacity;
                                 incoming.SetLength(0);
                                 incoming.Capacity=0; // 消息结束立即还给其它Peer，不长期占住大Buffer。
