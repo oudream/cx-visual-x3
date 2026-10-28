@@ -55,6 +55,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     left.Open();right.Open();
                     left.SendBytes(new byte[]{1,2,3});
+                    FTRChannelHealthSnapshot view=((IFTRChannelTransport)right).ReadHealth();
+                    Check(view.ChannelId==right.Id && view.SessionId==right.SessionId &&
+                        view.State==FTRChannelState.Open && view.ActivePeers==1,
+                        "工厂/接口视图须直接提供正式健康状态和Session");
                     Check(delivered==1 && last!=null && last.Address.ChannelId==right.Id &&
                         right.Diagnostics.LastFailure!=null &&
                         right.Diagnostics.LastFailure.Stage=="Observer" &&
@@ -103,6 +107,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     catch(InvalidOperationException){multicastRejected=true;}
                     Check(multicastRejected,"MultiPeer便利发送必须禁止丢失子客户端ID导致广播");
                     server.Deliver(peer,new byte[]{7});
+                    Check(((IFTRChannelTransport)server).ReadHealth().ActivePeers==1,
+                        "MultiPeer健康视图应使用正式子客户端目录");
                     Check(first==1&&all==1,"订阅过滤必须按真实SubChannel ID匹配");
                     var context=new FTRChannelReceiveContext(peer,new byte[]{1});
                     server.ReplyAsync(context,new byte[]{11},CancellationToken.None).GetAwaiter().GetResult();
