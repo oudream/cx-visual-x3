@@ -32,7 +32,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     FGETriangleMesh3D mesh=result.Mesh;
                     Check(mesh.TriangleCount==48 && mesh.VertexCount==26,
                         "2x2x2实体必须由24个外露四边形构成48个三角形，顶点跨面复用");
-                    Check(mesh.IsClosedOrientedManifold && mesh.BoundaryEdgeCount==0 &&
+                    Check(mesh.ConnectedFaceComponentCount==1 &&
+                          mesh.IsClosedOrientedManifold && mesh.BoundaryEdgeCount==0 &&
                           mesh.NonManifoldEdgeCount==0 && mesh.InconsistentWindingEdgeCount==0,
                         "规则六邻域表面必须形成法向一致的封闭流形");
                     Check(Math.Abs(mesh.SurfaceArea-24)<1e-9 &&
@@ -112,6 +113,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
 
+            // 两个分离的完整工件：每条边合法、各自闭合，但不能作为一个实体计量。
+            byte[] twoObjects=new byte[size*size*size*2];
+            SetUInt16(twoObjects,size,3,3,3,1700);
+            SetUInt16(twoObjects,size,8,8,8,1700);
+            using(FVOVolumeData source=FVORawVolumeLoader.LoadFromMemory(
+                twoObjects,info,64,CancellationToken.None))
+            {
+                source.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,0,0,0,
+                    new double[]{1,0,0,0,1,0,0,0,1},true));
+                using(FVOOriginalScalarLease lease=source.AcquireOriginalScalarLease())
+                {
+                    CT3DVoxelBoundaryMeshResult result=CT3DVoxelBoundaryMeshExtractor.Extract(
+                        lease,"fixture:two-islands",6,1000,50,CancellationToken.None);
+                    Check(result.Mesh.ConnectedFaceComponentCount==2 &&
+                          result.Mesh.IsClosedOrientedManifold &&
+                          result.Mesh.TriangleCount==24 &&
+                          result.Mesh.EnclosedVolume.HasValue &&
+                          Math.Abs(result.Mesh.EnclosedVolume.Value-2)<1e-9 &&
+                          !result.HasCalibratedClosedGeometry,
+                        "两个完全闭合实体必须保留2个面壳身份，不能误称单工件计量结果");
+                }
+            }
+
             // 网格是独立的通用几何类型，错误索引/退化三角形必须被FGE拒绝。
             bool invalid=false;
             try
@@ -145,6 +169,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(bowTie.BoundaryEdgeCount==0 && bowTie.NonManifoldEdgeCount==0 &&
                   bowTie.InconsistentWindingEdgeCount==0 &&
                   bowTie.NonManifoldVertexCount==1 &&
+                  bowTie.ConnectedFaceComponentCount==2 &&
                   !bowTie.IsClosedOrientedManifold && !bowTie.EnclosedVolume.HasValue,
                 "仅顶点接触的两个封闭壳必须被判为bow-tie非流形而不是可计量闭合体");
             byte[] boundary=new byte[size*size*size*2];
