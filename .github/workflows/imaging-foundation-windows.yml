@@ -55,18 +55,9 @@ jobs:
           if (-not $?) { throw 'Structure verification failed' }
           & .\Build\Verify-OwnerDependencies.ps1
           if (-not $?) { throw 'Owner dependency verification failed' }
-      - name: Execute FIM MVI standalone and default smoke
-        id: core_smoke
-        shell: pwsh
-        run: |
-          $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
-          & $exe --volume
-          if ($LASTEXITCODE -ne 0) { throw 'FVO --volume regression failed' }
-          & $exe --imaging
-          if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
-          & $exe
-          if ($LASTEXITCODE -ne 0) { throw 'Default architecture regression failed' }
       - name: Execute real WPF ImageViewer headless window and PNG roundtrip
+        # 与F17默认回归彼此独立：F17故障不能遮挡2D实测证据。
+        if: ${{ !cancelled() && steps.unified_build.outcome == 'success' }}
         shell: pwsh
         run: |
           $exe = '.\Output\Release\x64\CxVisual.TestCenter.exe'
@@ -88,6 +79,19 @@ jobs:
           finally {
             $process.Dispose()
           }
+      - name: Execute FIM MVI standalone and default smoke
+        id: core_smoke
+        # 2D失败也必须运行完整FIM/FVO及默认回归，保持互不遮蔽。
+        if: ${{ !cancelled() && steps.unified_build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --volume
+          if ($LASTEXITCODE -ne 0) { throw 'FVO --volume regression failed' }
+          & $exe --imaging
+          if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'Default architecture regression failed' }
       - name: Execute real WPF 3D spatial slice workbench
         # 二维ImageViewer失败不得屏蔽独立三维验收；只要求共享构建与核心FVO回归通过。
         if: ${{ !cancelled() && steps.unified_build.outcome == 'success' && steps.core_smoke.outcome == 'success' }}
