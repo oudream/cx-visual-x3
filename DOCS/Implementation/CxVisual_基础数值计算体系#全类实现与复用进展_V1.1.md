@@ -149,3 +149,11 @@ double conditionNumber = solved.ConditionNumber;
 - 固定SHA [Numerics CI #40639945222](https://github.com/oudream/cx-visual-x3/actions/runs/40639945222) 尝试1/2：Windows 28工程编译、Owner/DAG、Numerics专项和独立性能基准均成功。默认ArchitectureSmoke两次在无关的 F17.PIPE_BULK 命名管道子进程退出问题失败，故工作流整体为 **failure**，不能宣称全量成功。
 - 同机可复现的两次基准数据见 `DOCS/Testing/CxVisual_基础数值计算体系#测试验收矩阵_V1.0.md` N35～N38。游标求和速度有所改善；复用输出减少矩阵内存分配，但当前样本未体现确定性的计算时间改善。
 - 继续关注：大型真实矩阵的条件数策略/正规化、原生 BLAS、多维张量多数据类型、GC与吞吐多轮统计；不因本轮性能诊断而声称全部已完成。
+
+## 十五、F04 SVD岭正则化（2026-10-28）
+
+- 公开 `FNULinearAlgebra.RidgeLeastSquares(A,b,lambda)`：最小化 `||Ax-b||²+lambda||x||²`，要求有限且严格正的lambda，限制行数≥列数。与原 `LeastSquares(A,b)` 严格满列秩并列，原签名/失败语义不变。
+- 使用 Math.NET 的SVD因子 `U,S,VT` 构造滤波 `s/(s²+lambda)`，避免正规方程放大病态与平方中间溢出；秩亏/零矩阵允许求解。原设计矩阵秩与条件数按真实SVD返回，秩亏报告正无穷。
+- 正反验收：对角矩阵独立解析解、秩亏列重复的解析解、零设计矩阵、参数非法和欠定矩阵拒绝、输入防修改。
+- 单一lambda有物理单位（设计矩阵奇异值平方），此API不自动标准化特征或自动挑选正则化；大型/极端尺度与广泛数值稳定性测试仍待验证。
+- 同SHA Windows验收须在真实 Actions 日志核实，不能因已提交代码便标记通过。

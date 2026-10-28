@@ -63,5 +63,66 @@ namespace CxVisual.Foundation.Numerics {
                 throw new InvalidOperationException("Least-squares matrix exceeds the allowed condition number.");
             return new FNULeastSquaresResult(result,rows,cols,svd.Rank,norm,condition);
         }
+        /// <summary>
+        /// SVD ridge least squares: minimizes ||A*x-b||^2 + lambda*||x||^2.
+        /// Lambda is in the squared units of the unscaled design matrix.
+        /// Lambda must be finite and positive. Unlike strict LeastSquares,
+        /// rank-deficient matrices are supported without normal equations.
+        /// The reported ConditionNumber refers to the original design.
+        /// </summary>
+        public static FNULeastSquaresResult RidgeLeastSquares(
+            double[,] design, double[] observations, double lambda)
+        {
+            if (!Finite(lambda) || lambda <= 0)
+                throw new ArgumentOutOfRangeException("lambda");
+            if (design == null) throw new ArgumentNullException("design");
+            if (observations == null) throw new ArgumentNullException("observations");
+            int rows = design.GetLength(0), cols = design.GetLength(1);
+            if (rows == 0 || cols == 0 || rows < cols || observations.Length != rows)
+                throw new ArgumentException("Invalid ridge least-squares shape");
+            for (int row = 0; row < rows; ++row)
+            {
+                if (!Finite(observations[row])) throw new ArgumentOutOfRangeException("observations");
+                for (int col = 0; col < cols; ++col)
+                    if (!Finite(design[row, col])) throw new ArgumentOutOfRangeException("design");
+            }
+            Matrix<double> a = Matrix<double>.Build.DenseOfArray(design);
+            Vector<double> b = Vector<double>.Build.DenseOfArray(observations);
+            var svd = a.Svd(true);
+            // x = V * diag(s/(s^2 + lambda)) * U^T * b.
+            // Compute the filter without forming s^2 or the normal equations.
+            var coefficients = new double[cols];
+            double largest = 0, smallest = double.PositiveInfinity;
+            for (int mode = 0; mode < svd.S.Count; ++mode)
+            {
+                double singular = svd.S[mode];
+                if (!Finite(singular) || singular < 0)
+                    throw new InvalidOperationException("SVD returned an invalid singular value.");
+                largest = Math.Max(largest, singular);
+                smallest = Math.Min(smallest, singular);
+                if (singular == 0) continue;
+
+                double filter;
+                if (singular >= Math.Sqrt(lambda))
+                    filter = 1.0 / (singular + lambda / singular);
+                else
+                    filter = (singular / lambda) / (1.0 + singular * (singular / lambda));
+                double projection = 0;
+                for (int row = 0; row < rows; ++row)
+                    projection += svd.U[row, mode] * observations[row];
+                double scaled = filter * projection;
+                for (int col = 0; col < cols; ++col)
+                    coefficients[col] += svd.VT[mode, col] * scaled;
+            }
+            for (int col = 0; col < cols; ++col)
+                if (!Finite(coefficients[col])) throw new OverflowException("Ridge coefficient overflow.");
+            Vector<double> fitted = a * Vector<double>.Build.DenseOfArray(coefficients);
+            double norm = (fitted - b).L2Norm();
+            if (!Finite(norm)) throw new OverflowException("Ridge residual overflow.");
+            double condition = svd.Rank < cols || smallest == 0
+                ? double.PositiveInfinity : largest / smallest;
+            return new FNULeastSquaresResult(coefficients, rows, cols,
+                svd.Rank, norm, condition);
+        }
     }
 }

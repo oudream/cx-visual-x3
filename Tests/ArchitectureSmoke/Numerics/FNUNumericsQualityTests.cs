@@ -378,6 +378,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var transposed = baseBuffer.AsView().Transpose(0,1);
             Near(FNUTensorMath.SumView(transposed),25,0,
                 "cursor sum preserves cancellation accuracy");
+            // Independent ridge oracle for a diagonal design: (A^T A+lambda I)x=A^T b.
+            var ridge = FNULinearAlgebra.RidgeLeastSquares(
+                new double[,] { { 1, 0 }, { 0, 2 } },
+                new double[] { 3, 8 }, 1);
+            Near(ridge.Coefficients[0], 1.5, 1e-12, "ridge diagonal first coefficient");
+            Near(ridge.Coefficients[1], 3.2, 1e-12, "ridge diagonal second coefficient");
+            Check(ridge.Rank == 2, "ridge full rank");
+            var singularRidge = FNULinearAlgebra.RidgeLeastSquares(
+                new double[,] { { 1, 1 }, { 2, 2 } },
+                new double[] { 2, 4 }, 2);
+            Near(singularRidge.Coefficients[0], 5.0/6, 1e-12, "ridge rank-deficient coefficient a");
+            Near(singularRidge.Coefficients[1], 5.0/6, 1e-12, "ridge rank-deficient coefficient b");
+            Check(singularRidge.Rank < 2 && double.IsPositiveInfinity(singularRidge.ConditionNumber),
+                "ridge reports rank deficiency honestly");
+            var zeroDesign = FNULinearAlgebra.RidgeLeastSquares(
+                new double[,] { { 0, 0 }, { 0, 0 } },
+                new double[] { 4, 5 }, 1);
+            Near(zeroDesign.Coefficients[0], 0, 0, "zero-design ridge first");
+            Near(zeroDesign.Coefficients[1], 0, 0, "zero-design ridge second");
+            Check(double.IsPositiveInfinity(zeroDesign.ConditionNumber), "zero-design rank");
+            Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.RidgeLeastSquares(
+                new double[,]{{1}}, new double[]{1}, 0), "ridge requires positive lambda");
+            Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.RidgeLeastSquares(
+                new double[,]{{1}}, new double[]{1}, double.NaN), "ridge rejects NaN lambda");
+            Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.RidgeLeastSquares(
+                new double[,]{{1}}, new double[]{1}, double.PositiveInfinity), "ridge rejects infinite lambda");
+            Throws<ArgumentException>(() => FNULinearAlgebra.RidgeLeastSquares(
+                new double[,]{{1,2}}, new double[]{1}, 1), "ridge rejects underdetermined shape");
+            var ridgeSamples = new double[,]{{1,0},{0,2}};
+            var ridgeY = new double[]{3,8};
+            FNULinearAlgebra.RidgeLeastSquares(ridgeSamples, ridgeY, 1);
+            Near(ridgeSamples[1,1],2,0,"ridge does not mutate design");
+            Near(ridgeY[1],8,0,"ridge does not mutate observations");
             Console.WriteLine("PASS FNU quality: condition guard / strided cursor oracle");
         }
 
