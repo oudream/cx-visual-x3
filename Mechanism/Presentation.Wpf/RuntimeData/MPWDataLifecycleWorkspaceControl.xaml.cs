@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using CxVisual.Mechanism.Data.Configuration;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -15,6 +18,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.RuntimeData
     {
         private MDSDataHeap _heap;
         private bool _allowChanges;
+        private MHSConfigSection<MDSDataLifecycleEngineeringOptions> _engineering;
+        private bool _allowEngineeringChanges;
         private bool _disposed;
         public MPWDataLifecycleWorkspaceControl()
         {
@@ -27,6 +32,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.RuntimeData
             OperationStatus.Text = "未绑定真实运行时Data Heap。";
             AutomationProperties.SetAutomationId(this, "MPW.RuntimeData.Lifecycle");
             AutomationProperties.SetAutomationId(ApplyAllButton, "MPW.RuntimeData.ApplyAll");
+            AutomationProperties.SetAutomationId(LoadEngineeringButton, "MPW.RuntimeData.LoadEngineering");
+            AutomationProperties.SetAutomationId(SaveEngineeringButton, "MPW.RuntimeData.SaveEngineering");
+            SaveEngineeringButton.IsEnabled = false;
+            LoadEngineeringButton.IsEnabled = false;
+            EngineeringStatus.Text = "尚未绑定工程配置。";
         }
         private static void Populate(ComboBox control, params string[] names)
         {
@@ -37,6 +47,110 @@ namespace CxVisual.Mechanism.Presentation.Wpf.RuntimeData
         public bool IsBound { get { return _heap != null; } }
         public bool CanEdit { get { return _allowChanges; } }
         public string LastError { get; private set; }
+        public bool HasEngineeringSection { get { return _engineering != null; } }
+
+        /// <summary>仅绑定受信Host提供的MHS正式Section，不创建工程配置真源。</summary>
+        public void BindEngineering(
+            MHSConfigSection<MDSDataLifecycleEngineeringOptions> section,
+            bool allowEngineeringChanges = false)
+        {
+            if (_disposed) throw new ObjectDisposedException("MPWDataLifecycleWorkspaceControl");
+            _engineering = section ?? throw new ArgumentNullException("section");
+            _allowEngineeringChanges = allowEngineeringChanges;
+            LoadEngineeringButton.IsEnabled = true;
+            SaveEngineeringButton.IsEnabled = allowEngineeringChanges;
+            RefreshEngineeringStatus();
+        }
+
+        private void RefreshEngineeringStatus()
+        {
+            EngineeringStatus.Text = _engineering == null
+                ? "尚未绑定工程配置。"
+                : "Saved: " + _engineering.SavedVersion +
+                  " / Effective: " + _engineering.EffectiveVersion +
+                  (_engineering.HasPendingApply ? " · 待新Task边界审批生效" : " · 已生效") +
+                  (_allowEngineeringChanges ? " · 可保存草稿" : " · 只读");
+        }
+
+        /// <summary>从MHS Saved版本加载可编辑草稿，不改变当前运行值或Effective。</summary>
+        public void LoadEngineeringDraft()
+        {
+            if (_disposed) throw new ObjectDisposedException("MPWDataLifecycleWorkspaceControl");
+            if (_engineering == null) throw new InvalidOperationException("未绑定MHS工程配置");
+            MDSDataLifecycleEngineeringOptions x = _engineering.GetLatestSaved();
+            x.ToPolicy();
+            OwnershipMode.SelectedIndex = (int)x.Ownership;
+            LifetimeMode.SelectedIndex = (int)x.Lifetime;
+            RetentionMode.SelectedIndex = (int)x.Retention;
+            CacheTtlSecondsBox.Text = x.CacheTtlSeconds.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+            TransferMode.SelectedIndex = (int)x.Transfer;
+            ReclamationMode.SelectedIndex = (int)x.Reclamation;
+            RefreshEngineeringStatus();
+        }
+
+        public MDSDataLifecycleEngineeringOptions BuildEngineeringDraft()
+        {
+            int seconds;
+            if (!int.TryParse(CacheTtlSecondsBox.Text,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out seconds) ||
+                seconds < 1 || seconds > 86400)
+                throw new ArgumentOutOfRangeException("CacheTtlSeconds",
+                    "缓存TTL必须介于1至86400秒");
+            var result = new MDSDataLifecycleEngineeringOptions {
+                Ownership = (MDSOwnershipMode)OwnershipMode.SelectedIndex,
+                Lifetime = (MDSLifetimeMode)LifetimeMode.SelectedIndex,
+                Retention = (MDSRetentionMode)RetentionMode.SelectedIndex,
+                CacheTtlSeconds = seconds,
+                Transfer = (MDSTransferMode)TransferMode.SelectedIndex,
+                Reclamation = (MDSReclamationMode)ReclamationMode.SelectedIndex
+            };
+            result.ToPolicy(); // 提前提示五维冲突；真正提交仍通过MHS的CAS和校验。
+            return result;
+        }
+
+        /// <summary>保存Saved版本但绝不隐式执行ApplyPending或触碰运行Heap。</summary>
+        public async Task<MHSConfigCommitResult> SaveEngineeringDraftAsync(
+            string reason, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (_disposed) throw new ObjectDisposedException("MPWDataLifecycleWorkspaceControl");
+            if (_engineering == null || !_allowEngineeringChanges)
+                throw new InvalidOperationException("工程配置只读或未授权保存");
+            if (string.IsNullOrWhiteSpace(reason))
+                throw new ArgumentException("提交原因不能为空", "reason");
+            MDSDataLifecycleEngineeringOptions draft = BuildEngineeringDraft();
+            var section = _engineering;
+            return await section.UpdateAsync(saved => {
+                saved.Ownership = draft.Ownership;
+                saved.Lifetime = draft.Lifetime;
+                saved.Retention = draft.Retention;
+                saved.CacheTtlSeconds = draft.CacheTtlSeconds;
+                saved.Transfer = draft.Transfer;
+                saved.Reclamation = draft.Reclamation;
+            }, reason, cancellationToken).ConfigureAwait(false);
+        }
+
+        private void LoadEngineeringClicked(object sender, RoutedEventArgs args)
+        {
+            try { LoadEngineeringDraft(); LastError = null; }
+            catch (Exception error) { LastError = error.Message; EngineeringStatus.Text = LastError; }
+        }
+
+        private async void SaveEngineeringClicked(object sender, RoutedEventArgs args)
+        {
+            SaveEngineeringButton.IsEnabled = false;
+            try
+            {
+                MHSConfigCommitResult result = await SaveEngineeringDraftAsync(
+                    "Studio人工编辑运行数据五维生命周期", CancellationToken.None);
+                LastError = result.Success ? null : (result.ErrorCode ?? "MHS草稿保存失败");
+                RefreshEngineeringStatus();
+                if (!result.Success) EngineeringStatus.Text += " · " + LastError;
+            }
+            catch (Exception error) { LastError = error.Message; EngineeringStatus.Text = LastError; }
+            finally { SaveEngineeringButton.IsEnabled = _allowEngineeringChanges && !_disposed; }
+        }
 
         public void Bind(MDSDataHeap heap, bool allowRuntimePolicyChanges = false)
         {
@@ -199,6 +313,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.RuntimeData
             { Diagnostics.Text = error.GetType().Name + ": " + error.Message; }
         }
         public void Dispose()
-        { _disposed = true; _heap = null; DataItems.Items.Clear(); }
+        {
+            _disposed = true;
+            _heap = null; _engineering = null;
+            DataItems.Items.Clear();
+        }
     }
 }
