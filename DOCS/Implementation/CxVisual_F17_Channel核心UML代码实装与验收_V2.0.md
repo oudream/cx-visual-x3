@@ -54,3 +54,15 @@
 - 新增恢复任务上下文区分：**回调内仅同步请求取消并委托继续清理；回调外 `StopAsync()` 仍等待恢复任务结束与取消源释放**。上轮停止尚未完成时，拒绝重新 `Start()`，避免两代恢复任务重叠。
 - `FTRReconnectControllerTests.StopWithinRecoveryCallbacks` 补充失败回调内同步 `StopAsync()`、成功回调内同步 `Dispose()`、外部停止等待、停止后不再重连的回归用例；原真实 TCP 重连、重试上限和停止取消用例保留。
 - **Windows 固定 SHA 验收**：[F17 #40656980087](https://github.com/oudream/cx-visual-x3/actions/runs/40656980087)（`11584be9`）与 [F17 #40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715)（`4d9976ee`）工作均为 `success`。后者的实际日志输出 `F17.RECONNECT_PASS ... callback-safe stop`，同时 `F17.UML_CORE_PASS`、`CHANNEL.TRANSPORT`、TCP/NamedPipe 各向 2GiB 完整性门禁通过；此为软件 Windows 回归，不代表 24h 长稳或现场设备验收。
+
+
+## 6. V3.0 六能力S1/S2与WS消息原子性代码实施（2026-10-28）
+
+- **执行控制**：新 `Channels/IO/FTRDeadline.cs` 使用 `Stopwatch.GetTimestamp`；TCP持同一截止时间覆盖进入发送门及所有`NetworkStream.Write`分块。NamedPipe原有`FTRTransportThread.Remaining`继续保持同一总时间预算，其他Channel尚需逐类型复核。
+- **故障事实**：`FTRFailureInfo` 分Kind（Timeout/Cancelled/RemoteClosed/NetworkUnavailable/PermissionDenied/InvalidConfiguration/ResourceExhausted/TransportIO/Unknown）、Scope（Operation/SubChannel/Channel）、Stage、Message、TimestampUtc；`FTRFailureClassifier`处理嵌套IO/Socket异常，不据文本推断故障。异常分类属于诊断，不许可业务重发。
+- **诊断**：原`FTRChannelDiagnostics`延伸类型化最近故障与按需速率采样；原`FTRChannelDiagnosticsSnapshot`增量字段；`FTRChannelBase.Health`生成只读`FTRChannelHealthSnapshot`。Observer异常限于Operation作用域，不能冒充物理Receive故障。异步预算拒绝先于clone，并记录`SendAdmission/ResourceExhausted`；兼容原InvalidOperationException的catch。
+- **重连**：保留`FTRReconnectController`唯一执行主体。按分类停止权限/非法配置/资源耗尽/非主动取消重试，既有可恢复异常仍遵守次数和退避；`FTRReconnectSnapshot`增累计失败/成功、最后恢复耗时/UTC和上次故障事实，不重放未知执行结果的业务命令。
+- **WebSocket**：Client的`OnSendSynchronous`和Server的同名覆盖都调用各自同一个`WriteMessageAsync`：先取得单连接/单Peer发送门，最多16KiB默认分片或显式SegmentBytes，只有最后一片EndOfMessage=true，然后释放发送门。由于.NET WebSocket只有async底层API，同步Send是阻塞等待一次完整原子消息操作，不宣称使用不存在的同步WebSocket OS API。原异步Send复用同一物理发送。
+- **兼容**：没有更改`IFTRChannel`、`IFTRChannelTransport`签名、FTR/MPA/MCN/MDS/MRK Owner、FCM旧字段和15种Channel的类型身份；新类已逐个加入传统Transport.csproj，ArchitectureSmoke测试仍由项目原通配Compile编译。
+
+验证见原[测试矩阵](../Testing/CxVisual_F17_Channel_P0大数据与线程模型_验收矩阵_V1.0.md)，**六项仍为逐步推进，不代表全类型P0完成或软件工业验收完成**。

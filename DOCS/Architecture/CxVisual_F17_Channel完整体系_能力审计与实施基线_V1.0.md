@@ -92,3 +92,34 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 - 现已在既有 `FTRReconnectController` 内进行修复：回调内仅取消并延后完成任务/取消源清理；回调外仍严格等待；旧代尚未完全停止时不得重启维护。没有重发协议或业务命令，也没有建立第二个Transport Runtime。
 - **固定源码验证**：回归提交 `4d9976ee74560115dfcbcd6e76a7205c33372e5a`，Windows F17 [#40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715) success，日志包含 `F17.RECONNECT_PASS ... callback-safe stop`、`F17.UML_CORE_PASS` 和双向各2GiB完整性结果。
 - **剩余缺口不变**：其它Channel跨会话恢复、断网/崩溃、HTTP/WS慢客户端、SharedMemory不确定槽位、24h长稳、跨PC/HIL、所有端点并发取消场景仍属待验收。此项不得计为14项整体完成。
+
+
+## 8. V3.0 六项重点能力统一增强（2026-10-28）
+
+本节是在既有F17唯一Channel Owner、核心UML及14项能力台账上做的**增量**，不是另起框架。六个能力：29超时取消、30并发多端、31可靠容错、32诊断监控、34配置扩展、35高性能；其实施顺序可以归并为五组，但需求仍严格保持六项。
+
+### 8.1 OOP / GoF / AOP 责任边界
+
+- **OOP**：现有 `FTRChannelBase` 保持统一生命周期/收发/诊断模板，`FTRSingleChannelBase`/`FTRMultiChannelBase` 负责端点形态，具体TCP/Pipe/HTTP/WS各自持有唯一物理I/O。
+- **GoF**：Template Method使用现有 `OnOpenAsync`/`OnCloseAsync`/`OnSendSynchronous`；Factory/Provider、Adapter、Observer和可组合故障决策沿用现有对象，不制造模式空壳。
+- **AOP**：采用显式公共执行边界记录Deadline、入场拒绝、错误阶段及观察者异常；不引入反射动态代理/字节级拦截器，不在数据热路径增加逐字节日志。
+- **跨Owner纪律**：FTR只判断物理故障与连接是否重试；MPA唯一组帧/协议事务；MDS唯一DataHandle；MRK唯一任务调度。超时/取消/断连后远端业务结果可能未知，绝不由FTR重复命令。
+
+### 8.2 本轮代码与六项能力状态
+
+| 项目 | 已提交的有效增量 | 距完整工业验收仍缺 |
+|---|---|---|
+| 29 | `FTRDeadline` 单调截止时间用于TCP同步分块发送和排队；Open/Close/Send分类计入诊断 | 其它类型全路径Deadline和取消后物理资源结算矩阵 |
+| 30 | WebSocket Client/Server按整条Message持有发送门、按分片发送，测试同Peer多消息不交错 | HTTP/WS慢端、多Peer资源公平、停机竞态与长稳 |
+| 31 | `FTRFailureInfo`/`FTRFailureClassifier`；已有`FTRReconnectController`遇权限/非法配置/资源拒绝停止盲目重试，提供累计成功失败与恢复耗时 | 所有类型恢复动作差异、心跳边界、真实网络/HIL |
+| 32 | `FTRChannelDiagnosticsSnapshot` 增加类型化最近故障与采样速率；`FTRChannelBase.Health` 暴露只读状态/会话/Peer/原队列；观察者异常标记Observer/Operation | TestCenter实时图表、统一持久历史、Peer级与GC/CPU实时SLA |
+| 34 | 沿用已有FCM、Factory/Provider、Capability，不修改身份/配置Schema | 参数逐类型真实生效和完整专业Provider样例 |
+| 35 | 异步快照入场被拒绝时计入ResourceExhausted故障；WS发送分片无整条输出拷贝；保留已有池租约/2GiB门禁 | HTTP/WS接收聚合复制、SharedMemory跨重启、CT/图像到MDS的真正低复制与24h资源SLA |
+
+`FTRChannelHealthSnapshot` 暂只作为`FTRChannelBase`公开附加视图，不强制扩展`IFTRChannelTransport`，避免破坏已有第三方Provider实现。健康视图仅表示本机证据；Open不证明远端业务成功，速率采用快照窗口平均值。
+
+### 8.3 本轮提交/验证边界
+
+- `1be8688b`：Deadline、故障分类、速率和Health；`4cb84aa1`：专门的故障/快照回归；对应[Windows F17 #40660269567](https://github.com/oudream/cx-visual-x3/actions/runs/40660269567) success。
+- `321b0525`：可恢复性判断、物理重连结果统计和负面测试；对应[Windows F17 #40660492860](https://github.com/oudream/cx-visual-x3/actions/runs/40660492860) success。
+- `0892287d`、`c832d99c`、`a0ac099f`、`b6123dc2`：WS双向消息级原子分片和OS回环；`d54928fc`：入场故障分类；`61776e5c`：观察者隔离。**本组较新提交的Windows结果以其对应CI最终状态另行补录；绝不借用更早绿灯**。

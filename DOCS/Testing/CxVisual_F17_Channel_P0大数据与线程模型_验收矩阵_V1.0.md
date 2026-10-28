@@ -61,3 +61,17 @@
 | F17-P0-RC-01 | `FTRReconnectControllerTests.StopWithinRecoveryCallbacks`，由 `--channel-transport` 调用 | 失败事件内同步 `StopAsync` 不发生自等待死锁；成功事件内同步 `Dispose` 亦不死锁；外部停止实际等待任务资源清理；停止后没有新一轮自动连接 | [F17 Windows #40657016715](https://github.com/oudream/cx-visual-x3/actions/runs/40657016715) success，固定SHA `4d9976ee`，日志 `F17.RECONNECT_PASS ... callback-safe stop` |
 
 涉及 `FTRReconnectController.cs`，未修改 Protocol/Connector/MDS/MRK 或业务执行语义。此专项回归不覆盖强杀进程、24h长稳、现场网络或PLC设备。
+
+
+## V3.0 故障、健康与WebSocket原子性验收增量（2026-10-28）
+
+| 证据编号 | 实际入口 | 断言及阴性边界 | 证据状态 |
+|---|---|---|---|
+| F17-S1-01 | `FTRChannelHealthTests.ClassifiedDiagnostics`，由`--channel-transport`调用 | Cancellation/Timeout/PermissionDenied/嵌套Socket错误按Kind/Scope/Stage分类；健康速率有真实采样窗口 | [F17 #40660269567](https://github.com/oudream/cx-visual-x3/actions/runs/40660269567) success，源码`4cb84aa1` |
+| F17-S2-01 | `FTRChannelHealthTests.ChannelLifecycleAndHealth` | 发送失败、通道Fault、Open失败清理和会话/状态/Peer快照 | 同上 |
+| F17-S2-02 | `FTRChannelHealthTests.ObserverIsolation` | StateChanged观察者报错不污染物理链路状态，归Observer/Operation | 新增`61776e5c`，待固定SHA验证 |
+| F17-S1-02 | `FTRReconnectControllerTests.FatalFailureStopsRetries` | 权限拒绝只能尝试一次即停止，次数、最后故障类型、失败与成功统计准确 | [F17 #40660492860](https://github.com/oudream/cx-visual-x3/actions/runs/40660492860) success，源码`321b0525` |
+| F17-S3-01 | `FTRWebSocketAtomicTests.Run`，`--channel-uml-core`与`--channel-transport` | 真实WS Client同步4KiB分片只生成一条消息；Server同Peer并发多分片无交错、完整双向字节校验 | 新增`b6123dc2`，待固定SHA验证 |
+| F17-S5-01 | `FTRTcpBulkTests.AsyncSendAdmission`，`--channel-transport` | 拒绝入场不克隆、不执行物理发送，计数与ResourceExhausted/SendAdmission/Operation一致 | 新增`d54928fc`，待固定SHA验证 |
+
+保留原`F17.UML_CORE_PASS`、`F17.RECONNECT_PASS`、`F17.BULK_VOLUME_PASS`和`F17.PIPE_VOLUME_PASS`双向各2147483648字节检查；另需检查新增`F17.HEALTH_PASS`及`F17.WS_ATOMIC_PASS`实际日志。旧成功CI不替代新固定SHA。后续欠缺24小时持续流、跨PC、工业网络/硬件、HTTP/WS多客户端总内存预算、现场CPU/GC SLA、共享内存崩溃恢复等。
