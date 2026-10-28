@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using CxVisual.Foundation.Volume;
 using CxVisual.Professional.CT3D;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -83,7 +84,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     using(FVOOriginalScalarLease uncalibrated=sphere.AcquireOriginalScalarLease())
                     {
                         CT3DSurfaceSamples preview=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            uncalibrated,100f,1,5000,CancellationToken.None);
+                            uncalibrated,"fixture:synthetic-sphere",7,100f,1,5000,CancellationToken.None);
                         bool refused=false;
                         try {CT3DSurfaceSphereAnalysis.FitSphere(preview);}
                         catch(InvalidOperationException){refused=true;}
@@ -95,7 +96,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     using(FVOOriginalScalarLease original=sphere.AcquireOriginalScalarLease())
                     {
                         CT3DSurfaceSamples points=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            original,100f,1,5000,CancellationToken.None);
+                            original,"fixture:synthetic-sphere",7,100f,1,5000,CancellationToken.None);
                         Check(points.Count>300 && !points.TouchesVolumeBoundary &&
                             points.SurfaceMethod=="binary-voxel-center-6-neighbor",
                             "原值边界采样保留方法和截断证据");
@@ -106,13 +107,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                               Math.Abs(fit.RadiusMm-9)<.8 &&
                               fit.RmsResidualMm<.7 && fit.SampleCount==points.Count,
                             "球体拟合必须使用原始体、真实毫米Frame与FNU SVD残差");
+                        Check(fit.SourceRef=="fixture:synthetic-sphere" &&
+                              fit.SourceRevision==7 && fit.ResultId!=Guid.Empty,
+                            "专业结果必须保留原值来源、版本和临时结果身份");
+                        MVI3DSceneState sceneResult=new MVI3DSceneState();
+                        Guid surfaceReference=sceneResult.Add(MVI3DSceneKind.Surface,
+                            "ct3d:result:"+fit.ResultId.ToString("N"),fit.SourceRevision,
+                            "fixture:physical-frame");
+                        sceneResult.Select(surfaceReference);
+                        Check(sceneResult.SelectedId==surfaceReference &&
+                              sceneResult.Snapshot()[0].Kind==MVI3DSceneKind.Surface,
+                            "CT3D结果通过MVI场景资源引用显示，不把专业算法或结果复制进MVI");
                         bool limit=false;
-                        try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,100,1,8,
+                        try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,100,1,8,
                             CancellationToken.None);}
                         catch(InvalidOperationException){limit=true;}
                         Check(limit,"超预算必须报错，不得只取一侧点伪报球半径");
                         CT3DSurfaceSamples cut=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            original,0f,1,10000,CancellationToken.None);
+                            original,"fixture:synthetic-sphere",7,0f,1,10000,CancellationToken.None);
                         Check(cut.TouchesVolumeBoundary,"接触边缘的体必须保留截断诊断");
                         bool cutRefused=false;
                         try {CT3DSurfaceSphereAnalysis.FitSphere(cut);}
@@ -122,7 +134,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         {
                             cancelled.Cancel();
                             bool cancellationObserved=false;
-                            try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,100,1,5000,
+                            try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,100,1,5000,
                                 cancelled.Token);}
                             catch(OperationCanceledException){cancellationObserved=true;}
                             Check(cancellationObserved,"专业表面采样须响应平台取消信号");
