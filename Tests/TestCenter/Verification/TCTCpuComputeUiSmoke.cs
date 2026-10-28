@@ -141,13 +141,16 @@ namespace CxVisual.TestCenter.UI
                     first.Trace.Count>0 &&first.FlowId!=Guid.Empty &&
                     first.Fingerprint.Length==64,
                     "Real RAW/MHS/MEM/MOC/MRK result/Trace mismatch");
-                bool visible=await Task.Run(()=>{
+                bool hasResults=await Task.Run(()=>{
                     var rootElement=AutomationElement.FromHandle(hwnd);
                     var regions=Find(rootElement,"TCT.Cpu.Regions");
                     var trace=Find(rootElement,"TCT.Cpu.Trace");
-                    return !regions.Current.IsOffscreen && !trace.Current.IsOffscreen;
+                    var regionGrid=regions.GetCurrentPattern(GridPattern.Pattern) as GridPattern;
+                    var traceGrid=trace.GetCurrentPattern(GridPattern.Pattern) as GridPattern;
+                    return regionGrid!=null&&traceGrid!=null&&
+                        regionGrid.Current.RowCount>=1&&traceGrid.Current.RowCount>=1;
                 });
-                Check(visible,"Actual result/Trace grids not visible in Compute test UI");
+                Check(hasResults,"Actual WPF grids do not contain real region/Trace rows");
                 // Repeat through the same UI must produce a new actual MRK execution.
                 await Click(hwnd,"TCT.Cpu.Run");
                 await Until(()=>!panel.IsRunning&&panel.LastReport!=null&&
