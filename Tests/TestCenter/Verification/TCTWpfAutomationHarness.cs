@@ -1711,21 +1711,32 @@ namespace CxVisual.TestCenter.UI
             if (run == null) throw new InvalidOperationException("Channel run button not invocable");
             run.Invoke();
             bool ready = false;
+            string lastEvidence = "Channel viewer not inspected";
             for (int attempt = 0; attempt < 240; attempt++)
             {
                 window.Dispatcher.Invoke(new Action(() => {
                     var tabs = window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                    if (tabs == null || !window.MenuRunSelected.IsEnabled) return;
-                    TCTChannelTestView channelView = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                        .Select(x => x.Content).OfType<TCTChannelTestView>().FirstOrDefault();
-                    ready = channelView != null && channelView.VerifiedFrameCount >= 5 &&
-                        channelView.VerifiedErrorCount >= 1 && channelView.EvidenceProblem == null;
+                    bool runEnabled = window.MenuRunSelected.IsEnabled;
+                    TCTChannelTestView channelView = tabs == null ? null :
+                        tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                            .Select(x => x.Content).OfType<TCTChannelTestView>().FirstOrDefault();
+                    int frames = channelView == null ? 0 : channelView.VerifiedFrameCount;
+                    int errors = channelView == null ? 0 : channelView.VerifiedErrorCount;
+                    string problem = channelView == null ? "<viewer absent>" :
+                        (channelView.EvidenceProblem ?? "<none>");
+                    lastEvidence = "runEnabled=" + runEnabled +
+                        ", viewerPresent=" + (channelView != null) +
+                        ", verifiedFrames=" + frames +
+                        ", verifiedErrors=" + errors + ", evidenceProblem=" + problem;
+                    ready = runEnabled && channelView != null && frames >= 5 &&
+                        errors >= 1 && channelView.EvidenceProblem == null;
                 }));
                 if (ready) break;
                 Thread.Sleep(200);
             }
             if (!ready) throw new TimeoutException(
-                "Channel UIA did not verify real TX/RX/error evidence from Connectivity");
+                "Channel UIA did not verify real TX/RX/error evidence from Connectivity; " +
+                lastEvidence);
             SelectionItemPattern tab = Find(root, "TCT.Viewer.Channel")
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (tab == null) throw new InvalidOperationException("Channel Viewer tab has no SelectionItemPattern");
