@@ -328,6 +328,90 @@ namespace CxVisual.Foundation.Numerics
             }
         }
 
+        /// <summary>
+        /// Sum a potentially non-contiguous view over one axis. Rank-one input
+        /// returns shape [1], matching the existing buffer reduction contract.
+        /// </summary>
+        public static FNUTensorBuffer ReduceSumView(FNUTensorView view, int axis)
+        {
+            int[] dimensions = ViewReductionDimensions(view, axis);
+            var result = new FNUTensorBuffer(new FNUTensorShape(dimensions));
+            ReduceSumViewInto(view, axis, result);
+            return result;
+        }
+
+        /// <summary>
+        /// Accumulate a strided view along one axis into independent output.
+        /// The destination must not own the input view's backing storage.
+        /// Validation and accumulation finish before any output is written.
+        /// </summary>
+        public static void ReduceSumViewInto(FNUTensorView view, int axis,
+            FNUTensorBuffer output)
+        {
+            int[] dimensions = ViewReductionDimensions(view, axis);
+            if (output == null) throw new ArgumentNullException("output");
+            if (ReferenceEquals(output, view.Owner))
+                throw new ArgumentException("Output aliases the input view's owner.", "output");
+            if (output.Shape.Rank != dimensions.Length)
+                throw new ArgumentException("Output rank does not match reduced view.", "output");
+            for (int i = 0; i < dimensions.Length; ++i)
+                if (output.Shape.DimensionAt(i) != dimensions[i])
+                    throw new ArgumentException("Output dimensions do not match reduced view.", "output");
+
+            var sums = new double[output.Shape.ElementCount];
+            var corrections = new double[sums.Length];
+            var coordinates = new int[view.Rank];
+            var outputSteps = new int[view.Rank];
+            int outputAxis = 0;
+            for (int axisIndex = 0; axisIndex < view.Rank; ++axisIndex)
+                if (axisIndex != axis)
+                    outputSteps[axisIndex] = output.Shape.StrideAt(outputAxis++);
+
+            long address = view.BaseOffset;
+            int target = 0, count = view.ElementCount;
+            for (int flat = 0; flat < count; ++flat)
+            {
+                double value = view.ReadPhysical(address);
+                double previous = sums[target], next = previous + value;
+                corrections[target] += Math.Abs(previous) >= Math.Abs(value)
+                    ? (previous - next) + value : (value - next) + previous;
+                sums[target] = next;
+                if (flat + 1 == count) break;
+                for (int i = view.Rank - 1; i >= 0; --i)
+                {
+                    coordinates[i]++;
+                    address += view.StrideAt(i);
+                    target += outputSteps[i];
+                    if (coordinates[i] < view.DimensionAt(i)) break;
+                    address -= (long)coordinates[i] * view.StrideAt(i);
+                    target -= coordinates[i] * outputSteps[i];
+                    coordinates[i] = 0;
+                }
+            }
+            // Read all inputs and reject overflow before modifying the caller's
+            // output, including when an intermediate sum becomes non-finite.
+            for (int i = 0; i < sums.Length; ++i)
+            {
+                double total = sums[i] + corrections[i];
+                if (double.IsNaN(total) || double.IsInfinity(total))
+                    throw new OverflowException("Tensor view axis reduction overflow.");
+                sums[i] = total;
+            }
+            for (int i = 0; i < sums.Length; ++i) output.Put(i, sums[i]);
+        }
+
+        private static int[] ViewReductionDimensions(FNUTensorView view, int axis)
+        {
+            if (view == null) throw new ArgumentNullException("view");
+            if (axis < 0 || axis >= view.Rank) throw new ArgumentOutOfRangeException("axis");
+            if (view.Rank == 1) return new int[] { 1 };
+            var dimensions = new int[view.Rank - 1];
+            int offset = 0;
+            for (int i = 0; i < view.Rank; ++i)
+                if (i != axis) dimensions[offset++] = view.DimensionAt(i);
+            return dimensions;
+        }
+
         /// <summary>Compensated sum with one coordinate cursor per invocation.</summary>
         public static double SumView(FNUTensorView view)
         {

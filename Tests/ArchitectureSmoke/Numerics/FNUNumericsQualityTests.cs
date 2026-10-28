@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorViewQuality();
             SolverConditionAndViewTraversal();
             TensorViewBroadcastArithmetic();
+            TensorViewAxisReduction();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -516,6 +517,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Near(FNUTensorMath.AddViews(left,right).Get(0,0),110,0,
                 "view broadcast reflects live owner mutation");
             Console.WriteLine("PASS FNU strided views: broadcast Add/Multiply/Into/zero/alias");
+        }
+
+        private static void TensorViewAxisReduction()
+        {
+            var samples=new double[24];
+            for(int i=0;i<samples.Length;i++)samples[i]=i+1;
+            var owner=new FNUTensorBuffer(new FNUTensorShape(2,3,4),samples);
+            var view=owner.AsView().Transpose(0,2).Slice(1,1,2); // 4 x 2 x 2
+            var result=FNUTensorMath.ReduceSumView(view,1); // 4 x 2
+            Check(result.Shape.Rank==2 && result.Shape.DimensionAt(0)==4 &&
+                result.Shape.DimensionAt(1)==2,"view axis reduction shape");
+            var destination=new FNUTensorBuffer(new FNUTensorShape(4,2));
+            FNUTensorMath.ReduceSumViewInto(view,1,destination);
+            for(int i=0;i<4;i++)
+                for(int j=0;j<2;j++)
+                {
+                    double reference=view.Get(i,0,j)+view.Get(i,1,j);
+                    Near(result.Get(i,j),reference,0,"view axis reduction oracle");
+                    Near(destination.Get(i,j),reference,0,"view reduction Into");
+                }
+
+            var cancellation=new FNUTensorBuffer(new FNUTensorShape(3),
+                new double[]{1e16,1,-1e16});
+            var one=FNUTensorMath.ReduceSumView(cancellation.AsView(),0);
+            Check(one.Shape.Rank==1 && one.Shape.ElementCount==1,"rank1 reduction contract");
+            Near(one.Get(0),1,0,"axis view compensation");
+            var emptyOwner=new FNUTensorBuffer(new FNUTensorShape(2,0,3));
+            var emptyAxis=FNUTensorMath.ReduceSumView(emptyOwner.AsView(),1);
+            Check(emptyAxis.Shape.Rank==2 && emptyAxis.Shape.ElementCount==6,
+                "empty reduced axis preserves other dimensions");
+            Near(FNUTensorMath.Sum(emptyAxis),0,0,"empty reduced axis identity");
+            var emptyOutput=new FNUTensorBuffer(new FNUTensorShape(0));
+            FNUTensorMath.ReduceSumViewInto(
+                new FNUTensorBuffer(new FNUTensorShape(0,3)).AsView(),1,emptyOutput);
+            Check(emptyOutput.Shape.ElementCount==0,"remaining zero axis result");
+            Throws<ArgumentOutOfRangeException>(()=>FNUTensorMath.ReduceSumView(view,3),
+                "view reduction invalid axis");
+            Throws<ArgumentException>(()=>FNUTensorMath.ReduceSumViewInto(view,1,owner),
+                "view reduction owner alias");
+            Throws<ArgumentException>(()=>FNUTensorMath.ReduceSumViewInto(view,1,
+                new FNUTensorBuffer(new FNUTensorShape(2,4))),
+                "view reduction output shape mismatch");
+
+            var huge = new FNUTensorBuffer(new FNUTensorShape(1,2),
+                new double[]{double.MaxValue,double.MaxValue});
+            var unchanged = new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{42});
+            Throws<OverflowException>(()=>FNUTensorMath.ReduceSumViewInto(
+                huge.AsView(),1,unchanged),"view reduction overflow rejected");
+            Near(unchanged.Get(0),42,0,"view reduction overflow atomic output");
+
+            owner.Set(100,1,1,0);
+            var changed=FNUTensorMath.ReduceSumView(view,1);
+            for(int i=0;i<4;i++)
+                for(int j=0;j<2;j++)
+                    Near(changed.Get(i,j),view.Get(i,0,j)+view.Get(i,1,j),0,
+                        "view reduction live owner update");
+            Console.WriteLine("PASS FNU view reduction: strided axis/Into/empty/overflow atomic");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

@@ -185,3 +185,10 @@ double conditionNumber = solved.ConditionNumber;
 - 一个游标一次分配维度、步长与坐标数组；内层数据访问无按元素创建坐标数组、无除法/取模，直接使用原View底层物理偏移进行经边界校验的只读访问。支持零维长度、单例广播、不同Rank。
 - 测试：2D转置切片×1D广播、3D换轴切片×2D广播、参考逐点Get独立对照、输出复用、别名/非法Shape拒绝、空轴、异常溢出及原Buffer后续修改实时可见。
 - 本节仅说明新增代码与测试合同；同SHA Windows .NET48/专项/性能与默认回归需核对Actions，不可提前声称全量通过。
+
+## 十九、F13非连续View按轴归约（2026-10-28）
+
+- 新增 `FNUTensorMath.ReduceSumView(view,axis)` 和 `ReduceSumViewInto(view,axis,output)`：支持任意正序/转置/切片Stride的CPU double只读View；与原Buffer ReduceSum相同，Rank1按轴归约保留[1]结果形状。
+- 使用物理偏移与输出轴Stride游标，一次分配输入坐标/按输出单元的补偿数组。Neumaier累计保留小量抵消精度，先完成全部计算及非有限检查后才写Into输出；溢出情况下输出保持不变。
+- 测试覆盖3D转置与Slice再按轴求和、独立逐项参考、Into结果复用、Rank1、零长归约轴、剩余空轴、错误形状与别名、极端大数抵消及溢出原子性。
+- 不涉及FDT实体、业务生命周期及GPU；性能结论必须来自同SHA基准，不能仅按代码路径推断。
