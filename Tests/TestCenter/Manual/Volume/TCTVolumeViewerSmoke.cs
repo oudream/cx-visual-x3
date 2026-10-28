@@ -856,6 +856,17 @@ namespace CxVisual.TestCenter.UI
                           frame.ViewState.Scene3D.Count==4 &&
                           frame.ViewState.Scene3D.SelectedId.HasValue,
                         "真实UInt16球的+Z体素端面须经过CT3D/FNU平面拟合并登记MVI Measurement引用");
+                    // Mesh重提取必须丢弃旧平面拟合结果，防止旧SourceMeshRevision污染工程。
+                    CT3DVoxelBoundaryMeshResult replacement=frame.AnalyzeCurrentVolumeMesh(
+                        1000f,10000);
+                    Check(frame.LastMeshPlaneFit==null &&
+                          frame.ViewState.Scene3D.Count==3 &&
+                          replacement.ResultId!=meshResult.ResultId,
+                        "同一Volume新Mesh应使旧Measurement失效，MVI不能保留旧平面结果");
+                    CT3DPlaneFitResult replacedPlane=frame.AnalyzeCurrentMeshPlaneTopZ();
+                    Check(replacedPlane.SourceMeshResultId==replacement.ResultId &&
+                          frame.ViewState.Scene3D.Count==4,
+                        "新平面只引用当前Mesh并避免累积过期专业结果");
                     int surfacePointsBeforeSlice=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
                     Check(frame.SurfaceDisplayedPointCount==surfacePointsBeforeSlice &&
