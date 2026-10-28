@@ -13,7 +13,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class MPWModuleCapabilityView
     {
         public MPWModuleCapabilityView(string id,string name,string category,
-            MFMModuleKind kind,int version,bool resolved,bool demonstration)
+            MFMModuleKind? kind,int version,bool resolved,bool demonstration)
         {
             if(String.IsNullOrWhiteSpace(id)||String.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("module.capability.identity");
@@ -23,12 +23,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public string Id {get;private set;}
         public string Name {get;private set;}
         public string Category {get;private set;}
-        public MFMModuleKind Kind {get;private set;}
+        public MFMModuleKind? Kind {get;private set;}
         public int Version {get;private set;}
         public bool Resolved {get;private set;}
         public bool Demonstration {get;private set;}
         public string Label {get{return Name+" · "+Id;}}
-        public string Status {get{return Demonstration?"演示Resolver，非设备就绪":
+        public string Status {get{return Demonstration?"未绑定正式模块的演示Resolver，非设备就绪":
             Resolved?"运行解析存在，非授权确认":"未验证运行处理者";}}
     }
 
@@ -119,7 +119,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _list.SelectionChanged+=(s,e)=>{
                 var item=_list.SelectedItem as MPWModuleCapabilityView;
                 _detail.Text=item==null?"请选择能力查看声明与运行解析信息。":
-                    item.Name+" / V"+item.Version+" / "+item.Category+" · "+item.Status+
+                    item.Name+" / V"+item.Version+" / "+item.Category+" · "+
+                    (item.Kind.HasValue?item.Kind.Value.ToString():"未归属五类正式模块")+" · "+item.Status+
                     "。Declared、Supported、Available、Authorized需独立核验。";
             };
             SetCapabilities(null,"未注入运行能力；仅配置操作可用");

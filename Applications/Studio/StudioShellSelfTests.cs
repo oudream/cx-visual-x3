@@ -95,6 +95,9 @@ namespace CxVisual.Studio
                     center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver);
                     Assert(center.VisibleCapabilityCount==0,
                         "CPU演示目录不能伪装为已经注册的Driver Provider");
+                    center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Simulation);
+                    Assert(center.VisibleCapabilityCount==0,
+                        "未绑定模块的MOC演示能力不能错误归类为Simulation");
                     center.SetSelectedKind(null);
                     Assert(center.VisibleCapabilityCount==originalCount,
                         "返回全部类别未恢复真实目录");

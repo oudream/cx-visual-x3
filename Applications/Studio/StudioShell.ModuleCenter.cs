@@ -20,7 +20,7 @@ namespace CxVisual.Studio
                 Margin=new Thickness(4,4,4,6),TextWrapping=TextWrapping.Wrap};
             control.SetCapabilities(CurrentCatalog().All.Select(item=>new MPWModuleCapabilityView(
                 item.Definition.Id,item.Definition.Name,item.Definition.Category,
-                MFMModuleKind.Simulation,item.Definition.Version,item.RuntimeAvailable,true)),
+                null,item.Definition.Version,item.RuntimeAvailable,true)),
                 "Studio MOC CPU演示目录（非实机授权）");
             return control;
         }
