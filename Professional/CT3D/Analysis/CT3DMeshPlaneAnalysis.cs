@@ -17,6 +17,7 @@ namespace CxVisual.Professional.CT3D
             SourceMeshResultId=source.ResultId;
             SourceRef=source.SourceRef;
             SourceRevision=source.SourceRevision;
+            SpatialFrame=source.SpatialFrame;
             double[] center=fit.Centroid,normal=fit.Normal;
             PointMm=new FVOPhysicalPoint3D(center[0],center[1],center[2]);
             Normal=new FGEVector3D(normal[0],normal[1],normal[2]);
@@ -30,6 +31,8 @@ namespace CxVisual.Professional.CT3D
         public Guid SourceMeshResultId {get;private set;}
         public string SourceRef {get;private set;}
         public long SourceRevision {get;private set;}
+        /// <summary>本结果的源空间Frame，点到面偏差必须在相同Frame或显式配准后计算。</summary>
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
         public FVOPhysicalPoint3D PointMm {get;private set;}
         public FGEVector3D Normal {get;private set;}
         public double RmsResidualMm {get;private set;}
@@ -38,6 +41,25 @@ namespace CxVisual.Professional.CT3D
         public double InPlaneConditionNumber {get;private set;}
         public int SampleCount {get;private set;}
         public string FitMethod {get{return "roi-mesh-vertex-orthogonal-PCA-SVD";}}
+
+        /// <summary>仅同一物理Frame的点可直接比较；正负号按拟合法向，非CAD内外侧语义。</summary>
+        public double SignedDistanceMm(FVOPhysicalPoint3D pointMm,FVOVolumeSpatialFrame pointFrame)
+        {
+            if(!Object.ReferenceEquals(SpatialFrame,pointFrame))
+                throw new InvalidOperationException(
+                    "空间Frame不一致：请先由专业配准链显式转换坐标，禁止直接报毫米偏差。");
+            double result=(pointMm.X-PointMm.X)*Normal.X+
+                (pointMm.Y-PointMm.Y)*Normal.Y+
+                (pointMm.Z-PointMm.Z)*Normal.Z;
+            if(double.IsNaN(result)||double.IsInfinity(result))
+                throw new OverflowException("点到平面毫米偏差发生数值溢出。");
+            return result;
+        }
+        public double AbsoluteDistanceMm(FVOPhysicalPoint3D pointMm,
+            FVOVolumeSpatialFrame pointFrame)
+        {
+            return Math.Abs(SignedDistanceMm(pointMm,pointFrame));
+        }
     }
 
     /// <summary>
