@@ -310,3 +310,8 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - [5b34232](https://github.com/oudream/cx-visual-x3/commit/5b3423258a96db58f808e755c4338b45464414b0) `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs`：真实WPF点击CPU、浏览Measurement结果，验证同RunId、端口名、7 px²数值，点击测量不破坏当前Mask和Gray16原图。
 
 **边界**：当前是单图CPU正式MRK子链及一个测量节点，尚非MEMContent/MOL中增强→分割→区域→测量的四种通用MPM能力。FrameRef/ImageSet/ArtifactRef持久化、单位/标定、跨Run ReviewRecord、多Provider、工业批量/设备/HIL、Studio正式多节点工程编辑与发布仍属于未完成，不将这些P设计标为G2。
+
+### 19.1 固定提交Windows回归证据（首轮）
+
+`a34e03411fa715ff04a3c64e783ba7d30d97e0dd` 的 [Imaging Windows #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846) **success**，包含.NET Framework4.8 x64全项目构建、结构与Owner DAG、真实WPF二维图窗/PNG回环、ArchitectureSmoke `--imaging`及默认回归、三维切片WPF交互；本次新`MeasuredArtifactsRemainSourceCorrect`和`SharedHeadlessPreviewApi`纳入现有`--imaging` Run路径。因此该固定SHA可以作为算法测量与无界面API的Windows自动行为证据，**不等于**完成MEM/MOC四种可编排专业节点，也不证明工业HIL/大图性能。
+同期 [Runtime Windows #40693675869](https://github.com/oudream/cx-visual-x3/actions/runs/40693675869) 对同SHA **success**，包含完整解决方案构建及统一Runtime专项。不同固定SHA的[TestCenter Windows #40693629251](https://github.com/oudream/cx-visual-x3/actions/runs/40693629251) 在首次登记仍in_progress，待单独完成UIA核实。
