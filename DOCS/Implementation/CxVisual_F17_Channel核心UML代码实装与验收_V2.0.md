@@ -36,3 +36,12 @@
 - 保留 `Foundation.Transport` 唯一 Channel、`Mechanism.Connectivity` 唯一 Protocol/Connector、`MDS` 数据所有权、`MRK` 业务调度的边界，不创建第二套统一运行器。
 
 **阶段界限：** 本次完成的是用户第二张图所指的核心 FTR 类图与关键能力接口的可运行增量，并不是第一张图 14 大方面的全部最终交付。
+
+## 4. 2026-10-28 可靠性、会话与TestCenter增量
+
+- `FTRReconnectController`、`FTRReconnectSnapshot`：显式启用的传输连接自动恢复，执行已有FCM重试次数、间隔及指数退避，支持取消、诊断与最大次数；**只Close/Open物理Channel，不重复未知业务命令**。确定性失败/次数上限及真实TCP断线恢复用例已入`FTRReconnectControllerTests`。
+- `FTRSharedMemoryRegion`与`FTRSharedMemoryChannel`：同一Map+Side由独立接收线程持有Windows命名Mutex；重复实例必须拒绝，不应破坏单生产者环。重复端点拒绝及原始双端收发回归见`SharedMemoryLoopback`。**此补丁不是崩溃后环槽幂等恢复或无丢失承诺**。
+- `FTRChannelBase.SessionId`：每次Open刷新并以锁读取，避免物理重建后的旧会话身份复用；`MCNConnectorModule`在Opening/Faulted委托正式Protocol清理解析器、未完成事务和旧半包，不把协议逻辑下沉到FTR。
+- `ModuleChannelTransportSmokeTests.ChannelSessionIsolation`：使用正式Virtual/LengthFrame通道送入半包，重开后验证新SessionId与完整新帧解析，明确防止跨连接污染。
+- TestCenter人工Channel工作区不再维护六类型私有清单：使用正式15内置Kind及Factory创建MultiPeer离线目录；UIA逐项验证拓扑与未经授权不创建监听/设备连接。
+- 以上增量的新Windows CI应按**各提交固定SHA**逐次认定；既有`63ab4dc0`等成功证据不能冒充新提交通过。后续仍需跨机现场、Serial设备、24h寿命及SHM崩溃恢复专门验收。
