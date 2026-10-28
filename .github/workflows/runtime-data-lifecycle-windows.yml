@@ -40,11 +40,11 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-lifecycle
           if ($LASTEXITCODE -ne 0) { throw 'MDS lifecycle architecture tests failed' }
-      - name: Run three isolated TestCenter lifecycle cases
+      - name: Run four isolated TestCenter lifecycle cases
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\Output\Release\x64\CxVisual.TestCenter.exe').Path
-          foreach ($id in @('TCT.MDS.030', 'TCT.MDS.031', 'TCT.MDS.032')) {
+          foreach ($id in @('TCT.MDS.030', 'TCT.MDS.031', 'TCT.MDS.032', 'TCT.MDS.033')) {
             $report = Join-Path (Get-Location) ("Output/Release/x64/" + $id + ".junit.xml")
             $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $id + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "TestCenter $id failed: $($p.ExitCode)" }
@@ -53,7 +53,7 @@ jobs:
               throw "TestCenter $id returned non-passing JUnit"
             }
           }
-          Write-Host 'PASS TCT.MDS.030/031/032'
+          Write-Host 'PASS TCT.MDS.030/031/032/033'
       - name: Run real STA WPF lifecycle workspace
         shell: pwsh
         run: |
