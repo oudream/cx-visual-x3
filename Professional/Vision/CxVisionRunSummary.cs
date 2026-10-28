@@ -7,7 +7,7 @@ using CxVisual.Mechanism.Runtime.Execution;
 namespace CxVisual.Professional.Vision
 {
     /// <summary>现有CPU检测结果实际可提供的类型；流程标志并非产品级OK/NG。</summary>
-    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask }
+    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask, Measurement }
 
     /// <summary>不可变候选区域快照，不泄漏原CxVisionDefectRegion的可变属性。</summary>
     public sealed class CxVisionRegionSnapshot
@@ -131,6 +131,30 @@ namespace CxVisual.Professional.Vision
                     "ThresholdMask", "ThresholdMask", CxVisionResultKind.Mask,
                     "阈值二值Mask（面积筛选前）", null, image: binary));
                 result.Items = items.AsReadOnly();
+            }
+            object measurement;
+            if (exports.TryGetValue("AcceptedRegionPixelArea", out measurement))
+            {
+                if (!hasImage || !(measurement is long))
+                    throw new InvalidOperationException("缺陷面积测量必须来自带图像与Mask的正式MRK计划");
+                long area = (long)measurement;
+                long regionTotal = 0;
+                foreach (CxVisionResultItem item in result.Items)
+                    if (item.Kind == CxVisionResultKind.Region)
+                        regionTotal = checked(regionTotal + item.Region.PixelArea);
+                CxVisionResultItem pixelHits = null;
+                foreach (CxVisionResultItem item in result.Items)
+                    if (item.Name == "阈值命中像素数") { pixelHits = item; break; }
+                if (area < 0 || area > (long)result.Width * result.Height ||
+                    pixelHits == null || !pixelHits.IntegerValue.HasValue ||
+                    area > pixelHits.IntegerValue.Value || area != regionTotal)
+                    throw new InvalidOperationException("MRK面积测量与经面积筛选的区域或Mask来源不一致");
+                var measuredItems = new List<CxVisionResultItem>(result.Items);
+                measuredItems.Add(new CxVisionResultItem(result.RunId, result.SourceId,
+                    "AcceptedRegionPixelArea", "AcceptedRegionPixelArea",
+                    CxVisionResultKind.Measurement, "已接受缺陷区域总像素面积", "px²",
+                    number: area));
+                result.Items = measuredItems.AsReadOnly();
             }
             return result;
         }
