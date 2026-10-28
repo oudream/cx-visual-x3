@@ -224,9 +224,8 @@ namespace CxVisual.TestCenter.UI
                 int w=int.Parse(_width.Text,CultureInfo.InvariantCulture);
                 int h=int.Parse(_height.Text,CultureInfo.InvariantCulture);
                 string filename=_path.Text.Trim();
-                // Invalid path/size must fail before an engineering page is created.
-                CxVisionRawCpuRunner.ReadRaw(filename,w,h,_provider.PixelDepth,
-                    CancellationToken.None);
+                // The shared professional runner validates/reads RAW on the worker
+                // BEFORE mutating MEM. Do not read a large file twice or block the UI.
                 if(_session==null)_session=MEMEngineering.Create("TCT Compute "+id);
                 _running=new CancellationTokenSource();
                 _run.IsEnabled=false;_save.IsEnabled=false;_load.IsEnabled=false;
