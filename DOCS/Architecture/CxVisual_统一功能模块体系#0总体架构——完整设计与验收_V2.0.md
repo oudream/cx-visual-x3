@@ -23,10 +23,10 @@
 |---|---|---|
 | 00 | 总体架构 V2.0（本文件） | 模块身份/共性/Owner/能力发现/生命周期/交互/总体场景与通用验收 |
 | 01 | Connector V1.0 | 通道、规约、点表、映射、收发、会话、边界隔离及接入质量 |
-| 02 | Driver V1.0 | 设备 SDK、硬件动作、采图、运动、资源和现场安全 |
-| 03 | Compute V1.0 | 计算操作、AI/CT、数据输入输出、CPU/GPU/作业及确定性 |
-| 04 | Simulation V1.0 | 虚拟模型、时钟、场景、真实/仿真切换、故障与回放 |
-| 05 | Service V1.0 | 长驻服务、API/请求响应、并发、持久任务与运维 |
+| 02 | Driver V1.1 | 设备 SDK、硬件动作、采图、运动、资源和现场安全 |
+| 03 | Compute V1.1 | 计算操作、AI/CT、数据输入输出、CPU/GPU/作业及确定性 |
+| 04 | Simulation V1.1 | 虚拟模型、时钟、场景、真实/仿真切换、故障与回放 |
+| 05 | Service V1.1 | 长驻服务、API/请求响应、并发、持久任务与运维 |
 
 总体文档**只决定共性**；专业文档只继承公共 Owner，不复制第二套工程、能力目录、执行器或配置仓库。修改公共接口须同步评估六份文档、测试矩阵及现行 DOCS/02～04。
 
@@ -1641,3 +1641,17 @@ TestCenter 真实存储与字段应以其 V4.1 正式 API 和当前实现为准�
 
 每个模块独立保留来源需求编号和目标场景，Connector 的 `TFC-*`、Driver 的 `TFD-*`、共性的 `TFM-*` 与专业新矩阵不得互相抵消；真实工业投产还须交 G2/G3 证据。
 
+## 2026-10-28 专业规格 V1.1 交叉核对和 Owner 补充
+
+本节是总体 V2.0 的增量导航，不删除旧 UM-I/UM-C/TFM、案例或测试；四篇 V1.1 原文承接 V1.0 并追加可执行的 X 系列验收，不使原 TFD/CP/SIM/SV 失效。
+
+| 模块 | 专业正式稿 | 本轮新增验收 |
+|---|---|---|
+| Driver | [#2 Driver V1.1](CxVisual_统一功能模块体系%232Driver——驱动模块完整设计与验收_V1.1.md) | DRV-X01～X10 |
+| Compute | [#3 Compute V1.1](CxVisual_统一功能模块体系%233Compute——计算模块完整设计与验收_V1.1.md) | CP-X01～X10 |
+| Simulation | [#4 Simulation V1.1](CxVisual_统一功能模块体系%234Simulation——仿真模块完整设计与验收_V1.1.md) | SIM-X01～X10 |
+| Service | [#5 Service V1.1](CxVisual_统一功能模块体系%235Service——服务模块完整设计与验收_V1.1.md) | SV-X01～X10 |
+
+**后继唯一 Owner 裁决**：旧 §14.1 所列 MCCChannel/Mechanism.Connectivity.Channel 是历史快照；依据 2026-10-27 的 F17 裁决，正式 Channel 位于 Foundation/Transport/Channels，类型使用 FTR/IFTR，Connector/Protocol/PointTable/DataMapping 仍在 Mechanism.Connectivity，且 Connector 严格一 Channel、一 Protocol。不要借历史表重引 MCC Channel。命令实现最新归 Foundation.Data.Commands + Mechanism.Runtime.Commands，旧 M12 名称表示公共命令业务角色，不代表新增第二套中心。统一交互 V1.5 对 V1.4 作后继增补。
+
+源码审阅基线 master ec821564fdab09da151ecf3d3dfa5db399d64d5f 时，Driver 仅基础配置/类型，Compute 有执行入口与参数，Simulation 有模型/Clock，Service 有基本状态机；这些不等于物理/AI/CT/仿真保真/服务网络全部实现。该 SHA Windows 工作流有成功亦有失败，具体 CI 以固定 SHA 重新核实。设计 G0、软件 G1、HIL G2、工业长稳 G3 不可相互替代。

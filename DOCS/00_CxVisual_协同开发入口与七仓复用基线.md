@@ -232,3 +232,14 @@
 - [NamedPipe入场饱和与读者结算修复](Implementation/CxVisual_F17_NamedPipe入场饱和与读者结算_修复验收_V1.0.md)：创建OS实例前限流、满额不杀Listener、历史完成Task剔除及关闭末次Accept结算；独立接收/大数据模型另行闭环。
 - [NamedPipe独立接收与跨进程体数据实现](Implementation/CxVisual_F17_NamedPipe独立接收与跨进程大数据_实施验收_V1.0.md)、[验收矩阵](Testing/CxVisual_F17_NamedPipe跨进程大数据_验收矩阵_V1.0.md)：固定接收线程、12对端写入隔离、双向各2GiB、池化租约及终止通知预算；承接前项入场修复，不代表完整Channel目标结束。
 - 依据：[Channel 迁移及唯一 Owner 裁决](Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md)；[旧新类型兼容映射](Migration/CxVisual_Channel_MCC至FTR迁移映射_V1.0.md)；[本轮验收证据台账](Testing/CxVisual_F17_Channel迁移_源码与Windows验收台账_V1.0.md)。上述裁决覆盖旧规范中 M13～M15 拥有 Channel 具体类的条款，但不改历史文件本身的日期和历史事实。
+
+## 统一功能模块体系：五大模块六份正式规格（2026-10-28）
+
+- [#0 总体架构 V2.0](Architecture/CxVisual_统一功能模块体系%230总体架构——完整设计与验收_V2.0.md)——共性、五类边界、能力发现、使用与统一验收。
+- [#1 Connector V1.0](Architecture/CxVisual_统一功能模块体系%231Connector——连接器模块完整设计与验收_V1.0.md)——严格一个 Connector 对应一个 Channel 和一个 Protocol；本轮未改写。
+- [#2 Driver V1.1](Architecture/CxVisual_统一功能模块体系%232Driver——驱动模块完整设计与验收_V1.1.md)——设备 Provider、动作确认、安全与 HIL。
+- [#3 Compute V1.1](Architecture/CxVisual_统一功能模块体系%233Compute——计算模块完整设计与验收_V1.1.md)——Numerics、图像、AI、CT/3D、强类型/质量与性能。
+- [#4 Simulation V1.1](Architecture/CxVisual_统一功能模块体系%234Simulation——仿真模块完整设计与验收_V1.1.md)——模型、时钟、故障、Replay、虚实与确定性。
+- [#5 Service V1.1](Architecture/CxVisual_统一功能模块体系%235Service——服务模块完整设计与验收_V1.1.md)——服务响应、Ready、运行治理与集成。
+
+四篇 V1.0 历史原文保留，四篇 V1.1 分别继承全部正文和编号并增补执行合同及 X 系列专项测试。F17 Channel 后继 Owner/命令中心双项目 Owner/统一交互 V1.5 优先于过时历史表述。文档是目标，不能替代 Windows 编译、TestCenter、真实设备 HIL 或工业长稳。
