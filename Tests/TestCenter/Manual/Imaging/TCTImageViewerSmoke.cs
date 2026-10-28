@@ -11,6 +11,7 @@ using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 
 namespace CxVisual.TestCenter.UI
 {
