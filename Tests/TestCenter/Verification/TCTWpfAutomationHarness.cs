@@ -1333,6 +1333,16 @@ namespace CxVisual.TestCenter.UI
                 TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
                 page.VerifyInvalidOperation();
+                // 所有15种正式内置Kind均必须能离线选型、获取真实拓扑且绝不打开设备。
+                foreach(FTRChannelKind kind in Enum.GetValues(typeof(FTRChannelKind)))
+                {
+                    if(kind == FTRChannelKind.Custom)continue;
+                    page.SelectChannelKind(kind);
+                    FTRChannelTypeDescriptor descriptor = FTRChannelConfigurations.Create(kind).DescribeType();
+                    if(page.SelectedTopology != descriptor.Topology || page.IsConnected ||
+                        page.MultiChannelState != FTRChannelState.Closed)
+                        throw new InvalidOperationException("Channel离线多类型映射或设备安全边界错误："+kind);
+                }
                 page.SelectChannelKind(FTRChannelKind.TcpClient);
                 if (page.IsConnected || page.SelectedTopology != FTRChannelTopology.SinglePeer)
                     throw new InvalidOperationException("TCPClient不得假装已联机");
