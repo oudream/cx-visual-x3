@@ -42,11 +42,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 int received=0,responded=0;
                 FTRReceiveBuffer retained=null;
                 FTRSubChannelAddress source=null;
+                Guid bufferedSession=Guid.Empty;
                 IDisposable listener=server.SubscribeBuffers(buffer=>
                 {
                     var segment=buffer.Segment;
                     if(segment.Count!=2)return;
                     source=buffer.Address;
+                    bufferedSession=buffer.SessionId;
                     Interlocked.Increment(ref received);
                     if(segment.Array[segment.Offset]==1)
                         retained=buffer.Retain(); // 回调结束后持有池块，Close也不能使其内容失效。
@@ -75,7 +77,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         lastServer=server.SessionId;lastClient=client.SessionId;
                         client.SendBytes(new byte[]{(byte)cycle,42});
                         Check(arrived.Wait(5000) && source!=null && source.HasSubChannel &&
-                            source.Generation>0 && received==cycle,
+                            source.Generation>0 && bufferedSession==server.SessionId &&
+                            bufferedSession!=Guid.Empty && received==cycle,
                             "长期保留的订阅未收到当前代次的BufferReceived");
                         server.SendTo(source,new byte[]{9,(byte)cycle});
                         Check(answered.Wait(5000)&&responded==cycle,
@@ -89,6 +92,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         if(cycle==1)
                         {
                             Check(retained!=null && retained.Segment.Count==2 &&
+                                retained.SessionId==lastServer &&
                                 retained.Segment.Array[retained.Segment.Offset]==1,
                                 "关闭Channel不得提前释放仍由调用方Retain的缓冲");
                             retained.Dispose();retained=null;
