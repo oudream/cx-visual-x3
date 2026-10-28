@@ -189,3 +189,5 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | ART-09 / V2D-24 | `--vision-results`、`--imaging`、默认ArchitectureSmoke均挂载本次测试 | WPF二维/三维CI仅证明共享回归，不代表新图像产物已在Studio或TestCenter中可视操作 |
 
 **工业验收仍未覆盖**：单独的FrameId/FrameLease、磁盘Artifact持久化、Mask与正式ROI坐标配准、WPF可视化用户交互、AI/GPU/厂商设备HIL和长期运行内存。已有的MDS容量统计不等于这些全部满足。
+
+**ART-10补充（源码已提交，待Windows验证）**：对应提交 [`97630512`](https://github.com/oudream/cx-visual-x3/commit/97630512a2c3d7d958d6fad325a61ab494ae6810)，新增`RuntimeVisionArtifactsTests.MviImageMaskProjection`：同一真实Gray16 MRK Run产生Gray8 Mask→经`CxVisionRunSummary`按RunId/SourceId/尺寸验证→提交现有`MVIImageSession.SetResult`→Original/Result双槽切换，原16位像素不变；载入新原图后自动清空旧结果。此测试是**MVI非WPF状态集成**，不能冒充TestCenter/Studio鼠标可视操作或Viewer级自动防错源校验；执行前上层仍须显式检查SourceId与坐标。对应[Imaging Windows #40663246695](https://github.com/oudream/cx-visual-x3/actions/runs/40663246695)，首次登记时排队，尚无通过结论。
