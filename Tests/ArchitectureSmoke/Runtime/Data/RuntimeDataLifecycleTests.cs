@@ -38,6 +38,92 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ThreeLevelSubflowCommit();
             ExplicitInputCannotInheritParent();
             RuntimeDataLifecyclePolicyTests.Run();
+            CommittedFrameReleaseAccountsBudget();
+            StaticDagReclaimsAfterAllConsumers();
+        }
+
+        private static void CommittedFrameReleaseAccountsBudget()
+        {
+            var budget = new MDSDataBudget(100);
+            using (var stack = new MDSDataStack(null, null, null, budget))
+            {
+                using (var frame = stack.OpenFrame("step.1",
+                    stack.RootScope.CreateChild("step.1"),
+                    new Dictionary<string, object>(),
+                    new Dictionary<string, Type> { { "Image", typeof(byte[]) } }))
+                {
+                    frame.Data.Return("Image", new byte[64]);
+                    frame.CommitOutputs();
+                    bool busy = false;
+                    try { stack.ReleaseCommittedOutputs("step.1"); }
+                    catch (MDSDataException) { busy = true; }
+                    Check(busy && stack.CommittedFrameCount == 1,
+                        "未关闭的Frame不能提前释放已提交输出");
+                }
+                Check(budget.RetainedBytes == 64 && stack.CommittedFrameCount == 1,
+                    "Frame关闭后保留已提交输出账目");
+                Check(stack.ReleaseCommittedOutputs("step.1") &&
+                    stack.CommittedFrameCount == 0 && budget.RetainedBytes == 0,
+                    "完成消费者后的逐帧释放必须返还预算");
+                Check(!stack.ReleaseCommittedOutputs("step.1"),
+                    "重复释放不应造成预算重复扣账");
+                byte[] forgotten;
+                Check(!stack.TryReadOutput("step.1", "Image", out forgotten),
+                    "释放后应拒绝读取旧输出");
+            }
+        }
+
+        private static void StaticDagReclaimsAfterAllConsumers()
+        {
+            MRKExecutionStep produce = new MRKExecutionStep("image", new string[0],
+                (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[70]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Image", typeof(byte[]) } });
+            Func<string, MRKExecutionStep> consumer = id => new MRKExecutionStep(
+                id, new[] { "image" }, async (ctx, ct) =>
+                {
+                    byte[] image = ctx.Data.Get<byte[]>("Input");
+                    await Task.Delay(30, ct).ConfigureAwait(false);
+                    Check(image.Length == 70, "并行消费时输入仍然存活");
+                    ctx.Data.Return("Vote", 1);
+                    return true;
+                },
+                inputs: new[] { new MRKExecutionInput("Input",
+                    MRKInputSource.StepOutput, "image.Image", typeof(byte[])) },
+                dataOutputs: new Dictionary<string, Type> { { "Vote", typeof(int) } });
+            MRKExecutionStep combine = new MRKExecutionStep("combine",
+                new[] { "a", "b" }, (ctx, ct) =>
+                {
+                    Check(ctx.Data.Get<int>("Left") + ctx.Data.Get<int>("Right") == 2,
+                        "双分支结果要正确归并");
+                    ctx.Data.Return("Final", new byte[70]);
+                    return Task.FromResult((object)true);
+                },
+                inputs: new[] {
+                    new MRKExecutionInput("Left", MRKInputSource.StepOutput, "a.Vote", typeof(int)),
+                    new MRKExecutionInput("Right", MRKInputSource.StepOutput, "b.Vote", typeof(int)) },
+                dataOutputs: new Dictionary<string, Type> { { "Final", typeof(byte[]) } });
+            var steps = new[] { produce, consumer("a"), consumer("b"), combine };
+            var exports = new Dictionary<string, string> { { "Result", "combine.Final" } };
+            var optimized = new MRKExecutionPlan("bounded-static-fanout", steps, exports,
+                reclaimCommittedWhenConsumersSettle: true);
+            var legacy = new MRKExecutionPlan("conservative-static-fanout", steps, exports);
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 16),
+                dataPayloadBudgetBytes: 100);
+            try
+            {
+                MRKFlowResult ok = Wait(engine.StartFlow(optimized).Completion);
+                Check(ok.State == MRKFlowState.Completed &&
+                    ok.GetCommittedOutput<byte[]>("Result").Length == 70,
+                    "显式opt-in后可在100字节预算内完成双消费者与结果交接");
+                MRKFlowResult old = Wait(engine.StartFlow(legacy).Completion);
+                Check(old.State == MRKFlowState.Failed &&
+                    old.Error != null,
+                    "默认仍保守保留整Flow，低预算应明确失败，不能暗中更改旧行为");
+            }
+            finally { Wait(engine.StopAsync()); }
         }
 
         private static void Check(bool condition, string reason)
