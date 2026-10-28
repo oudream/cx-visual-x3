@@ -361,6 +361,20 @@ namespace CxVisual.TestCenter.UI
                 if(gammaSlider==null || brightnessSlider==null || contrastSlider==null ||
                    gammaSlider.Value!=1 || brightnessSlider.Value!=0 || contrastSlider.Value!=1)
                     throw new InvalidOperationException("显示复位后滑块仍停留在旧Gamma/亮度/对比度");
+                // 图像位深变化时默认手动窗范围须随之变化，不能让Gray8沿用65535。
+                FIMImageBuffer gray8WindowProbe=new FIMImageBuffer(2,1,
+                    FIMPixelFormat.Gray8,new byte[]{0,255});
+                frame.SetOriginal(gray8WindowProbe);
+                if(windowLow.Text!="0" || windowHigh.Text!="255")
+                    throw new InvalidOperationException("Gray8载入后仍沿用Gray16默认窗范围");
+                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer gray8WindowPreview=MPWImageViewerControl.ReadImageFile(file);
+                if(gray8WindowPreview.GetGrayValue(0,0)!=0 ||
+                   gray8WindowPreview.GetGrayValue(1,0)!=255 ||
+                   frame.Viewer.Session.Original.GetGrayValue(1,0)!=255)
+                    throw new InvalidOperationException("Gray8自动窗范围和原始像素不一致");
+                frame.SetOriginal(image);
                 // 实际点击第六张二维工作台的专业CPU检测按钮，MRK产生Image/Mask
                 // 并经共用ResultItem投影到现有MPW/MVI结果槽。
                 TabControl cpuTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
