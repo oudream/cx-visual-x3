@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Data.RuntimeData;
@@ -14,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConsumerBoundAndPinnedRetention();
             ConcurrentBorrowProtectsOwnerAndBudget();
             InvalidCombinationsRejected();
+            FileCacheExpiryKeepsLocator();
         }
         private static void Check(bool value, string reason)
         {
@@ -133,6 +135,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 started.Dispose(); release.Dispose();
             }
         }
+        private static void FileCacheExpiryKeepsLocator()
+        {
+            string path = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllBytes(path, new byte[] { 4, 5, 6, 7 });
+                var budget = new MDSDataBudget(100);
+                using (var heap = new MDSDataHeap(null, budget))
+                {
+                    heap.SetFile<byte[]>("CT.Projection", path,
+                        new MDSLimitedBinaryFileLoader(100));
+                    var policy = MDSDataLifecyclePolicy.Default
+                        .WithRetention(MDSDataRetentionPolicy.CacheFor(TimeSpan.FromSeconds(1)))
+                        .WithReclamation(MDSDataReclamationPolicy.OnExpiry);
+                    heap.Lifecycle.Configure("CT.Projection", policy);
+                    Check(heap.LoadAsync<byte[]>("CT.Projection").GetAwaiter().GetResult().Length == 4,
+                        "文件按需加载后可访问专业数据");
+                    Check(budget.RetainedBytes == 4, "缓存载荷进入预算");
+                    Check(heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(1)) == 1,
+                        "文件缓存TTL到期后允许卸载");
+                    Check(heap.Contains("CT.Projection") &&
+                        heap.Inspect("CT.Projection").LoadState == MDSDataLoadState.Unloaded &&
+                        budget.RetainedBytes == 0,
+                        "自动回收不能错误删除原文件Locator或保留缓存账目");
+                    Check(heap.Lifecycle.Sweep(DateTime.UtcNow.AddMinutes(1)) == 0,
+                        "缓存已经卸载时不重复报告回收");
+                    Check(heap.LoadAsync<byte[]>("CT.Projection").GetAwaiter().GetResult()[0] == 4 &&
+                        budget.RetainedBytes == 4,
+                        "同一Locator可按需重新加载并恢复TTL生命周期");
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
         private static void InvalidCombinationsRejected()
         {
             Reject<ArgumentException>(() => MDSDataLifecyclePolicy.Default
