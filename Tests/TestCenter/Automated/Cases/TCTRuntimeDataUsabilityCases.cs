@@ -113,6 +113,50 @@ namespace CxVisual.TestCenter.Cases
             finally { runtime.StopAsync().GetAwaiter().GetResult(); }
         }
 
+        [TCTTest("TCT.MDS.033", "Loop逐轮临时释放同时保留Join需要的历史",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MRKLoopDataRetention")]
+        public static void LoopRetentionAndJoin(TCTTestContext t)
+        {
+            var body = new MRKExecutionPlan("body", new[] {
+                new MRKExecutionStep("image", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[64]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Image", typeof(byte[]) } }),
+                new MRKExecutionStep("measure", new[] { "image" }, (ctx, ct) =>
+                {
+                    ctx.Data.Return("Value", ctx.Data.Get<byte[]>("Source").Length +
+                        ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, inputs: new[] { new MRKExecutionInput("Source",
+                    MRKInputSource.StepOutput, "image.Image", typeof(byte[])) },
+                dataOutputs: new Dictionary<string, Type> { { "Value", typeof(int) } })
+            });
+            var region = new MRKLoopRegion(body, 4, (ctx, i) => i < 4,
+                dataRetention: MRKLoopDataRetention.KeepForJoin("measure"));
+            var plan = new MRKExecutionPlan("loop-with-history", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true), loopRegion: region),
+                new MRKExecutionStep("join", new[] { "loop" }, (ctx, ct) =>
+                {
+                    var rows = ctx.CollectLoopOutputs<int>("loop", "measure", "Value");
+                    ctx.Data.Return("Total", rows.Count == 4 ? 1 : 0);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Total", typeof(int) } })
+            }, new Dictionary<string, string> { { "Result", "join.Total" } });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 16),
+                dataPayloadBudgetBytes: 200);
+            try
+            {
+                MRKFlowResult result = engine.StartFlow(plan).Completion.GetAwaiter().GetResult();
+                t.AssertEqual(MRKFlowState.Completed, result.State,
+                    "每轮64B图像应在消费结束后释放，32B历史结果可供Join读取");
+                t.AssertEqual(1, result.GetCommittedOutput<int>("Result"),
+                    "保留的真实Invocation历史能在Join阶段正确聚合");
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
         private sealed class TCTExistingOwner : IMDSExternalBindingResolver
         {
             public object Resolve(MDSBindingSource source, string name, Type target)
