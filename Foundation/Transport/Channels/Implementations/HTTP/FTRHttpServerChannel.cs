@@ -116,9 +116,7 @@ namespace CxVisual.Foundation.Transport
                             memory.Write(chunk,0,read);
                         }
                         int payloadBytes=(int)memory.Length;
-                        // ToArray兼容原有Received契约；复制峰值也必须进入总额度。
-                        requestLease.Reserve(payloadBytes);
-                        byte[] payload=memory.ToArray();
+                        // 直接交付MemoryStream的有效切片；ReceiveBytes保留独立且计入额度的快照。
                         _inReceiveCallback.Value=true;
                         try
                         {
@@ -126,9 +124,9 @@ namespace CxVisual.Foundation.Transport
                             if(observer!=null)
                                 foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
                                     try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
-                                        context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
+                                        context.Request.Url.AbsolutePath,context.Request.ContentType,payloadBytes));}
                                     catch(Exception error){RecordObserverError(error);}
-                            ReceiveFrom(pending.Address,payload);
+                            ReceiveFrom(pending.Address,memory.GetBuffer(),payloadBytes);
                         }
                         finally { _inReceiveCallback.Value=false; }
                     }
