@@ -1490,6 +1490,38 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 foreach(Guid id in _selectedItems){_selection=id;break;}
             return new List<Guid>(_selectedItems).AsReadOnly();
         }
+
+        /// <summary>
+        /// GE-02：按屏幕绘制顺序从顶层向下循环命中精确几何；仅修改WPF选区。
+        /// 重叠时Alt+单击能够找到下层Shape，未命中时保留当前选区。
+        /// 不额外持久化任何选择模型，也不向MEM写入Revision/Undo。
+        /// </summary>
+        public bool SelectNextOverlappedAt(double worldX,double worldY)
+        {
+            if(!_designMode||_drawTool!="Select"||IsInlineTextEditing||
+                HasDrawPreview||_dragging||_handleDragging||_marquee||_panning||
+                _selectionTransformDragging||_connectDragging||_rewireDragging||
+                _waypointDragging||double.IsNaN(worldX)||double.IsInfinity(worldX)||
+                double.IsNaN(worldY)||double.IsInfinity(worldY))return false;
+            var hits=new List<Guid>();
+            for(int i=_items.Count-1;i>=0;i--)
+            {
+                MVISceneItem item=_items[i];
+                if(item.IsSelectable&&!hits.Contains(item.Id)&&
+                    item.Contains(worldX,worldY))hits.Add(item.Id);
+            }
+            if(hits.Count==0)return false;
+            int current=_selection.HasValue?hits.IndexOf(_selection.Value):-1;
+            Guid next=hits[(current+1)%hits.Count];
+            IReadOnlyList<Guid> selected=ApplyPointerSelection(next,false);
+            _geometryEditMode=false;_hoverConnectId=null;
+            // 与普通鼠标单选保持同一Studio/TestCenter事件路由。
+            EventHandler<MPWNodeEventArgs> activated=NodeActivated;
+            if(activated!=null)activated(this,new MPWNodeEventArgs(next));
+            if(SelectionSetRequested!=null)SelectionSetRequested(selected);
+            InvalidateVisual();
+            return true;
+        }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonDown(e);
@@ -1603,6 +1635,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                 }
             }
+            // 保留H1/H2/H5控制柄与H3/H6连接的优先级，Alt只接管普通命中。
+            if(e.ClickCount==1&&Keyboard.Modifiers==ModifierKeys.Alt&&
+                SelectNextOverlappedAt(point.X,point.Y))
+            {e.Handled=true;return;}
             Guid? hit = null;
             for (int i = _items.Count - 1; i >= 0; i--)
             {

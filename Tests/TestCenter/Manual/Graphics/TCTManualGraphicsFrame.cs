@@ -111,7 +111,7 @@ namespace CxVisual.TestCenter.UI
             StackPanel inspector=new StackPanel{Margin=new Thickness(9)};
             inspector.Children.Add(new TextBlock{Text="工程对象 / 真实诊断",
                 FontWeight=FontWeights.SemiBold,FontSize=16,Margin=new Thickness(0,3,0,10)});
-            inspector.Children.Add(new TextBlock{Text="创建 Shape → 画布选择、拖动或连接固定锚点；"+
+            inspector.Children.Add(new TextBlock{Text="创建 Shape → 画布选择、拖动或连接固定锚点；重叠对象Alt+单击轮换；"+
                 "编辑控制柄与折点。Path点绘时按N另起轮廓、Enter完成；"+
                 "双击图元进入几何编辑，右键改曲线/顶点。MEM提交不等于GE完整验收。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)});

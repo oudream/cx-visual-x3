@@ -563,6 +563,37 @@ namespace CxVisual.TestCenter.UI
                 if(((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
                     .FlattenContours().Count!=2)
                     throw new InvalidOperationException("闭合后的多轮廓磁盘往返丢失子路径");
+
+                // GE-02：重叠图元Alt+单击轮换，选区/对象树/MVI保持同一身份，
+                // 每次仅修改UI选中状态，不形成MEM修订或Undo。
+                frame.Execute("Rect");
+                frame.Canvas.BeginDrawGesture(2000,2000);
+                frame.Canvas.UpdateDrawGesture(2125,2100);
+                if(!frame.Canvas.CompleteDrawGesture(2125,2100))
+                    throw new InvalidOperationException("重叠选择前的底层矩形创建失败");
+                Guid lowerId=frame.SceneIds.Last();
+                frame.Canvas.BeginDrawGesture(2025,2025);
+                frame.Canvas.UpdateDrawGesture(2150,2125);
+                if(!frame.Canvas.CompleteDrawGesture(2150,2125))
+                    throw new InvalidOperationException("重叠选择前的顶层矩形创建失败");
+                Guid upperId=frame.SceneIds.Last();
+                frame.Execute("Select");
+                frame.SelectObjects();
+                int overlapRevision=frame.Revision,overlapCount=frame.SceneCount;
+                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                    throw new InvalidOperationException("重叠选择首击未找到图元");
+                CheckSelection(frame,upperId);
+                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                    throw new InvalidOperationException("重叠选择不能到达下层图元");
+                CheckSelection(frame,lowerId);
+                if(!frame.Canvas.SelectNextOverlappedAt(2075,2075))
+                    throw new InvalidOperationException("重叠选择不能循环回顶层");
+                CheckSelection(frame,upperId);
+                if(frame.Canvas.SelectNextOverlappedAt(5000,5000))
+                    throw new InvalidOperationException("空白处不应轮换不存在的图元");
+                CheckSelection(frame,upperId);
+                if(frame.Revision!=overlapRevision||frame.SceneCount!=overlapCount)
+                    throw new InvalidOperationException("轮换选择污染MEM修订或工程对象数量");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))
