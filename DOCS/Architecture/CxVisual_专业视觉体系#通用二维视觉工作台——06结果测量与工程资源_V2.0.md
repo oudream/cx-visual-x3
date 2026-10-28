@@ -119,3 +119,126 @@ Vision的正式结果体系应按**RunId→具名ResultItem→SourceRef/Artifact
 | ReviewRecordId/OriginalRunId | 派生人工复核 | 保留原始检测事实/审核人/时间/审计 |
 
 最重要的纵向验收：算法Run产生Image/Mask/Geometry/Measure多结果→结果表定位图窗→修改临时显示不改变Result→明确保存ROI→MEM撤销/重做/保存重开→旧Run证据仍可追溯。
+
+## 10. 结果、证据与工程资源的定型草案
+
+> **设计审查（P）**：专业统一RunRecord/ResultItem/ReviewRecord目前仍是逻辑模型，不是已实现的CLR类。已核实的真实基础是CxVisionInspectionResult、FDTDataAdapterRegistry、MDSDataContext、MVIImageOverlayStore/Item、MEMEngineeringSession/MRC视觉对象及MTC编辑机制。必须在已存在机制上完成结果聚合，而不是新增ResultHeap或第二工程历史。
+
+### 10.1 七种结果类型，共用一次Run身份
+
+| 结果Kind（P目标语义） | 值结构/引用 | 保证 |
+|---|---|---|
+| Image | PixelFormat/Width/Height/ArtifactRef | 原图与处理图可区分且不可误覆写 |
+| Mask | MaskRef、Origin、CoordinateSpace、有效范围 | 与输入图尺寸/坐标变换可校验 |
+| Geometry | ROI/轮廓/拟合模型、SourceRef及TransformRef | 不丢退化/残差/拟合质量 |
+| Measurement | Value/Unit/CalibrationRef/Uncertainty | 无有效校准时物理单位为空；像素量可用 |
+| FeatureTable/Statistics | 样本量、参数、列Schema、ROI/SourceRef | 空表与失败结果分开 |
+| DetectionEvidence | 缺陷候选、定位、类型、置信或质量 | Vision只产生检测事实，不代替Inspection最终判定 |
+| Diagnostic/Trace | StepId/SourceMap/Duration/Warnings/Error | 来源可查，运行取消与错误留证据 |
+
+一份Run可以同时有多个同Kind Item。Item应有稳定的ItemId、ProducerNodeId、OutputPort和InputRefs；输入源ID不是ItemId，用户的选择状态也不是ItemId。显示层根据Kind选择Renderer/Inspector，但不修改原结果对象。
+
+### 10.2 运行头、结果项、关联和审查记录的概念Schema
+
+~~~text
+RunRecord [P] = {
+  RunId, CorrelationId, Status,
+  StartedUtc, EndedUtc,
+  InputRefs[{SourceId, FrameId?, ImageRevision?, Hash?}],
+  DefinitionRef{ProjectId, ContentId, Revision},
+  ResolvedPlan{Fingerprint?, CapabilityVersions?, ProviderVersions?},
+  ParameterSnapshotRef, CalibrationRef?,
+  Items[ResultItemId], DiagnosticsRef
+}
+
+ResultItem [P] = {
+  ItemId, RunId, ProducerNodeId, OutputPort,
+  Kind, PayloadOrArtifactRef, SourceImageRef,
+  CoordinateSpace?, Unit?, Validity, Quality?,
+  ParentItemIds[], SchemaVersion
+}
+
+ReviewRecord [P] = {
+  ReviewId, OriginalRunId, RelatedResultItemIds[],
+  ReviewerRef, TimeUtc, Decision, Note, Revision
+}
+~~~
+
+**这只是审查用逻辑Schema，不是已经存在的文件格式、C#公开签名或已获批的持久存储协议。** 一次Run的最小证据不要求每个字段都存在，但“引用不知道”“模型版本不知道”等情况必须显式Unknown，不能默认为正确。Hash/签名和完整Release Manifest需依真实平台发布能力确认；当前MOC软件Plan Fingerprint不等于设备侧签名。
+
+### 10.3 状态分层
+
+Run总体状态与Item有效性独立管理；ResultItem可以是有效空RegionSet，不应把它等同于整个Run失败。至少区分：
+- **Run：Created、Running、Completed、Failed、Cancelled、Rejected**（P状态，具体命名待实际实现审核）。
+- **ResultItem：Valid、Empty、Stale、MissingArtifact、Invalid**；来源版本不符时不可被展示成Valid。
+- **Review：Unreviewed、Reviewed、Superseded**（P），人工复核不会改变原始算法输出。
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> Created
+  Created --> Validating
+  Validating --> Rejected: schema/capability/reference invalid
+  Validating --> Running: accepted
+  Running --> Committing: all required outputs ready
+  Running --> Failed: error/invalid output
+  Running --> Cancelled: cooperative cancel
+  Committing --> Completed: atomic publication
+  Committing --> Failed: publish failed
+  Completed --> [*]
+  Failed --> [*]
+  Rejected --> [*]
+  Cancelled --> [*]
+~~~
+
+已发布的Run记录原则上不可原地编辑；报告导出/人工复核通过派生记录与引用表达。不同输出端口的部分成功是否允许需在Operation Schema显式声明，不得默许将部分Pending数据当作完整成功。MDS现有Pending/Commit/Abort机制可以服务执行输出，但不直接等价为长期结果仓库的事务。
+
+### 10.4 结果与工程对象三权分离
+
+| 视角 | 谁写入 | 允许的变化 | 不允许的变化 |
+|---|---|---|---|
+| Run/ResultItem | 运行发布与专业结果Owner | 新Run、新Item、带版本的新Artifact | 从WPF修改原历史Item或重新使用旧RunId覆盖数据 |
+| MVIOverlay | MVI临时会话 | 高亮、移动、编辑草稿、清除、图层切换 | 当作AlgorithmResultStore或工程Undo |
+| MEM/MRC | MEM/MTC唯一工程Session | 显式编辑/事务/Undo/Redo/保存重开 | 算法线程直接修改正式ROI和Revision |
+| ReviewRecord | 人工复核/Inspection授权角色 | 新增复核版本、意见、状态和审计 | 用复核意见直接篡改检测候选原始数值 |
+
+选择Run Item时，图窗应获取该Item的SourceImageRef，确认ViewImage与SourceId、坐标空间/Transform相匹配，然后渲染Mask/Geometry Overlay；SourceRef无法解析须显示BrokenReference而非继续画在当前另一张图上。
+
+### 10.5 工程ROI显式转换的完整交互
+
+~~~mermaid
+sequenceDiagram
+  actor U as 用户
+  participant V as MPW/MVI
+  participant R as ResultStore
+  participant E as MEMEngineeringSession
+  U->>V: 选择临时ROI或结果轮廓
+  V->>R: 确认SourceRef/Geometry/Kind
+  R-->>V: 几何或缺失引用错误
+  U->>V: 明确保存为工程标注
+  V->>E: 授权+版本校验+Edit
+  alt 有效Revision及Schema
+    E-->>V: 稳定工程Id+新Revision
+    V-->>U: 工程对象投影
+  else 冲突或非法
+    E-->>V: Rejected；旧工程不变
+  end
+  U->>E: Undo或Save
+~~~
+
+该图是目标交互流程，真实代码只能通过平台现有MEM/MTC方法签名实现，不能把图中ResultStore当现成类。工程对象使用MRC现有Shape/VisualItem机制时，需明确源图坐标、标定版本和图层/样式以及运行/结果关联；专业Mask不能无条件变成没有洞信息的多边形。
+
+### 10.6 结果契约的先行反证
+
+| ID | 对象/用户验收 |
+|---|---|
+| RES-01 | 同一个Run含Image+Mask+Geometry+Measurement+Trace不同Kind，唯一RunId与ItemId |
+| RES-02 | 新参数产生新RunId，旧结果、旧图与人工复核不受影响 |
+| RES-03 | 结果表定位到原图正确坐标，另一Source/Spacing/Transform时拒绝错位显示 |
+| RES-04 | Empty、Failed、Cancelled、Stale、MissingArtifact有不同状态与用户提示 |
+| RES-05 | FDT捕获可变结果安全，MDS输出Abort不留下虚假的已提交证据 |
+| RES-06 | 临时Overlay→MEM对象必须由用户明确Promote；Undo/Redo/Save/Open一致 |
+| RES-07 | 导出CSV/JSON/图片/报告能回查同一个Run和参数/版本/单位，敏感数据受控 |
+| RES-08 | 用户复核作为派生记录，原始算法结果及缺陷质量保持不变 |
+| RES-09 | 失败报告包含Node/Port/错误码/Trace，不得因空RegionSet伪造异常 |
+
+这些反证的实测代码、SHA、CI与设备环境须记Testing文档；本轮只是架构契约，不提升G2—G6等级。
