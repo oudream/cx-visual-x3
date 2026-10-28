@@ -15,7 +15,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 throw new ArgumentException("module.center.page");
             Id=id;Label=label;
             Fields=fields.ToArray();
-            Categories=categories==null?new string[0]:categories.ToArray();
+            // null means "do not filter by FCM annotation category".
+            // Empty is a real empty filter and suppresses every field.
+            // Preserve the original TCT.ModulePage contract exactly.
+            Categories=categories==null?null:categories.ToArray();
         }
         public string Id {get;private set;}
         public string Label {get;private set;}

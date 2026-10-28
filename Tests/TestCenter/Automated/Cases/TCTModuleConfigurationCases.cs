@@ -49,6 +49,10 @@ namespace CxVisual.TestCenter.Cases
                 bool valid=projected.Count>0&&omitted.Length==0&&
                     projected.Select(item=>item.Id).Distinct(StringComparer.Ordinal).Count()==projected.Count;
                 test.AssertTrue(valid,"五类共享MPW分页覆盖："+entry.Key,true,valid);
+                bool unfiltered=projected.All(page=>page.Categories==null);
+                test.AssertTrue(unfiltered,
+                    "默认类别必须保持null（不筛掉所有FCM Schema字段）："+entry.Key,
+                    true,unfiltered);
             }
             // 通用MPW检查全部正式Schema字段，缺页立即可见而非沉默丢失。
             string[] complete = MPWConfigWorkspaceLayout.UnassignedLeafPaths(
