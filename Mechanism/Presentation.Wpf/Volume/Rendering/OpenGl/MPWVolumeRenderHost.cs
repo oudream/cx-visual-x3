@@ -14,6 +14,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private MPWVolumeOpenGlControl _gpu;
         private GpuState _state;
         private long _epoch;
+        private readonly MPWVolumeRenderScheduler _scheduler;
+        private Action<MPWVolumeOpenGlControl,MPWVolumeRenderDirty> _applyUpdate;
+        public long PendingRevision {get{return _scheduler.Revision;}}
+        public long AppliedRevision {get{return _scheduler.AppliedRevision;}}
+        public MPWVolumeRenderDirty PendingUpdates {get{return _scheduler.Pending;}}
         public event EventHandler StateChanged;
         public MPWVolumeOpenGlControl CurrentGpu {get{return _gpu;}}
         public GpuState State {get{return _state;}}
@@ -26,7 +31,35 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             if(fallback==null || !slot.Children.Contains(fallback))
                 throw new ArgumentException("WPF回退视图必须在宿主Grid中。","fallback");
             _slot=slot;_fallback=fallback;
+            _scheduler=new MPWVolumeRenderScheduler(slot.Dispatcher,ApplyPendingUpdates);
         }
+
+        /// <summary>业务宿主将CT3D变更映射为MPW资源失效位，不产生MPW到CT3D的项目依赖。</summary>
+        public void QueueUpdate(MPWVolumeRenderDirty dirty,
+            Action<MPWVolumeOpenGlControl,MPWVolumeRenderDirty> apply)
+        {
+            VerifyAccess();
+            if(_state==GpuState.Disposed)throw new ObjectDisposedException("MPWVolumeRenderHost");
+            if(dirty==MPWVolumeRenderDirty.None)return;
+            if(apply==null)throw new ArgumentNullException("apply");
+            _applyUpdate=apply;
+            if(IsReady)_scheduler.Invalidate(dirty);
+        }
+
+        public void FlushUpdates()
+        {
+            VerifyAccess();
+            if(IsReady)_scheduler.FlushNow();
+        }
+
+        private void ApplyPendingUpdates(MPWVolumeRenderDirty dirty)
+        {
+            MPWVolumeOpenGlControl gpu=_gpu;
+            if(!IsReady || gpu==null || _applyUpdate==null)return;
+            try {_applyUpdate(gpu,dirty);}
+            catch(Exception error){Fail("GPU调度刷新失败："+error.Message);}
+        }
+
         public void Enable(MVI3DCameraState camera,Action<MPWVolumeOpenGlControl> configure)
         {
             VerifyAccess();
@@ -34,6 +67,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             if(configure==null)throw new ArgumentNullException("configure");
             if(_gpu!=null)return;
             FailureReason=null;_epoch=checked(_epoch+1);
+            _scheduler.ResetContext(_epoch);
             _state=GpuState.Initializing;Notify();
             try
             {
@@ -104,6 +138,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         }
         private void ReleaseGpu()
         {
+            // 即使WGL释放抛错，仍先废弃队列，禁止旧帧触碰销毁的Context。
+            _scheduler.ResetContext(checked(++_epoch));
+            _applyUpdate=null;
             MPWVolumeOpenGlControl previous=_gpu;
             _gpu=null;
             if(previous==null)return;
@@ -125,6 +162,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             {
                 _fallback.Visibility=Visibility.Visible;
                 _state=GpuState.Disposed;
+                _scheduler.Dispose();
                 Notify();
             }
         }
