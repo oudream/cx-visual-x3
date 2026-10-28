@@ -192,9 +192,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ReadOnlyCollection<MRKControlRegion> _regions;
         public IDictionary<string, string> DataExports { get; private set; }
         public IDictionary<string, Type> DataExportTypes { get; private set; }
+        /// <summary>
+        /// 显式选择静态DAG具名输出最后消费者结算回收。默认保守保留到Flow结束；
+        /// 动态区域不支持此优化，以保留CollectLoopOutputs及重试语义。
+        /// </summary>
+        public bool ReclaimCommittedWhenConsumersSettle { get; private set; }
         public MRKExecutionPlan(string id, IEnumerable<MRKExecutionStep> steps,
             IDictionary<string, string> dataExports = null,
-            IEnumerable<MRKControlRegion> regions = null)
+            IEnumerable<MRKControlRegion> regions = null,
+            bool reclaimCommittedWhenConsumersSettle = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Plan ID required", "id");
             if (steps == null) throw new ArgumentNullException("steps");
@@ -248,6 +254,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
             List<MRKControlRegion> candidates=new List<MRKControlRegion>(
                 regions??Enumerable.Empty<MRKControlRegion>());
             ValidateRegions(candidates);
+            if (reclaimCommittedWhenConsumersSettle &&
+                (candidates.Count != 0 || list.Any(step =>
+                    step.LoopRegion != null || step.TryRegion != null)))
+                throw new ArgumentException(
+                    "自动回收当前只支持无动态控制区域的静态DAG，Loop/Try/ControlRegion保持保守保留",
+                    "reclaimCommittedWhenConsumersSettle");
+            ReclaimCommittedWhenConsumersSettle = reclaimCommittedWhenConsumersSettle;
             _regions=candidates.AsReadOnly();
         }
         private void ValidateRegions(IList<MRKControlRegion> regions)
