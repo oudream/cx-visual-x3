@@ -66,15 +66,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
 
                 // V01→V02→V03：仅通过FVO真实RAW租约、空间mm与FNU SVD形成Headless数值闭环。
-                string sphereRaw=Path.Combine(folder,"sphere_32x32x32_sp1x1x1.raw");
-                byte[] sphereVoxels=new byte[32*32*32];
+                string sphereRaw=Path.Combine(folder,"sphere_32x32x32_sp1x1x1_uint16.raw");
+                byte[] sphereVoxels=new byte[32*32*32*2];
                 for(int z=0;z<32;z++)
                 for(int y=0;y<32;y++)
                 for(int x=0;x<32;x++)
                 {
                     double dx=x-15.5,dy=y-15.5,dz=z-15.5;
-                    sphereVoxels[x+y*32+z*32*32]=
-                        dx*dx+dy*dy+dz*dz<=81? (byte)200:(byte)0;
+                    ushort value=(ushort)(dx*dx+dy*dy+dz*dz<=81?1511:0);
+                    int offset=2*(x+y*32+z*32*32);
+                    sphereVoxels[offset]=(byte)value;
+                    sphereVoxels[offset+1]=(byte)(value>>8);
                 }
                 File.WriteAllBytes(sphereRaw,sphereVoxels);
                 using(FVOVolumeData sphere=FVORawVolumeLoader.Load(sphereRaw))
@@ -84,7 +86,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     using(FVOOriginalScalarLease uncalibrated=sphere.AcquireOriginalScalarLease())
                     {
                         CT3DSurfaceSamples preview=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            uncalibrated,"fixture:synthetic-sphere",7,100f,1,5000,CancellationToken.None);
+                            uncalibrated,"fixture:synthetic-sphere",7,1000f,1,5000,CancellationToken.None);
                         bool refused=false;
                         try {CT3DSurfaceSphereAnalysis.FitSphere(preview);}
                         catch(InvalidOperationException){refused=true;}
@@ -96,8 +98,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     using(FVOOriginalScalarLease original=sphere.AcquireOriginalScalarLease())
                     {
                         CT3DSurfaceSamples points=CT3DSurfaceSphereAnalysis.SampleBoundary(
-                            original,"fixture:synthetic-sphere",7,100f,1,5000,CancellationToken.None);
-                        Check(points.Count>300 && !points.TouchesVolumeBoundary &&
+                            original,"fixture:synthetic-sphere",7,1000f,1,5000,CancellationToken.None);
+                        Check(points.Count>300 && original.Format==FVORawVoxelFormat.UInt16 &&
+                              original.ReadScalar(15,15,15)==1511 && !points.TouchesVolumeBoundary &&
                             points.SurfaceMethod=="binary-voxel-center-6-neighbor",
                             "原值边界采样保留方法和截断证据");
                         CT3DSphereFitResult fit=CT3DSurfaceSphereAnalysis.FitSphere(points);
@@ -119,7 +122,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                               sceneResult.Snapshot()[0].Kind==MVI3DSceneKind.Surface,
                             "CT3D结果通过MVI场景资源引用显示，不把专业算法或结果复制进MVI");
                         bool limit=false;
-                        try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,100,1,8,
+                        try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,1000,1,8,
                             CancellationToken.None);}
                         catch(InvalidOperationException){limit=true;}
                         Check(limit,"超预算必须报错，不得只取一侧点伪报球半径");
@@ -134,7 +137,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         {
                             cancelled.Cancel();
                             bool cancellationObserved=false;
-                            try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,100,1,5000,
+                            try {CT3DSurfaceSphereAnalysis.SampleBoundary(original,"fixture:synthetic-sphere",7,1000,1,5000,
                                 cancelled.Token);}
                             catch(OperationCanceledException){cancellationObserved=true;}
                             Check(cancellationObserved,"专业表面采样须响应平台取消信号");
