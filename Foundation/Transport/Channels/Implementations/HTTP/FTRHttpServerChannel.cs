@@ -147,6 +147,7 @@ namespace CxVisual.Foundation.Transport
                 {
                     RecordReceiveError(error,FTRFaultScope.SubChannel);
                     try{context.Response.StatusCode=error is TimeoutException?504:
+                        error is FTRSharedBudgetExceededException?503:
                         error is FTRBudgetExceededException || error is IOException?413:500;}catch{}
                 }
             }

@@ -25,9 +25,14 @@ namespace CxVisual.Foundation.Transport
     }
 
     /// <summary>额度耗尽是可观察的资源拒绝，不伪装为OutOfMemoryException。</summary>
-    internal sealed class FTRBudgetExceededException : InvalidOperationException
+    internal class FTRBudgetExceededException : InvalidOperationException
     {
         internal FTRBudgetExceededException(string message):base(message){}
+    }
+    /// <summary>跨客户端共享额度不足；区别于单条请求超过MaxRequestBytes。</summary>
+    internal sealed class FTRSharedBudgetExceededException : FTRBudgetExceededException
+    {
+        internal FTRSharedBudgetExceededException():base("Channel多对端在途内存预算已满"){}
     }
 
     /// <summary>诊断值对象，仅记录有限的非载荷证据，不持有原始异常或大数据缓存。</summary>

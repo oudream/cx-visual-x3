@@ -22,7 +22,7 @@ namespace CxVisual.Foundation.Transport
                 if(bytes>_limit-_current)
                 {
                     _rejected++;
-                    throw new FTRBudgetExceededException("Channel多对端在途内存预算已满");
+                    throw new FTRSharedBudgetExceededException();
                 }
                 _current+=bytes;
                 if(_current>_peak)_peak=_current;
