@@ -75,3 +75,16 @@
 | F17-S5-01 | `FTRTcpBulkTests.AsyncSendAdmission`，`--channel-transport` | 拒绝入场不克隆、不执行物理发送，计数与ResourceExhausted/SendAdmission/Operation一致 | 新增`d54928fc`，待固定SHA验证 |
 
 保留原`F17.UML_CORE_PASS`、`F17.RECONNECT_PASS`、`F17.BULK_VOLUME_PASS`和`F17.PIPE_VOLUME_PASS`双向各2147483648字节检查；另需检查新增`F17.HEALTH_PASS`及`F17.WS_ATOMIC_PASS`实际日志。旧成功CI不替代新固定SHA。后续欠缺24小时持续流、跨PC、工业网络/硬件、HTTP/WS多客户端总内存预算、现场CPU/GC SLA、共享内存崩溃恢复等。
+
+
+### V3.0 后续新增正反例与验收条件
+
+| 增量 | 用例 | 状态 |
+|---|---|---|
+| `d54928fc` | `FTRTcpBulkTests.AsyncSendAdmission` 校验ResourceExhausted与入场故障作用域，拒绝前不分配快照 | [F17 #40661070975](https://github.com/oudream/cx-visual-x3/actions/runs/40661070975) success |
+| `61776e5c` | `FTRChannelHealthTests.ObserverIsolation`，观察者异常不导致Channel假故障 | 新增代码已提交，固定SHA独立CI待核实 |
+| `0ddd1f4c` | `FTRWebSocketAtomicTests` 真实HTTP Upgrade回环：4097字节异步发送在4096预算下预先拒绝；仍允许大块同步分片和并发完整性 | 新增代码已提交，固定SHA独立CI待核实 |
+| `489c7f3b` | `FTRReconnectControllerTests.BackoffAndLimit` 修改原FCM配置后原控制器仍使用构造时的2次上限和短退避 | 新增代码已提交，固定SHA独立CI待核实 |
+| `4c398047` | TestCenter WPF UIA 在Virtual真实收发后检查`State=Open`、Session、TX/RX健康视图，并保持离线通道不连接实体设备 | 新增代码已提交，TestCenter Windows最终结果待核实 |
+
+所有“待核实”只能在对应固定SHA的CI真正结束并有日志后改为通过；仍不覆盖24h长稳、跨PC、真实硬件、HTTP/WS跨层全链路总内存及工业SLA。

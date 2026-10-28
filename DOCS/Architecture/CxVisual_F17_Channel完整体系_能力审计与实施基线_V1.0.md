@@ -123,3 +123,13 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 - `1be8688b`：Deadline、故障分类、速率和Health；`4cb84aa1`：专门的故障/快照回归；对应[Windows F17 #40660269567](https://github.com/oudream/cx-visual-x3/actions/runs/40660269567) success。
 - `321b0525`：可恢复性判断、物理重连结果统计和负面测试；对应[Windows F17 #40660492860](https://github.com/oudream/cx-visual-x3/actions/runs/40660492860) success。
 - `0892287d`、`c832d99c`、`a0ac099f`、`b6123dc2`：WS双向消息级原子分片和OS回环；`d54928fc`：入场故障分类；`61776e5c`：观察者隔离。**本组较新提交的Windows结果以其对应CI最终状态另行补录；绝不借用更早绿灯**。
+
+
+### 8.4 追加的资源、配置和TestCenter代码闭环
+
+- `d54928fc`将异步发送入场拒绝记录为`FTRFailureKind.ResourceExhausted / SendAdmission / Operation`，保留原`InvalidOperationException`兼容行为；[F17 Windows #40661070975](https://github.com/oudream/cx-visual-x3/actions/runs/40661070975) success。
+- `61776e5c`将状态/数据/帧观察者异常统一标记`Observer / Operation`，避免误报为底层Receive故障。
+- `0ddd1f4c`抽离`ConfigureSendAdmission`：原接收池继续复用，HTTP Client/Server、WS Client/Server和Serial无接收池时也执行异步发送数量/字节快照入场预算；WS真实回环新增4097字节超过4096预算时必须拒绝、且同步较大消息仍正常的正反例。
+- `489c7f3b`在`FTRReconnectController`构造时冻结实际重连次数、间隔、退避；调用方修改原FCM配置对象不能在运行中悄悄改变策略。
+- `bb855563`、`1efbe549`把原TestCenter人工Channel页面接入真实FTR只读健康视图/每秒UI采样，展示状态、Session、收发速率、故障类别、池和背压；`4c398047`补原WPF UIA真实Virtual收发后的健康信息断言。无设备授权时仍只离线选择类型。
+- 截至记录时，较新的`489c7f3b` F17和TestCenter Windows完整回归**仍需以其各自固定SHA完成结果验收**；已有WS原子性[专项#40660867450](https://github.com/oudream/cx-visual-x3/actions/runs/40660867450)真实日志已输出`F17.WS_ATOMIC_PASS`，不能替代后续资源预算/界面提交的回归。

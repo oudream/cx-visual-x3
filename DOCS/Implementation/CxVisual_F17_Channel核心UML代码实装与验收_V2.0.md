@@ -66,3 +66,11 @@
 - **兼容**：没有更改`IFTRChannel`、`IFTRChannelTransport`签名、FTR/MPA/MCN/MDS/MRK Owner、FCM旧字段和15种Channel的类型身份；新类已逐个加入传统Transport.csproj，ArchitectureSmoke测试仍由项目原通配Compile编译。
 
 验证见原[测试矩阵](../Testing/CxVisual_F17_Channel_P0大数据与线程模型_验收矩阵_V1.0.md)，**六项仍为逐步推进，不代表全类型P0完成或软件工业验收完成**。
+
+
+### 6.1 预算、运行配置、TestCenter后续代码
+
+- 在`FTRChannelBase`补`ConfigureSendAdmission`（原`StartBufferedReceive`内部复用）；不要求没有池化Reader的HTTP/WS/Serial额外创建无意义的接收线程。异步发送先验证容量再clone；同步Send仍遵守源数组借用的原API语义。
+- HTTP/WS/Serial分别在实际Open成功路径启用新配置；此处限制的是**异步发送快照入场**，不宣称限制HTTP业务响应Pending载荷的整个生命周期或WS接收多Peer聚合内存。后者仍须独立的端到端总预算设计。
+- `FTRReconnectController`冻结有效重连策略，诊断累积计数仍持续；不存在复制的Recovery Runtime。
+- `TCTManualChannelFrame`每秒WPF DispatcherTimer读取现有`FTRChannelBase.Health`，`OnWorkspaceClosed`停止计时；新增`channel.health`手动操作与`TCT.Channel.Health`自动化标识。不暗中打开非Virtual设备，不建立第二套Socket读取者。
