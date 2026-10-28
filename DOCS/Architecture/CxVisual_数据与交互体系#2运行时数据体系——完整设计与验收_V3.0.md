@@ -1271,3 +1271,12 @@ try {
 - **Host注入**：MainWindow.AttachStudioRuntimeDataEngineering(section,allowEngineeringChanges)与原AttachStudioRuntimeDataHeap分离。MHS仍是唯一工程配置Owner，MDS仍是唯一运行值Owner。
 - **正反例**：ArchitectureSmoke跨Heap拷贝、重复名、类型错误、预算拒绝及可变别名隔离；TestCenter真实WPF验证未授权拒绝、工程Saved重载、Effective未改变、TTL非法拒绝。
 - **限制**：还没有在Studio工程打开流程自动绑定正确ProjectScope/用户身份；没有多数据项工程映射、外部硬件实测。代码提交与最终CI结果必须各自登记。
+
+### 19.5 外部Operation Unknown受控登记与专业Verifier恢复（2026-10-28）
+
+> 这是外部资源生命周期的进程内协议增强，不是SDK/GPU/SHM硬件验收。
+
+- `MDSDataLifecycleAccess.PendingExternalOperations()` 只返回数据名、Provider、Generation、InFlight/Unknown状态；不暴露裸SDK指针。`BeginExternalOperation`在原Heap上保留数据并登记唯一外部Operation，同一身份重复注册拒绝，登记上限1024避免无限新建。
+- `TryReconcileExternalOperation(dataName, providerId, generation, IMDSExternalCompletionVerifier)` 仅从已登记的原始Operation查找并调用专业Verifier。旧代次拒绝；Verifier没有真实完成证据时保留Unknown和MDS保留凭证；Verifier在任何Heap/Registry锁外运行；确认成功后只释放一次并删除登记。原`ConfirmCompletion(generation)`仍可由持有原Lease的专业Provider直接调用，成功也统一注销登记。
+- `IMDSExternalCompletionVerifier` 为外部SDK/GPU/SHM的可信完成核对合同，MDS不自行发明ACK，也不判断设备是否真正结束。当前进程重启后的恢复持久性、物理SDK回调和多进程崩溃安全仍未实现。
+- ArchitectureSmoke补齐重复登记、丢失原租约、Unknown阻断、错误代次、Verifier拒绝、核对成功与重复确认；TestCenter新增TCT.MDS.034模拟后端，明确标为软件验证。最新固定SHA的Windows专项需另行确认，不能借用此前绿灯。
