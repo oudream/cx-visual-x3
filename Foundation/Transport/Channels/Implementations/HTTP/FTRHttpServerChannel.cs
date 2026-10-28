@@ -14,6 +14,7 @@ namespace CxVisual.Foundation.Transport
         {
             internal int StatusCode;
             internal byte[] Payload;
+            internal FTRBufferedByteLease Lease;
         }
         private sealed class Pending
         {
@@ -49,6 +50,7 @@ namespace CxVisual.Foundation.Transport
             _listener.Prefixes.Add(_config.Prefix);
             _listener.Start();
             ConfigureSendAdmission(_config);
+            ConfigureInFlightBudget(_config.TotalBufferedBytes);
             _accept = Task.Run(() => AcceptLoop(_stop.Token));
             return Task.CompletedTask;
         }
@@ -85,30 +87,52 @@ namespace CxVisual.Foundation.Transport
             {
                 if(context.Request.ContentLength64>_config.MaxRequestBytes)
                     throw new FTRBudgetExceededException("HTTP请求超过接收预算");
-                byte[] payload;
-                using(var memory=new MemoryStream())
+                // 所有请求共用本Channel的在途内存预算。先预留再分配；
+                // MemoryStream扩容时同时计算新旧两块的短暂重叠峰值。
+                using(var requestLease=InFlightBudget.Lease())
                 {
-                    byte[] chunk=new byte[Math.Min(16384,_config.ReceiveBufferBytes)];
-                    int read;
-                    while((read=await context.Request.InputStream.ReadAsync(chunk,0,chunk.Length,cancellation).ConfigureAwait(false))>0)
+                    int scratchBytes=Math.Min(16384,_config.ReceiveBufferBytes);
+                    requestLease.Reserve(scratchBytes);
+                    byte[] chunk=new byte[scratchBytes];
+                    using(var memory=new MemoryStream())
                     {
-                        if(memory.Length+read>_config.MaxRequestBytes)throw new FTRBudgetExceededException("HTTP请求超过接收预算");
-                        memory.Write(chunk,0,read);
+                        int read;
+                        while((read=await context.Request.InputStream.ReadAsync(
+                            chunk,0,chunk.Length,cancellation).ConfigureAwait(false))>0)
+                        {
+                            long required=memory.Length+read;
+                            if(required>_config.MaxRequestBytes)
+                                throw new FTRBudgetExceededException("HTTP请求超过接收预算");
+                            if(required>memory.Capacity)
+                            {
+                                int oldCapacity=memory.Capacity;
+                                int next=(int)Math.Min((long)_config.MaxRequestBytes,
+                                    Math.Max(required,Math.Max(4096L,(long)oldCapacity*2)));
+                                requestLease.Reserve(next);
+                                try{memory.Capacity=next;}
+                                catch{requestLease.Release(next);throw;}
+                                requestLease.Release(oldCapacity);
+                            }
+                            memory.Write(chunk,0,read);
+                        }
+                        int payloadBytes=(int)memory.Length;
+                        // ToArray兼容原有Received契约；复制峰值也必须进入总额度。
+                        requestLease.Reserve(payloadBytes);
+                        byte[] payload=memory.ToArray();
+                        _inReceiveCallback.Value=true;
+                        try
+                        {
+                            Action<FTRHttpRequestInfo> observer=RequestReceived;
+                            if(observer!=null)
+                                foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
+                                    try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
+                                        context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
+                                    catch(Exception error){RecordObserverError(error);}
+                            ReceiveFrom(pending.Address,payload);
+                        }
+                        finally { _inReceiveCallback.Value=false; }
                     }
-                    payload=memory.ToArray();
                 }
-                _inReceiveCallback.Value=true;
-                try
-                {
-                    Action<FTRHttpRequestInfo> observer=RequestReceived;
-                    if(observer!=null)
-                        foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
-                            try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
-                                context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
-                            catch(Exception error){RecordObserverError(error);}
-                    ReceiveFrom(pending.Address,payload);
-                }
-                finally { _inReceiveCallback.Value=false; }
                 Task done=await Task.WhenAny(pending.Response.Task,Task.Delay(_config.ResponseTimeoutMs,cancellation)).ConfigureAwait(false);
                 if(done!=pending.Response.Task) throw new TimeoutException("HTTP业务响应未在期限内提交");
                 Reply response=await pending.Response.Task.ConfigureAwait(false);
@@ -129,7 +153,10 @@ namespace CxVisual.Foundation.Transport
             finally
             {
                 try{context.Response.Close();}catch{}
+                // RespondAsync已接纳的快照即使超时/取消也在唯一结束路径释放。
                 lock(_gate)_pending.Remove(pending.Address.SubChannelId);
+                if(pending.Response.Task.Status==TaskStatus.RanToCompletion)
+                    pending.Response.Task.Result.Lease.Dispose();
                 RemovePeer(pending.Address);
                 _slots.Release();
             }
@@ -143,13 +170,23 @@ namespace CxVisual.Foundation.Transport
             if(payload==null || payload.Length>_config.MaxResponseBytes)
                 throw new ArgumentException("响应超过预算或为空");
             if(FindSubChannel(address)==null)throw new InvalidOperationException("过期HTTP请求");
-            Pending pending;
-            lock(_gate)if(!_pending.TryGetValue(address.SubChannelId,out pending))
-                throw new InvalidOperationException("HTTP请求已结束");
-            if(!pending.Address.Equals(address))
-                throw new InvalidOperationException("HTTP请求代次不匹配");
-            if(!pending.Response.TrySetResult(new Reply { StatusCode=statusCode, Payload=(byte[])payload.Clone() }))
-                throw new InvalidOperationException("HTTP请求已经响应");
+            // 响应属于原始SubChannel+Generation，容量从全部HTTP请求共用额度预留。
+            using(var lease=InFlightBudget.Lease())
+            {
+                lease.Reserve(payload.Length);
+                var response=new Reply{StatusCode=statusCode,Payload=(byte[])payload.Clone(),Lease=lease};
+                Pending pending;
+                lock(_gate)
+                {
+                    if(!_pending.TryGetValue(address.SubChannelId,out pending) ||
+                        !pending.Address.Equals(address))
+                        throw new InvalidOperationException("HTTP请求不存在或代次已变化");
+                    if(!pending.Response.TrySetResult(response))
+                        throw new InvalidOperationException("HTTP请求已经响应");
+                }
+                // 已交由Serve唯一完成路径释放，不能在这里Dispose。
+                lease.Detach();
+            }
             return Task.CompletedTask;
         }
         protected override Task SendToPeerAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken cancellation)
