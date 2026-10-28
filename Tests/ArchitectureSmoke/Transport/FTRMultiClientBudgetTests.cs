@@ -25,6 +25,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             SharedBudgetLease();
+            HttpClientSegmentedPost();
             HttpConcurrentResponses();
             HttpAggregateOverload();
             WebSocketTwoClientsRouted();
@@ -49,6 +50,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try{new FTRHttpServerChannelConfiguration{TotalBufferedBytes=0}.Validate();}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"HTTP 0预算必须拒绝");
+        }
+
+        private static void HttpClientSegmentedPost()
+        {
+            int port=Port();
+            string baseUrl="http://localhost:"+port+"/segment/";
+            var serverConfig=new FTRHttpServerChannelConfiguration {
+                Id="f17-http-segment-server",Prefix=baseUrl,MaxClients=2,
+                MaxRequestBytes=1024,MaxResponseBytes=1024,TotalBufferedBytes=65536,
+                ReceiveBufferBytes=32,ResponseTimeoutMs=5000
+            };
+            var clientConfig=new FTRHttpClientChannelConfiguration {
+                Id="f17-http-segment-client",Url=baseUrl,RequestTimeoutMs=5000,
+                MaxResponseBytes=1024,StopTimeoutMs=5000
+            };
+            using(var server=new FTRHttpServerChannel(serverConfig))
+            using(var client=new FTRHttpClientChannel(clientConfig))
+            {
+                int requests=0,responses=0;
+                byte[] first=Enumerable.Range(0,37).Select(x=>(byte)x).ToArray();
+                byte[] receivedRequest=null,receivedResponse=null;
+                FTRSubChannelAddress origin=null;
+                server.Received+=packet=>
+                {
+                    Interlocked.Increment(ref requests);
+                    origin=packet.Address;
+                    receivedRequest=packet.Data;
+                    server.ReplyAsync(packet,new byte[]{99},CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                };
+                client.Received+=packet=>
+                {
+                    Interlocked.Increment(ref responses);
+                    receivedResponse=packet.Data;
+                };
+                try
+                {
+                    server.Open();client.Open();
+                    client.Send(first,segmentBytes:3);
+                    Check(requests==1 && responses==1 && receivedRequest.SequenceEqual(first) &&
+                        receivedResponse.SequenceEqual(new byte[]{99}) &&
+                        origin!=null && origin.HasSubChannel && origin.Generation>0,
+                        "一次同步分段发送必须只产生一个HTTP POST，正文完整且按请求子ID回复");
+                    // 异步发送复用同一HTTP请求路径，并由ChannelBase一次取得源数据快照。
+                    client.SendBytesAsync(first,CancellationToken.None).GetAwaiter().GetResult();
+                    Check(requests==2 && responses==2 && receivedRequest.SequenceEqual(first) &&
+                        receivedResponse.SequenceEqual(new byte[]{99}),
+                        "HTTP Client同步/异步不得建两套独立传输或误分裂请求");
+                }
+                finally
+                {
+                    if(client.State!=FTRChannelState.Closed)client.Close();
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
+            }
         }
 
         private static void HttpConcurrentResponses()
