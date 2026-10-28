@@ -118,6 +118,7 @@ namespace CxVisual.Foundation.Transport
                 case FTRChannelKind.UdpServer: return new FTRUdpServerChannel(configuration);
                 case FTRChannelKind.Serial: return new FTRSerialChannel(configuration);
                 case FTRChannelKind.HttpClient: return new FTRHttpClientChannel(configuration);
+                case FTRChannelKind.HttpServer: return new FTRHttpServerChannel(configuration);
                 case FTRChannelKind.NamedPipeClient: return new FTRNamedPipeClientChannel(configuration);
                 case FTRChannelKind.NamedPipeServer: return new FTRNamedPipeServerChannel(configuration);
                 case FTRChannelKind.WebSocketClient: return new FTRWebSocketClientChannel(configuration);
@@ -159,6 +160,7 @@ namespace CxVisual.Foundation.Transport
                 case FTRChannelKind.UdpServer: matches = channel is FTRUdpServerChannel; break;
                 case FTRChannelKind.Serial: matches = channel is FTRSerialChannel; break;
                 case FTRChannelKind.HttpClient: matches = channel is FTRHttpClientChannel; break;
+                case FTRChannelKind.HttpServer: matches = channel is FTRHttpServerChannel; break;
                 case FTRChannelKind.NamedPipeClient: matches = channel is FTRNamedPipeClientChannel; break;
                 case FTRChannelKind.NamedPipeServer: matches = channel is FTRNamedPipeServerChannel; break;
                 case FTRChannelKind.WebSocketClient: matches = channel is FTRWebSocketClientChannel; break;

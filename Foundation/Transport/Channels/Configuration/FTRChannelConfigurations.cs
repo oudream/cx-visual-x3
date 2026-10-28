@@ -18,6 +18,7 @@ public static class FTRChannelConfigurations
                 case FTRChannelKind.Serial: return typeof(FTRSerialChannelConfiguration);
                 case FTRChannelKind.Custom: return typeof(FTRCustomChannelConfiguration);
                 case FTRChannelKind.HttpClient: return typeof(FTRHttpClientChannelConfiguration);
+                case FTRChannelKind.HttpServer: return typeof(FTRHttpServerChannelConfiguration);
                 case FTRChannelKind.NamedPipeClient: return typeof(FTRNamedPipeClientChannelConfiguration);
                 case FTRChannelKind.NamedPipeServer: return typeof(FTRNamedPipeServerChannelConfiguration);
                 case FTRChannelKind.WebSocketClient: return typeof(FTRWebSocketClientChannelConfiguration);

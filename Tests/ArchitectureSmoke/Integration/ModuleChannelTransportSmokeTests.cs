@@ -105,6 +105,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ReplayFileLoopback();
             MulticastConfigurationSmoke();
             HttpLoopback();
+            HttpServerLoopback();
             FTRTcpBulkTests.Run();
             FTRChannelFactoryTests.Run();
             FTRUdpThreadTests.Run();
@@ -131,7 +132,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRNamedPipeServerChannelConfiguration { Id = "matrix-pipe-server" },
                 new FTRWebSocketClientChannelConfiguration { Id = "matrix-websocket" },
                 new FTRReplayChannelConfiguration { Id = "matrix-replay" },
-                new FTRUdpMulticastChannelConfiguration { Id = "matrix-multicast" }
+                new FTRUdpMulticastChannelConfiguration { Id = "matrix-multicast" },
+                new FTRHttpServerChannelConfiguration { Id = "matrix-http-server" }
             };
             IFTRChannel[] channels = {
                 virtualPair[0],
@@ -145,7 +147,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FTRNamedPipeServerChannel(configurations[8]),
                 new FTRWebSocketClientChannel(configurations[9]),
                 new FTRReplayChannel(configurations[10]),
-                new FTRUdpMulticastChannel(configurations[11])
+                new FTRUdpMulticastChannel(configurations[11]),
+                new FTRHttpServerChannel(configurations[12])
             };
             Check(configurations.Length == Enum.GetValues(typeof(FTRChannelKind)).Length - 1,
                 "所有正式FTR ChannelKind必须都有装配测试（Custom没有内置Provider）");
@@ -177,7 +180,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (NotSupportedException) { wrongTypeRejected = true; }
             Check(wrongTypeRejected, "配置与实际Channel类型不匹配必须拒绝");
             // LengthFrame仅适用于ByteStream；HTTP/WebSocket/Replay Message不得绕过协议能力门禁。
-            foreach (int i in new[] { 6, 9, 10 })
+            foreach (int i in new[] { 6, 9, 10, 12 })
             {
                 MCNConnectorConfiguration invalid = new MCNConnectorConfiguration {
                     DisplayName = "错误协议能力拒绝",
@@ -207,7 +210,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch (NotSupportedException) { noProvider = true; }
             Check(noProvider, "Custom未注册Provider不能装配成功");
-            Console.WriteLine("CHANNEL.CONNECTOR: 12 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
+            Console.WriteLine("CHANNEL.CONNECTOR: 13 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
         }
 
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
@@ -294,6 +297,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(serverTask.Wait(TimeSpan.FromSeconds(5)), "HTTP server 处理请求");
             }
             finally { client.Close(); listener.Stop(); }
+        }
+
+
+        // 本机OS HTTP请求/响应闭环；只验证Transport字节收发和多对端地址，不引入REST业务协议。
+        private static void HttpServerLoopback()
+        {
+            int port=FreePort(false);
+            var config=new FTRHttpServerChannelConfiguration {
+                Id="http-server-loopback",Prefix="http://localhost:"+port+"/",
+                MaxClients=2,MaxRequestBytes=1024,MaxResponseBytes=1024,ResponseTimeoutMs=3000
+            };
+            var channel=new FTRHttpServerChannel(config);
+            int methodCount=0;FTRSubChannelAddress first=null;
+            channel.RequestReceived += info => {
+                Check(info.Method=="POST" && info.Path=="/" && info.ContentBytes==3,
+                    "HTTP请求方法、路径及正文应正确传递");
+                Interlocked.Increment(ref methodCount);
+            };
+            channel.Received += received => {
+                first=received.Address;
+                channel.Send(new byte[]{9,8,7},0,3,received.Address,CancellationToken.None);
+            };
+            using(channel)
+            using(var client=new System.Net.Http.HttpClient())
+            {
+                channel.Open();
+                using(var body=new System.Net.Http.ByteArrayContent(new byte[]{1,2,3}))
+                using(var response=client.PostAsync(config.Prefix,body).GetAwaiter().GetResult())
+                {
+                    byte[] reply=response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                    Check(response.IsSuccessStatusCode && reply.SequenceEqual(new byte[]{9,8,7}),
+                        "HTTP Server真实HttpListener应返回原始响应字节");
+                }
+                Check(methodCount==1 && first!=null && first.HasSubChannel,"HTTP请求必须有独立SubChannel");
+                bool oldRejected=false;
+                try{channel.Send(new byte[]{1},0,1,first,CancellationToken.None);}
+                catch(InvalidOperationException){oldRejected=true;}
+                Check(oldRejected,"HTTP已完成请求地址必须拒绝再次发送");
+                channel.Close();
+                Check(channel.SnapshotSubChannels().Length==0,"HTTP Server应回收请求SubChannel");
+            }
+            Console.WriteLine("F17.HTTP_SERVER PASS: real OS HTTP request/response, stale address and stop");
         }
 
         private static byte[] ReadExactly(NetworkStream stream, int count)
