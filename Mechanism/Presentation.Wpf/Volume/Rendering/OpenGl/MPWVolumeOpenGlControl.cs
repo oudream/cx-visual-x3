@@ -29,6 +29,44 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
         private uint _orientationVao,_orientationVbo;
         private uint _surfaceVao,_surfaceVbo;
+        private uint _meshVao,_meshVbo;
+        private float[] _meshTriangles=new float[0];
+        public int SurfaceMeshTriangleCount {get{return _meshTriangles.Length/9;}}
+
+        /// <summary>把受预算约束的索引Mesh展开上传到独立GL VBO，数值Mesh仍由FGE/CT3D持有。</summary>
+        public void SetSurfaceMesh(MPWVolumeDisplayMesh mesh)
+        {
+            if(mesh==null)throw new ArgumentNullException("mesh");
+            if(mesh.TriangleCount>50000)
+                throw new ArgumentOutOfRangeException("mesh","网格超过MPW GPU预览预算。");
+            var vertices=new float[checked(mesh.TriangleCount*9)];
+            int offset=0;
+            foreach(int index in mesh.TriangleIndices)
+            {
+                Vector3 point=mesh.Vertices[index];
+                if(float.IsNaN(point.X)||float.IsNaN(point.Y)||float.IsNaN(point.Z)||
+                   float.IsInfinity(point.X)||float.IsInfinity(point.Y)||float.IsInfinity(point.Z)||
+                   Math.Abs(point.X)>.50001||Math.Abs(point.Y)>.50001||Math.Abs(point.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("mesh","网格顶点须处于标准化体空间。");
+                vertices[offset++]=point.X;vertices[offset++]=point.Y;vertices[offset++]=point.Z;
+            }
+            _meshTriangles=vertices;
+            if(IsAvailable){MakeCurrent();UploadSurfaceMesh();RequestRender();}
+        }
+        public void ClearSurfaceMesh()
+        {
+            _meshTriangles=new float[0];
+            if(IsAvailable){MakeCurrent();UploadSurfaceMesh();RequestRender();}
+        }
+        private void UploadSurfaceMesh()
+        {
+            if(_gl==null||_meshVbo==0)return;
+            _gl.BindBuffer(0x8892,_meshVbo);
+            if(_meshTriangles.Length==0)
+                _gl.BufferData(0x8892,IntPtr.Zero,IntPtr.Zero,0x88E4);
+            else
+                UploadFloats(_meshTriangles);
+        }
         private float[] _surfaceVertices=new float[0];
         public int SurfacePreviewPointCount {get{return _surfaceVertices.Length/3;}}
         /// <summary>点位置仅供GPU显示，原始精确Surface结果仍由CT3D负责。</summary>
@@ -182,6 +220,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 throw new ArgumentException("体数据或传递函数LUT长度不正确。");
             // 新源体积必须显式清除旧专业结果，禁止显示过期Surface。
             _surfaceVertices=new float[0];
+            _meshTriangles=new float[0];
             _voxels = voxels; _width = width; _height = height; _depth = depth;
             float totalX = width * spacingX, totalY = height * spacingY, totalZ = depth * spacingZ;
             float largest = Math.Max(totalX, Math.Max(totalY, totalZ));
@@ -378,6 +417,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UploadSurfacePoints();
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
+                _gl.GenVertexArrays(1,out _meshVao);
+                _gl.GenBuffers(1,out _meshVbo);
+                _gl.BindVertexArray(_meshVao);
+                _gl.BindBuffer(0x8892,_meshVbo);
+                UploadSurfaceMesh();
+                _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
+                _gl.EnableVertexAttribArray(0);
                 // 旧版右下方的XYZ方向标：绘制在同一个真实GL framebuffer内。
                 // HwndHost存在Airspace限制，不能用WPF覆盖子窗口来冒充方向标。
                 _gl.GenVertexArrays(1,out _orientationVao);
@@ -448,11 +494,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_lineVbo != 0) _gl.DeleteBuffers(1,ref _lineVbo);
                 if (_orientationVbo != 0) _gl.DeleteBuffers(1,ref _orientationVbo);
                 if (_surfaceVbo != 0) _gl.DeleteBuffers(1,ref _surfaceVbo);
+                if (_meshVbo != 0) _gl.DeleteBuffers(1,ref _meshVbo);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
                 if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
                 if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
                 if (_orientationVao != 0) _gl.DeleteVertexArrays(1,ref _orientationVao);
                 if (_surfaceVao != 0) _gl.DeleteVertexArrays(1,ref _surfaceVao);
+                if (_meshVao != 0) _gl.DeleteVertexArrays(1,ref _meshVao);
             }
             wglMakeCurrent(IntPtr.Zero,IntPtr.Zero);
             wglDeleteContext(_context); _context = IntPtr.Zero; IsAvailable = false;
@@ -461,6 +509,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _obliqueTexture=0;
             _orientationVao=_orientationVbo=0;
             _surfaceVao=_surfaceVbo=0;
+            _meshVao=_meshVbo=0;
             _gl = null;
         }
 
@@ -696,6 +745,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _gl.BindVertexArray(_surfaceVao);
                 glPointSize(4f);
                 _gl.DrawArrays(0x0000,0,_surfaceVertices.Length/3); // GL_POINTS
+            }
+            if(_meshTriangles.Length!=0 && _meshVao!=0)
+            {
+                // 预览色面叠加于同一GL framebuffer；深度正确混合待GPU实机专项验证。
+                UseShaderProgram(_lineShader);
+                Matrix("mvp",mvp);
+                Vec3("lineColor",.3f,.85f,.94f);
+                _gl.BindVertexArray(_meshVao);
+                _gl.DrawArrays(0x0004,0,_meshTriangles.Length/3); // GL_TRIANGLES
             }
             if(_showOrientation)DrawOrientationIndicator(w,h);
             SwapBuffers(_dc);
