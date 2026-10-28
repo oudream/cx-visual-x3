@@ -185,6 +185,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     entry.Cache = owned;
                     entry.CachedBytes = cachedBytes;
                     entry.State = MDSDataLoadState.Loaded;
+                    OnLifecycleFileLoaded(name);
                 }
                 return (T)independentReturn;
             }
