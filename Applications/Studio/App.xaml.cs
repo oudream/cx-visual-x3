@@ -26,6 +26,14 @@ namespace CxVisual.Studio
                 bool success = cpuOnly?
                     StudioShellSelfTests.RunCpuVisionOnly(report):
                     StudioShellSelfTests.Run(window, report);
+                if(cpuOnly)
+                {
+                    // Dedicated CI process has no interactive owner and has already
+                    // flushed the complete report. Do not let unrelated WPF shutdown
+                    // callbacks keep a finished headless acceptance job alive.
+                    Environment.Exit(success?0:1);
+                    return;
+                }
                 window.Close();
                 Shutdown(success ? 0 : 1);
             }), DispatcherPriority.ApplicationIdle);
