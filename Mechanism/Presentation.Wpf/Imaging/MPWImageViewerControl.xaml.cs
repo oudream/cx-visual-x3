@@ -52,6 +52,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private MVIImageOverlayKind _selectionKind = MVIImageOverlayKind.RectangleRoi;
         private MVIImageToolMode _toolMode = MVIImageToolMode.Navigate;
         private readonly List<FGEPoint2D> _polygonDraft = new List<FGEPoint2D>();
+        // Ls2Ls真实输入状态归UI无关MVI；此处PolygonDraft只用作画布预览快照。
+        private readonly MVIImageLinePairGesture _linePairGesture=new MVIImageLinePairGesture();
         private FGEPoint2D? _draftHover;
         private string _annotationText = "标注";
         private FIMPixelRegion? _region;
@@ -203,6 +205,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _rotationStart = null;
                 if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
                 if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
+                _linePairGesture.Reset();
                 _polygonDraft.Clear();
                 _draftHover = null;
                 DrawSelection();
@@ -385,6 +388,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
+            _linePairGesture.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = image;
@@ -428,6 +432,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
+            _linePairGesture.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
@@ -641,6 +646,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _overlayOriginal = original;
                 _region = null;
                 _pixelSpacing = null; _rulerMillimeters = false;
+                _linePairGesture.Reset();
                 _polygonDraft.Clear();
                 _overlays.Clear();
             }
@@ -977,26 +983,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FIMImageBuffer image=ActiveImage;
             if(image==null || _toolMode!=MVIImageToolMode.LinePair)
                 throw new InvalidOperationException("请先加载图像并切换至两线测量模式。");
-            if(point.X<0 || point.Y<0 || point.X>=image.Width ||
-                point.Y>=image.Height)
-                throw new ArgumentOutOfRangeException("point","测量点必须位于原图有效范围。");
-            if(_polygonDraft.Count>=4)
-            {
-                _polygonDraft.Clear();_draftHover=null;
-            }
-            // 第2、4点不得与各自线段起点重合；第3点可以与第2点重合，
-            // 因为不同线段允许共享端点（合法交点，最短距离应为0）。
-            if((_polygonDraft.Count==1 || _polygonDraft.Count==3) &&
-                _polygonDraft[_polygonDraft.Count-1].Equals(point))
-                throw new ArgumentException("同一条测量线段的起点和终点不能重合。","point");
-            _polygonDraft.Add(point);
+            // 共用MVI状态对象判定下一阶段：失败时不改变任何草稿或Store。
+            bool complete=_linePairGesture.Append(point,image.Width,image.Height);
+            _polygonDraft.Clear();
+            _polygonDraft.AddRange(_linePairGesture.Points);
             _region=null;
-            if(_polygonDraft.Count<4)
+            if(!complete)
             {
                 _draftHover=null;DrawSelection();
-                PixelStatus.Text="两线测量：已确定"+_polygonDraft.Count+
-                    "/4点；"+(_polygonDraft.Count<2 ? "继续选择第一条线终点" :
-                        _polygonDraft.Count<3 ? "请选第二条线起点" : "请选第二条线终点");
+                PixelStatus.Text="两线测量：已确定"+_linePairGesture.PointCount+
+                    "/4点；"+(_linePairGesture.Stage==MVIImageLinePairStage.FirstEnd ?
+                        "继续选择第一条线终点" :
+                        _linePairGesture.Stage==MVIImageLinePairStage.SecondStart ?
+                            "请选第二条线起点" : "请选第二条线终点");
                 return null;
             }
             try
@@ -1008,6 +1007,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             catch
             {
+                _linePairGesture.Reset();
+                _linePairGesture.Reset();
                 _polygonDraft.Clear();_draftHover=null;DrawSelection();
                 throw;
             }
@@ -1103,6 +1104,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 SelectOverlay(created.Id); // 创建后自动选中，立即可编辑、统计与导出
                 RaiseSelectionChanged();
             }
+            _linePairGesture.Reset();
             _polygonDraft.Clear();
             _draftHover = null;
             DrawDraftPolyline();
