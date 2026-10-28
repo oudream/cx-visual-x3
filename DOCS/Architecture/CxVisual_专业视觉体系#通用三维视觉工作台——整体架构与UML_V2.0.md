@@ -1,6 +1,6 @@
-# CxVisual 通用三维视觉工作台——整体架构与 UML V2.0（R2 架构评审稿）
+# CxVisual 通用三维视觉工作台——整体架构与 UML V2.0（R3 架构评审稿）
 
-> **定位：长期总纲 / 正式基线候选，尚待 ADR 审批。** 日期：2026-10-28；本轮核查固定 `master@e4c03f5e6b07be531f96255063159a50b89804a2`（[代码](https://github.com/oudream/cx-visual-x3/tree/e4c03f5e6b07be531f96255063159a50b89804a2)）。  
+> **定位：长期总纲 / 正式基线候选，尚待 ADR 审批。R3 在保留R2全部内容基础上新增§15可实施接口与验收合同。** 日期：2026-10-28；本轮核查固定 `master@e4c03f5e6b07be531f96255063159a50b89804a2`（[代码](https://github.com/oudream/cx-visual-x3/tree/e4c03f5e6b07be531f96255063159a50b89804a2)）。  
 > **原则：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**  
 > **继承：** 在《整体架构与 UML V2.0 正式基线评审稿》（原核查基线 `642922d`）上原位改进；**保留六大能力域、26 项完整能力、Case/ViewSession、空间坐标、Scene/Renderer、专业算法、四条工业流程、GPU 生命周期、Owner 和已有类图**。R2 重点改进读者导航、六核心裁决、精度与资源合同、最新源码/CI实证和 90 条追踪。  
 > **状态词：**【E】源码确认、【R】现有类待调整、【N】拟新增但未实施、【P】远期规划、【T】有对应 SHA 自动测试证据、【H】真实 GPU 或工业样本尚待实证；不得把这些等级混写为“已完成”。  
@@ -1215,3 +1215,102 @@ flowchart LR
 3. `DOCS/Migration` 的逐文件48项复用台账、`DOCS/Testing` 的R01～R32功能保真及专项CI是验收事实来源，不与架构稿相互代替。
 
 **签收建议：** 在 ADR-01、ADR-02、ADR-03、ADR-04、ADR-07、ADR-10 被正式裁决且 02～04 大型规格得到足够的Owner核对后，才将“正式基线候选”提升为“已批准”，避免与平台既有工程真源冲突。
+
+---
+
+## 15. R3 增补：从完整架构到可实施接口与验收合同（2026-10-28）
+
+> **为什么补充这一章**：R2已包含完整全景、26项映射与21张UML，但实施者还需要一张最小“事实→调用→结果→失败→验收”表，避免为了类图创建一堆尚无行为的类型。本章是R2的执行层说明，仍需依第14章ADR核对Owner；不得将候选签名视为现成可编译API。其他章节保留原有架构含义。
+>
+> **读者顺序**：第一遍看§0～2理解产品，第二遍看§3～5理解Owner和精度，第三遍看本章15.1～15.5获得下一轮具体工作；需要全部26项时再查§10和附录C。宏观概念图不等于真实csproj依赖图。
+
+### 15.1 最小数据、会话与结果合同（开发者版）
+
+| 合同ID | 输入（真源）→操作→输出 | Owner/当前真实文件 | 何时允许成功 | 不允许的替代路径 |
+|---|---|---|---|---|
+| C01 原始数值 | 原始Byte/UInt16/Float32+源版本→受控读取→准确标量或错误 | FVO：Data/FVOVolumeData.cs；Memory/FVOUnmanagedRawVolumeBuffer.cs【E/R】 | 确认未量化原始值和有效生命周期后 | 降采样R8像素经线性映射伪装无损 |
+| C02 空间Frame | 原始尺寸/Spacing/Direction/Origin→Frame转换→毫米坐标+质量 | FVO、FGE/FNU【FGE 3D为N候选】 | 单位、手性、方向、体素中心约定统一且可逆 | GL局部坐标/屏幕坐标直接做毫米计量 |
+| C03 资源与Case | MEM工程资源Ref+算法输入版本→专业案例→ResultRef | MEM【E】、CT3D Case【N】 | 不建立第二套工程身份；结果可溯源并识别Stale | 在CT3D自行定义完整Project/Graph/Undo |
+| C04 视图场景 | ResultRef+ViewState+输入意图→Scene投影→可交互状态 | MVI：Volume/MVIVolumeViewState.cs【E】，3DScene/Camera【N】 | 多视图共享权威状态，未引用专业数值副本 | 为每个MPW控件保留一套权威Camera/ROI |
+| C05 渲染GPU | VolumePreview+TF+ViewSnapshot→WGL→可见帧/错误 | MPW：Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs【E/R】 | Context/资源同线程、失败回退明确、释放可重入 | 用WPF三切面成功冒充GPU Raymarch成功 |
+| C06 参数变更 | CT3D参数输入→校验分类→LUT/Uniform/Scene ChangeSet | CT3D：Visualization/Rendering/CT3DRenderingSettings.cs【E+历史T】 | 重复输入零变更，CT3D提交与MPW呈现版本分别记录 | 新造第二份FVO传递函数，或所有变更全量重传 |
+| C07 专业算法 | 输入Ref/Frame/参数Hash→CT3D运算→Result+质量证据 | CT3D + FGE/FNU【专业算子大多P】 | 无损输入、坐标可核、质量阈值符合场景 | 只有一个漂亮网格画面/拟合“收敛”就算计量成功 |
+| C08 工程与自动化 | 专业结果Ref→现有MEM/MRK等→持久化/重跑/报告 | 平台既有机制【E，3D纵切片P】 | 命令/结果/工程引用可重开，算法可Headless复现 | 新建CT3D私有命令中心和任务执行器 |
+
+**状态要精确**：Source存在≠编入工程≠Windows编译≠数值测试≠真实GPU≠工业真值。表中【N/P】不能因本表写出而升级为【E】。
+
+### 15.2 四个核心身份的正确拥有与释放（候选合同）
+
+| 对象 | 仅拥有/引用什么 | 生命周期边界 | 失效恢复 |
+|---|---|---|---|
+| FVO Volume【E】 | 原始值、预览、Source格式及Spacing | 缓冲由FVO受控释放；外部借用需Lease【N】 | 加载失败不替换当前有效原值 |
+| CT3D Case【N】 | 专业任务上下文、数据/结果Ref、参数与版本 | 任务取消、资源引用解绑、结果有效性 | 输入版本变更后旧结果Stale，不强制抹除原始报告 |
+| MVI ViewSession【N】 | Slice/Camera/Scene/选择/ROI临时编辑 | 视口/工作区关闭，订阅解绑；持久定义由MEM处理 | 再打开由ResourceRef恢复视图而非GPU句柄 |
+| MPW Renderer【E/R】 | HwndHost、HDC/HGLRC、Shader、Buffer、Texture、framebuffer缓存 | 归属Context线程；先解除渲染提交、删GPU对象、再销毁Context | Context epoch增加后仅重放最新快照 |
+| MEM工程定义【E】 | 唯一工程身份、资源Ref、保存/Undo | 既有授权事务，不随一个视口关闭而丢失 | 失效Ref不得被新的同名对象替代 |
+
+**释放顺序总原则**：取消旧加载/算法请求→停止提交新帧→解除Scene订阅→关闭Renderer/释放GPU→等待数据租约→释放FVO原值；只有确实实现了Lease，才能保证旧CPU任务不会在Dispose之后读旧SafeHandle。此序列是目标合同，不声称现有系统全部具备。
+
+### 15.3 一个参数改变、一个体数据切换：最小运行时序
+
+**图22｜用户编辑参数与旧异步结果过滤。** 【设计时序】普通WPF控件不保存专业参数真源，CT3D不反向引用MPW；Host作为既有自然组合根。
+
+~~~mermaid
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant UI as MPW交互控件
+    participant Host as 应用组合根
+    participant CT as CT3D Settings/Case
+    participant FVO as FVO数据
+    participant GPU as MPW GPU
+    U->>UI: 改曲线、采样、相机或切换RAW
+    UI->>Host: 参数意图/LoadRequestId
+    alt 普通参数
+        Host->>CT: Validate+ApplyParametersWithChangeSet
+        CT-->>Host: Flags+ParameterRevision
+        Host->>GPU: 合并提交最小脏集
+        GPU-->>Host: Uploaded/PresentedRevision或失败
+    else 新RAW
+        Host->>Host: 取消旧请求、增加LoadEpoch
+        Host->>FVO: Load Preview/Original
+        FVO-->>Host: Volume及SourceVersion
+        Host->>Host: 校验LoadEpoch与Lease
+        alt 旧加载结果迟到
+            Host->>FVO: 释放未交付资源
+        else 有效
+            Host->>GPU: 只上传当前Volume Preview
+            Host->>Host: 所有引用交接后释放旧资源
+        end
+    end
+~~~
+
+分别维护Source/VolumeRevision（FVO或资产层）、Camera/Slice/SceneRevision（MVI）、ParameterRevision（CT3D）、ContextEpoch/Uploaded/PresentedRevision（MPW）。这不是要在每个Owner都复制一份数据：Revision仅标识其各自事实是否过期。
+
+### 15.4 第一个“确实能用”的专业纵切片（避免26个空模块）
+
+| 工作包 | 输入→输出 | 具体代码入口与可复用资产 | 失败反例/验收Gate |
+|---|---|---|---|
+| V01 原值与Frame | UInt16/Float32 + Spacing→准确原值/合法Frame | FVOVolumeData、FVORawVolumeLoader；FGE Owner需核 | R8-only拒绝、字节错、非等距、方向/单位错；数值G1/G2 |
+| V02 Surface质量 | 合法Volume/ROI→Surface点/法向/质量证据 | CT3D专业算子候选，FNU数值与FGE几何 | 噪声、体边界、阈值/亚体素偏差、异常/取消；数值G2 |
+| V03 Fit与Measure | Surface→球/柱/平面Fit→毫米值+残差 | CT3D专业拟合与计量；FNU求解 | 共线/退化、离群点、不收敛、误差/重复性；工业G5 |
+| V04 结果/显示/工程 | ResultRef→Scene引用→四视图→保存重开 | MVI、MPW、MEM；TCT只消费 | 资源版本变更、ROI失效、Undo、GPU回退；WPF G3/工程G6 |
+| V05 CAD与缺陷 | CT+CAD→配准/偏差；CT→分割/厚度/缺陷 | CT3D/Inspection，CAD SDK许可证待核 | mm/inch错、配准多解、误检漏检、工业标准件；G5/G6 |
+
+专业数据算法可先在不启动WPF的情况下获得数值闭环，GPU工业化可以作为独立工作流推进；两者必须通过同一数据/Frame/ResultRef联结。
+
+### 15.5 审阅者一次性检查这10件事
+
+- [ ] 现有28项目/135子方面、F/M/P与唯一MEM工程真源没有改变。
+- [ ] 每个拟新增类型有明确的Owner、真实用户操作与可测试输入输出，而不是因为类图需要它。
+- [ ] 新专业运算是否只读FVO无损原始值、从未从R8/截图反推计量真值。
+- [ ] 是否明确Frame方向/单位/精度及坐标往返反例。
+- [ ] Case/Scene/Session是引用、交互或结果身份，不形成第二工程/第二专业结果真源。
+- [ ] CT3D与MPW之间没有反向csproj依赖，Host组合根及DAG已经核对。
+- [ ] GPU Context/Shader/Texture/Buffer在所属线程创建释放，Fallback不冒充GPU。
+- [ ] ChangeSet/Revision、LoadEpoch、Task取消、资源Lease不互相替代。
+- [ ] 每个工作包包含正反例、固定SHA、Windows Release x64/专项CI与独立GPU或工业真值缺口。
+- [ ] DOCS/02～04大型规格Owner未核实的地方仍标为ADR；R01～10、R60～90未取得的原文不得猜测补全。
+
+**本章没有新增C#源码、没有提交新的算法、没有运行新的Windows或真实GPU测试。** 下一轮执行以R2第10章26项状态主表和第11章门禁为准。本章仅补上类关系与工业验收之间的开发桥梁。
+
