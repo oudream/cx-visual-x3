@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Transport;
@@ -99,7 +100,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     if(server.State!=FTRChannelState.Closed)server.Close();
                 }
             }
-            Console.WriteLine("F17.WS_ATOMIC_PASS client segmented send, server concurrent peer send and full-message integrity");
+            OversizedPeerIsolated();
+            Console.WriteLine("F17.WS_ATOMIC_PASS client segmented send, server concurrent peer send, oversized peer isolation and full-message integrity");
+        }
+
+        private static void OversizedPeerIsolated()
+        {
+            int port=FreePort();
+            string url="ws://localhost:"+port+"/peer/";
+            var config=new FTRWebSocketServerChannelConfiguration{
+                Id="ws-fault-isolation",Prefix="http://localhost:"+port+"/peer/",
+                MaxClients=2,MaxMessageBytes=32
+            };
+            using(var server=new FTRWebSocketServerChannel(config))
+            using(var oversized=new ClientWebSocket())
+            using(var healthy=new ClientWebSocket())
+            using(var received=new ManualResetEventSlim())
+            using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                byte[] observed=null;
+                server.Received+=data=>{observed=data.Data;received.Set();};
+                try
+                {
+                    server.Open();
+                    oversized.ConnectAsync(new Uri(url),timeout.Token).GetAwaiter().GetResult();
+                    healthy.ConnectAsync(new Uri(url),timeout.Token).GetAwaiter().GetResult();
+                    try
+                    {
+                        oversized.SendAsync(new ArraySegment<byte>(new byte[64]),
+                            WebSocketMessageType.Binary,true,timeout.Token).GetAwaiter().GetResult();
+                    }
+                    catch(WebSocketException) { /* 接收端已拒绝超限客户端的连接 */ }
+                    Check(SpinWait.SpinUntil(()=>
+                    {
+                        var failure=server.Diagnostics.LastFailure;
+                        return failure!=null &&
+                            failure.Kind==FTRFailureKind.ResourceExhausted &&
+                            failure.Scope==FTRFaultScope.SubChannel;
+                    },5000),"超大WebSocket消息应标记为Peer级资源预算故障");
+                    byte[] good={5,7,9};
+                    healthy.SendAsync(new ArraySegment<byte>(good),
+                        WebSocketMessageType.Binary,true,timeout.Token).GetAwaiter().GetResult();
+                    Check(received.Wait(5000) && observed.SequenceEqual(good) &&
+                        server.State==FTRChannelState.Open,
+                        "一个Peer超限退出时，监听器和其它正常Peer不得受影响");
+                }
+                finally
+                {
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
+            }
         }
     }
 }
