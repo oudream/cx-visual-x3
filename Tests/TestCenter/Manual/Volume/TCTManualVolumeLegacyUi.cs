@@ -65,6 +65,10 @@ namespace CxVisual.TestCenter.UI
             AddButton(actions,"复位视图","TCT.Volume.Fit",FitAllViews);
             AddButton(actions,"保存截图","TCT.Volume.SaveScreenshot",SaveScreenshotDialog);
             AddButton(actions,"三刀居中","TCT.Volume.Center",Center);
+            actions.Children.Add(new TextBlock { Text="球体阈值(RAW)",VerticalAlignment=VerticalAlignment.Center,
+                Margin=new Thickness(8,0,2,0) });
+            actions.Children.Add(_sphereThresholdText);
+            AddButton(actions,"离散球体分析","TCT.Volume.AnalyzeSphere",StartSurfaceSphereFromUi);
             AddButton(actions,"相机复位","TCT.Volume.ResetCamera",Reset3DCamera);
             AddButton(actions,"演示体","TCT.Volume.Demo",LoadDemo);
             actions.Children.Add(new TextBlock { Text="窗位",VerticalAlignment=VerticalAlignment.Center,
