@@ -63,8 +63,17 @@ namespace CxVisual.Studio
                 return _vision.TryGetCapabilityVersion(id,out version);
             }
         }
+        internal sealed class StudioCpuTraceRecord
+        {
+            public long Sequence {get;set;}
+            public string StepId {get;set;}
+            public Guid BlockId {get;set;}
+            public string State {get;set;}
+            public DateTime TimestampUtc {get;set;}
+        }
         internal sealed class StudioCpuVisionReport
         {
+            public IReadOnlyList<StudioCpuTraceRecord> TraceRecords;
             public Guid PageId,FlowId,InspectId;
             public int EngineeringRevision,CompletedTraceEvents;
             public string PlanFingerprint,ConfigVersion;
@@ -162,7 +171,11 @@ namespace CxVisual.Studio
                         PageId=page.Id,FlowId=result.FlowId,InspectId=inspect,
                         EngineeringRevision=snapshot.Revision,
                         PlanFingerprint=candidate.Fingerprint,ConfigVersion=version,
-                        Inspection=inspection,CompletedTraceEvents=completed
+                        Inspection=inspection,CompletedTraceEvents=completed,
+                        TraceRecords=trace.Events.Take(300).Select(e=>new StudioCpuTraceRecord{
+                            Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
+                            BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
+                            TimestampUtc=e.Transition.TimestampUtc}).ToArray()
                     };
                 }
             }
@@ -308,6 +321,11 @@ namespace CxVisual.Studio
             var regionResults=new DataGrid {IsReadOnly=true,AutoGenerateColumns=true,
                 MaxHeight=168,Visibility=Visibility.Collapsed,Margin=new Thickness(3,2,3,4),
                 CanUserAddRows=false,CanUserDeleteRows=false};
+            var executionTrace=new DataGrid {IsReadOnly=true,AutoGenerateColumns=true,
+                MaxHeight=160,Visibility=Visibility.Collapsed,Margin=new Thickness(3,2,3,4),
+                CanUserAddRows=false,CanUserDeleteRows=false};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(executionTrace,
+                "Studio.ModuleCenter.ExecutionTrace");
             System.Windows.Automation.AutomationProperties.SetAutomationId(regionResults,
                 "Studio.ModuleCenter.ResultRegions");
             runRaw.Click+=async (sender,args)=>{
@@ -341,6 +359,8 @@ namespace CxVisual.Studio
                             MaxX=region.MaxX,MaxY=region.MaxY}).ToArray();
                     regionResults.Visibility=report.Inspection.Regions.Count==0?
                         Visibility.Collapsed:Visibility.Visible;
+                    executionTrace.ItemsSource=report.TraceRecords;
+                    executionTrace.Visibility=Visibility.Visible;
                     rawStatus.Text="实际CPU检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
                         "；阈值像素="+report.Inspection.ThresholdPixelCount+
                         "，缺陷区域="+report.Inspection.Regions.Count+
@@ -370,6 +390,7 @@ namespace CxVisual.Studio
             header.Children.Add(effectiveStatus);
             header.Children.Add(rawStatus);
             header.Children.Add(regionResults);
+            header.Children.Add(executionTrace);
             control.HeaderContent=header;
             return control;
         }
