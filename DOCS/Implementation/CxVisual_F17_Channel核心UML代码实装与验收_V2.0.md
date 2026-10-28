@@ -151,3 +151,10 @@ channel.Dispose();
 `OnCloseAsync`先Dispose HttpClient中止正在进行的请求，随后`WaitForPendingSends(StopTimeoutMs)`结算已接纳操作；来自HTTP响应`Received`事件内部的同步Close用`IsAdditionalTransportThread`显式拒绝，避免观察者自等待死锁。消息观察者报错继续遵守统一Observer隔离规则。
 
 `3530a41e`新增真实HTTP Client + Server操作系统回环：37字节正文用3字节分段提示同步Send，须恰好接到一次POST且原子正文完整、使用原请求SubChannelId应答；第二次SendBytesAsync复用同一路径。此为**源码及自动化断言已提交**，对应固定SHA Windows CI结束前不得认定通过。对外跨PC HTTP及24h高负载仍需另行验收。
+
+
+### 10.5 长期复用SessionId与低复制租约身份（2026-10-28）
+
+在`FTRChannelReceiveContext`增加兼容的只读`SessionId`属性，FTR正式接收时填入当前物理Session；外部自行构造上下文默认`Guid.Empty`，不虚构会话身份。池化`FTRReceiveBuffer`同样封存`SessionId`，由原`FTRReceivePipeline.Publish`在接收块Seal时传入，`Retain()`保留原会话ID且不分配字节副本。这样长期驻留Host把旧缓冲保留到新一次Open之后，仍能明确区分旧会话数据，不从活动Channel实时状态推断原缓冲的身份。
+
+源码提交`25e46e4`、`511b892`、`d09cff2`、`f7a7a78`、`932c263`；`FTRChannelConvenienceTests`与`FTRPersistentChannelTests`新增会话ID/跨Close保留断言（`0c012a7`、`5bb3180`）。保持原IFTR公开方法、接收线程和Owner不变。以上新增断言的Windows CI须在固定SHA完成后才可登记通过。
