@@ -49,3 +49,4 @@ namespace CxVisual.Mechanism.Visual
         /// <summary>切换工具、Esc、换图或提交之后清空草稿，不触发持久对象更改。</summary>
         public void Reset() { _points.Clear(); }
     }
+}
