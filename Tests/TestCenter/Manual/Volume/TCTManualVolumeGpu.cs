@@ -188,6 +188,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                if(_surfacePreviewPoints!=null)gpu.SetSurfacePoints(_surfacePreviewPoints);
                 _gpuTransferDirty=false;
             });
         }
@@ -280,6 +281,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                if(_surfacePreviewPoints!=null)_gpu.SetSurfacePoints(_surfacePreviewPoints);
                 _gpuTransferDirty=false;
                 ApplyGpuUniforms();
             }
