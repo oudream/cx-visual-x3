@@ -14,16 +14,19 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DSurfaceSamples
     {
         internal CT3DSurfaceSamples(List<FVOPhysicalPoint3D> points, float threshold,
-            FVOVolumeSpatialFrame frame, bool touchesBoundary)
+            FVOVolumeSpatialFrame frame, bool touchesBoundary,string sourceRef,long sourceRevision)
         {
             Points=new ReadOnlyCollection<FVOPhysicalPoint3D>(points);
             Threshold=threshold;
+            SourceRef=sourceRef;SourceRevision=sourceRevision;
             SpatialFrame=frame;
             TouchesVolumeBoundary=touchesBoundary;
         }
         public ReadOnlyCollection<FVOPhysicalPoint3D> Points {get;private set;}
         public int Count {get{return Points.Count;}}
         public float Threshold {get;private set;}
+        public string SourceRef {get;private set;}
+        public long SourceRevision {get;private set;}
         public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
         public bool TouchesVolumeBoundary {get;private set;}
         public string SurfaceMethod {get{return "binary-voxel-center-6-neighbor";}}
@@ -33,11 +36,17 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DSphereFitResult
     {
         internal CT3DSphereFitResult(FVOPhysicalPoint3D center,double radius,
-            double rms,double maximum,double condition,int count)
+            double rms,double maximum,double condition,int count,
+            string sourceRef,long sourceRevision)
         {
+            ResultId=Guid.NewGuid();SourceRef=sourceRef;SourceRevision=sourceRevision;
             Center=center;RadiusMm=radius;RmsResidualMm=rms;
             MaxAbsoluteResidualMm=maximum;ConditionNumber=condition;SampleCount=count;
         }
+        /// <summary>本次算法结果临时身份；保存到工程时由MEM统一登记资源。</summary>
+        public Guid ResultId {get;private set;}
+        public string SourceRef {get;private set;}
+        public long SourceRevision {get;private set;}
         public FVOPhysicalPoint3D Center {get;private set;}
         public double RadiusMm {get;private set;}
         public double DiameterMm {get{return RadiusMm*2;}}
@@ -59,10 +68,13 @@ namespace CxVisual.Professional.CT3D
         /// 非法/不完整RAW、取消、数据边缘截断均可从结果或异常辨识。
         /// </summary>
         public static CT3DSurfaceSamples SampleBoundary(
-            FVOOriginalScalarLease source,float threshold,int sampleStep,int maxPoints,
-            CancellationToken cancellationToken)
+            FVOOriginalScalarLease source,string sourceRef,long sourceRevision,
+            float threshold,int sampleStep,int maxPoints,CancellationToken cancellationToken)
         {
             if(source==null)throw new ArgumentNullException("source");
+            if(string.IsNullOrWhiteSpace(sourceRef))
+                throw new ArgumentException("专业结果必须带源资产引用。","sourceRef");
+            if(sourceRevision<0)throw new ArgumentOutOfRangeException("sourceRevision");
             if(float.IsNaN(threshold)||float.IsInfinity(threshold))
                 throw new ArgumentOutOfRangeException("threshold");
             if(sampleStep<1)throw new ArgumentOutOfRangeException("sampleStep");
@@ -98,7 +110,8 @@ namespace CxVisual.Professional.CT3D
             }
             if(points.Count<6)
                 throw new InvalidOperationException("有效表面边界点不足，无法进行可靠三维拟合。");
-            return new CT3DSurfaceSamples(points,threshold,source.SpatialFrame,touchesBoundary);
+            return new CT3DSurfaceSamples(points,threshold,source.SpatialFrame,touchesBoundary,
+                sourceRef,sourceRevision);
         }
 
         /// <summary>
@@ -148,7 +161,8 @@ namespace CxVisual.Professional.CT3D
             double rms=Math.Sqrt(sumSquared/n);
             return new CT3DSphereFitResult(
                 new FVOPhysicalPoint3D(ox+c[0],oy+c[1],oz+c[2]),
-                radius,rms,max,fit.ConditionNumber,n);
+                radius,rms,max,fit.ConditionNumber,n,
+                surface.SourceRef,surface.SourceRevision);
         }
     }
 }
