@@ -143,3 +143,29 @@
 - [Studio Windows S1 #40652752253](https://github.com/oudream/cx-visual-x3/actions/runs/40652752253)（提交 b1717cd）：Windows构建已完成，`S1-03C Studio模块中心与TestCenter共享MPW组件` **PASS**，其中本轮包含真实MHS Effective显式读取、端口展示和新增MOL入口未选中时拒绝且不修改MEM Revision的STA测试。**整条Workflow仍Failure**：之后统一配置组合响应式1/2/3列容器断言失败。不得把本条写为整体成功。
 - [Studio Windows S1 #40652707576](https://github.com/oudream/cx-visual-x3/actions/runs/40652707576)（提交 fc2564f）：Module Center S1-03C **PASS**，整条仍在同一配置布局断言失败。
 - 后续TestCenter/Studio最新主线CI、物理设备HIL和跨进程Effective版本一致性仍需单独证据。完整G06软件侧Windows Runtime TDD成功证据仍以 #40652205605 固定SHA为准。
+
+## 11. 第一条可直接操作的RAW CPU软件闭环（2026-10-28）
+
+本轮用户要求直接到闭环，因此在已有ModuleCenter基础上完成了**可交互的文件输入→正式MHS Effective→MEM工程→MOC强类型构建与发布→MRK执行→专业真实结果/Trace**。软件算法仍使用原Professional.Vision CPU阈值/四邻域检测。此闭环不等于五大模块的工业全量闭环。
+
+| 提交 | 本轮实际交付 |
+|---|---|
+| [fd79764](https://github.com/oudream/cx-visual-x3/commit/fd7976423dcecd4852d7ab0459001a7da12327d6) | 专业Provider只读公开Effective PixelDepth，给RAW大小及位深核验使用 |
+| [8a52219](https://github.com/oudream/cx-visual-x3/commit/8a522198c1236349dd80480cd9af6cc094e61b39) | Studio中心新增选择本机RAW、输入宽高、取消检测；只在已有MHS Effective可读时运行，真实文件大小/位深验证后创建独立MEM检测页。CPU原始像素数据只存在本次运行内存，临时输入Provider声明byte[]端口，MOC Builder创建数据/控制连线，原MOCProjectRelease与MRK授权Publisher执行，获取缺陷及Trace |
+| [14dd1d5](https://github.com/oudream/cx-visual-x3/commit/14dd1d50310aabc25cf65ec064682989085e7b2e) | S1-03D采用真实磁盘5×3 RAW字节，测试有效MHS配置、MOC/MRK发布执行、阈值像素4、缺陷区域面积3、配置Revision、指纹、FlowId、完成Trace；故意错误宽高要求拒绝且不更改MEM |
+| [7fa8d6c](https://github.com/oudream/cx-visual-x3/commit/7fa8d6c996357ee82024a3086ac040da48223a08)、[54cf9fe](https://github.com/oudream/cx-visual-x3/commit/54cf9feaacdc5da666d6bc4f67936fff86731ee7) | 修复界面新增结果区后旧S1测试依赖最后TextBlock的脆弱选择器，改成明确Effective状态AutomationId |
+| [45886d6](https://github.com/oudream/cx-visual-x3/commit/45886d605e77e1158801778571f4d689ea1ad47c)、[e944f7a](https://github.com/oudream/cx-visual-x3/commit/e944f7ac8a578ecfad013a428d8fa1a0ad5e2133) | Studio保留模块中心结果页面显示缺陷明细表，包含面积/范围，并展示从MOC SourceMap读取的实际MRK步骤状态、序号、时间和工程BlockId |
+| [75292b1](https://github.com/oudream/cx-visual-x3/commit/75292b176422d5b44a654ce52e7f7999e14a01cd) | 修复新增自测局部report变量与外层Run参数重名导致CS0136的中间编译失败 |
+| [d610153](https://github.com/oudream/cx-visual-x3/commit/d610153c49a984ab117972844b82327b2afc9e4e)、[f20c1a0](https://github.com/oudream/cx-visual-x3/commit/f20c1a097b646d1661a1e83fa9f99c727133805b)、[7c7fd72](https://github.com/oudream/cx-visual-x3/commit/7c7fd72464ba63314271249bf876ca19b1542a15) | 同一真实S1-03D逻辑可单独由`--module-center-cpu-self-test`执行，增加独立Windows CI，可在Studio其他界面布局回归故障时独立证明模块闭环 |
+
+### 固定 SHA 的真正 Windows 软件证据
+
+- [Studio S1 #40658778238](https://github.com/oudream/cx-visual-x3/actions/runs/40658778238)（75292b1）日志明确 `PASS: S1-03C` 与 `PASS: S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环`。整个S1工作流最终仍因无关的配置组合响应式布局断言失败。
+- [Studio S1 #40658954015](https://github.com/oudream/cx-visual-x3/actions/runs/40658954015)（e944f7a）再次明确 `S1-03C`、`S1-03D` PASS；整体S1仍同一布局断言失败。表示模块中心闭环在这两个SHA运行真实成功，但**不意味着整套Studio全绿**。
+- [独立ModuleCenter CPU RAW Windows #40659419791](https://github.com/oudream/cx-visual-x3/actions/runs/40659419791)：编写本台账时处于运行中，最终结论必须再核对Actions和上传的StudioShellSelfTest报告。
+
+### 使用方法与安全边界
+
+在Studio打开功能模块中心，先通过正式工程专业配置保存/生效Vision参数，点击“读取当前生效配置”，填写真实RAW图像宽高，再点击“选择RAW并执行CPU检测”。结束后查看缺陷像素/区域/坐标、配置版本、MRK FlowId、MOC指纹、Trace时间线；如需查看流程，点原主流程编排。文件字节数必须等于宽×高×有效位深字节，像素最多32,000,000。
+
+这条流程以用户明确操作创建独立MEM检测页，只有当前内存的RAW像素源；**保存工程后再次打开并不能自动重新采集原图**，需要后续增加MEM Asset/数据引用与重绑定。当前授权来自本机仅CPU软件发布策略，不能替代生产IAM或设备联锁；无Driver实机HIL、跨进程外部数据一致性、整套五类模块专业验收或长期稳定性结论。
