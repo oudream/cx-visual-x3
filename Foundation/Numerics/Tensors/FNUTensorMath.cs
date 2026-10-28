@@ -50,8 +50,9 @@ namespace CxVisual.Foundation.Numerics
             return output;
         }
 
-        // For Into calls validation and indexing use only scalars. No temporary
-        // dimensions arrays are allocated for each call or each element.
+        // For Into calls, carry row-major coordinates and input addresses
+        // instead of repeatedly dividing the flat index on every element.
+        // Only O(rank) metadata is allocated, regardless of tensor size.
         private static void BinaryInto(FNUTensorBuffer a, FNUTensorBuffer b,
             FNUTensorBuffer output, bool multiply)
         {
@@ -64,7 +65,7 @@ namespace CxVisual.Foundation.Numerics
             if (output.Shape.Rank != rank)
                 throw new ArgumentException("Output rank differs from broadcast result.", "output");
 
-            for (int axis = 0; axis < rank; axis++)
+            for (int axis = 0; axis < rank; ++axis)
             {
                 int la = axis - (rank - a.Shape.Rank);
                 int ra = axis - (rank - b.Shape.Rank);
@@ -77,24 +78,41 @@ namespace CxVisual.Foundation.Numerics
                     throw new ArgumentException("Output dimensions differ from broadcast result.", "output");
             }
 
-            for (int i = 0; i < output.Shape.ElementCount; i++)
+            int length = output.Shape.ElementCount;
+            if (length == 0) return;
+            var coordinates = new int[rank];
+            var leftSteps = new long[rank];
+            var rightSteps = new long[rank];
+            for (int axis = 0; axis < rank; ++axis)
             {
-                int remaining = i, left = 0, right = 0;
-                for (int axis = 0; axis < rank; axis++)
-                {
-                    int coordinate = remaining / output.Shape.StrideAt(axis);
-                    remaining %= output.Shape.StrideAt(axis);
-                    int la = axis - (rank - a.Shape.Rank);
-                    int ra = axis - (rank - b.Shape.Rank);
-                    if (la >= 0 && a.Shape.DimensionAt(la) != 1)
-                        left += coordinate * a.Shape.StrideAt(la);
-                    if (ra >= 0 && b.Shape.DimensionAt(ra) != 1)
-                        right += coordinate * b.Shape.StrideAt(ra);
-                }
-                double value = multiply ? a.At(left) * b.At(right) : a.At(left) + b.At(right);
+                int la = axis - (rank - a.Shape.Rank);
+                int ra = axis - (rank - b.Shape.Rank);
+                if (la >= 0 && a.Shape.DimensionAt(la) != 1)
+                    leftSteps[axis] = a.Shape.StrideAt(la);
+                if (ra >= 0 && b.Shape.DimensionAt(ra) != 1)
+                    rightSteps[axis] = b.Shape.StrideAt(ra);
+            }
+
+            long leftAddress = 0, rightAddress = 0;
+            for (int index = 0; index < length; ++index)
+            {
+                double left = a.At((int)leftAddress);
+                double right = b.At((int)rightAddress);
+                double value = multiply ? left * right : left + right;
                 if (double.IsNaN(value) || double.IsInfinity(value))
                     throw new OverflowException("Tensor operation overflow.");
-                output.Put(i, value);
+                output.Put(index, value);
+                if (index + 1 == length) break;
+                for (int axis = rank - 1; axis >= 0; --axis)
+                {
+                    coordinates[axis]++;
+                    leftAddress += leftSteps[axis];
+                    rightAddress += rightSteps[axis];
+                    if (coordinates[axis] < output.Shape.DimensionAt(axis)) break;
+                    leftAddress -= coordinates[axis] * leftSteps[axis];
+                    rightAddress -= coordinates[axis] * rightSteps[axis];
+                    coordinates[axis] = 0;
+                }
             }
         }
 

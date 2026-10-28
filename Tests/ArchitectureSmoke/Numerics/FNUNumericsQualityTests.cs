@@ -22,6 +22,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorViewBroadcastArithmetic();
             TensorViewAxisReduction();
             RandomizedViewArithmeticAndReduction();
+            RandomizedContiguousBroadcast();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -630,6 +631,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             Console.WriteLine("PASS FNU seeded randomized view broadcast / axis reduction: 30 cases");
+        }
+
+        private static void RandomizedContiguousBroadcast()
+        {
+            var rng = new Random(20261028);
+            for (int trial=0; trial<60; ++trial)
+            {
+                int d0=1+rng.Next(4), d1=1+rng.Next(5), d2=1+rng.Next(6);
+                var samples = new double[d0*d1*d2];
+                var factors = new double[d1];
+                for(int i=0;i<samples.Length;++i) samples[i]=rng.NextDouble()*20-10;
+                for(int i=0;i<factors.Length;++i) factors[i]=rng.NextDouble()*10-5;
+                var left = new FNUTensorBuffer(new FNUTensorShape(d0,d1,d2),samples);
+                var right = new FNUTensorBuffer(new FNUTensorShape(d1,1),factors);
+                var intoAdd = new FNUTensorBuffer(new FNUTensorShape(d0,d1,d2));
+                var intoMultiply = new FNUTensorBuffer(new FNUTensorShape(d0,d1,d2));
+                FNUTensorMath.AddInto(left,right,intoAdd);
+                FNUTensorMath.MultiplyInto(left,right,intoMultiply);
+                for(int i=0;i<d0;++i)
+                    for(int j=0;j<d1;++j)
+                        for(int k=0;k<d2;++k)
+                        {
+                            double x=samples[(i*d1+j)*d2+k],y=factors[j];
+                            Near(intoAdd.Get(i,j,k),x+y,1e-12,
+                                "buffer cursor addition independent reference");
+                            Near(intoMultiply.Get(i,j,k),x*y,1e-12,
+                                "buffer cursor multiplication independent reference");
+                        }
+            }
+            // Rank-one broadcast into 3D and genuinely empty dimensions.
+            var left3=new FNUTensorBuffer(new FNUTensorShape(2,1,3),
+                new double[]{1,2,3,4,5,6});
+            var right1=new FNUTensorBuffer(new FNUTensorShape(3),
+                new double[]{10,20,30});
+            var sum=FNUTensorMath.Add(left3,right1);
+            Near(sum.Get(1,0,2),36,0,"rank-one trailing broadcast");
+            var empty=new FNUTensorBuffer(new FNUTensorShape(2,0,3));
+            var emptyOutput=new FNUTensorBuffer(new FNUTensorShape(2,0,3));
+            FNUTensorMath.AddInto(empty,right1,emptyOutput);
+            Check(emptyOutput.Shape.ElementCount==0,"empty buffer cursor output");
+            var overflowA=new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{double.MaxValue});
+            var overflowB=new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{double.MaxValue});
+            var sentinel=new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{123});
+            Throws<OverflowException>(()=>FNUTensorMath.AddInto(
+                overflowA,overflowB,sentinel),"buffer cursor overflow");
+            Near(sentinel.Get(0),123,0,"buffer cursor first overflow is atomic");
+            Console.WriteLine("PASS FNU buffer cursor: 60 seeded shapes / exact broadcast / zero / overflow");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

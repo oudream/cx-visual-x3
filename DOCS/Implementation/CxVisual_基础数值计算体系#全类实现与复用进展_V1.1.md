@@ -202,3 +202,10 @@ double conditionNumber = solved.ConditionNumber;
 - Numerics模块未修改F17或运行时数据Owner测试来规避失败；属于不同机制模块的独立追踪问题。此处只确认Numerics数值自测，不冒称全平台验收成功。
 
 **复跑结论补录（同SHA #40643586096，Attempt 2）**：Windows全方案Build、Owner/DAG、Numerics数值质量、固定随机Oracle和独立Benchmark再次PASS；全量ArchitectureSmoke再次在“运行时数据M1/M2验收：显式opt-in后可在100字节预算内完成双消费者与结果交接”失败。两次同SHA失败复现，属于运行时数据/机制Owner，Numerics本轮不擅自修复其他Owner代码，整体workflow仍为failure。
+
+## 二十一、F13连续Buffer广播游标优化（2026-10-28）
+
+- 代码审查发现 `FNUTensorMath.AddInto/MultiplyInto` 每元素对每轴反复执行整数除法/取模，成本随元素数和Rank增加；已统一改为RowMajor逻辑坐标游标与预计算输入Stride增量，每次调用仅分配O(Rank)步长/坐标数组。
+- 完全保留原API、不同Rank与singleton尾轴广播语义、空张量行为和输入/输出别名拒绝。与View的Into版本一致：数值中途溢出可能产生部分输出，调用者不得消费出错后的结果。
+- 增加60组固定随机三维Shape和原始数组独立计算对照，另外包含一维广播、空维和溢出时首元素输出保持不变的边界测试；增加256×256固定样本下Buffer Into与View Into的实际毫秒/线程分配基准。
+- 优化效果需依代码SHA对应的Windows CI实测判定，不以算法复杂度推测真实加速比。

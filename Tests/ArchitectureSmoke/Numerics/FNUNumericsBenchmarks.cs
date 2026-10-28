@@ -62,6 +62,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Measure("ReduceSumView(allocating)", iterations, delegate {
                 return FNUTensorMath.ReduceSumView(view,1).Get(0);
             });
+            // Compare the contiguous buffer API to the existing strided View
+            // API on identical values and output dimensions. Materialization is
+            // intentionally outside timed sections.
+            var contiguous = view.CopyToBuffer();
+            var contiguousRow = broadcastRow.CopyToBuffer();
+            var contiguousOutput = new FNUTensorBuffer(new FNUTensorShape(width,height));
+            FNUTensorMath.AddInto(contiguous,contiguousRow,contiguousOutput);
+            Measure("AddInto(buffer cursor,reused)", iterations, delegate {
+                FNUTensorMath.AddInto(contiguous,contiguousRow,contiguousOutput);
+                return contiguousOutput.Get(0,0);
+            });
+            Measure("MultiplyInto(buffer cursor,reused)", iterations, delegate {
+                FNUTensorMath.MultiplyInto(contiguous,contiguousRow,contiguousOutput);
+                return contiguousOutput.Get(0,0);
+            });
             Console.WriteLine("PASS FNU benchmark diagnostics (timings are observations, not CI thresholds)");
         }
 
