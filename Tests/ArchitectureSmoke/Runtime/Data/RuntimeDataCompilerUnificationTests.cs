@@ -35,6 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_RetryAndDeclaredJoinSurviveRepeatedFlows();
             R08_BreakContinueAndSkippedConsumersAreSafe();
             R08_TimeoutCannotReleaseUnsettledIteration();
+            R08_LongLoopLogicalBudgetReclaimedAcrossRuns();
             R08_InvalidHistoryPolicyRejected();
         }
 
@@ -460,6 +461,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "超时迟到的Pending不应提交，且不能执行后续迭代");
             }
             finally { release.TrySetResult(true); engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>千轮串行/多路并行真实MDS载荷，不以短时吞吐代替逐轮预算验收。</summary>
+        private static void R08_LongLoopLogicalBudgetReclaimedAcrossRuns()
+        {
+            foreach (bool parallel in new[] { false, true })
+            {
+                int count = parallel ? 256 : 1024;
+                int executed = 0;
+                var body = new MRKExecutionPlan("r08.long.body", new[] {
+                    new MRKExecutionStep("volume", new string[0], (ctx, ct) =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        Interlocked.Increment(ref executed);
+                        ctx.Data.Return("Payload", new byte[8192]);
+                        return Task.FromResult((object)true);
+                    }, dataOutputs: new Dictionary<string, Type> {
+                        { "Payload", typeof(byte[]) }
+                    })
+                });
+                Func<MRKLoopDataRetention, MRKExecutionPlan> make = retention =>
+                    new MRKExecutionPlan("r08.long.root", new[] {
+                        new MRKExecutionStep("loop", new string[0],
+                            (ctx, ct) => Task.FromResult((object)true),
+                            loopRegion: new MRKLoopRegion(body, count,
+                                parallel ? null : (Func<MRKExecutionContext, int, bool>)
+                                    ((ctx, i) => i < count),
+                                collectionInput: parallel ? "Items" : null,
+                                maxParallelIterations: parallel ? 4 : 1,
+                                dataRetention: retention))
+                    });
+                var input = new Dictionary<string, object>();
+                if (parallel) input["Items"] = Enumerable.Range(0, count).ToArray();
+                var engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 64),
+                    dataPayloadBudgetBytes: parallel ? 35000 : 9000);
+                try
+                {
+                    for (int run = 1; run <= 3; run++)
+                    {
+                        MRKFlowResult result = engine.StartFlow(
+                            make(MRKLoopDataRetention.ReleaseAfterIteration), input)
+                            .Completion.GetAwaiter().GetResult();
+                        Check(result.State == MRKFlowState.Completed &&
+                            (int)result.Results["loop"] == count &&
+                            Volatile.Read(ref executed) == run * count,
+                            "大载荷长循环须每轮归还逻辑预算并独立运行：" +
+                            (parallel ? "Foreach" : "Loop") + " pass=" + run + " " +
+                            (result.Error == null ? "" : result.Error.ToString()));
+                    }
+                    MRKFlowResult keepAll = engine.StartFlow(
+                        make(MRKLoopDataRetention.KeepAll), input)
+                        .Completion.GetAwaiter().GetResult();
+                    Check(keepAll.State == MRKFlowState.Failed,
+                        "同样预算的默认KeepAll必须因历史累计而明确失败");
+                }
+                finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+            }
         }
 
         private static void R08_InvalidHistoryPolicyRejected()
