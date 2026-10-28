@@ -160,6 +160,13 @@ namespace CxVisual.TestCenter.UI
                     _cpuSourceImage = _viewer.Session.Original;
                     _cpuSourceId = _cpuSourceImage == null ? null :
                         "testcenter.imaging/" + Guid.NewGuid().ToString("N");
+                    // 默认窗范围必须匹配当前像素类型；Gray8沿用65535会几乎全黑。
+                    _low.Text="0";
+                    _high.Text=_cpuSourceImage!=null &&
+                        _cpuSourceImage.PixelFormat==FIMPixelFormat.Gray8 ? "255" :
+                        _cpuSourceImage!=null &&
+                        _cpuSourceImage.PixelFormat==FIMPixelFormat.GrayFloat32 ? "1" : "65535";
+                    _windowMode.Text="当前显示：自动窗宽/窗位（手动范围已按新图像位深更新）";
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
                     _cpuResultItems.Items.Clear();
