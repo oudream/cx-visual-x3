@@ -51,3 +51,9 @@
 - 固定提交`e77cae8d9`（祖先包含FGE bow-tie顶点诊断及双四面体反例）对应的Windows Imaging Run `40687637635`已完成 **SUCCESS**，其`Build all existing projects on Windows x64`与`Execute FIM MVI standalone and default smoke`均为SUCCESS，`--volume`日志再次输出`PASS CT3D UInt16 physical voxel mesh, topology, mirrored normals and negative cases`；故这批**共享顶点、开放边、两个封闭壳单顶点接触、旋转/镜像和正有向体积**的测试可以标为`自动化通过（固定SHA）`。
 - Float32非有限值的输入保护与测试在更新的`6ac270c3`、`baf51b6c`、`084bc6ad`提交中落地，**不属于上述e77已通过的源码范围**。等待对应后续Windows全量/专项`--volume`完成后才提升证据等级。
 - UIA的Channel Viewer缺失和并行二维Imaging测试编译问题，应按对应日志归属，不能把它们写成CT3D Mesh数值失败或通过；真正GPU面片颜色/深度和工业标准件依然待实机。
+
+## 七、原值非有限值验证与多面壳升级（2026-10-28）
+
+- **Float32非有限值专项已通过**：`4d6c558cddf78e8c9af367e27aca731b03bf59aa`（含`084bc6ad` Float32 NaN负例）对应Windows Imaging `40687957944`为`SUCCESS`；其.NET Framework 4.8 Release x64编译、`--volume`及默认Smoke均通过，包含CT3D三角Mesh专项输出。它证明代码防御与合成负例通过，**不等于真实CT Float32工业体标定/测量通过**。
+- **多对象拓扑判定新增源码、待验收**：FGE`ConnectedFaceComponentCount`利用三角面共享边构造连通分量，将仅在同一顶点接触的两个闭合面壳判定为两个面壳；CT3D`HasCalibratedClosedGeometry`现在要求**单一面壳**、无边/顶点非流形、外向有向体积和已标定不截断。新增两个互不相邻体素构成两独立闭壳的合成用例。此阶段单个来源含多工件时须按产品/材料实例分离后再报告单工件量值。
+- TestCenter的Mesh状态提示现包含三角面数、面积及独立面壳数；`Mesh`显示仍由MVI Scene引用，UI不成为Mesh真源；本轮多对象测试的Windows结果以新提交工作流为准，不能引用`4d6c558c`历史PASS代替验收。
