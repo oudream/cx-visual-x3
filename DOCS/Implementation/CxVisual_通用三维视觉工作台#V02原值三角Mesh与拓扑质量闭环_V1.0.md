@@ -37,3 +37,11 @@
 - MPW实现正确的Volume与Mesh深度混合、GPU Shader着色和透明度/选中高亮；GPU硬件验收与资源泄漏压力测试。
 - 将专业Mesh与其质量、来源签名、Frame、算法参数注册到既有MEM持久Resource/Artifact，支持重开、复算、结果导出；MVI只引用。
 - 在现有FNU数值模块基础上扩展平面/圆柱拟合、CAD配准与实际GD&T，绝不将离散体素面面积或体积自动作为工业尺寸合格判定。
+
+## 五、质量门禁加固（2026-10-28 增量）
+
+- FGE`FGETriangleMesh3D`新增`NonManifoldVertexCount`：逐顶点构造相邻三角面link图，检测两片封闭面壳仅在一个顶点相触的bow-tie拓扑；仅边计数正常不能视为流形。闭合判断现在同时检查边界边、非流形边、bow-tie顶点与不一致绕序。
+- 反例`CT3DVoxelMeshTests`使用**两只共享一个顶点的闭合四面体**，即使各边被使用两次、方向一致，也必须给出一个非流形顶点并拒绝封闭体积；普通开放三角片不得误报。
+- CT3D的`HasCalibratedClosedGeometry`增加正有向体积条件；这仍只是来源标定/拓扑条件，不代表工业计量已签收。
+- CT3D Mesh与离散球拟合调用共享`CT3DRawScalarGuard.ReadFinite`拒绝Float32 RAW中的NaN/Infinity，防止浮点非有限值因比较行为被误判为实心材料。ArchitectureSmoke补充Float32 NaN反证；这些改动必须按**对应新SHA的Windows --volume**回归判定，不借用此前UInt16测试通过。
+- 所有新增能力继续使用FGE/CT3D既定Owner、现有工程与Windows自动化入口。尚未完成三角Mesh多连通分量拓扑修补、完整非流形自交检测、亚体素面、真实GPU像素/深度遮挡和工业标准件误差评定。
