@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Execution;
@@ -7,6 +8,7 @@ using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -42,6 +44,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticDagReclaimsAfterAllConsumers();
             DynamicRegionsMustRejectPrematureReclamation();
             SessionResultsHaveBoundedRetentionAndExplicitHandoff();
+            EngineeringLifecyclePolicyPersistsAndMapsToMds();
         }
 
         private static void CommittedFrameReleaseAccountsBudget()
@@ -238,6 +241,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try { new MRKSessionResultRetentionOptions(0, 1, TimeSpan.FromSeconds(1)); }
             catch (ArgumentOutOfRangeException) { invalid = true; }
             Check(invalid, "无界或非法结果保留策略应拒绝");
+        }
+
+        private static void EngineeringLifecyclePolicyPersistsAndMapsToMds()
+        {
+            string root = Path.Combine(Path.GetTempPath(),
+                "CxVisual-Lifecycle-Engineering-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var section = new MHSConfigService(root).ForProject("Project-Runtime")
+                    .Open<MDSDataLifecycleEngineeringOptions>();
+                var changed = section.UpdateAsync(policy =>
+                {
+                    policy.Lifetime = MDSLifetimeMode.LastConsumer;
+                    policy.Retention = MDSRetentionMode.CacheTtl;
+                    policy.CacheTtlSeconds = 120;
+                    policy.Transfer = MDSTransferMode.CopyOnly;
+                    policy.Reclamation = MDSReclamationMode.Ttl;
+                }, "提交工程生命周期模板", CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(changed.Success && section.HasPendingApply,
+                    "MHS五维工程策略应先保存而非冒充已在运行时生效");
+                Check(section.ApplyPendingAtTaskBoundary(),
+                    "五维工程配置必须在真实NextTask安全边界批准生效");
+                var restarted = new MHSConfigService(root)
+                    .ForProject("Project-Runtime").Open<MDSDataLifecycleEngineeringOptions>();
+                Check(restarted.GetLatestSaved().Retention == MDSRetentionMode.CacheTtl &&
+                    restarted.GetLatestSaved().CacheTtlSeconds == 120,
+                    "工程配置必须经真实MHS版本文件重启保存/重载");
+                var invalid = restarted.UpdateAsync(policy =>
+                {
+                    policy.Retention = MDSRetentionMode.Pinned;
+                    policy.Reclamation = MDSReclamationMode.Ttl;
+                }, "故意构造非法五维组合", CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(!invalid.Success &&
+                    restarted.GetLatestSaved().Retention == MDSRetentionMode.CacheTtl,
+                    "冲突的工程策略不能覆盖最后一次有效Saved配置");
+                using (var heap = new MDSDataHeap())
+                {
+                    heap.Set("Image", new byte[16]);
+                    restarted.GetLatestSaved().ApplyTo(heap, "Image");
+                    MDSDataLifecyclePolicy compiled = heap.Lifecycle.GetPolicy("Image");
+                    Check(compiled.Lifetime.ConsumerBound &&
+                        compiled.Retention.TimeToLive == TimeSpan.FromSeconds(120) &&
+                        !compiled.Transfer.AllowMove &&
+                        compiled.Reclamation.ReleaseOnExpiry,
+                        "MHS正式工程配置必须能编译映射到唯一MDS运行值Owner");
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
 
         private static void Check(bool condition, string reason)
