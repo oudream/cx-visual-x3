@@ -121,7 +121,7 @@ namespace CxVisual.Studio
                 var section=service.Authorize(_studioConfigPrincipal,_studioConfigAccessPolicy)
                     .Open<CxVisionInspectionOptions>(identity);
                 provider=CxVisionThresholdProvider.FromEffectiveConfiguration(section,_simulation);
-                version=section.Revision.EffectiveVersion;
+                version=section.Revision.Effective;
             }
             else
             {
