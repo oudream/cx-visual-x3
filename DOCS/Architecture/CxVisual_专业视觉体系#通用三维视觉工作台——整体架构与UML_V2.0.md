@@ -386,7 +386,7 @@ classDiagram
     +Select()
   }
   class MVI3DCameraState {
-    <<N: MVI>>
+    <<E: MVI>>
     +Orientation
     +Target
     +Projection
@@ -403,7 +403,7 @@ classDiagram
     +Bind(volume,state)
   }
   class MPWVolumeRenderHost {
-    <<N: MPW>>
+    <<E: MPW>>
     +EnableGpu()
     +DisableGpu()
   }
@@ -799,24 +799,24 @@ sequenceDiagram
 
 | 文件（相对仓库根） | 当前真实类/职责 | 本版动作 | 优先级 |
 |---|---|---|---|
-| `Foundation/Volume/Data/FVOVolumeData.cs` | 原值、预览尺寸、Spacing、数据释放【E】 | 保留数据真源；新增空间合同待批准 | P0 |
+| `Foundation/Volume/Data/FVOVolumeData.cs` | 原值、预览、Spacing、安全缓冲接管、严格无损标量读取【E】 | 维持真源；后续补SourceLease和空间Frame | P0 |
 | `Foundation/Volume/IO/FVORawVolumeLoader.cs` | RAW及内存来源、预览加载【E】 | 格式/字节序/取消/原值保真加强 | P0 |
-| `Foundation/Volume/Memory/FVOUnmanagedRawVolumeBuffer.cs` | 非托管原值/文件映射【E】 | 资源Lease与多GB压力验收 | P0/P2 |
+| `Foundation/Volume/Memory/FVOUnmanagedRawVolumeBuffer.cs` | 非托管/映射原值、ByteLength和SafeHandle读取保护【E】 | 跨任务SourceLease与多GB压力验收仍待完成 | P0/P2 |
 | `Foundation/Volume/Slicing/FVOSliceImageBuilder.cs` | 正交切片、原像素映射【E】 | 与三维坐标规范双向一致 | P0 |
 | `Foundation/Volume/Slicing/FVOObliqueSliceBuilder.cs` | 任意切采样【E】 | 后续厚层/曲面重切非本阶段 | P3 |
 | `Foundation/Volume/TransferFunctions/FVOVolumeTransferFunctions.cs` | 单一传递函数控制点/LUT【E】 | 禁止新建第二曲线真源 | P1 |
 | `Foundation/Geometry/` | 当前2D primitives/transforms为主【E】 | **建议**新增Double精度3D点/变换/网格，先核Owner | P0/P3 |
 | `Foundation/Numerics/LinearAlgebra/FNULinearAlgebra.cs` | 线性代数基础【E】 | 作为拟合/配准数学底座，不冒称专业算子 | P3 |
-| `Mechanism/Visual/Volume/MVIVolumeViewState.cs` | 三刀/视口状态【E】 | 保留唯一状态；与统一Camera接入 | P0/P1 |
+| `Mechanism/Visual/Volume/MVIVolumeViewState.cs` | 三刀/视口状态与MVI3DCameraState相机真源【E】 | 已供WPF与OpenGL绑定；后续Scene/保存重开 | P0/P1 |
 | `Mechanism/Visual/MVISceneItem.cs` | 既有2D工程可视投影【E】 | 不改造成3DScene公共父类 | 约束 |
 | `Mechanism/Presentation.Wpf/Volume/Views/MPWVolumeFourViewWorkbenchControl.cs` | 可嵌入四视图【E】 | 作为正式显示组合控件扩展，不复制 | P1 |
 | `Mechanism/Presentation.Wpf/Volume/Views/MPWVolumeSliceSceneControl.cs` | WPF空间切面；有局部相机【E/R】 | 消费MVI相机，同视角WPF fallback | P1 |
-| `Mechanism/Presentation.Wpf/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs` | 约910行WGL/GL/输入/相机/截图【E/R】 | 先抽Context/Resource，再加Scheduler/Scene | P1/P2 |
+| `Mechanism/Presentation.Wpf/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs` | WGL/GL/输入/相机矩阵/截图【E/R】，已消费统一MVI相机 | 进一步抽Context/Resource及Scheduler/Scene，保留GLSL | P1/P2 |
 | `Mechanism/Presentation.Wpf/Volume/Rendering/OpenGl/MPWVolumeShaderSources.cs` | GLSL Raymarch源码【E】 | 原版语义/画质保真，渐进拓展RenderPass | P1 |
 | `Mechanism/Presentation.Wpf/Volume/Editors/MPWVolumeRenderingParametersControl.cs` | GPU参数输入界面【E】 | 不保有CT3D设置真源 | P1 |
 | `Professional/CT3D/Visualization/Rendering/CT3DRenderingSettings.cs` | Settings/Apply/ChangeSet/ParameterRevision【E+历史T】 | 保留现有API；补外部曲线变更捕获与MPW版本消费，不再重复创建ChangeSet | P2 |
 | `Professional/CT3D/Visualization/Loading/CT3DVolumeLoadService.cs` | RAW预览/完整缓存异步服务【E】 | 版本取消/资源交换时序正式化 | P0/P1 |
-| `Tests/TestCenter/Manual/Volume/TCTManualVolumeGpu.cs` | GPU启停/回退/参数上传协调【E/R】 | 将正式责任收敛到MPW/CT3D，TCT只调用+断言 | P1 |
+| `Tests/TestCenter/Manual/Volume/TCTManualVolumeGpu.cs` | 正式MPW RenderHost消费者、CT3D ChangeSet参数桥接【E】 | 仅保留用户输入/状态与测试；未来MPW Scheduler取代局部dirty | P1/P2 |
 | `ReferTo/Vision/{CxECT3DViewer,CxECTVolumeCore,CxECTVolumeWinForms}` | 成熟旧行为参考【只读】 | 只对照迁移、画质、命令、相机与精度，不编辑 | 全程 |
 
 ---
@@ -831,9 +831,9 @@ sequenceDiagram
 | 02 | 空间与质量 | R21、R52 | FVO/FGE/CT3D | FVO/Data/FVOVolumeData.cs | Spacing E；完整方向P | 各向异性、轴向、坐标回环、标定误差 |
 | 03 | 处理与变换 | R22 | FVO/CT3D/FNU | FVO/Slicing/FVOObliqueSliceBuilder.cs | 插值E；通用3D处理P | 滤波重采样、原值容差与区域边界 |
 | 04 | 大数据/LOD | R23、R53 | FVO/MPW | FVO/Memory/FVOUnmanagedRawVolumeBuffer.cs | 映射E+T；GPU LOD P | >2GB压力、峰值内存、GPU预算/取消 |
-| 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs | Raymarch E；H待实测 | MIP/MinIP/混合几何与实卡像素对照 |
+| 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs | Raymarch与GPU RenderHost E；H待实测 | MIP/MinIP/混合几何与实卡像素对照 |
 | 06 | MPR与任意切 | R25 | FVO/MVI | FVO/Slicing/FVOSliceImageBuilder.cs | 正交/任意切E+T | 曲面重切、厚层投影与真实RAW |
-| 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T | 鼠标/DPI/窗口变化与视角保真 |
+| 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T；统一Camera E | 鼠标/DPI/窗口变化与视角保真 |
 | 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVI/MVISceneItem.cs [2D参考] | 3D P | 编辑/持久化/Undo/坐标精准回环 |
 | 09 | 动画/时序 | R28、R54–56 | MVI/MPW/MEM | MPW/Volume/Views/MPWVolumeSliceSceneControl.cs | 相机E；完整动画P | 关键帧/时间轴/装配动画/视频与重开 |
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
@@ -869,6 +869,9 @@ sequenceDiagram
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
 
+> **2026-10-28 代码增量（R4 主文同步）**：`b5b9ca8e` 已提交FVO严格原值、安全缓冲接管、MVI3DCameraState与WPF/GL BindCamera（Windows Imaging在该SHA的Release x64、`--volume`、`--imaging`已通过，但默认ExecutionPolicyTests失败，整体Workflow为FAIL）；`47ec90e9` 将MPWVolumeRenderHost状态机/启停/释放迁回正式MPW，其Windows Graphics工作流PASS；`35dcaa52` 在TCT消费CT3D变化集并加固GPU清理后WPF回退，完整CI仍以对应SHA后续具体Job记录为准。上述证据**不等于真实GPU或工业CT已验收**。
+
+
 ### 11.1 证据等级
 
 | 等级 | 允许的表述 | 不允许推断 |
@@ -892,7 +895,7 @@ sequenceDiagram
 | 较新配置底座 | [#40653205687](https://github.com/oudream/cx-visual-x3/actions/runs/40653205687)、[#40653205684](https://github.com/oudream/cx-visual-x3/actions/runs/40653205684) | 当前核查SHA下独立配置和Config L1通过 | 不是Imaging/实GPU验证 |
 | 旧四视图迁移 | [Windows Imaging #40270816787](https://github.com/oudream/cx-visual-x3/actions/runs/40270816787)、[#40271273307](https://github.com/oudream/cx-visual-x3/actions/runs/40271273307) | 旧提交WPF/三刀正例 | 不是今日HEAD与工业机器测量验收 |
 
-**最新源码增量：** `CT3DRenderingSettings.cs` 现有 `CT3DRenderingChangeFlags(TransferLut/Uniforms/Scene)`、`CT3DRenderingChangeSet`、`ParameterRevision`、`ApplyParametersWithChangeSet()` 和 `NotifyTransferFunctionsChanged()`；已实现参数分类，但直接写可变子对象不会自动产生Revision，且 MPW 尚未按版本向量消费。此状态在全表中按【E+T，部分】标记。**FVO SafeHandle尺寸校验候选未合入，不能标 E。**
+**最新源码增量：** `CT3DRenderingSettings.cs` 现有 `CT3DRenderingChangeFlags(TransferLut/Uniforms/Scene)`、`CT3DRenderingChangeSet`、`ParameterRevision`、`ApplyParametersWithChangeSet()` 和 `NotifyTransferFunctionsChanged()`；已实现参数分类，但直接写可变子对象不会自动产生Revision，且 MPW 尚未按版本向量消费。此状态在全表中按【E+T，部分】标记。**FVO SafeHandle尺寸校验与严格原值读取已提交代码（b5b9ca8e）；相机绑定、MPW RenderHost和ChangeSet接入亦已提交（47ec90e9、35dcaa52）；原值SourceLease、GPU显卡实测与P2统一调度仍待完成。**
 
 ### 11.3 ReferTo 保真审计边界
 
