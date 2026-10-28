@@ -92,6 +92,19 @@ namespace CxVisual.Studio
                     Assert(center!=null&&center.VisibleCapabilityCount>0,
                         "Studio共享中心未加载真正MOC演示目录");
                     int originalCount=center.VisibleCapabilityCount;
+                    Assert(center.VisibleCapabilities.Any(x=>
+                        x.Id==CxVisionThresholdProvider.CapabilityId &&
+                        x.Kind==CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute &&
+                        x.ModuleId=="studio.development.cpu.vision" &&
+                        x.Resolved && !x.Demonstration),
+                        "实际CPU专业算法未由唯一MOC/MFM关联为Compute");
+                    Assert(center.VisibleCapabilities.Any(x=>!x.Kind.HasValue&&x.Demonstration),
+                        "演示CPU流程不能被混入真实专业模块身份");
+                    center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute);
+                    Assert(center.VisibleCapabilityCount==1 &&
+                        center.VisibleCapabilities[0].Id==CxVisionThresholdProvider.CapabilityId,
+                        "Compute类别必须只展示真实CPU视觉算法Provider");
+                    center.SetSelectedKind(null);
                     center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver);
                     Assert(center.VisibleCapabilityCount==0,
                         "CPU演示目录不能伪装为已经注册的Driver Provider");
