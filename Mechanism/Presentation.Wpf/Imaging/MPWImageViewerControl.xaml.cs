@@ -1008,7 +1008,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             catch
             {
                 _linePairGesture.Reset();
-                _linePairGesture.Reset();
                 _polygonDraft.Clear();_draftHover=null;DrawSelection();
                 throw;
             }
