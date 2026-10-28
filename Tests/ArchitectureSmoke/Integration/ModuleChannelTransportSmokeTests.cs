@@ -99,6 +99,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ByteStreamAdapterLoopback();
             ConnectorModbusTcpLoopback();
             UdpLoopback();
+            DatagramAdapterLoopback();
             HttpConfigurationSmoke();
             NamedPipeLoopback();
             WebSocketConfigSmoke();
@@ -835,6 +836,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 client.Close();server.Close();
             }
             Console.WriteLine("F17.BYTE_STREAM_ADAPTER PASS: bounded logical read, TCP fragments and single OS receive reader");
+        }
+
+
+        // 适配器只消费现有UDP接收租约，不另开ReceiveFrom；保留来源Endpoint、报文边界和代次。
+        private static void DatagramAdapterLoopback()
+        {
+            int port=FreePort(true);
+            var serverConfig=new FTRUdpServerChannelConfiguration {
+                Id="datagram-server",Host="127.0.0.1",Port=port,MaxClients=2
+            };
+            var clientConfig=new FTRUdpChannelConfiguration {
+                Id="datagram-client",Host="127.0.0.1",Port=port
+            };
+            using(var server=new FTRUdpServerChannel(serverConfig))
+            using(var client=new FTRUdpChannel(clientConfig))
+            {
+                server.Open();client.Open();
+                using(var incoming=new FTRDatagramAdapter(server,serverConfig.DescribeType(),queueCapacity:1))
+                using(var response=new ManualResetEventSlim())
+                {
+                    byte[] echoed=null;
+                    client.Received += packet=>{echoed=packet.Data;response.Set();};
+                    client.Send(new byte[]{11,22,33});
+                    FTRDatagram message;
+                    using(var timeout=new CancellationTokenSource(5000))
+                        message=incoming.ReceiveFromAsync(timeout.Token).GetAwaiter().GetResult();
+                    Check(message!=null && message.Data.SequenceEqual(new byte[]{11,22,33}) &&
+                        message.RemoteEndpoint.Contains(":"),"Datagram适配器必须保留真实UDP报文边界与来源");
+                    incoming.SendToAsync(new FTRDatagram(message.RemoteEndpoint,new byte[]{44,55}),
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Check(response.Wait(5000) && echoed.SequenceEqual(new byte[]{44,55}),
+                        "Datagram适配器回复必须按原SubChannel/Generation真实定向发送");
+                    bool invalid=false;
+                    try{new FTRDatagramAdapter(client,new FTRChannelTypeDescriptor("tcp",
+                        FTRChannelTopology.SinglePeer,FTRIOCapabilities.ByteStream));}
+                    catch(ArgumentException){invalid=true;}
+                    Check(invalid,"ByteStream无报文边界，不得冒充Datagram");
+                }
+                client.Close();server.Close();
+            }
+            Console.WriteLine("F17.DATAGRAM_ADAPTER PASS: bounded original UDP pipe, true endpoint reply and boundary");
         }
 
         // 与纯 Virtual 请求测试互补：Connector + 正式 TCP Client / Server + Modbus Protocol。

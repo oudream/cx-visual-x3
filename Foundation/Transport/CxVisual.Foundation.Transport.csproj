@@ -80,6 +80,7 @@
     <Compile Include="Channels\IO\FTRByteStreamAdapter.cs"/>
     <Compile Include="Channels\IO\IFTRChannelListener.cs"/>
     <Compile Include="Channels\IO\IFTRDatagramIO.cs"/>
+    <Compile Include="Channels\IO\FTRDatagramAdapter.cs"/>
     <Compile Include="Channels\Implementations\HTTP\FTRHttpClientChannel.cs"/>
     <Compile Include="Channels\Implementations\NamedPipe\FTRNamedPipeClientChannel.cs"/>
     <Compile Include="Channels\Implementations\NamedPipe\FTRPipeIO.cs"/>
