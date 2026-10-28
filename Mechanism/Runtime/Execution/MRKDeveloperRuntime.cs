@@ -19,6 +19,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             new List<MRKStepCompileRequest>();
         private readonly Dictionary<string, string> _exports =
             new Dictionary<string, string>(StringComparer.Ordinal);
+        private bool _reclaimConsumedData;
         internal MRKCodeFlowBuilder(string id) { _id = id; }
         public MRKCodeFlowBuilder Step(string id, string capabilityId,
             params string[] after)
@@ -59,6 +60,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return this;
         }
 
+        /// <summary>显式启用静态DAG已提交具名输出在最后声明消费者结算后的回收；
+        /// 默认维持旧Flow级保留。Loop/Try动态区域在编译时明确拒绝。</summary>
+        public MRKCodeFlowBuilder ReclaimConsumedData()
+        { _reclaimConsumedData = true; return this; }
+
         public MRKCodeFlowBuilder Add(MRKStepCompileRequest definition)
         {
             if (definition == null) throw new ArgumentNullException("definition");
@@ -70,7 +76,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return this;
         }
         internal MRKFlowCompileDefinition Freeze()
-        { return new MRKFlowCompileDefinition(_id, _steps, _exports); }
+        { return new MRKFlowCompileDefinition(_id, _steps, _exports,
+            _reclaimConsumedData); }
     }
 
     /// <summary>编排检查失败时不创建Worker或部分启动Flow。</summary>
