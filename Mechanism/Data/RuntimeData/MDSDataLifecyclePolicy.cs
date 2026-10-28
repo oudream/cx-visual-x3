@@ -16,6 +16,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         { return new MDSDataOwnershipPolicy(allowed, AllowCopy); }
         public MDSDataOwnershipPolicy WithCopy(bool allowed)
         { return new MDSDataOwnershipPolicy(AllowMove, allowed); }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.ConfigureOwnership(name, this); }
     }
 
     /// <summary>可用期：默认随Flow；ConsumerBound需运行者明确关闭新消费者入口。</summary>
@@ -26,6 +28,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         { return new MDSDataLifetimePolicy(true); }
         public bool ConsumerBound { get; private set; }
         private MDSDataLifetimePolicy(bool consumerBound) { ConsumerBound = consumerBound; }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.ConfigureLifetime(name, this); }
     }
 
     /// <summary>保留原因独立于访问许可。缓存TTL是从策略生效时刻计算。</summary>
@@ -43,6 +47,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public bool IsPinned { get; private set; }
         private MDSDataRetentionPolicy(TimeSpan? ttl, bool pinned)
         { TimeToLive = ttl; IsPinned = pinned; }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.ConfigureRetention(name, this); }
     }
 
     /// <summary>现有Heap.MoveTo/CopyTo的显式允许规则，不暗中实现零拷贝或外部借用。</summary>
@@ -58,6 +64,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public bool AllowMove { get; private set; }
         public MDSDataTransferPolicy(bool allowCopy, bool allowMove)
         { AllowCopy = allowCopy; AllowMove = allowMove; }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.ConfigureTransfer(name, this); }
     }
 
     /// <summary>实际自动回收策略；未进入安全判定的普通数据仍按旧API显式移除。</summary>
@@ -78,6 +86,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public bool ReleaseOnPressure { get; private set; }
         public MDSDataReclamationPolicy(bool afterConsumers, bool onExpiry, bool onPressure = false)
         { ReleaseAfterConsumers = afterConsumers; ReleaseOnExpiry = onExpiry; ReleaseOnPressure = onPressure; }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.ConfigureReclamation(name, this); }
     }
 
     /// <summary>只持有策略定义；可单独设置五维且不持有数据实例。</summary>
@@ -129,6 +139,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         { return new MDSDataLifecyclePolicy(Ownership, Lifetime, Retention, x, Reclamation); }
         public MDSDataLifecyclePolicy WithReclamation(MDSDataReclamationPolicy x)
         { return new MDSDataLifecyclePolicy(Ownership, Lifetime, Retention, Transfer, x); }
+        public void ApplyTo(MDSDataHeap heap, string name)
+        { if (heap == null) throw new ArgumentNullException("heap"); heap.Lifecycle.Configure(name, this); }
     }
 
     public sealed class MDSDataLifecycleSnapshot
