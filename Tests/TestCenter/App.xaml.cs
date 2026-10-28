@@ -37,6 +37,23 @@ namespace CxVisual.TestCenter.UI
                 }
                 return;
             }
+            if (e.Args.Length == 1 && e.Args[0] == "--data-lifecycle-ui-smoke")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                try
+                {
+                    TCTManualDataLifecycleFrame.VerifyWorkspace();
+                    Console.WriteLine("PASS MDS five-dimensional lifecycle WPF operations");
+                    Shutdown(0);
+                }
+                catch (Exception error)
+                {
+                    File.WriteAllText(Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Data-Lifecycle-WPF-Error.txt"), error.ToString());
+                    Shutdown(3);
+                }
+                return;
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--volume-gpu-smoke")
             {
                 ShutdownMode=ShutdownMode.OnExplicitShutdown;
