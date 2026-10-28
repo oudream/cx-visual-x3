@@ -37,7 +37,7 @@ namespace CxVisual.TestCenter.UI
             new TCTArchitectureSmokeProfile("concurrency", "并发回归", "--concurrency", 300),
             new TCTArchitectureSmokeProfile("channel-transport", "F17 全通道与Connector回环", "--channel-transport", 300),
             new TCTArchitectureSmokeProfile("channel-bulk", "F17 TCP大数据 / 背压 / 租约诊断", "--channel-bulk", 300),
-            new TCTArchitectureSmokeProfile("channel-bulk-long", "F17 双向各2GiB体数据持续流 / CPU内存GC", "--channel-bulk-long", 600),
+            new TCTArchitectureSmokeProfile("channel-bulk-long", "F17 TCP与跨进程管道双向各2GiB / CPU内存GC", "--channel-bulk-long", 600),
             new TCTArchitectureSmokeProfile("organization", "工程组织", "--organization", 300),
             new TCTArchitectureSmokeProfile("organization-wpf", "工程组织 WPF", "--organization-wpf", 300),
             new TCTArchitectureSmokeProfile("config-foundation", "配置基础", "--config-foundation", 300),

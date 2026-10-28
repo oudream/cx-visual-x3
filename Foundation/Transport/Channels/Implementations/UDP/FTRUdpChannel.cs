@@ -30,6 +30,7 @@ namespace CxVisual.Foundation.Transport
         private void ReceiveLoop()
         {
             CancellationToken token = _shutdown.Token;
+            EnterReceiveThread();
             try
             {
                 FTRUdpIO.Receive(_udp.Client, _config, token, RentReceiveBuffer,

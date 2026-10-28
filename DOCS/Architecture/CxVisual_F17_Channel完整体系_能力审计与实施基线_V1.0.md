@@ -24,7 +24,7 @@ F17唯一Owner与FTR/IFTR命名采用既有下沉裁决；不增加项目、第�
 | UDP Server | FTRUdpServerChannel；多Endpoint/预算/慢回调/截断拒绝/空闲代次已本机测试 | 真实高负载与网络异常矩阵、现场多机 |
 | UDP Multicast | FTRUdpMulticastChannel；独立接收/显式IPv4接口/真实本机组播已测试 | 多网卡/跨PC与IGMP、长时网络异常 |
 | Serial | FTRSerialChannel | RS232/485真实设备、恢复、参数有效性、独立接收及取消 |
-| NamedPipe Client/Server | 已有真实OS Pipe实现 | 后台接收/同步发送统一、双进程大流、多客户端、慢端与停止 |
+| NamedPipe Client/Server | 本轮固定后台接收/Accept、逐Peer同步发送、池化、真实跨进程双向2GiB及12对端已本机测试 | 最终SHA远端CI、长期及多机SMB/权限环境矩阵；完整体系其余项不因本类通过而完成 |
 | HTTP Client | 已有HttpClient配置及实现 | 大数据上传下载/流式读取、取消、独立接收交付 |
 | HTTP Server | 无正式实现 | 监听、请求响应、上传下载和流式预算、生命周期、真实回环 |
 | WebSocket Client | 已有RFC6455基础实现 | 完整消息/连接管理、大消息分片、控制帧、取消与资源预算 |
@@ -83,3 +83,5 @@ TCP使用独立后台接收线程；Server以一个Socket.Select接收线程按�
 Connectivity装配复用F17凭据/类型校验，Protocol能力兼容仍由原Owner判断；没有复制Channel类型体系。真实Custom TCP Connector收发与上述正反例已进入原`--channel-transport`及默认回归。详见[Factory/Provider实施与验收](../Implementation/CxVisual_F17_Channel_Factory与Provider_实施与验收_V1.0.md)。本增量不补全其它通道、自动恢复、全部TestCenter操作及长期/硬件验收。
 
 UDP独立接收、同步发送、有界数据报与来源/代次的正式增量见[UDP实施验收](../Implementation/CxVisual_F17_Channel_UDP独立接收与组播_实施与验收_V1.0.md)。保留UDP固有丢包语义，不把池等待宣称为端到端可靠背压。
+
+NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离和终止元数据额度增量见[管道实施](../Implementation/CxVisual_F17_NamedPipe独立接收与跨进程大数据_实施验收_V1.0.md)及[验收矩阵](../Testing/CxVisual_F17_NamedPipe跨进程大数据_验收矩阵_V1.0.md)。本轮还使TCP/UDP/管道在首次空闲故障之前登记接收线程身份，终止通知等待统一携带停止Token。

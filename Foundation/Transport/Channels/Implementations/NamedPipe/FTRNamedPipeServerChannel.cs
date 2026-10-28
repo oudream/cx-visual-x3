@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
@@ -8,150 +9,171 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Foundation.Transport
 {
-public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
+    /// <summary>固定Accept/Receive后台线程，不为每个连接建立读者Thread/Task。</summary>
+    public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
     {
+        private sealed class Peer
+        {
+            internal NamedPipeServerStream Pipe;
+            internal FTRSubChannelAddress Address;
+            internal readonly object Write = new object();
+            internal long LastReceive = Stopwatch.GetTimestamp();
+            internal bool Ending;
+        }
         private readonly FTRNamedPipeServerChannelConfiguration _config;
         private readonly object _gate = new object();
-        private readonly Dictionary<string, NamedPipeServerStream> _clients =
-            new Dictionary<string, NamedPipeServerStream>(StringComparer.Ordinal);
-        private readonly List<Task> _readers = new List<Task>();
-        private readonly SemaphoreSlim _write = new SemaphoreSlim(1, 1);
+        private readonly Dictionary<string, Peer> _clients = new Dictionary<string, Peer>(StringComparer.Ordinal);
+        private SemaphoreSlim _admission;
         private NamedPipeServerStream _pending;
         private CancellationTokenSource _stop;
-        private Task _accept;
-        private SemaphoreSlim _admission;
+        private Thread _accept, _reader;
         private long _peerCounter;
         public FTRNamedPipeServerChannel(FTRChannelConfiguration config)
             : base((config ?? throw new ArgumentNullException("config")).Id)
         {
-            config.Validate();
-            _config = config as FTRNamedPipeServerChannelConfiguration ??
-                throw new ArgumentException("NamedPipeServer 需要专用配置");
+            config.Validate(); _config = config as FTRNamedPipeServerChannelConfiguration ??
+                throw new ArgumentException("NamedPipeServer需要专用配置");
+        }
+        protected override bool IsAdditionalTransportThread { get { return Thread.CurrentThread == _accept; } }
+        private NamedPipeServerStream CreatePipe()
+        {
+            return new NamedPipeServerStream(_config.PipeName, PipeDirection.InOut, _config.MaxClients,
+                PipeTransmissionMode.Byte, PipeOptions.Asynchronous,
+                Math.Min(_config.ReceiveBufferBytes, _config.ReceiveByteBudget),
+                Math.Min(_config.ReceiveBufferBytes, _config.SendByteBudget));
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {
-            ct.ThrowIfCancellationRequested();
-            _stop = new CancellationTokenSource();
+            ct.ThrowIfCancellationRequested(); _stop = new CancellationTokenSource();
             _admission = new SemaphoreSlim(_config.MaxClients, _config.MaxClients);
-            _accept = Task.Run(() => AcceptLoop(_stop.Token));
-            return Task.CompletedTask;
+            _pending = CreatePipe(); // Open返回前真实创建第一监听实例，错误不能伪报已打开。
+            StartBufferedReceive(_config);
+            _accept = new Thread(AcceptLoop) { IsBackground = true, Name = "FTR.Accept." + Id };
+            _reader = new Thread(ReadLoop) { IsBackground = true, Name = "FTR.Receive." + Id };
+            _accept.Start(); _reader.Start(); return Task.CompletedTask;
         }
-        private async Task AcceptLoop(CancellationToken ct)
+        private void AcceptLoop()
         {
+            var ct = _stop.Token;
             try
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    // 已连接和待监听实例共用Windows的maxNumberOfServerInstances。
-                    // 满额先等待归还名额，不能继续Create而把正常饱和变成整个Listener故障。
-                    await _admission.WaitAsync(ct).ConfigureAwait(false);
-                    bool transferred = false;
+                    _admission.Wait(ct); bool transferred = false; NamedPipeServerStream pipe = null;
                     try
                     {
-                        NamedPipeServerStream pipe = new NamedPipeServerStream(_config.PipeName,
-                            PipeDirection.InOut, _config.MaxClients, PipeTransmissionMode.Byte,
-                            PipeOptions.Asynchronous);
+                        lock (_gate) pipe = _pending;
+                        if (pipe == null) pipe = CreatePipe();
                         lock (_gate) _pending = pipe;
-                        try { await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false); }
-                        catch
-                        {
-                            pipe.Dispose();
-                            if (ct.IsCancellationRequested) break;
-                            throw;
-                        }
-                        lock (_gate) _pending = null;
-                        if (ct.IsCancellationRequested) { pipe.Dispose(); break; }
-                        FTRSubChannelAddress address = null;
+                        pipe.WaitForConnectionAsync(ct).GetAwaiter().GetResult();
+                        ct.ThrowIfCancellationRequested();
                         lock (_gate)
                         {
-                            if (_clients.Count < _config.MaxClients)
-                            {
-                                string peerId = Interlocked.Increment(ref _peerCounter).ToString(
-                                    System.Globalization.CultureInfo.InvariantCulture);
-                                address = RegisterPeer(peerId, "pipe:" + peerId).Address;
-                                _clients.Add(peerId, pipe);
-                                _readers.RemoveAll(reader => reader.IsCompleted);
-                                _readers.Add(Task.Run(() => ReadLoop(pipe, address, ct)));
-                                transferred = true;
-                            }
+                            if (_peerCounter == long.MaxValue) throw new InvalidOperationException("NamedPipe peer identity exhausted");
+                            string id = (++_peerCounter).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            var peer = new Peer { Pipe = pipe, Address = RegisterPeer(id, "pipe:" + id).Address };
+                            _clients.Add(id, peer); _pending = null; transferred = true;
                         }
-                        if (address == null) pipe.Dispose();
                     }
-                    finally { if (!transferred) _admission.Release(); }
+                    finally
+                    {
+                        if (!transferred)
+                        {
+                            if (pipe != null) pipe.Dispose();
+                            lock (_gate) if (ReferenceEquals(_pending, pipe)) _pending = null;
+                            _admission.Release();
+                        }
+                    }
                 }
             }
-            catch (Exception e) { if (!ct.IsCancellationRequested) Fault(e); }
+            catch (Exception error) { if (!ct.IsCancellationRequested) Fault(error); }
         }
-        private async Task ReadLoop(NamedPipeServerStream pipe,
-            FTRSubChannelAddress address, CancellationToken ct)
+        private void ReadLoop()
         {
+            var ct = _stop.Token; EnterReceiveThread(); long lastProgress = Stopwatch.GetTimestamp();
             try
             {
-                byte[] buffer = new byte[8192];
                 while (!ct.IsCancellationRequested)
                 {
-                    int n = await pipe.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false);
-                    if (n == 0) break;
-                    byte[] payload = new byte[n];
-                    Buffer.BlockCopy(buffer, 0, payload, 0, n);
-                    ReceiveFrom(address, payload);
+                    Peer[] peers; lock (_gate) peers = _clients.Values.Where(peer => !peer.Ending).ToArray();
+                    bool progressed = false;
+                    foreach (Peer peer in peers)
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        FTRReceiveBuffer buffer = null;
+                        try
+                        {
+                            int available = FTRPipeIO.Available(peer.Pipe);
+                            if (available < 0) { EndPeer(peer, null); continue; }
+                            if (available == 0)
+                            {
+                                if (FTRPipeIO.Idle(peer.LastReceive, _config.ReceiveIdleTimeoutMs))
+                                    EndPeer(peer, new TimeoutException("NamedPipe peer receive idle"));
+                                continue;
+                            }
+                            buffer = RentReceiveBuffer(ct);
+                            int count = peer.Pipe.Read(buffer.WritableBuffer, 0, Math.Min(available, buffer.WritableBuffer.Length));
+                            if (count == 0) { EndPeer(peer, null); continue; }
+                            peer.LastReceive = Stopwatch.GetTimestamp(); progressed = true;
+                            PublishReceiveBuffer(peer.Address, buffer, count, "pipe:" + peer.Address.SubChannelId); buffer = null;
+                        }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                        catch (Exception error) { if (!ct.IsCancellationRequested) EndPeer(peer, error); }
+                        finally { if (buffer != null) buffer.Dispose(); }
+                    }
+                    if (progressed) lastProgress = Stopwatch.GetTimestamp();
+                    else FTRPipeIO.WaitForProgress(ct, lastProgress);
                 }
             }
-            catch (Exception e) { if (!ct.IsCancellationRequested) RecordReceiveError(e); }
-            finally
-            {
-                try
-                {
-                    lock (_gate) _clients.Remove(address.SubChannelId);
-                    RemovePeer(address);
-                    pipe.Dispose();
-                }
-                finally { _admission.Release(); }
-            }
+            catch (Exception error) { if (!ct.IsCancellationRequested) Fault(error); }
         }
-        protected override async Task SendToPeerAsync(byte[] bytes,
-            FTRSubChannelAddress address, CancellationToken ct)
+        private void EndPeer(Peer peer, Exception error)
         {
-            await _write.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                NamedPipeServerStream pipe;
-                lock (_gate)
-                {
-                    if (!_clients.TryGetValue(address.SubChannelId, out pipe))
-                        throw new IOException("NamedPipe 对端不存在或已经断开");
-                }
-                if (!pipe.IsConnected) throw new IOException("NamedPipe 对端已断开");
-                await pipe.WriteAsync(bytes, 0, bytes.Length, ct).ConfigureAwait(false);
-                await pipe.FlushAsync(ct).ConfigureAwait(false);
-            }
-            finally { _write.Release(); }
+            lock (_gate) { if (peer.Ending) return; peer.Ending = true; }
+            if (error != null) RecordReceiveError(error);
+            AfterReceived(() => RemovePeer(peer.Address),_stop.Token);
         }
-        protected override async Task OnCloseAsync(CancellationToken ct)
+        public override bool RemovePeer(FTRSubChannelAddress address)
         {
-            if (_stop != null) _stop.Cancel();
-            NamedPipeServerStream[] active;
-            NamedPipeServerStream pending;
-            Task[] readers;
+            if (address == null) return false;
+            Peer peer; SemaphoreSlim slots;
             lock (_gate)
             {
-                active = _clients.Values.ToArray();
-                pending = _pending;
-                _pending = null;
+                if (!RemovePeerDirectory(address)) return false;
+                _clients.TryGetValue(address.SubChannelId, out peer);
+                if (peer != null) { peer.Ending = true; _clients.Remove(address.SubChannelId); }
+                slots = _admission;
             }
-            if (pending != null) pending.Dispose();
-            foreach (NamedPipeServerStream pipe in active) pipe.Dispose();
-            if (_accept != null) await _accept.ConfigureAwait(false);
-            // Accept可能刚过取消检查才完成最后一次入场；先结算Accept，再取完整读者快照。
-            lock (_gate) { active = _clients.Values.ToArray(); readers = _readers.ToArray(); }
-            foreach (NamedPipeServerStream pipe in active) pipe.Dispose();
-            if (readers.Length > 0) await Task.WhenAll(readers).ConfigureAwait(false);
-            lock (_gate) { _clients.Clear(); _readers.Clear(); }
-            foreach (FTRSubChannelInfo peer in SnapshotSubChannels()) RemovePeer(peer.Address);
-            if (_stop != null) _stop.Dispose();
-            if (_admission != null) _admission.Dispose();
-            _admission = null;
-            _stop = null; _accept = null;
+            if (peer != null) { try { peer.Pipe.Dispose(); } finally { slots.Release(); } }
+            NotifyPeerRemoved(address); return true;
+        }
+        protected override void OnSendSynchronous(byte[] bytes, int offset, int count,
+            FTRSubChannelAddress address, CancellationToken ct, int segmentBytes)
+        {
+            if (FindSubChannel(address) == null) throw new InvalidOperationException("NamedPipe旧代次或已断开的SubChannel");
+            Peer peer; lock (_gate) if (!_clients.TryGetValue(address.SubChannelId, out peer)) throw new IOException("NamedPipe peer disconnected");
+            FTRPipeIO.Write(peer.Pipe, peer.Write, bytes, offset, count, segmentBytes, _config.SendTimeoutMs, ct);
+        }
+        protected override Task SendToPeerAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
+        { return Task.Run(() => OnSendSynchronous(bytes, 0, bytes.Length, address, ct, 0), ct); }
+        protected override Task OnCloseAsync(CancellationToken ct)
+        {
+            return Task.Run(() => {
+                var timer = Stopwatch.StartNew(); if (_stop != null) _stop.Cancel();
+                NamedPipeServerStream pending; Peer[] peers;
+                lock (_gate) { pending = _pending; _pending = null; peers = _clients.Values.ToArray(); }
+                if (pending != null) pending.Dispose(); foreach (Peer peer in peers) peer.Pipe.Dispose();
+                FTRTransportThread.Join(_accept, timer, _config.StopTimeoutMs, ct);
+                // 结算最后Accept后，再关闭其可能刚转交的实例。
+                lock (_gate) peers = _clients.Values.ToArray(); foreach (Peer peer in peers) peer.Pipe.Dispose();
+                FTRTransportThread.Join(_reader, timer, _config.StopTimeoutMs, ct);
+                WaitForPendingSends(FTRTransportThread.Remaining(timer, _config.StopTimeoutMs), ct);
+                DrainBufferedReceive(FTRTransportThread.Remaining(timer, _config.StopTimeoutMs), ct);
+                foreach (FTRSubChannelInfo peer in SnapshotSubChannels()) RemovePeer(peer.Address);
+                if (_stop != null) _stop.Dispose(); _stop = null; _accept = null; _reader = null;
+                // SemaphoreSlim从未请求AvailableWaitHandle；显式Remove可并发归还旧代额度，旧门只保留托管状态待GC。
+                _admission = null;
+            });
         }
     }
 }

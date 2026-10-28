@@ -1,72 +1,82 @@
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace CxVisual.Foundation.Transport
 {
-public sealed class FTRNamedPipeClientChannel : FTRSingleChannelBase
+    public sealed class FTRNamedPipeClientChannel : FTRSingleChannelBase
     {
         private readonly FTRNamedPipeClientChannelConfiguration _config;
+        private readonly object _write = new object();
         private NamedPipeClientStream _pipe;
         private CancellationTokenSource _stop;
-        private Task _reader;
-        private readonly SemaphoreSlim _write = new SemaphoreSlim(1, 1);
+        private Thread _reader;
         public FTRNamedPipeClientChannel(FTRChannelConfiguration config)
             : base((config ?? throw new ArgumentNullException("config")).Id)
         {
-            config.Validate();
-            _config = config as FTRNamedPipeClientChannelConfiguration ??
-                throw new ArgumentException("NamedPipeClient 需要专用配置");
+            config.Validate(); _config = config as FTRNamedPipeClientChannelConfiguration ??
+                throw new ArgumentException("NamedPipeClient需要专用配置");
         }
         protected override async Task OnOpenAsync(CancellationToken ct)
         {
-            NamedPipeClientStream pipe = new NamedPipeClientStream(_config.ServerName,
-                _config.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            _pipe = pipe;
-            await pipe.ConnectAsync(_config.ConnectTimeoutMs, ct).ConfigureAwait(false);
-            _stop = new CancellationTokenSource();
-            _reader = Task.Run(() => ReadLoop(pipe, _stop.Token));
+            _pipe = new NamedPipeClientStream(_config.ServerName, _config.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await _pipe.ConnectAsync(_config.ConnectTimeoutMs, ct).ConfigureAwait(false);
+            _stop = new CancellationTokenSource(); StartBufferedReceive(_config);
+            _reader = new Thread(ReadLoop) { IsBackground = true, Name = "FTR.Receive." + Id };
+            _reader.Start();
         }
-        private async Task ReadLoop(NamedPipeClientStream pipe, CancellationToken ct)
+        private void ReadLoop()
         {
+            var ct = _stop.Token; long lastReceive = Stopwatch.GetTimestamp(); EnterReceiveThread();
             try
             {
-                byte[] buffer = new byte[8192];
                 while (!ct.IsCancellationRequested)
                 {
-                    int n = await pipe.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false);
-                    if (n == 0) throw new IOException("NamedPipe 对端断开");
-                    byte[] received = new byte[n];
-                    Buffer.BlockCopy(buffer, 0, received, 0, n);
-                    Receive(received);
+                    int available = FTRPipeIO.Available(_pipe);
+                    if (available < 0)
+                    {
+                        AfterReceived(() => { if (!ct.IsCancellationRequested) Fault(new IOException("NamedPipe peer disconnected")); },ct); return;
+                    }
+                    if (available == 0)
+                    {
+                        if (FTRPipeIO.Idle(lastReceive, _config.ReceiveIdleTimeoutMs)) throw new TimeoutException("NamedPipe receive idle");
+                        FTRPipeIO.WaitForProgress(ct, lastReceive); continue;
+                    }
+                    FTRReceiveBuffer buffer = null;
+                    try
+                    {
+                        buffer = RentReceiveBuffer(ct);
+                        int count = _pipe.Read(buffer.WritableBuffer, 0, Math.Min(available, buffer.WritableBuffer.Length));
+                        if (count == 0) continue;
+                        lastReceive = Stopwatch.GetTimestamp();
+                        PublishReceiveBuffer(new FTRSubChannelAddress(Id), buffer, count, "pipe:" + _config.PipeName); buffer = null;
+                    }
+                    finally { if (buffer != null) buffer.Dispose(); }
                 }
             }
-            catch (Exception e) { if (!ct.IsCancellationRequested) Fault(e); }
+            catch (Exception error) { if (!ct.IsCancellationRequested) Fault(error); }
         }
-        protected override async Task OnSendAsync(byte[] bytes, FTRSubChannelAddress target, CancellationToken ct)
+        protected override void OnSendSynchronous(byte[] bytes, int offset, int count,
+            FTRSubChannelAddress address, CancellationToken ct, int segmentBytes)
         {
-            if (target.HasSubChannel) throw new ArgumentException("NamedPipe Client 不使用子通道");
-            await _write.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                NamedPipeClientStream pipe = _pipe;
-                if (pipe == null || !pipe.IsConnected) throw new IOException("NamedPipe 未连接");
-                await pipe.WriteAsync(bytes, 0, bytes.Length, ct).ConfigureAwait(false);
-                await pipe.FlushAsync(ct).ConfigureAwait(false);
-            }
-            finally { _write.Release(); }
+            if (address.HasSubChannel) throw new ArgumentException("NamedPipe Client不使用子通道");
+            FTRPipeIO.Write(_pipe, _write, bytes, offset, count, segmentBytes, _config.SendTimeoutMs, ct);
         }
-        protected override async Task OnCloseAsync(CancellationToken ct)
+        protected override Task OnSendAsync(byte[] bytes, FTRSubChannelAddress target, CancellationToken ct)
+        { return Task.Run(() => OnSendSynchronous(bytes, 0, bytes.Length, target, ct, 0), ct); }
+        protected override Task OnCloseAsync(CancellationToken ct)
         {
-            if (_stop != null) _stop.Cancel();
-            if (_pipe != null) _pipe.Dispose();
-            if (_reader != null) await _reader.ConfigureAwait(false);
-            if (_stop != null) _stop.Dispose();
-            _stop = null; _pipe = null; _reader = null;
+            return Task.Run(() => {
+                var timer = Stopwatch.StartNew();
+                if (_stop != null) _stop.Cancel(); if (_pipe != null) _pipe.Dispose();
+                FTRTransportThread.Join(_reader, timer, _config.StopTimeoutMs, ct);
+                WaitForPendingSends(FTRTransportThread.Remaining(timer, _config.StopTimeoutMs), ct);
+                DrainBufferedReceive(FTRTransportThread.Remaining(timer, _config.StopTimeoutMs), ct);
+                if (_stop != null) _stop.Dispose(); _stop = null; _pipe = null; _reader = null;
+            });
         }
     }
 }

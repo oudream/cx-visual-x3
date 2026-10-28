@@ -42,6 +42,7 @@ namespace CxVisual.Foundation.Transport
         private void ReceiveLoop()
         {
             CancellationToken token = _shutdown.Token;
+            EnterReceiveThread();
             try { FTRUdpIO.Receive(_udp.Client, _config, token, RentReceiveBuffer, DeliverDatagram, RecordReceiveError, SweepIdle, false); }
             catch (Exception error) { if (!token.IsCancellationRequested) Fault(error); }
         }
@@ -78,7 +79,7 @@ namespace CxVisual.Foundation.Transport
             foreach (Peer peer in expired)
             {
                 RecordReceiveError(new TimeoutException("UDP peer receive idle"));
-                AfterReceived(() => RemovePeer(peer.Address));
+                AfterReceived(() => RemovePeer(peer.Address),_shutdown.Token);
             }
         }
         public override bool RemovePeer(FTRSubChannelAddress address)

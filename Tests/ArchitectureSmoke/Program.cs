@@ -16,6 +16,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (args != null && args.Length == 3 && args[0] == "--channel-pipe-child")
+                    return FTRNamedPipeBulkTests.RunChild(args[1], args[2]);
                 if (args != null && args.Length == 2 && args[0] == "--command-pipe-child")
                     return CommandCenterTests.RunPipeChild(args[1]);
                 if (Array.IndexOf(args, "--concurrency") >= 0 ||
@@ -33,7 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk") >= 0) { FTRTcpBulkTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--channel-bulk-long") >= 0) { FTRTcpBulkTests.RunVolumeScale(); return 0; }
+                if (Array.IndexOf(args, "--channel-bulk-long") >= 0) { FTRTcpBulkTests.RunVolumeScale(); FTRNamedPipeBulkTests.RunVolumeScale(); return 0; }
                 if (Array.IndexOf(args, "--variables") >= 0) { ModuleFoundationSmokeTests.RunVariableSuite(); return 0; }
                 if (Array.IndexOf(args, "--variable-benchmark") >= 0) { VariableThroughputBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();

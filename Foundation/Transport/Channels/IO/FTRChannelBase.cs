@@ -97,8 +97,8 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         public async Task CloseAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            if(_receivePipeline!=null&&(_receivePipeline.IsDeliveryThread||_receivePipeline.IsReceiveThread))
-                throw new InvalidOperationException("接收回调内不能等待自身Close；请在回调返回后由Host关闭");
+            if(IsAdditionalTransportThread || (_receivePipeline!=null&&(_receivePipeline.IsDeliveryThread||_receivePipeline.IsReceiveThread)))
+                throw new InvalidOperationException("传输线程或接收回调内不能等待自身Close；请在回调返回后由Host关闭");
             lock (_gate)
             {
                 if (_state == FTRChannelState.Closed) return;
@@ -243,9 +243,11 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         }
         protected FTRReceiveBuffer RentReceiveBuffer(CancellationToken cancellation)
         {return _receivePipeline.Rent(cancellation);}
+        protected void EnterReceiveThread() { _receivePipeline.EnterReceiveThread(); }
+        protected virtual bool IsAdditionalTransportThread { get { return false; } }
         protected void PublishReceiveBuffer(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint=null)
         {_receivePipeline.Publish(address,buffer,count,remoteEndpoint);}
-        protected void AfterReceived(Action action){_receivePipeline.AfterReceived(action);}
+        protected void AfterReceived(Action action,CancellationToken cancellation){_receivePipeline.AfterReceived(action,cancellation);}
         protected void DrainBufferedReceive(int timeoutMilliseconds,CancellationToken cancellation)
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
         protected void RecordReceiveError(Exception error)

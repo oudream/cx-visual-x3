@@ -230,4 +230,5 @@
 - [Factory与Provider实施验收](Implementation/CxVisual_F17_Channel_Factory与Provider_实施与验收_V1.0.md)：正式内置创建、Host作用域注册、弱键创建凭据、FCM扩展设置与原Connector/Protocol能力集成；创建不代表已打开设备。
 - [UDP独立接收与组播实施验收](Implementation/CxVisual_F17_Channel_UDP独立接收与组播_实施与验收_V1.0.md)：三类UDP复用有界租约、同步底层与独立接收；报文边界/来源、截断/满额诊断、空闲代次与真实本机组播；网络丢包及多网卡现场边界单独验收。
 - [NamedPipe入场饱和与读者结算修复](Implementation/CxVisual_F17_NamedPipe入场饱和与读者结算_修复验收_V1.0.md)：创建OS实例前限流、满额不杀Listener、历史完成Task剔除及关闭末次Accept结算；独立接收/大数据模型另行闭环。
+- [NamedPipe独立接收与跨进程体数据实现](Implementation/CxVisual_F17_NamedPipe独立接收与跨进程大数据_实施验收_V1.0.md)、[验收矩阵](Testing/CxVisual_F17_NamedPipe跨进程大数据_验收矩阵_V1.0.md)：固定接收线程、12对端写入隔离、双向各2GiB、池化租约及终止通知预算；承接前项入场修复，不代表完整Channel目标结束。
 - 依据：[Channel 迁移及唯一 Owner 裁决](Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md)；[旧新类型兼容映射](Migration/CxVisual_Channel_MCC至FTR迁移映射_V1.0.md)；[本轮验收证据台账](Testing/CxVisual_F17_Channel迁移_源码与Windows验收台账_V1.0.md)。上述裁决覆盖旧规范中 M13～M15 拥有 Channel 具体类的条款，但不改历史文件本身的日期和历史事实。

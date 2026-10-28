@@ -40,6 +40,7 @@ namespace CxVisual.Foundation.Transport
         private void ReceiveLoop()
         {
             var token = _stop.Token;
+            EnterReceiveThread();
             try
             {
                 FTRUdpIO.Receive(_udp.Client, _config, token, RentReceiveBuffer,

@@ -14,8 +14,12 @@ namespace CxVisual.Foundation.Transport
         private readonly Action<FTRReceiveBuffer> _deliver;
         private readonly Action<Exception> _error;
         private readonly Thread _delivery;
+        private Thread _receiver;
+        private readonly SemaphoreSlim _notifications;
+        private readonly int _notificationCapacity;
         private bool _complete;
         private int _receiveThread;
+        private int _firstReceiveThread, _multipleReceiveThreads;
         private int _queuedBuffers;
         internal bool IsDeliveryThread {get{return Thread.CurrentThread==_delivery;}}
         internal bool IsReceiveThread
@@ -26,13 +30,24 @@ namespace CxVisual.Foundation.Transport
             int size=Math.Min(configuration.ReceiveBufferBytes,configuration.ReceiveByteBudget);
             int capacity=Math.Min(configuration.QueueCapacity,configuration.ReceiveByteBudget/size);
             _pool=new FTRReceiveBufferPool(size,capacity);_deliver=deliver;_error=error;
+            _notificationCapacity = configuration.QueueCapacity;
+            _notifications = new SemaphoreSlim(_notificationCapacity, _notificationCapacity);
             _delivery=new Thread(Deliver){IsBackground=true,Name="FTR.Deliver."+id};
             _delivery.Start();
         }
         internal FTRReceiveBuffer Rent(CancellationToken cancellation)
         {
-            Volatile.Write(ref _receiveThread,Thread.CurrentThread.ManagedThreadId);
+            EnterReceiveThread();
             return _pool.Rent(cancellation);
+        }
+        internal void EnterReceiveThread()
+        {
+            int current = Thread.CurrentThread.ManagedThreadId;
+            Volatile.Write(ref _receiver, Thread.CurrentThread);
+            int first = Volatile.Read(ref _firstReceiveThread);
+            if (first == 0) { Interlocked.CompareExchange(ref _firstReceiveThread, current, 0); first = Volatile.Read(ref _firstReceiveThread); }
+            if (first != current) Volatile.Write(ref _multipleReceiveThreads, 1);
+            Volatile.Write(ref _receiveThread, current);
         }
         internal void Publish(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint)
         {
@@ -45,10 +60,23 @@ namespace CxVisual.Foundation.Transport
                 Monitor.PulseAll(_gate);
             }
         }
-        // 每个存活Peer最多排入一个终止通知；直到FIFO处理该通知才释放其MaxClients额度。
-        internal void AfterReceived(Action action)
-        {lock(_gate){if(_complete)throw new InvalidOperationException("Receive pipeline completed");
-            _pending.Enqueue(action);Monitor.PulseAll(_gate);}}
+        // 终止通知也有独立额度，不能依赖Host不提前RemovePeer来间接约束元数据队列。
+        internal void AfterReceived(Action action, CancellationToken cancellation)
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            if (IsDeliveryThread) throw new InvalidOperationException("Delivery callback cannot wait for its own notification budget");
+            _notifications.Wait(cancellation);
+            try
+            {
+                lock (_gate)
+                {
+                    if (_complete) throw new InvalidOperationException("Receive pipeline completed");
+                    _pending.Enqueue(() => { try { action(); } finally { _notifications.Release(); } });
+                    Monitor.PulseAll(_gate);
+                }
+            }
+            catch { _notifications.Release(); throw; }
+        }
         private void Deliver()
         {
             while(true)
@@ -68,7 +96,14 @@ namespace CxVisual.Foundation.Transport
             lock(_gate)
             {
                 var snapshot=_pool.Snapshot(_queuedBuffers,Volatile.Read(ref _receiveThread),_delivery.ManagedThreadId);
-                snapshot.PendingNotifications=Math.Max(0,_pending.Count-_queuedBuffers);return snapshot;
+                snapshot.PendingNotifications=Math.Max(0,_pending.Count-_queuedBuffers);
+                snapshot.MultipleReceiveThreadsObserved = Volatile.Read(ref _multipleReceiveThreads) != 0;
+                snapshot.NotificationCapacity = _notificationCapacity;
+                snapshot.OutstandingNotifications = _notificationCapacity - _notifications.CurrentCount;
+                Thread receiver = Volatile.Read(ref _receiver);
+                snapshot.ReceiveThreadAlive = receiver != null && receiver.IsAlive;
+                snapshot.DeliveryThreadAlive = _delivery.IsAlive;
+                return snapshot;
             }
         }
         internal void CompleteAndDrain(int timeoutMilliseconds,CancellationToken cancellation)

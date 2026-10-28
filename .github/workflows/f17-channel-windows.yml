@@ -43,10 +43,12 @@ jobs:
           if ($status -ne 0) { throw "F17 Channel execution failed: $status" }
           $joined = $output -join "`n"
           if ($joined -notmatch 'CHANNEL.CONNECTOR: 12 built-in FTR kinds' -or
-              $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback') {
+              $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback' -or
+              $joined -notmatch 'F17.PIPE_BULK PASS' -or $joined -notmatch 'F17.PIPE_ADMISSION PASS' -or
+              $joined -notmatch 'F17.NOTIFICATION PASS') {
               throw "F17 Channel expected acceptance evidence not present"
           }
-      - name: Run full-duplex 2GiB-per-direction CT-volume stream integrity and resource measurements
+      - name: Run TCP and cross-process NamedPipe 2GiB-per-direction integrity and resource measurements
         shell: pwsh
         timeout-minutes: 7
         run: |
@@ -54,7 +56,8 @@ jobs:
           $output = & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --channel-bulk-long 2>&1
           $status = $LASTEXITCODE
           $output | Tee-Object -FilePath Output/Release/x64/F17-Bulk-Volume.log | Write-Host
-          if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.BULK_VOLUME_PASS bytesEachDirection=2147483648') {
+          if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.BULK_VOLUME_PASS bytesEachDirection=2147483648' -or
+              ($output -join "`n") -notmatch 'F17.PIPE_VOLUME_PASS bytesEachDirection=2147483648 crossProcess=true') {
               throw "F17 CT volume stream verification failed: $status"
           }
       - name: Verify Foundation Transport unique Owner

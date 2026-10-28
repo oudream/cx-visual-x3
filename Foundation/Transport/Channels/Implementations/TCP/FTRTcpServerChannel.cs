@@ -45,6 +45,7 @@ namespace CxVisual.Foundation.Transport
         private void ReceiveLoop()
         {
             CancellationToken ct=_shutdown.Token;int cursor=0;
+            EnterReceiveThread();
             try
             {
                 while(!ct.IsCancellationRequested)
@@ -115,7 +116,7 @@ namespace CxVisual.Foundation.Transport
             lock(_gate){if(peer.Ended)return;peer.Ended=true;}
             if(error!=null)RecordReceiveError(error);
             // 先交付已接纳字节，再通知唯一Protocol清理；终止通知不会越过旧半包。
-            AfterReceived(()=>RemovePeer(peer.Address));
+            AfterReceived(()=>RemovePeer(peer.Address),_shutdown.Token);
         }
         public override bool RemovePeer(FTRSubChannelAddress address)
         {

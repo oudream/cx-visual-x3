@@ -70,6 +70,7 @@
     <Compile Include="Channels\IO\IFTRDatagramIO.cs"/>
     <Compile Include="Channels\Implementations\HTTP\FTRHttpClientChannel.cs"/>
     <Compile Include="Channels\Implementations\NamedPipe\FTRNamedPipeClientChannel.cs"/>
+    <Compile Include="Channels\Implementations\NamedPipe\FTRPipeIO.cs"/>
     <Compile Include="Channels\Implementations\NamedPipe\FTRNamedPipeServerChannel.cs"/>
     <Compile Include="Channels\Implementations\Replay\FTRReplayChannel.cs"/>
     <Compile Include="Channels\Implementations\Serial\FTRSerialChannel.cs"/>

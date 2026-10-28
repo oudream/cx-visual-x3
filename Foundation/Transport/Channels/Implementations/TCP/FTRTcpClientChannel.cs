@@ -56,6 +56,7 @@ namespace CxVisual.Foundation.Transport
         private void ReceiveLoop()
         {
             CancellationToken ct=_shutdown.Token;
+            EnterReceiveThread();
             try
             {
                 NetworkStream stream=_stream;
@@ -66,7 +67,7 @@ namespace CxVisual.Foundation.Transport
                     {
                         int count=stream.Read(buffer.WritableBuffer,0,buffer.WritableBuffer.Length);
                         if(count==0)
-                        {AfterReceived(()=>{if(!ct.IsCancellationRequested)Fault(new IOException("TCP peer closed"));});return;}
+                        {AfterReceived(()=>{if(!ct.IsCancellationRequested)Fault(new IOException("TCP peer closed"));},ct);return;}
                         PublishReceiveBuffer(new FTRSubChannelAddress(Id),buffer,count);buffer=null;
                     }
                     finally{if(buffer!=null)buffer.Dispose();}

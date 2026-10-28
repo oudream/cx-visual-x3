@@ -20,6 +20,11 @@ namespace CxVisual.Foundation.Transport
         public long BackpressureWaits {get;private set;}
         public int ReceiveThreadId {get;private set;}
         public int DeliveryThreadId {get;private set;}
+        public bool MultipleReceiveThreadsObserved { get; internal set; }
+        public int NotificationCapacity { get; internal set; }
+        public int OutstandingNotifications { get; internal set; }
+        public bool ReceiveThreadAlive { get; internal set; }
+        public bool DeliveryThreadAlive { get; internal set; }
         public long AllocatedBytes {get{return (long)AllocatedBuffers*BufferSize;}}
         public long InUseBytes {get{return (long)BorrowedBuffers*BufferSize;}}
     }
