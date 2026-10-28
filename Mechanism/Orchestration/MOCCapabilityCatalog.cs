@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Orchestration
@@ -48,6 +49,26 @@ namespace CxVisual.Mechanism.Orchestration
         public MOCCapabilityDescriptor Definition{get;private set;}
         public bool RuntimeAvailable{get;private set;}
     }
+    /// <summary>
+    /// MFM descriptors and existing MOC catalog are cross-indexed on demand.
+    /// This is a read-only view, NOT a second module registry, runtime state or authorization.
+    /// Missing catalog definitions remain visible instead of being silently treated as supported.
+    /// </summary>
+    public sealed class MOCModuleCapabilityEntry
+    {
+        internal MOCModuleCapabilityEntry(MFMModuleDescriptor module,string capabilityId,
+            MOCCapabilityCatalogItem catalogItem)
+        {
+            Module=module;CapabilityId=capabilityId;CatalogItem=catalogItem;
+        }
+        public MFMModuleDescriptor Module {get;private set;}
+        public string CapabilityId {get;private set;}
+        public MOCCapabilityCatalogItem CatalogItem {get;private set;}
+        public bool Declared {get{return true;}}
+        public bool Described {get{return CatalogItem!=null;}}
+        /// <summary>Resolver matched; NOT device Ready, Supported or Authorized.</summary>
+        public bool RuntimeResolved {get{return CatalogItem!=null&&CatalogItem.RuntimeAvailable;}}
+    }
     public sealed class MOCCapabilityCatalog
     {
         private readonly IReadOnlyList<MOCCapabilityCatalogItem> _all;
@@ -80,6 +101,38 @@ namespace CxVisual.Mechanism.Orchestration
         public IReadOnlyList<MOCCapabilityCatalogItem> All{get{return _all;}}
         public MOCCapabilityCatalogItem Find(string id)
         {MOCCapabilityCatalogItem item;return id!=null&&_ids.TryGetValue(id,out item)?item:null;}
+        /// <summary>
+        /// Join the given real MFM module identities to this MOC capability directory.
+        /// The supplied modules remain owned by their original host/engineering source.
+        /// Multiple module instances may declare the same capability; duplicate ModuleId is rejected.
+        /// </summary>
+        public IReadOnlyList<MOCModuleCapabilityEntry> DescribeModules(
+            IEnumerable<MFMModuleDescriptor> modules)
+        {
+            if(modules==null)throw new ArgumentNullException("modules");
+            var unique=new HashSet<string>(StringComparer.Ordinal);
+            var results=new List<MOCModuleCapabilityEntry>();
+            foreach(MFMModuleDescriptor module in modules)
+            {
+                if(module==null)throw new ArgumentException("moc.catalog.null_module","modules");
+                if(!unique.Add(module.Id))
+                    throw new InvalidOperationException("moc.catalog.duplicate_module:"+module.Id);
+                if(unique.Count>4096)
+                    throw new InvalidOperationException("moc.catalog.module_capacity");
+                foreach(string id in module.CapabilityIds)
+                {
+                    MOCCapabilityCatalogItem entry;
+                    _ids.TryGetValue(id,out entry);
+                    results.Add(new MOCModuleCapabilityEntry(module,id,entry));
+                    if(results.Count>65536)
+                        throw new InvalidOperationException("moc.catalog.module_capability_capacity");
+                }
+            }
+            return new ReadOnlyCollection<MOCModuleCapabilityEntry>(results
+                .OrderBy(x=>x.Module.Kind).ThenBy(x=>x.Module.Id,StringComparer.Ordinal)
+                .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal).ToList());
+        }
+
         public IReadOnlyList<MOCCapabilityCatalogItem> Search(string query,int limit=50)
         {
             if(limit<1||limit>4096)throw new ArgumentOutOfRangeException("limit");
