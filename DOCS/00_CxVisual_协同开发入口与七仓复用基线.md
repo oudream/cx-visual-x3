@@ -275,3 +275,11 @@
 - [02 UML§11—12](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——02UML总体模型与设计模式_V2.0.md)在26张初始关键图之后新增X01—X07七张真实Owner锚点UML（合计33张），细化MEM/MOL/MPM/MOC/MRK/MDS与FIM/PVC/MVI/MPW的唯一真源。
 - 01全类目录和03—08专题及实施、测试台账同步记录候选复用裁决；原VisionPipelineDefinition、VisionTypedPort、VisionRunResult等概念并非已批准公开类。专业Pipeline优先采用MEMContent+MOL，MRK/MDS复用，不建第二工程/执行/数据机制。
 - **本阶段是设计深化**，并未据此实现260项、修改业务算法代码或执行本轮Windows CI；真实功能进展始终按最新源码与匹配SHA验收。
+
+### 二维工作台V2.0三核心契约继续深化（2026-10-28）
+
+- [00总体架构§12](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——00总体架构与设计总纲_V2.0.md)：全类体系的Data/Operation/Evidence三核心合同、已定/待决/禁止清单、CASE-ARCH-01完整用户闭环。
+- [02 UML§13](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——02UML总体模型与设计模式_V2.0.md)：新增Y01—Y04四张跨体系关系图；在已有33张图基础上目前共**37张关键关系图**（具体图数/语法以文件复核为准）。
+- [03数据契约§9](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——03图像数据与生命周期_V2.0.md)、[05算法契约§11](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——05算法能力与专业流程_V2.0.md)、[06结果契约§10](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——06结果测量与工程资源_V2.0.md)：像素/Frame/Mask/Artifact身份，MPM TypeId与MRK CLR Type映射，RunResult/ResultItem与MEM正式资源分离。
+- [Implementation§11](Implementation/CxVisual_专业视觉体系%23通用二维视觉工作台——V2.0实施源码与迁移台账.md)列出已有源码与先行工作包；[Testing§10](Testing/CxVisual_专业视觉体系%23通用二维视觉工作台——V2.0全类验收与测试矩阵.md)定义CASE-ARCH-01的20项正/反测试。
+- **状态警示**：本阶段仅更新总体架构、详细契约及UML/实施验收文档；候选FrameRef、VisionRunRecord、ResultItem和TypeId示例未被宣称已编码/已注册；没有本轮Windows CI或设备HIL通过的断言。
