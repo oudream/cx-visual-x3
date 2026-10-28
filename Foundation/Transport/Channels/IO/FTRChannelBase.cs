@@ -315,8 +315,13 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 var context=new FTRChannelReceiveContext(address,bytes,count,correlationId);
                 _diagnostics.RecordReceive(count);
                 Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count,address);
+                // 保持与池化接收路径相同的Observer隔离语义：一个插件/订阅者报错
+                // 不能中断其他订阅者或导致HTTP/WS单Peer被误判为物理故障。
                 Action<FTRChannelReceiveContext> handler=Received;
-                if(handler!=null)handler(context);
+                if(handler!=null)
+                    foreach(Action<FTRChannelReceiveContext> observer in handler.GetInvocationList())
+                        try{observer(context);}
+                        catch(Exception error){RecordObserverError(error);}
             }
         }
         protected void StartBufferedReceive(FTRChannelConfiguration configuration)
