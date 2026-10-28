@@ -11,7 +11,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKFlowCompileDefinition
     {
         public MRKFlowCompileDefinition(string id, IEnumerable<MRKStepCompileRequest> steps,
-            IDictionary<string, string> dataExports = null)
+            IDictionary<string, string> dataExports = null,
+            bool reclaimCommittedWhenConsumersSettle = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("流程ID不能为空", "id");
             if (steps == null) throw new ArgumentNullException("steps");
@@ -28,7 +29,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     exports.Add(entry.Key, entry.Value);
                 }
             DataExports = new ReadOnlyDictionary<string, string>(exports);
+            ReclaimCommittedWhenConsumersSettle = reclaimCommittedWhenConsumersSettle;
         }
+        public bool ReclaimCommittedWhenConsumersSettle { get; private set; }
         public string Id { get; private set; }
         public IList<MRKStepCompileRequest> Steps { get; private set; }
         public IDictionary<string, string> DataExports { get; private set; }
@@ -65,7 +68,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     new HashSet<string>(StringComparer.Ordinal), diagnostics, ref expanded);
                 if (diagnostics.Count != 0) return new MRKCompileResult(null, diagnostics);
                 return new MRKCompileResult(
-                    new MRKExecutionPlan(rootId, steps, root.DataExports), diagnostics);
+                    new MRKExecutionPlan(rootId, steps, root.DataExports,
+                        reclaimCommittedWhenConsumersSettle:
+                            root.ReclaimCommittedWhenConsumersSettle), diagnostics);
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
             {
