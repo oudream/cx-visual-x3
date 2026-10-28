@@ -1907,7 +1907,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if(rect.Width<0.25 || rect.Height<0.25)return;
                 created=AddRotatedRectangle(rect,0);
             }
-            else created=_overlays.Add(new MVIImageOverlayItem(kind, layer, rect, points, text));
+            else created=AddOverlay(new MVIImageOverlayItem(kind, layer, rect, points, text));
             // 不调用SelectOverlay来清空刚画出的矩形SelectedRegion，保持已有Crop闭环。
             // 但确保刚完成的对象可立即在右侧列表操作、编辑和做ROI统计。
             _selectedOverlayId=created.Id;
