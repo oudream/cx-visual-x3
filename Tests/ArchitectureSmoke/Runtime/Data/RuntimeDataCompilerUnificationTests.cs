@@ -124,6 +124,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }, "leaf")
                     .Export("MidResult", "plus.Raised"))
                 .Flow("Top", f => f
+                    .ReclaimConsumedData()
                     .Subflow("mid", "Mid", new [] {
                         new MRKExecutionInput("middleSeed", MRKInputSource.FlowInput,
                             "seed", typeof(int))
@@ -140,8 +141,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var blueprint = Configure().Freeze();
             MRKCompileResult compiled = new MRKExecutionOrchestrationCompiler()
                 .Compile("Top", blueprint, blueprint);
-            Check(compiled.Succeeded,
-                "三层真实端口编译失败：" +
+            Check(compiled.Succeeded && compiled.Plan.ReclaimCommittedWhenConsumersSettle,
+                "三层真实端口编译或消费回收策略未固定：" +
                 string.Join("; ",compiled.Diagnostics.Select(x=>x.Code+":"+x.Message)));
             MRKExecutionStep root = compiled.Plan.GetStep("check");
             Check(root.Inputs.Count == 1 &&
