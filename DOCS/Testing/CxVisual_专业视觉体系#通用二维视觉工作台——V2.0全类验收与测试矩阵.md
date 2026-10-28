@@ -191,3 +191,20 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 **工业验收仍未覆盖**：单独的FrameId/FrameLease、磁盘Artifact持久化、Mask与正式ROI坐标配准、WPF可视化用户交互、AI/GPU/厂商设备HIL和长期运行内存。已有的MDS容量统计不等于这些全部满足。
 
 **ART-10补充（源码已提交，待Windows验证）**：对应提交 [`97630512`](https://github.com/oudream/cx-visual-x3/commit/97630512a2c3d7d958d6fad325a61ab494ae6810)，新增`RuntimeVisionArtifactsTests.MviImageMaskProjection`：同一真实Gray16 MRK Run产生Gray8 Mask→经`CxVisionRunSummary`按RunId/SourceId/尺寸验证→提交现有`MVIImageSession.SetResult`→Original/Result双槽切换，原16位像素不变；载入新原图后自动清空旧结果。此测试是**MVI非WPF状态集成**，不能冒充TestCenter/Studio鼠标可视操作或Viewer级自动防错源校验；执行前上层仍须显式检查SourceId与坐标。对应[Imaging Windows #40663246695](https://github.com/oudream/cx-visual-x3/actions/runs/40663246695)，首次登记时排队，尚无通过结论。
+
+## 14. P3 二维专业CPU图像/Mask实际WPF交互与来源安全反证（2026-10-28）
+
+**代码已提交，当前仍待Windows执行证明**：[最新Imaging #40666425061](https://github.com/oudream/cx-visual-x3/actions/runs/40666425061)（`4f91211`），初次登记为queued。不要套用P1成功Run #40660774027的证据到P3新增WPF交互。
+
+| ID | 实际测试/真实操作 | 通过条件 | 现阶段 |
+|---|---|---|---|
+| UI-VIS-01 | `TCTImageViewerSmoke.Run`真正点击`CpuVisionRun` | 使用4×4 Gray16真实MRK，处理图保留原像素1..16；Mask中10..16七个命中且候选区域面积7 | 源码测试待Windows |
+| UI-VIS-02 | 输出页`CpuResultItems`实际点击Image/Mask/Region | Image恢复Gray16；Mask为Gray8/0/255；选择Region不会改写图像 | 源码测试待Windows |
+| UI-VIS-03 | Mask→`ExtractMaskContours`按钮 | 使用既有FIM追踪真实边界、MVI写入PolygonAnnotation、SignedArea=7，原16位图不变 | 源码测试待Windows |
+| UI-VIS-04 | 同一FIM图像对象重新载入 | 原结果槽、结果列表与本次`CpuEvidence`清空；旧Run不写回 | 源码测试待Windows |
+| UI-VIS-05 | 用户换图/连续执行 | CTS取消、原图引用+SourceVersion+SourceId+Request身份多条件阻止过期提交 | 源码及测试部分覆盖，长时竞态压测待补 |
+| UI-VIS-06 | 缺失标定与孔洞面积 | 无有效Spacing不得出现mm²；有Spacing时使用sx×sy乘真实有符号环面积 | 源码已实现，另需专项mm²/孔洞UI反证 |
+| UI-VIS-07 | CPU原图非法类型及参数 | 原图限Gray8/16；阈值范围按位深，MinArea[1..10000000]；非法调用不发布新Run | 源码已实现，另需WPF反例确认 |
+| UI-VIS-08 | 旧本轮CI failures | #40663246695有Vision CS0136；#40665129173有FTR CS0103。不能写作P3测试通过或同一个Owner失败。 | 失败根因日志已查，待对应Owners及新CI确认 |
+
+**边界**：`TestCenter`仍是人工/自动化专业测试工作区；正式Studio可视面板、本次SourceId的硬件稳定身份、持久ArtifactRef、可恢复历史Run、几何配准、工业SDK/HIL/AI均不在上述测试通过范围内。
