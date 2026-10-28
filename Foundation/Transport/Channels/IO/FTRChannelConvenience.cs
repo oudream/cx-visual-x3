@@ -42,7 +42,8 @@ namespace CxVisual.Foundation.Transport
             FTRSubChannelAddress address,Action<FTRChannelReceiveContext> observer)
         {
             if(channel==null)throw new ArgumentNullException("channel");
-            if(address==null||address.ChannelId!=channel.Id)
+            if(address==null||address.ChannelId!=channel.Id ||
+                (channel.Topology==FTRChannelTopology.MultiPeer && !address.HasSubChannel))
                 throw new ArgumentException("订阅地址与Channel不匹配","address");
             if(observer==null)throw new ArgumentNullException("observer");
             Action<FTRChannelReceiveContext> filter=message=>
@@ -72,7 +73,8 @@ namespace CxVisual.Foundation.Transport
             FTRSubChannelAddress address,Action<FTRReceiveBuffer> observer)
         {
             if(channel==null)throw new ArgumentNullException("channel");
-            if(address==null||address.ChannelId!=channel.Id)
+            if(address==null||address.ChannelId!=channel.Id ||
+                (channel.Topology==FTRChannelTopology.MultiPeer && !address.HasSubChannel))
                 throw new ArgumentException("接收地址与Channel不匹配","address");
             if(observer==null)throw new ArgumentNullException("observer");
             Action<FTRReceiveBuffer> filter=buffer=>
