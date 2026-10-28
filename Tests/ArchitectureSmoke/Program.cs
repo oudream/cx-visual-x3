@@ -18,6 +18,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 if (args != null && args.Length == 2 && args[0] == "--channel-shm-child")
                     return ModuleChannelTransportSmokeTests.RunSharedMemoryChild(args[1]);
+                if (args != null && args.Length == 2 && args[0] == "--channel-shm-crash-child")
+                    return FTRSharedMemoryCrashTests.RunCrashChild(args[1]);
                 if (args != null && args.Length == 3 && args[0] == "--channel-pipe-child")
                     return FTRNamedPipeBulkTests.RunChild(args[1], args[2]);
                 if (args != null && args.Length == 2 && args[0] == "--command-pipe-child")
@@ -37,8 +39,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); RuntimeVisionImageInteropTests.Run(); RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--vision-results") >= 0) { RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--channel-uml-core") >= 0) { ModuleChannelTransportSmokeTests.RunUmlCore(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--channel-uml-core") >= 0) { ModuleChannelTransportSmokeTests.RunUmlCore(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk") >= 0) { FTRTcpBulkTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-bulk-long") >= 0) { FTRTcpBulkTests.RunVolumeScale(); FTRNamedPipeBulkTests.RunVolumeScale(); return 0; }
                 if (Array.IndexOf(args, "--runtime-data-soak") >= 0)
