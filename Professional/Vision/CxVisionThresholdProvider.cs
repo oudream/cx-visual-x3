@@ -80,7 +80,7 @@ namespace CxVisual.Professional.Vision
             {
                 return new CxVisionThresholdProvider(snapshot.Get(),
                     ParseEffectiveVersion(snapshot.Version),fallback,
-                    () => section.Revision.EffectiveVersion,snapshot.Version);
+                    () => section.Revision.Effective,snapshot.Version);
             }
         }
 
