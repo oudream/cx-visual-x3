@@ -7,6 +7,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CxVisual.Mechanism.Connectivity;
 
 namespace CxVisual.TestCenter.UI
@@ -43,6 +44,13 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _state = new TextBlock {
             FontSize = 15, TextWrapping = TextWrapping.Wrap,
             Foreground = Brushes.SteelBlue, Margin = new Thickness(1, 7, 1, 7) };
+        // 只观察正式FTR快照，不维护第二个Socket读者或业务队列。
+        private readonly TextBlock _health = new TextBlock {
+            FontSize=14,TextWrapping=TextWrapping.Wrap,
+            Foreground=Brushes.DarkSlateGray,Margin=new Thickness(2,4,2,7) };
+        private readonly DispatcherTimer _healthTimer = new DispatcherTimer {
+            Interval=TimeSpan.FromSeconds(1)
+        };
         private readonly ListBox _peerList = new ListBox { MinHeight = 70, FontSize = 15,
             Margin = new Thickness(0, 4, 8, 4) };
         private readonly ListBox _stationList = new ListBox { MinHeight = 70, FontSize = 15,
@@ -68,6 +76,7 @@ namespace CxVisual.TestCenter.UI
         public FTRChannelState MultiChannelState
         { get { return _multiChannel == null ? FTRChannelState.Closed : _multiChannel.State; } }
         public string StatusMessage { get { return _state.Text; } }
+        public string HealthMessage { get { return _health.Text; } }
         public string LastDiagnostic { get { return _lastDiagnostic; } }
         public FTRChannelKind SelectedChannelKind { get { return _selectedKind; } }
         public FTRChannelTopology SelectedTopology
@@ -87,6 +96,7 @@ namespace CxVisual.TestCenter.UI
                     new TCTWorkspaceAction("disconnect", "断开Virtual通道", Disconnect, () => IsConnected),
                     new TCTWorkspaceAction("send", "发送Virtual数据", Send, () => IsConnected),
                     new TCTWorkspaceAction("channel.validate", "检查正式Channel拓扑", ValidateTopology),
+                    new TCTWorkspaceAction("channel.health", "刷新Channel健康快照", RefreshHealth),
                     new TCTWorkspaceAction("channel.register-peer", "登记离线SubChannel",
                         () => { RegisterSubChannel(); }, () => SelectedTopology == FTRChannelTopology.MultiPeer),
                     new TCTWorkspaceAction("channel.remove-peer", "移除所选SubChannel",
@@ -153,6 +163,11 @@ namespace CxVisual.TestCenter.UI
 
             options.Children.Add(_state);
             options.Children.Add(new TextBlock {
+                Text="F17健康与资源（真实Channel只读快照）",
+                FontSize=15,FontWeight=FontWeights.SemiBold,Foreground=Brushes.DarkSlateBlue
+            });
+            options.Children.Add(_health);
+            options.Children.Add(new TextBlock {
                 Text = "创建/连接/发送/子通道/站号操作均在右侧操作中心，人工操作不产生自动Passed。",
                 Foreground = Brushes.SlateGray, FontSize = 14, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 7) });
@@ -179,6 +194,7 @@ namespace CxVisual.TestCenter.UI
             System.Windows.Automation.AutomationProperties.SetAutomationId(_channelKind, "TCT.Channel.Kind");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_topology, "TCT.Channel.Topology");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_state, "TCT.Channel.Status");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_health, "TCT.Channel.Health");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_peerList, "TCT.Channel.Peers");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_stationList, "TCT.Channel.Stations");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_peerId, "TCT.Channel.PeerId");
@@ -190,7 +206,11 @@ namespace CxVisual.TestCenter.UI
             _peerList.SelectionChanged += (sender, args) => NotifyState();
             _stationList.SelectionChanged += (sender, args) => NotifyState();
             _channelKind.SelectedItem = FTRChannelKind.Virtual;
+            _healthTimer.Tick+=(sender,args)=>RefreshHealth();
+            Loaded+=(sender,args)=>{RefreshHealth();_healthTimer.Start();};
+            Unloaded+=(sender,args)=>_healthTimer.Stop();
             UpdateTopology();
+            RefreshHealth();
         }
         private void NotifyState()
         {
@@ -400,6 +420,32 @@ namespace CxVisual.TestCenter.UI
                 }
             }
         }
+        /// <summary>TestCenter只读取FTR正式状态/速率/队列；真实设备必须经显式授权联机。</summary>
+        public void RefreshHealth()
+        {
+            FTRChannelBase channel=_pair!=null ? (FTRChannelBase)_pair[0] : _multiChannel;
+            if(channel==null)
+            {
+                _health.Text="无活动Channel实例；本页不会隐式打开物理设备。";
+                return;
+            }
+            FTRChannelHealthSnapshot h=channel.Health;
+            var d=h.Diagnostics;
+            var q=d.ReceiveQueue;
+            string failure=d.LastFailure==null ? "无" :
+                d.LastFailure.Kind+" / "+d.LastFailure.Stage+" / "+d.LastFailure.Scope;
+            _health.Text="State="+h.State+"  Session="+h.SessionId.ToString("N")+
+                "  Peers="+h.ActivePeers+
+                "  TX="+d.SentBytes+" B  RX="+d.ReceivedBytes+" B"+
+                "  TX率="+(d.SendBytesPerSecond/1024.0).ToString("F1")+" KiB/s"+
+                "  RX率="+(d.ReceiveBytesPerSecond/1024.0).ToString("F1")+" KiB/s"+
+                "  Rejected="+d.RejectedSends+
+                (q==null ? "" : "  Pool="+q.InUseBytes+"/"+((long)q.BufferSize*q.Capacity)+" B"+
+                    "  Backpressure="+q.BackpressureWaits)+
+                "\\n最近故障："+failure+
+                (h.State==FTRChannelState.Closed ? "（离线状态不代表设备可用）" : "");
+        }
+
         private void UpdateState()
         {
             _state.Text = "ManualSession " + ManualSessionId.ToString("D") +
@@ -409,6 +455,7 @@ namespace CxVisual.TestCenter.UI
                 " · MultiOwner " + (_multiChannel == null ? "N/A" : _multiChannel.State.ToString()) +
                 " · Protocol Station " + _stations.Count +
                 (string.IsNullOrEmpty(_lastDiagnostic) ? "" : "\n" + _lastDiagnostic);
+            RefreshHealth();
             NotifyState();
         }
         public void ConnectVirtual()
@@ -458,7 +505,7 @@ namespace CxVisual.TestCenter.UI
             }
             UpdateState();
         }
-        public void OnWorkspaceClosed() { Disconnect(); }
+        public void OnWorkspaceClosed() { _healthTimer.Stop(); Disconnect(); }
         private sealed class TCTPeerRow
         {
             public FTRSubChannelAddress Address { get; set; }
