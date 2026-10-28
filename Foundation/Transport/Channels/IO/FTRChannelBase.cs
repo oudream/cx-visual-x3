@@ -276,27 +276,27 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 }
             }
         }
-        protected void ReceiveBytes(FTRSubChannelAddress address, byte[] bytes, string correlationId = null)
+        protected void ReceiveBytes(FTRSubChannelAddress address,byte[] bytes,string correlationId=null)
+        {ReceiveBytes(address,bytes,bytes==null?0:bytes.Length,correlationId);}
+        /// <summary>消息通道借用原始聚合缓冲切片，Received仍产生独立、受额度约束的数据快照。</summary>
+        protected void ReceiveBytes(FTRSubChannelAddress address,byte[] bytes,int count,string correlationId=null)
         {
-            FTRChannelState current = State;
-            if (current != FTRChannelState.Open && current != FTRChannelState.Opening)
+            FTRChannelState current=State;
+            if(current!=FTRChannelState.Open && current!=FTRChannelState.Opening)
                 throw new IOException("接收通道未打开");
-            if (address == null || address.ChannelId != Id) throw new ArgumentException("接收地址不属于本通道");
-            FTRChannelReceiveContext context = new FTRChannelReceiveContext(address, bytes, correlationId);
-            _diagnostics.RecordReceive(bytes.Length);
-            Record(FTRFrameDirection.Rx, bytes, correlationId, null);
-            Action<FTRChannelReceiveContext> handler = Received;
-            if (handler != null) handler(context);
-        }
-        /// <summary>异步快照先入场后分配；不要求Channel必须使用池化接收者。</summary>
-        protected void ConfigureSendAdmission(FTRChannelConfiguration configuration)
-        {
-            configuration.Validate();
-            lock(_gate)
+            if(address==null||address.ChannelId!=Id)
+                throw new ArgumentException("接收地址不属于本通道");
+            if(bytes==null||count<0||count>bytes.Length)
+                throw new ArgumentOutOfRangeException("count");
+            FTRBufferedByteBudget budget=_inFlightBudget;
+            using(var lease=budget==null?null:budget.Lease())
             {
-                _sendCapacity=configuration.SendQueueCapacity;
-                _sendByteBudget=configuration.SendByteBudget;
-                _boundedSend=true;
+                if(lease!=null)lease.Reserve(count);
+                var context=new FTRChannelReceiveContext(address,bytes,count,correlationId);
+                _diagnostics.RecordReceive(count);
+                Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count);
+                Action<FTRChannelReceiveContext> handler=Received;
+                if(handler!=null)handler(context);
             }
         }
         protected void StartBufferedReceive(FTRChannelConfiguration configuration)
