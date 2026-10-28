@@ -6,6 +6,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Presentation.Wpf.RuntimeData;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -357,6 +358,26 @@ namespace CxVisual.TestCenter.UI
             }
             finally { frame.OnWorkspaceClosed(); }
             if (!frame.IsClosed) throw new InvalidOperationException("关闭五维工作区未完成清理");
+            using (var heap = new MDSDataHeap())
+            {
+                heap.Set("Studio.Image", new byte[] { 1, 2, 3 });
+                var editor = new MPWDataLifecycleWorkspaceControl();
+                try
+                {
+                    var policy = MDSDataLifecyclePolicy.Default
+                        .WithTransfer(MDSDataTransferPolicy.CopyOnly);
+                    editor.Bind(heap);
+                    if (editor.TryApplyPolicy(policy) ||
+                        !heap.Lifecycle.GetPolicy("Studio.Image").Transfer.AllowMove)
+                        throw new InvalidOperationException("Studio未授权WPF入口修改了MDS生命周期");
+                    editor.Bind(heap, true);
+                    if (editor.SelectedDataName != "Studio.Image" ||
+                        !editor.TryApplyPolicy(policy) ||
+                        heap.Lifecycle.GetPolicy("Studio.Image").Transfer.AllowMove)
+                        throw new InvalidOperationException("Studio授权WPF入口没有实际修改唯一MDS Owner");
+                }
+                finally { editor.Dispose(); }
+            }
         }
     }
 }
