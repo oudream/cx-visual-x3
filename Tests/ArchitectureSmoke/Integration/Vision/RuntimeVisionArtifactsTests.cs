@@ -101,8 +101,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "源数组/显示方副本不允许修改已提交的Mask或处理图");
                 long declared = (long)image.Stride * image.Height +
                     (long)mask.Stride * mask.Height;
-                Check(declared > 0 && run.CommittedOutputs.Count == 5,
-                    "Image/Mask必须是既有MRK的正式导出，而非私有缓存");
+                long estimatedBytes;
+                Check(declared > 0 && run.CommittedOutputs.Count == 5 &&
+                    run.TryEstimateCommittedBytes(out estimatedBytes) &&
+                    estimatedBytes >= declared,
+                    "Image/Mask必须由MRK正式导出，并通过FDT专业大小估算计入可观测载荷");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
