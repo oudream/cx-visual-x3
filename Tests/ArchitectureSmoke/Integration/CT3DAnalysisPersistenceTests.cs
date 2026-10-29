@@ -161,10 +161,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 var owner=engineering.AddPage("Sphere").RootContent;
                 address=CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,folder,analysis,CancellationToken.None);
+                var second=CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,4000,CancellationToken.None,5000000);
+                var secondOwner=engineering.AddPage("Sphere 2").RootContent;
+                CT3DAnalysisPersistence.Commit(engineering,secondOwner,engineering.Revision,folder,second,CancellationToken.None);
                 engineering.SaveAs(path);
             }
             using(var engineering=MEMEngineering.Open(path))
             {
+                var allCases=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
+                Check(allCases.Count==2&&
+                    allCases.All(c=>c.Kind==CT3DAnalysisKind.SurfaceSphere&&c.Source.Signature==source.Signature)&&
+                    allCases[0].Sphere.ResultId!=allCases[1].Sphere.ResultId,
+                    "同一MEM工程组合多个独立Feature且完整加载");
+                Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.OpenAll(
+                    engineering,folder,new CancellationToken(true)));
                 var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
                 Check(restored.Kind==CT3DAnalysisKind.SurfaceSphere&&restored.Surface.ResultId==analysis.Surface.ResultId&&
                     restored.Sphere.ResultId==analysis.Sphere.ResultId&&restored.Surface.SampleStep==1&&
