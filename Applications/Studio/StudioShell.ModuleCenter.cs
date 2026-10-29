@@ -17,6 +17,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Presentation.Wpf;
+using CxVisual.Foundation.Imaging;
 using CxVisual.Professional.Vision;
 
 namespace CxVisual.Studio
@@ -91,6 +92,35 @@ namespace CxVisual.Studio
             };
         }
 
+        /// <summary>
+        /// 单一MOC目录只组装已有专业Provider，所有参数来自同一MHS Effective。
+        /// 对自定义数据端口仍由专业运行时实施具体类型验证。
+        /// </summary>
+        private sealed class StudioVisionCapabilitySet
+        {
+            public IMOCCapabilityProvider[] Providers;
+            public IMRKVersionedCapabilityResolver Resolver;
+            public CxVisionBinaryThresholdProvider Threshold;
+            public CxVisionMaskRegionsProvider Regions;
+            public CxVisionAcceptedRegionMeasureProvider Measurement;
+        }
+
+        private static StudioVisionCapabilitySet CreateStudioVisionCapabilities(
+            CxVisionThresholdProvider vision)
+        {
+            if(vision==null)throw new ArgumentNullException("vision");
+            CxVisionInspectionOptions options=vision.CaptureInspectionOptions();
+            var measure=new CxVisionAcceptedRegionMeasureProvider(vision);
+            var regions=new CxVisionMaskRegionsProvider(
+                options,vision.ConfigurationRevision,measure);
+            var threshold=new CxVisionBinaryThresholdProvider(
+                options.PixelDepth,options.GrayThreshold,regions);
+            return new StudioVisionCapabilitySet {
+                Providers=new IMOCCapabilityProvider[]{vision,threshold,regions,measure},
+                Resolver=threshold,Threshold=threshold,Regions=regions,Measurement=measure
+            };
+        }
+
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
         { SafeStudioAction(()=>OpenStudioDocument("doc.modules")); }
 
@@ -112,7 +142,7 @@ namespace CxVisual.Studio
                     "当前仍为开发预设；请重新读取正确Scope的MHS Effective");
             };
             ProjectStudioModuleCenterCapabilities(control,vision,
-                "CPU计算Provider：开发预设参数；尚未载入MHS Effective");
+                "CPU视觉四类Provider：开发预设参数；尚未载入MHS Effective");
             var header=new StackPanel();
             header.Children.Add(new TextBlock {
                 Text="工程："+_viewModel.ProjectSession.Project.Name+
@@ -180,9 +210,12 @@ namespace CxVisual.Studio
                     MPWModuleCapabilityView selected=control.SelectedCapability;
                     if(selected==null||selected.Demonstration||
                         selected.Kind!=MFMModuleKind.Compute||
-                        selected.Id!=CxVisionThresholdProvider.CapabilityId||
-                        !selected.Described||!selected.Resolved)
-                        throw new InvalidOperationException("请先选中已注册的真实Compute算法能力");
+                        !selected.Described||!selected.Resolved ||
+                        (selected.Id!=CxVisionThresholdProvider.CapabilityId &&
+                         selected.Id!=CxVisionBinaryThresholdProvider.CapabilityId &&
+                         selected.Id!=CxVisionMaskRegionsProvider.CapabilityId &&
+                         selected.Id!=CxVisionAcceptedRegionMeasureProvider.CapabilityId))
+                        throw new InvalidOperationException("请先选中已注册的真实Vision Compute能力");
                     if(!effectiveLoaded)
                         throw new InvalidOperationException("请先读取当前MHS生效配置，再加入工程流程");
                     if(loadedProjectId!=_viewModel.ProjectSession.Project.Id||
@@ -190,13 +223,15 @@ namespace CxVisual.Studio
                         throw new InvalidOperationException("工程或配置Scope已切换，请重新读取Effective");
                     if(_logicRunning)throw new InvalidOperationException("运行中的主流程不可编辑");
                     // Re-check MHS version and permissions on the pinned Provider.
+                    var composition=CreateStudioVisionCapabilities(selectedProvider);
                     string version;
-                    if(!selectedProvider.TryGetCapabilityVersion(selected.Id,out version))
+                    if(!composition.Resolver.TryGetCapabilityVersion(selected.Id,out version))
                         throw new InvalidOperationException("当前Provider版本无法确认");
                     var page=_viewModel.ActivePage;
                     if(page==null)throw new InvalidOperationException("请先选择有效工程页面");
                     var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
-                        new IMOCCapabilityProvider[]{_simulation,selectedProvider},selectedProvider);
+                        composition.Providers.Concat(new IMOCCapabilityProvider[]{_simulation}),
+                        composition.Resolver);
                     var capability=catalog.Find(selected.Id);
                     if(capability==null||!capability.RuntimeAvailable)
                         throw new InvalidOperationException("MOC当前无法解析此软件能力");
@@ -204,19 +239,41 @@ namespace CxVisual.Studio
                     // MOC holds the static identity, MRK the callable CLR contract.
                     // This is only a static check; Host authorization still applies.
                     MRKResolvedCapability action;
-                    if(!selectedProvider.TryResolve(selected.Id,out action)||action==null)
+                    if(!composition.Resolver.TryResolve(selected.Id,out action)||action==null)
                         throw new InvalidOperationException("当前Provider运行签名不可解析");
                     var proof=new MOCBindingContractInspector().Assess(
                         capability.Definition,action,new Dictionary<string,Type>{
                             {CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
-                                typeof(CxVisionInspectionResult)}
+                                typeof(CxVisionInspectionResult)},
+                            {CxVisionBinaryThresholdProvider.MaskTypeId,
+                                typeof(FIMImageBuffer)}
                         });
-                    if(proof.Verdict!=MDCVerdict.Allowed)
+                    // MOC目前将专业组合端口声明为object。只允许现有PVC
+                    // 对这两个明确的输入实施运行时强校验；其它Unknown一律拒绝。
+                    string[] exceptions=proof.ReasonCodes.ToArray();
+                    bool guardedObjectInput=proof.Verdict==MDCVerdict.Unknown &&
+                        exceptions.Length==1 &&
+                        ((selected.Id==CxVisionMaskRegionsProvider.CapabilityId &&
+                          exceptions[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:ThresholdMask") ||
+                         (selected.Id==CxVisionAcceptedRegionMeasureProvider.CapabilityId &&
+                          exceptions[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:Inspection"));
+                    if(proof.Verdict!=MDCVerdict.Allowed && !guardedObjectInput)
                         throw new InvalidOperationException(
                             "能力声明与执行端口不一致或待验证："+
                             string.Join(", ",proof.ReasonCodes));
+                    // 必填配置参数随已选MHS Effective快照一起写入MEM；
+                    // 真正像素/Region仍需工程师通过现有MOL流程图正式连接。
                     MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
-                        builder=>builder.Step(capability.Definition));
+                        builder=>{
+                            Guid step=builder.Step(capability.Definition);
+                            if(selected.Id==CxVisionBinaryThresholdProvider.CapabilityId)
+                                builder.SetParameter(step,"Threshold",
+                                    selectedProvider.CaptureInspectionOptions()
+                                        .GrayThreshold.ToString(CultureInfo.InvariantCulture));
+                            if(selected.Id==CxVisionMaskRegionsProvider.CapabilityId)
+                                builder.SetParameter(step,"RuleVersion",
+                                    composition.Regions.ReleaseVersion);
+                        });
                     RefreshScene();
                     OpenStudioDocument("doc.flow");
                     effectiveStatus.Text="已加入当前MEM主流程："+selected.Id+
@@ -433,11 +490,17 @@ namespace CxVisual.Studio
             CxVisionThresholdProvider vision,string description)
         {
             // One MOC catalog, no parallel registration or execution dispatcher.
+            var composition=CreateStudioVisionCapabilities(vision);
             var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
-                new IMOCCapabilityProvider[]{_simulation,vision},vision);
+                composition.Providers.Concat(new IMOCCapabilityProvider[]{_simulation}),
+                composition.Resolver);
             var module=new MFMModuleDescriptor("studio.development.cpu.vision",
-                "CPU视觉阈值检测（未绑定MEM模块资源）",MFMModuleKind.Compute,
-                capabilityIds:new[]{CxVisionThresholdProvider.CapabilityId});
+                "CPU视觉检测及独立分割测量（未绑定MEM模块资源）",MFMModuleKind.Compute,
+                capabilityIds:new[]{
+                    CxVisionThresholdProvider.CapabilityId,
+                    CxVisionBinaryThresholdProvider.CapabilityId,
+                    CxVisionMaskRegionsProvider.CapabilityId,
+                    CxVisionAcceptedRegionMeasureProvider.CapabilityId});
             var declared=catalog.DescribeModules(new[]{module});
             var ids=new HashSet<string>(declared.Select(x=>x.CapabilityId),
                 StringComparer.Ordinal);
