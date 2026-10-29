@@ -48,6 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        if: ${{ hashFiles('Services/Supervision/go.mod') != '' }}
         with:
           go-version-file: Services/Supervision/go.mod
           cache: false
