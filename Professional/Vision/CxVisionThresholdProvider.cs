@@ -8,6 +8,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Foundation.Data.Types;
+using CxVisual.Foundation.Imaging;
 
 namespace CxVisual.Professional.Vision
 {
@@ -246,6 +247,109 @@ namespace CxVisual.Professional.Vision
         {
             if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
             {version=Version;return true;}
+            if(_fallback!=null)return _fallback.TryGetCapabilityVersion(id,out version);
+            version=null;return false;
+        }
+    }
+
+    /// <summary>
+    /// 正式MOC可组合的FIM中值滤波算子。仅提供专业能力适配，像素算法及
+    /// 边界复制规则由唯一FIMImageFilters Owner负责；输出深拷贝的紧排RAW像素。
+    /// 允许Gray8/Gray16、半径1..3，未装设备/GPU/AI，不代表生产发布授权。
+    /// </summary>
+    public sealed class CxVisionMedianEnhanceProvider :
+        IMOCCapabilityProvider, IMRKVersionedCapabilityResolver
+    {
+        public const string CapabilityId="vision.cpu.image.median-enhance";
+        public const string VersionPrefix="vision.cpu.image.median.v1";
+        private readonly CxVisionPixelDepth _depth;
+        private readonly int _radius;
+        private readonly IMRKVersionedCapabilityResolver _fallback;
+        private readonly MRKResolvedCapability _resolved;
+
+        public CxVisionMedianEnhanceProvider(CxVisionPixelDepth depth,int radius,
+            IMRKVersionedCapabilityResolver fallback=null)
+        {
+            if(depth!=CxVisionPixelDepth.Bits8 && depth!=CxVisionPixelDepth.Bits16)
+                throw new ArgumentOutOfRangeException("depth");
+            if(radius<1 || radius>3)
+                throw new ArgumentOutOfRangeException("radius",
+                    "中值滤波工程半径只支持1到3像素");
+            _depth=depth;
+            _radius=radius;
+            _fallback=fallback;
+            _resolved=new MRKResolvedCapability(ExecuteAsync,
+                new MRKExecutionOutput(typeof(byte[])),
+                dataOutputs:new Dictionary<string,Type>{{"EnhancedPixels",typeof(byte[])}},
+                inputs:new[]{
+                    new MRKCapabilityInput("RawPixels",typeof(byte[])),
+                    new MRKCapabilityInput("Width",typeof(int)),
+                    new MRKCapabilityInput("Height",typeof(int))
+                });
+        }
+
+        public string ReleaseVersion
+        {
+            get { return VersionPrefix+"/depth:"+((int)_depth).ToString(CultureInfo.InvariantCulture)+
+                "/radius:"+_radius.ToString(CultureInfo.InvariantCulture); }
+        }
+
+        public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+        {
+            return new[]{new MOCCapabilityDescriptor(CapabilityId,
+                "FIM中值降噪增强","Vision/Enhancement",new[]{
+                    new MPCPortDescriptor("RawPixels",MPCPortDirection.Input,
+                        "byte[]",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Width",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Height",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("EnhancedPixels",MPCPortDirection.Output,
+                        "byte[]",MPCPortKind.Data)
+                })};
+        }
+
+        private Task<object> ExecuteAsync(MRKExecutionContext context,CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            object raw,width,height;
+            if(!context.BoundInputs.TryGetValue("RawPixels",out raw) ||
+                !context.BoundInputs.TryGetValue("Width",out width) ||
+                !context.BoundInputs.TryGetValue("Height",out height) ||
+                !(raw is byte[]) || !(width is int) || !(height is int))
+                throw new InvalidOperationException("vision.enhance.required_typed_inputs");
+            int w=(int)width,h=(int)height;
+            long pixels=(long)w*h;
+            if(w<=0 || h<=0 || pixels>32000000L)
+                throw new ArgumentOutOfRangeException("Width/Height");
+            int bytesPerPixel=_depth==CxVisionPixelDepth.Bits8?1:2;
+            byte[] source=(byte[])raw;
+            if(source.Length!=pixels*bytesPerPixel)
+                throw new ArgumentException("vision.enhance.raw_size_mismatch");
+            // FIMImageBuffer自持有输入快照；FIM滤波返回另一个自持有缓冲。
+            var input=new FIMImageBuffer(w,h,
+                _depth==CxVisionPixelDepth.Bits8?FIMPixelFormat.Gray8:FIMPixelFormat.Gray16,
+                source);
+            FIMImageBuffer filtered=FIMImageFilters.Apply(input,FIMNeighborhoodFilter.Median,
+                _radius,cancellation);
+            byte[] enhanced=filtered.CopyPixels();
+            cancellation.ThrowIfCancellationRequested();
+            context.Data.Return("EnhancedPixels",enhanced);
+            return Task.FromResult((object)enhanced);
+        }
+
+        public bool TryResolve(string id,out MRKResolvedCapability result)
+        {
+            if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
+            { result=_resolved; return true; }
+            if(_fallback!=null)return _fallback.TryResolve(id,out result);
+            result=null;return false;
+        }
+
+        public bool TryGetCapabilityVersion(string id,out string version)
+        {
+            if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
+            { version=ReleaseVersion; return true; }
             if(_fallback!=null)return _fallback.TryGetCapabilityVersion(id,out version);
             version=null;return false;
         }
