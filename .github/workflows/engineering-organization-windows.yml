@@ -30,6 +30,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Engineering full solution build failed' }
           & .\Build\Verify-Structure.ps1
           & .\Build\Verify-OwnerDependencies.ps1
+      - name: B1-B4 real orchestration vertical acceptance
+        shell: pwsh
+        run: |
+          & .\\Output\\Release\\x64\\CxVisual.Tests.ArchitectureSmoke.exe --orchestration-vertical
+          if ($LASTEXITCODE -ne 0) { throw 'Real orchestration vertical acceptance failed' }
       - name: Execute engineering, compatibility and execution regression
         shell: pwsh
         run: |
