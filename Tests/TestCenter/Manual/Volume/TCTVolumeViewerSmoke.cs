@@ -981,12 +981,24 @@ namespace CxVisual.TestCenter.UI
                     "真实工作台具有专业案例保存/重开按钮");
                 AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 Guid sourceId=frame.LastOpenedProfessionalCase.Source.Id;
+                var meshUi=frame.ViewState.Scene3D.Snapshot().Single(
+                    i=>i.Kind==MVI3DSceneKind.Mesh);
+                frame.ViewState.Scene3D.SetOrganization(meshUi.Id,"analysis","persistent-inspection");
+                frame.ViewState.Scene3D.SetOpacity(meshUi.Id,.35);
+                frame.ViewState.Scene3D.Select(meshUi.Id);
                 AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 Check(frame.LastOpenedProfessionalCase.Source.Id==sourceId,
                     "同一案例再次保存保持稳定资产身份并使用MEM存储Token替换");
                 frame.LoadDemo();
                 AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 var restored=frame.LastOpenedProfessionalCase;
+                var savedMeshStyle=frame.ViewState.Scene3D.Snapshot().Single(
+                    i=>i.Kind==MVI3DSceneKind.Mesh);
+                Check(savedMeshStyle.LayerKey=="analysis"&&
+                    savedMeshStyle.GroupKey=="persistent-inspection"&&
+                    Math.Abs(savedMeshStyle.Opacity-.35)<1e-9&&
+                    frame.ViewState.Scene3D.SelectedId==savedMeshStyle.Id,
+                    "MEM工程重开应恢复Scene的专业Mesh图层、组、透明度及选择");
                 Check(restored!=null && frame.Volume.HasOriginalRawData &&
                     frame.MeshDisplayedTriangleCount==48 && frame.LastMeshPlaneFit.SampleCount==9 &&
                     frame.LastMeshPlaneFit.ResultId==restored.Plane.ResultId && frame.ViewState.Scene3D.Count==3,
