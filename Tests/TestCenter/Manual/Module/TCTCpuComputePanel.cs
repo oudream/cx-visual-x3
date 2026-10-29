@@ -12,6 +12,8 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.Vision.Modules;
+using CxVisual.Foundation.Imaging;
+using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -40,6 +42,10 @@ namespace CxVisual.TestCenter.UI
             MaxHeight=145,Visibility=Visibility.Collapsed,CanUserAddRows=false};
         private readonly DataGrid _trace=new DataGrid {IsReadOnly=true,AutoGenerateColumns=true,
             MaxHeight=145,Visibility=Visibility.Collapsed,CanUserAddRows=false};
+        // 复用MPW/MVI的唯一Viewer，只有首个成功的增强Run才创建控件。
+        private readonly ContentControl _previewHost=new ContentControl {
+            Visibility=Visibility.Collapsed,Margin=new Thickness(2,4,2,4)};
+        private MPWImageViewerControl _previewViewer;
         private readonly Button _save=Button("TCT.Cpu.Save","保存/生效Vision参数");
         private readonly Button _load=Button("TCT.Cpu.Load","读取当前Effective");
         private readonly Button _run=Button("TCT.Cpu.Run","执行真实RAW检测");
@@ -50,6 +56,11 @@ namespace CxVisual.TestCenter.UI
         private MEMEngineeringSession _session;
         private CancellationTokenSource _running;
         public CxVisionCpuRun LastReport {get;private set;}
+        /// <summary>仅本次成功Run内有效的FIM增强图像，非持久Artifact。</summary>
+        public FIMImageBuffer PreviewImage
+        {
+            get {return _previewViewer==null?null:_previewViewer.ActiveImage;}
+        }
         public string StatusMessage {get{return _status.Text;}}
         public bool IsRunning {get{return _running!=null;}}
         public TCTCpuComputePanel(MHSConfigService service,Func<bool> hasUnsavedDraft)
@@ -99,6 +110,12 @@ namespace CxVisual.TestCenter.UI
             outer.Children.Add(new TextBlock {Text="缺陷区域（真实CPU结果）",
                 FontWeight=FontWeights.SemiBold});
             outer.Children.Add(_regions);
+            var previewLabel=new TextBlock {
+                Text="FIM增强图像预览（同Run，中值滤波后）",
+                FontWeight=FontWeights.SemiBold};
+            AutomationProperties.SetAutomationId(_previewHost,"TCT.Cpu.EnhancedPreview");
+            outer.Children.Add(previewLabel);
+            outer.Children.Add(_previewHost);
             outer.Children.Add(new TextBlock {Text="MRK / MOC SourceMap真实Trace",
                 FontWeight=FontWeights.SemiBold});
             outer.Children.Add(_trace);
@@ -133,8 +150,14 @@ namespace CxVisual.TestCenter.UI
             _moduleId=id;_provider=null;_moduleVersion=null;_session=null;LastReport=null;
             _regions.ItemsSource=null;_trace.ItemsSource=null;
             _regions.Visibility=Visibility.Collapsed;_trace.Visibility=Visibility.Collapsed;
+            ResetPreview();
             _status.Text=String.IsNullOrEmpty(id)?"请先打开正式Compute配置":
                 "已关联模块 "+id+"；请保存并生效CPU专业参数，然后显式加载Effective。";
+        }
+        private void ResetPreview()
+        {
+            if(_previewViewer!=null)_previewViewer.Clear();
+            _previewHost.Visibility=Visibility.Collapsed;
         }
         public void SetRawInput(string path,int width,int height)
         {
@@ -236,6 +259,7 @@ namespace CxVisual.TestCenter.UI
             if(_running!=null){_status.Text="检测仍在运行";return;}
             LastReport=null;_regions.ItemsSource=null;_trace.ItemsSource=null;
             _regions.Visibility=Visibility.Collapsed;_trace.Visibility=Visibility.Collapsed;
+            ResetPreview();
             try
             {
                 string id=RequireScope();
@@ -269,6 +293,18 @@ namespace CxVisual.TestCenter.UI
                     CxVisionRawCpuRunner.ExecuteEnhancedMeasuredAsync(
                         _session,_provider,filename,w,h,radius,_running.Token),_running.Token);
                 LastReport=report;
+                if(report.EnhancedImage!=null)
+                {
+                    if(_previewViewer==null)
+                    {
+                        _previewViewer=new MPWImageViewerControl {Height=205};
+                        _previewHost.Content=_previewViewer;
+                    }
+                    // 显示FIM过滤结果本身；MVI Session管理图像，
+                    // 不把运行时像素拷贝到第二套自定义WPF图像缓存。
+                    _previewViewer.ShowOriginal(report.EnhancedImage);
+                    _previewHost.Visibility=Visibility.Visible;
+                }
                 _regions.ItemsSource=report.Inspection.Regions.Select((x,i)=>new {
                     No=i+1,Area=x.PixelArea,MinX=x.MinX,MinY=x.MinY,MaxX=x.MaxX,MaxY=x.MaxY
                 }).ToArray();
