@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Core.Modules;
-using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Orchestration
 {
@@ -73,25 +72,13 @@ namespace CxVisual.Mechanism.Orchestration
         /// <summary>Resolver matched; NOT device Ready, Supported or Authorized.</summary>
         public bool RuntimeResolved {get{return CatalogItem!=null&&CatalogItem.RuntimeAvailable;}}
     }
-    public sealed class MOCCapabilityCatalog
+    public sealed partial class MOCCapabilityCatalog
     {
         private readonly IReadOnlyList<MOCCapabilityCatalogItem> _all;
         private readonly IDictionary<string,MOCCapabilityCatalogItem> _ids;
         /// <summary>无需MRK实例的离线只读能力发现。此构造不会解析或执行Provider。</summary>
         public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers)
             : this(providers,(Func<string,bool>)null) { }
-
-        /// <summary>保留旧构造合同；只查询Resolver是否存在，不代表设备Ready或授权。</summary>
-        public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
-            IMRKCapabilityResolver runtime)
-            : this(providers,GetAvailability(runtime)) { }
-
-        private static Func<string,bool> GetAvailability(IMRKCapabilityResolver runtime)
-        {
-            if(runtime==null)throw new ArgumentNullException("runtime");
-            return id => { MRKResolvedCapability action;
-                return runtime.TryResolve(id,out action)&&action!=null; };
-        }
 
         private MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
             Func<string,bool> availability)

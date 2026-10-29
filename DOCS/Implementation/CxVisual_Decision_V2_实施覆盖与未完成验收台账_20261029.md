@@ -79,3 +79,7 @@
 ## 10. P0纯静态来源与原MOL引用闭包（首批实现）
 
 增加`MDCStaticSourceManifest.cs`，只读`MEMProjectSnapshot`及MOL正式Codec，生成Content/Block/Capability子流程来源闭包及稳定指纹；对不完整的专业目录保留Unknown，缺失Content/引用环拒绝。公共V1遍历抽入`MDCLogicTraversal`，D10 Impact与来源提取使用同一实现。真实工程正反例包含V1调用V2、目录版本和子流程变更、缺失Content及环。本产物**不是执行Plan**；`Orchestration.csproj`仍有MRK Runtime引用、未合并27项目；Windows结果待对应SHA/Run核定。
+
+## 11. 静态目录与MRK探测分文件解耦（本阶段仍28项目）
+
+调整原`MOCCapabilityCatalog.cs`为无MRK类型导入的纯目录实现；新增`MOCCapabilityCatalog.Runtime.cs`保存旧`IMRKCapabilityResolver`构造和`GetAvailability`。复用原`MDCDecisionTests.OfflineCatalogAndLegacyResolver`证明旧API/Resolver探测次数、离线目录不触达Runtime的既有行为。没有变更正式程序集名、GUID、工程引用或专业Provider；属于向Decision无Runtime依赖迁移的一项**源码前置措施**，P0工程DAG尚未通过，测试状态以本提交Windows Actions为准。

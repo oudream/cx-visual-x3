@@ -268,3 +268,9 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 当前仍保留28项目和`Orchestration → Runtime`工程引用，**尚未解环或物理合并**。先在过渡程序集增加`MDCStaticSourceManifestBuilder`，只以`MEMProjectSnapshot`与静态Capability目录为输入，追踪V1结构化Logic和V2 MOLWiring子流程引用闭包、真实ContentId/BlockId、原Logic Aspect Payload摘要及目录指纹，不建立第二棵Graph/第二套Compiler/可执行Plan。它用于**隔离静态编译输入的来源合同**，不能替代现有MOC编译器。
 
 同时抽取共用的`MDCLogicTraversal.Flatten`，供现有D10工程影响分析和本次静态来源提取共同复用，避免在Decision内部维护两份V1树遍历。此修改不触碰Core MOL定义/Serializer、不迁移MRK执行合同、不新增项目引用。后续迁移时：1）单独将该纯静态源提取与静态编译组合成完整不可变Plan；2）独立验证Branch/Loop/Foreach/Try/State/Named Ports的语义保真；3）由MRK Owner添加执行绑定适配；4）移走原MOC对MRK的依赖；5）最后合并Logic+Orchestration改为Decision并保留兼容期验收。不可把“静态来源清单”误报为P0纯Plan或项目融合完成。
+
+## P0源码实际解耦增量：静态能力目录与MRK探测适配分文件
+
+原`MOCCapabilityCatalog.cs`同时声明静态专业`MOCCapabilityDescriptor`、只读目录及`IMRKCapabilityResolver`运行探测构造。现在采用**GoF Adapter/兼容外观 + C# partial 保留二进制类型身份**：`MOCCapabilityCatalog.cs`移除`using CxVisual.Mechanism.Runtime.Execution`，保留纯离线Provider描述、目录索引、Search/Find/Module投影；新增`MOCCapabilityCatalog.Runtime.cs`容纳原`MOCCapabilityCatalog(providers,IMRKCapabilityResolver)`与`GetAvailability`。方法签名与`AvailabilityKnown/RuntimeAvailable`既有语义不变，目录仍不是第二套MFM注册中心，也不代表现场授权。
+
+**这是源码依赖拆离而非程序集依赖解除**：两个partial目前仍编译在原Orchestration.dll中；`.csproj`仍引用Runtime，MOCCompiler/Build/Release/Trace与MRK的其他依赖没有动。后续独立Decision工程前，必须改由Host持有运行探测桥接器，并对`new MOCCapabilityCatalog(providers,resolver)`消费者逐一兼容迁移；不能只移动静态半文件并误称依赖环消失。Windows`--decision`原有`OfflineCatalogAndLegacyResolver`会同时证明离线无探测和旧构造调用次数/值不退化。

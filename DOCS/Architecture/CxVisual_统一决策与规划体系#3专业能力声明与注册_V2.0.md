@@ -189,3 +189,7 @@ sequenceDiagram
 ## 12. 一次声明的签名一致性安全门禁（阶段性实现）
 
 为已存在的`MOCCapabilityDescriptor`与`MRKResolvedCapability`添加`MOCBindingContractInspector`显式一致性检查：静态MPC端口标识、必填与CLR类型不一致时报告结构化错误，不再只能依靠执行时抛类型错误；专业语义TypeId的映射由Host/专业Owner显式提供，并拒绝通过宽泛`object`输入伪称已验证。这是**运行绑定侧的检查器**，不是新的属性注册器，也不是统一配置Schema。对现有Vision测量Provider，`Inspection`输入的MPC语义类型与MRK宽泛`object`目前只能被标为`Unknown`，须在后续Provider兼容迁移中按实际调用方收敛。离线发现与Runtime解析依然分层，真正Attribute/Fluent统一注册仍未完成。
+
+## 13. 统一只读能力目录的静态/运行探测源码分离（P0过渡实装）
+
+`MOCCapabilityCatalog.cs`中仅有MPC端口、MFM模块关联、Capability描述与静态目录；原Resolver探测构造保留同一公开类型但实现在独立`MOCCapabilityCatalog.Runtime.cs`中，以避免让离线元数据源码直接使用`MRKResolvedCapability`。该拆分不增加新的Provider接口、不改变现有专业注册方式、不查询设备健康。真实`RuntimeAvailable`仍只是旧MRK Resolver探测结果；编辑期合法性和自动首选必须使用Decision三态判断及Host提供的有效证据。完整27项目融合仍未进行。

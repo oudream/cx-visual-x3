@@ -381,3 +381,14 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-73 | 旧D10影响分析仍使用同一V1 Core遍历而不丢Source/Block定位，默认回归不退化 |
 
 证据等级仅为Windows自动构建与Core真实软件测试；不代表已经具有完整纯静态Plan、MRK Binder或CT/HIL。测试通过后才可在实施台账记录对应Run。
+
+### P0目录源码与MRK探测兼容拆分
+
+| Case | 断言 |
+|---|---|
+| MDC-74 | `MOCCapabilityCatalog.cs`静态类定义/搜索无需导入MRK.Execution类型 |
+| MDC-75 | `MOCCapabilityCatalog.Runtime.cs`仍保留原`(providers,IMRKCapabilityResolver)`构造及AvailabilityKnown语义 |
+| MDC-76 | `OfflineCatalogAndLegacyResolver`离线探测数为0、旧构造调用次数和可用结果与迁移前一致 |
+| MDC-77 | `MDCStaticSourceManifest`、D10和Studio/ModuleCenter回归不因partial源码拆分而变化 |
+
+以上是**源码组织/兼容性阶段**，不得借此宣称Orchestration.csproj→Runtime的引用已消失。实际结果按本批固定SHA的Windows CI登记。
