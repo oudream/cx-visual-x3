@@ -283,6 +283,28 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                // 统计页切入时自动计算当前原始灰度，不需手动点击按钮。
+                TabControl autoStatsTabs=FindControl<TabControl>(frame,
+                    "TCT.Imaging.SecondaryTabs");
+                autoStatsTabs.SelectedIndex=1;
+                window.UpdateLayout();
+                System.Diagnostics.Stopwatch autoHistogramWait=
+                    System.Diagnostics.Stopwatch.StartNew();
+                while(frame.HistogramPlot.PointCount!=256 &&
+                    autoHistogramWait.ElapsedMilliseconds<10000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                if(frame.HistogramPlot.PointCount!=256 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
+                    throw new InvalidOperationException(
+                        "统计页未自动生成256档直方图或改写了源像素");
+                autoStatsTabs.SelectedIndex=0;
                 // 用户反馈：窗位、灰阶不能只存在底层API；必须通过可见WPF入口生效。
                 TabControl displayTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
                 displayTabs.SelectedIndex=1;
@@ -291,12 +313,14 @@ namespace CxVisual.TestCenter.UI
                 TextBox windowCenter=FindControl<TextBox>(frame,"TCT.Imaging.WindowCenter");
                 Slider widthSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowWidthSlider");
                 Slider centerSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowCenterSlider");
+                TextBlock windowRange=FindControl<TextBlock>(frame,"TCT.Imaging.WindowRange");
                 CheckBox roiWindow=FindControl<CheckBox>(frame,"TCT.Imaging.WindowRoi");
                 CheckBox windowEnabled=FindControl<CheckBox>(frame,"TCT.Imaging.WindowEnabled");
                 Button windowApply=FindControl<Button>(frame,"TCT.Imaging.Window");
                 Button autoWindow=FindControl<Button>(frame,"TCT.Imaging.AutoWindow");
                 if(windowWidth==null||windowCenter==null||windowApply==null||autoWindow==null||
-                   widthSlider==null||centerSlider==null||roiWindow==null||windowEnabled==null)
+                   widthSlider==null||centerSlider==null||roiWindow==null||windowEnabled==null||
+                   windowRange==null||!windowRange.Text.Contains("65535"))
                     throw new InvalidOperationException("窗宽/窗位缺少数字与真实WPF滑条");
                 windowWidth.Text="15";
                 windowCenter.Text="8.5";
@@ -397,7 +421,8 @@ namespace CxVisual.TestCenter.UI
                     FIMPixelFormat.Gray8,new byte[]{0,255});
                 frame.SetOriginal(gray8WindowProbe);
                 if(windowWidth.Text!="255" || windowCenter.Text!="127.5" ||
-                   widthSlider.Maximum!=255 || centerSlider.Maximum!=255)
+                   widthSlider.Maximum!=255 || centerSlider.Maximum!=255 ||
+                   !windowRange.Text.Contains("0～255"))
                     throw new InvalidOperationException("Gray8载入后仍沿用Gray16默认窗范围");
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 frame.Viewer.SavePng(file);
