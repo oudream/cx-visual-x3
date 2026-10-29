@@ -102,6 +102,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             RequestRender();
         }
 
+        public int SceneMeshUploadCount {get;private set;}
         public int SceneMeshCount {get{return _sceneMeshes.Count;}}
         public int SceneMeshTriangleCount
         {
@@ -166,6 +167,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _gl.BindVertexArray(item.VertexArray);
             _gl.BindBuffer(0x8892,item.Buffer);
             UploadFloats(item.Vertices);
+            SceneMeshUploadCount++;
             _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
             _gl.EnableVertexAttribArray(0);
         }
