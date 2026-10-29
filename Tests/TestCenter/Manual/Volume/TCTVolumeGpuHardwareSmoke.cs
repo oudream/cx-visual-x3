@@ -129,6 +129,20 @@ namespace CxVisual.TestCenter.UI
                 gl.ClearSurfaceMesh();
                 if(gl.SurfaceMeshTriangleCount!=0)
                     throw new InvalidOperationException("GPU Mesh清理后仍保留三角面引用。");
+                Guid gpuMeshA=Guid.NewGuid(),gpuMeshB=Guid.NewGuid();
+                gl.SetSceneMesh(gpuMeshA,projected,.35);
+                gl.SetSceneMesh(gpuMeshB,projected,.85);
+                if(gl.SceneMeshCount!=2||gl.SceneMeshTriangleCount!=8)
+                    throw new InvalidOperationException("真实GPU双Mesh必须有两个独立显存资源实例。");
+                BitmapSource grouped=frame.CaptureGpuFrameForTest();
+                if(FrameDifference(pixels,grouped)<100)
+                    throw new InvalidOperationException("GPU两个叠加Mesh未产生可观察像素差异。");
+                gl.RemoveSceneMesh(gpuMeshA);
+                if(gl.SceneMeshCount!=1||gl.SceneMeshTriangleCount!=4)
+                    throw new InvalidOperationException("删除一个GPU Mesh不得清除另一个VBO。");
+                gl.ClearSceneMeshes();
+                if(gl.SceneMeshCount!=0||gl.SceneMeshTriangleCount!=0)
+                    throw new InvalidOperationException("清理所有GPU Scene Mesh后仍留显示缓存。");
                 string path=Environment.GetEnvironmentVariable("CXVISUAL_GPU_UI_SCREENSHOT");
                 if(string.IsNullOrEmpty(path))
                     path=Path.Combine(Path.GetTempPath(),"CxVisual-GPU-Hardware-Raymarch.png");
