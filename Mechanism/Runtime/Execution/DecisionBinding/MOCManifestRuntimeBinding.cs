@@ -91,15 +91,25 @@ namespace CxVisual.Mechanism.Orchestration
                 .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
             IMRKVersionedCapabilityResolver versioned =
                 resolver as IMRKVersionedCapabilityResolver;
+            // Snapshot Host pinning with ordinal capability IDs. A caller may
+            // provide a case-insensitive or mutable dictionary; neither may
+            // reinterpret a registered professional capability identity.
+            Dictionary<string,string> requiredVersions=null;
             if(expectedCapabilityVersions!=null)
             {
                 if(versioned==null)
                     throw new InvalidOperationException("moc.bind.versioned_resolver_required");
-                if(expectedCapabilityVersions.Count!=capabilityIds.Length ||
-                    capabilityIds.Any(id=>!expectedCapabilityVersions.ContainsKey(id)) ||
-                    expectedCapabilityVersions.Any(x=>x.Key==null ||
-                        string.IsNullOrWhiteSpace(x.Value) || x.Value.Length>128 ||
-                        x.Value.Any(char.IsControl)))
+                requiredVersions=new Dictionary<string,string>(StringComparer.Ordinal);
+                foreach(var expected in expectedCapabilityVersions)
+                {
+                    if(expected.Key==null || string.IsNullOrWhiteSpace(expected.Value) ||
+                        expected.Value.Length>128 || expected.Value.Any(char.IsControl) ||
+                        requiredVersions.ContainsKey(expected.Key))
+                        throw new InvalidOperationException("moc.bind.version_pin_incomplete");
+                    requiredVersions.Add(expected.Key,expected.Value);
+                }
+                if(requiredVersions.Count!=capabilityIds.Length ||
+                    capabilityIds.Any(id=>!requiredVersions.ContainsKey(id)))
                     throw new InvalidOperationException("moc.bind.version_pin_incomplete");
             }
             var pinnedVersions=new Dictionary<string,string>(StringComparer.Ordinal);
@@ -117,8 +127,8 @@ namespace CxVisual.Mechanism.Orchestration
                     continue; // Legacy versionless providers keep the old behavior.
                 }
                 string required;
-                if(expectedCapabilityVersions!=null &&
-                    (!expectedCapabilityVersions.TryGetValue(capabilityId,out required) ||
+                if(requiredVersions!=null &&
+                    (!requiredVersions.TryGetValue(capabilityId,out required) ||
                      !StringComparer.Ordinal.Equals(actualVersion,required)))
                     throw new InvalidOperationException(
                         "moc.bind.provider_version_mismatch:"+capabilityId);
