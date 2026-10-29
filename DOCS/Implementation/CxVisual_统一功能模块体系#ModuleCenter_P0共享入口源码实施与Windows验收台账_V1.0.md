@@ -244,7 +244,7 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 
 - [真实Connector测试页 `e6f89e6`](https://github.com/oudream/cx-visual-x3/commit/e6f89e6748a9deeb64a896704ec879ba9f5a04a6)、[统一模块分页 `f7886c5`](https://github.com/oudream/cx-visual-x3/commit/f7886c57b5a34af7e0822c9c367ca97675f4a286)：从正式MHS Effective读取严格1 Channel/1 Protocol，装配原MCNConnectorModule、FTRVirtualChannel以及MPALengthFrameProtocol，实际发送CRC长度帧并从虚拟Peer解码回传；记录Session、完成次数、故意丢响应超时及Stop/Restart。
 - [Connector UIA `aeea460`](https://github.com/oudream/cx-visual-x3/commit/aeea4608d4f3c627a04aef345e694bbfa355ed5b)：通过真实WPF Invoke/Value/Toggle控件验证未Start拒绝、成功回环、故障超时、恢复、Stop后的拒绝与重启。不以发送ACK代表真实设备业务完成。
-- [独立Windows验收工作流](https://github.com/oudream/cx-visual-x3/actions/workflows/testcenter-connector-loop-ui-windows.yml)：本段写入时**未核实最终PASS**，须按固定SHA检查真实Workflows和UIA报告，不提前列已验收。
+- [独立Windows WPF UIA #40809446080](https://github.com/oudream/cx-visual-x3/actions/runs/40809446080)，固定提交 `a6532a4d5ad19079b2e40f8368f3db559eab034f`：**Success**，真正的TestCenter依赖编译和自动化控件操作、MCN/FTR/MPA长度帧回环、丢响应超时、停止后的发送拒绝及恢复重连全部通过；此处 Virtual Peer 不是实机HIL。
 - **使用路径**：TestCenter → 专有测试 → 模块测试 → Connector → Virtual规约回环。正式FCM设置Channel=Virtual、Protocol=LengthFrame，保存/生效；运行仅为本机软件Peer测试，不支持Modbus TCP在Virtual Channel下伪装真实设备。PointTable/DataMapping可在原正式配置页编辑和检验，但本专项不宣称其运行数据Owner完整贯通。
 
 ## 18. 五类模块真实闭环状态与剩余不可替代项
@@ -254,7 +254,7 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 | Compute | CPU RAW/MHS Effective/MEM/MOC/MRK、真实结果和Trace、WPF UIA | RAW/结果持久化自动重放、通用GPU/AI/CT等专业Provider全类、工业数据精度/性能 |
 | Simulation | 虚拟轴Step经MRK推进，虚拟时间、故障拒绝/恢复，WPF UIA | 实时/加速/回放、多设备场景、确定性快照等全规格 |
 | Service | MLC进程内生命周期、真实请求/响应/幂等，WPF UIA | HTTP/RPC部署、外部MES/ERP、业务认证及长期服务验收 |
-| Connector | 正式MHS/MCN/FTR/MPA软件回环代码及UIA测试 | 当前专项最终PASS待查；真实物理Channel/PointTable/MDS完整贯通及HIL |
+| Connector | 正式MHS/MCN/FTR/MPA软件回环，WPF UIA独立Windows **Success** | 物理Channel/PointTable/MDS真实运行映射及现场HIL尚未验收 |
 | Driver | 五类FCM/MFM配置、Driver接口声明可查 | **专业SDK实机控制与采集、设备完成语义、HIL、安全联锁和长稳**；无实机不能宣称达成 |
 
 **工作原则**：不把“有页面、编译通过、Virtual回应或流程候选”误写成工业设备执行完成。G1专项与工业G2/G3必须分别取证。
