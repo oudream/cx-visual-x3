@@ -1128,6 +1128,16 @@ namespace CxVisual.TestCenter.UI
                     frame.MeshDisplayedTriangleCount==48 && frame.LastMeshPlaneFit.SampleCount==9 &&
                     frame.LastMeshPlaneFit.ResultId==restored.Plane.ResultId && frame.ViewState.Scene3D.Count==3,
                     "真实WPF重开恢复原值、Mesh、稳定Measurement引用与三对象Scene");
+                // 专业API不依赖TestCenter窗口：MEM重开后以同一物理ROI继续原值分析。
+                var reopenedSliceRoi=FVOSliceImageBuilder.RectangleToPhysical(
+                    frame.Volume,6,6,6,FVOSlicePlane.XY,5,5,6,6);
+                var continuedCase=restored.RecomputeWithSliceRectangle(root,reopenedSliceRoi,
+                    .49,.51,System.Threading.CancellationToken.None);
+                Check(continuedCase.Plane.ResultId!=restored.Plane.ResultId&&
+                    continuedCase.Plane.SampleCount==restored.Plane.SampleCount&&
+                    continuedCase.Source.Signature==restored.Source.Signature&&
+                    continuedCase.RoiSignature==restored.RoiSignature,
+                    "Studio/Headless可在重开后复用物理切片ROI与CT3D公共API继续编辑");
                 Guid planeId=restored.Plane.ResultId;
                 AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 Check(frame.LastMeshPlaneFit.ResultId==planeId,"重复重开不改变结果身份");
