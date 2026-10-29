@@ -217,3 +217,13 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`9cab710`](https://github.com/oudream/cx-visual-x3/commit/9cab710282c37077ead2e27510569b2c3a61e124)在既有`CT3DAnalysisPersistence`的V2制品Kind判别下增加圆柱写入/读回/使用原FNU计算复核并恢复原ResultId；未新建外部Repository。
 - [`d9a7bb0`](https://github.com/oudream/cx-visual-x3/commit/d9a7bb0169cbd5eab0b5bf939cf371f45c155c98)添加圆柱完整RAW→Surface→Feature→Measurement→MEM Save/Open→同源复算的专项断言；复算保持量值、更新Feature身份。
 - **数值边界**：当前轴向由用户/算法明确给定，边界采样仍混入端面，不将此版本冒充完整圆柱侧面ROI分离或工业级计量。固定SHA Windows测试在查询时`queued`，G1/G2须以随后日志确认。
+
+
+### 10.12 A包专业结果组合、来源治理与WPF复用（本轮增量）
+
+- [`ec60c69`](https://github.com/oudream/cx-visual-x3/commit/ec60c693b4cec86ed337ca3f1ad8541ad8180be1)修正原位复算后存在多个内容寻址制品时旧测试对`*.analysis`调用`Single()`的错误：记录首次提交制品的实际路径，旧结果仍可精确损坏/缺失反证。对应[Unified Runtime 40862439377](https://github.com/oudream/cx-visual-x3/actions/runs/40862439377)为**SUCCESS**，仅证明该固定SHA的相应工作流。
+- [`44aa27a`](https://github.com/oudream/cx-visual-x3/commit/44aa27a64dc73e1693f5964198ea8c99c4ae3e8c)、[`849bc2a`](https://github.com/oudream/cx-visual-x3/commit/849bc2a71e7f40162201eb1a0b2ae0addc3faf6d)：原`CT3DAnalysisCase`增加稳定`RoiSignature`和`ParameterSignature`（来源签名、算法版本、参数、物理ROI或圆柱轴），不是随机ResultId，重算和保存重开保持一致；原值/ROI改变后签名不同。配合[`eb455dd`](https://github.com/oudream/cx-visual-x3/commit/eb455ddf3def801050d131e8422db4f7d66f0c6f)实现编辑局部Mesh ROI或圆柱轴向后从RAW形成新Feature，[`32e3685`](https://github.com/oudream/cx-visual-x3/commit/32e3685196e49908e250d70a2c767b2812ae2748)增反证。
+- [`bf4dd06`](https://github.com/oudream/cx-visual-x3/commit/bf4dd06341c4ef96195e48faed260a9e1a7e6873)新增`CT3DAnalysisPersistence.CommitAll`，多Case一次MEM Edit事务整体登记、来源逐一校验、单工程Revision与既有Undo；[`869c100`](https://github.com/oudream/cx-visual-x3/commit/869c100d7ecf7cbfd2cd244b3b9cd967704412a4)增原子提交、重复Owner、过期Revision及整体Undo/Redo回归。制品仍在事务前发布，可能留完整未引用文件，不能虚称跨磁盘原子提交。
+- [`02f8ee6`](https://github.com/oudream/cx-visual-x3/commit/02f8ee6833e15573a41ee8c2bf48b74396612d5d)和[`f0a1919`](https://github.com/oudream/cx-visual-x3/commit/f0a1919398ca80e5b519be1eb8e3366838f3ee58)为每条`CT3DFeatureMeasurement`增加算法版本、参数/ROI签名、Frame和来源完整信息，并验证三类Feature。
+- [`ffda2b2`](https://github.com/oudream/cx-visual-x3/commit/ffda2b237c8a78240cab05ab6e85c121ffaf678e)、[`b186992`](https://github.com/oudream/cx-visual-x3/commit/b18699290c146aa581060dce21663af1ba176ec7)、[`03b9091`](https://github.com/oudream/cx-visual-x3/commit/03b9091c08ee620cbabd50d01e91e894853860df)：原TestCenter复用正式圆柱Case保存重开、MVI/MPW投影、原值计算和球/圆柱切换失效；三维真实WPF Smoke增加显示/旧测量清理断言。它是可运行验收入口，不冒充全量Studio多Case工作台。
+- 最新工程为26项目，R5仍为唯一总纲；工业Surface侧壁分离与计量认证、独立子元素持久ID、多案例完整UI、旧Schema1真实外部样本及最新固定SHA全绿仍未闭合。
