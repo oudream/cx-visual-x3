@@ -1,0 +1,82 @@
+name: CxVisual CT3D B Windows G1-G3
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Geometry/**'
+      - 'Foundation/Volume/**'
+      - 'Mechanism/Visual/Volume/**'
+      - 'Mechanism/Presentation.Wpf/Volume/**'
+      - 'Professional/CT3D/**'
+      - 'Tests/ArchitectureSmoke/Integration/CT3D*'
+      - 'Tests/ArchitectureSmoke/Integration/MVIVolumeViewTests.cs'
+      - 'Tests/TestCenter/Manual/Volume/**'
+      - '.github/workflows/ct3d-b-windows.yml'
+
+jobs:
+  ct3d-volume:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Verify engineering owner boundaries
+        shell: pwsh
+        run: |
+          ./Build/Verify-Structure.ps1
+          ./Build/Verify-OwnerDependencies.ps1
+      - name: Restore WPF and Studio dependencies
+        shell: pwsh
+        run: |
+          & msbuild Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter Restore failed' }
+          & msbuild Applications/Studio/CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Studio Restore failed' }
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          & msbuild CxVisual.Unified.sln /t:Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw 'CT3D Release x64 G1 build failed' }
+      - name: Headless FVO MVI CT3D G2
+        shell: pwsh
+        run: |
+          & ./Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --volume
+          if ($LASTEXITCODE -ne 0) { throw 'CT3D Headless G2 failed' }
+      - name: Real WPF four-view and professional Scene G3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force Output/Volume-UI | Out-Null
+          $env:CXVISUAL_VOLUME_UI_SCREENSHOT=Join-Path (Get-Location) 'Output/Volume-UI/ct3d-b.png'
+          $errorFile=Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Volume-Viewer-Error.txt'
+          if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
+          $exe=(Resolve-Path './Output/Release/x64/CxVisual.TestCenter.exe').Path
+          $process=Start-Process -FilePath $exe -ArgumentList '--volume-viewer-smoke' -PassThru
+          try {
+            if (-not $process.WaitForExit(120000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'CT3D WPF G3 timeout'
+            }
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'CT3D WPF G3 failure'
+            }
+          }
+          finally { $process.Dispose() }
+          if (-not (Test-Path $env:CXVISUAL_VOLUME_UI_SCREENSHOT)) {
+            throw 'CT3D WPF G3 actual screenshot missing'
+          }
+      - name: Build Debug x64
+        shell: pwsh
+        run: |
+          & msbuild CxVisual.Unified.sln /t:Build /m:1 /nr:false /p:Configuration=Debug /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw 'CT3D Debug x64 G1 build failed' }
+      - name: Upload actual Windows WPF evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ct3d-b-wpf-${{ github.sha }}
+          path: Output/Volume-UI/*.png
+          if-no-files-found: warn
+          retention-days: 7
