@@ -53,3 +53,13 @@
   - [Engineering Organization 40862863667](https://github.com/oudream/cx-visual-x3/actions/runs/40862863667)：工程组织构建及回归 **Success**。
   - [Module Center CPU RAW 40862863681](https://github.com/oudream/cx-visual-x3/actions/runs/40862863681)：专业 CPU RAW 端到端 **Success**。
 - 以上通过不替代持续运行、实际设备、安全联锁/HIL 或所有 CI 的验收。
+
+## 7. P1：不可变 Plan 载荷进入唯一 MRK 编译器（2026-10-29）
+
+- 实际源码提交：[687b58f5db77](https://github.com/oudream/cx-visual-x3/commit/687b58f5db775b7f156061ecbc888f4c460f2373)；C# 参数重名的首次 Windows 编译问题已在 [7cbbdad5b77](https://github.com/oudream/cx-visual-x3/commit/7cbbdad5b7730ba083c01b901711e1da42717bcc) 修复。
+- 新增 `Runtime/Execution/DecisionBinding/MOCPlanLogicReader.cs`：使用 `MDCDeclarativePlan.Contents` 的 `CopyCanonicalLogicPayload()` 恢复既有 Core MOL V1/V2 载荷；完整闭包仅按 ContentId 只读查找，遇到计划外 Content 明确拒绝，不创建第二套编辑 Graph。
+- `MOCEngineeringCompiler` 增加内部 Plan 入口；V1 根/嵌套执行、V2 根/嵌套编排、数据连接、导出和 SourceMap 所需要的 MOL 定义统一从 Plan Reader 取得。**不再在 Plan 路径二次读取 snapshot 中的 Logic 载荷**。原 MOC 直接编译 API 保留兼容。
+- `MOCManifestRuntimeBinding.Bind(project,plan,...)` 先校验工程修订及能力目录指纹，在静态合同验证和版本栅栏后调用新 Plan 入口；`Bind(project,manifest,...)` 兼容原路径。
+- 真实 `MEMProjectSnapshot` 目前仍用于项目和 Content 的身份、授权引用、StorageRootId、SourceMap 对象地址；它不再充当 Plan 入口的逻辑载荷真源。这是**来源与执行绑定解耦**，尚不意味着无工程上下文的设备独立执行包或进程外发布已完成。
+- ArchitectureSmoke 新增对 V1 动态 Loop、V2 自由连接、MRK PlanId 与 SourceMap 一致性、计划载荷防御性复制、工程修改后失效的用例。动态 Loop/Foreach 仍归原 MRK 编译与执行机制。
+- 真实 Windows 验收以固定提交 SHA 对应的 GitHub Actions 为准；提交记录不能替代 CI Success。
