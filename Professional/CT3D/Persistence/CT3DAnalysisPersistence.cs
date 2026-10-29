@@ -10,7 +10,7 @@ using CxVisual.Mechanism.Core;
 
 namespace CxVisual.Professional.CT3D
 {
-    /// <summary>MEM专业Aspect + 内容寻址外部Mesh；工程编辑/保存/Undo仍完全由MEM执行。</summary>
+    /// <summary>MEM专业Aspect + 内容寻址专业结果制品；工程编辑/保存/Undo仍完全由MEM执行。</summary>
     public static class CT3DAnalysisPersistence
     {
         public const string ProviderId="ct3d.analysis.case";
@@ -44,7 +44,7 @@ namespace CxVisual.Professional.CT3D
                     payload=memory.ToArray();
                 }
                 cancellation.ThrowIfCancellationRequested();
-                engineering.Edit("登记三维Mesh与平面分析结果",expectedRevision,edit=>
+                engineering.Edit("登记三维专业分析结果",expectedRevision,edit=>
                 {
                     edit.SetAspect(owner,new MPMAspect(MPMAspectKind.Data,ProviderId,Schema,payload,true));
                     return true;
@@ -85,7 +85,13 @@ namespace CxVisual.Professional.CT3D
 
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
         {
-            w.Write(Magic);w.Write(Schema);w.Write(a.AlgorithmVersion);w.Write(a.Source.Signature);
+            // 元数据Aspect保持Schema1；结果制品V2增加明确种类，读取仍兼容已有V1 Mesh/平面。
+            w.Write(Magic);w.Write(2);w.Write((int)a.Kind);w.Write(a.AlgorithmVersion);w.Write(a.Source.Signature);
+            if(a.Kind==CT3DAnalysisKind.SurfaceSphere)
+            {
+                WriteSphereResult(w,a,cancellation);
+                return;
+            }
             w.Write(a.Mesh.ResultId.ToByteArray());w.Write(a.Plane.ResultId.ToByteArray());
             w.Write(a.Mesh.Threshold);w.Write(a.Mesh.TouchesVolumeBoundary);
             w.Write(a.MaximumTriangles);w.Write(a.MaxPlanarityRatio);w.Write(a.MaxInPlaneCondition);
@@ -107,9 +113,16 @@ namespace CxVisual.Professional.CT3D
 
         private static CT3DAnalysisCase ReadResult(BinaryReader r,CT3DAssetReference source,CancellationToken cancellation)
         {
-            if(r.ReadInt32()!=Magic||r.ReadInt32()!=Schema||CT3DArtifactFiles.ReadText(r,64)!="ct3d.voxel-mesh-plane/1"||
+            if(r.ReadInt32()!=Magic)throw new InvalidDataException("三维结果头无效。");
+            int version=r.ReadInt32();
+            if(version!=1&&version!=2)throw new InvalidDataException("三维结果版本不受支持。");
+            var kind=version==1?CT3DAnalysisKind.MeshPlane:(CT3DAnalysisKind)r.ReadInt32();
+            if(!Enum.IsDefined(typeof(CT3DAnalysisKind),kind))throw new InvalidDataException("三维结果种类无效。");
+            string method=kind==CT3DAnalysisKind.MeshPlane?"ct3d.voxel-mesh-plane/1":"ct3d.surface-sphere/1";
+            if(CT3DArtifactFiles.ReadText(r,64)!=method||
                 CT3DArtifactFiles.ReadText(r,64)!=source.Signature)
                 throw new InvalidDataException("三维结果算法版本或来源签名不一致。");
+            if(kind==CT3DAnalysisKind.SurfaceSphere)return ReadSphereResult(r,source,cancellation);
             Guid meshId=new Guid(r.ReadBytes(16)),planeId=new Guid(r.ReadBytes(16));
             if(meshId==Guid.Empty||planeId==Guid.Empty)throw new InvalidDataException("三维结果身份无效。");
             float threshold=r.ReadSingle();bool boundary=r.ReadBoolean();int budget=r.ReadInt32();
@@ -143,6 +156,57 @@ namespace CxVisual.Professional.CT3D
             cancellation.ThrowIfCancellationRequested();
             return new CT3DAnalysisCase(source,mesh,plane,roi,planarity,condition,budget);
         }
+
+        private static void WriteSphereResult(BinaryWriter w,CT3DAnalysisCase analysis,CancellationToken cancellation)
+        {
+            var surface=analysis.Surface;var sphere=analysis.Sphere;
+            w.Write(surface.ResultId.ToByteArray());w.Write(sphere.ResultId.ToByteArray());
+            w.Write(surface.Threshold);w.Write(surface.TouchesVolumeBoundary);
+            w.Write(surface.SampleStep);w.Write(surface.MaximumPoints);w.Write(sphere.MaximumConditionNumber);
+            w.Write(surface.Count);
+            for(int i=0;i<surface.Count;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                var point=surface.Points[i];w.Write(point.X);w.Write(point.Y);w.Write(point.Z);
+            }
+            w.Write(sphere.SampleCount);
+            foreach(double value in SphereValues(sphere))w.Write(value);
+        }
+
+        private static CT3DAnalysisCase ReadSphereResult(BinaryReader r,CT3DAssetReference source,
+            CancellationToken cancellation)
+        {
+            Guid surfaceId=new Guid(r.ReadBytes(16)),sphereId=new Guid(r.ReadBytes(16));
+            float threshold=r.ReadSingle();bool boundary=r.ReadBoolean();
+            int step=r.ReadInt32(),maximum=r.ReadInt32();double condition=r.ReadDouble();
+            if(surfaceId==Guid.Empty||sphereId==Guid.Empty||float.IsNaN(threshold)||float.IsInfinity(threshold)||
+                step<1||maximum<6||maximum>10000)
+                throw new InvalidDataException("Surface/球结果身份或参数无效。");
+            int count=ReadCount(r,maximum,24);
+            var points=new List<CxVisual.Foundation.Volume.FVOPhysicalPoint3D>(count);
+            for(int i=0;i<count;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                points.Add(new CxVisual.Foundation.Volume.FVOPhysicalPoint3D(r.ReadDouble(),r.ReadDouble(),r.ReadDouble()));
+            }
+            var surface=new CT3DSurfaceSamples(points,threshold,source.SpatialFrame,boundary,
+                source.SourceRef,source.Revision,step,maximum,surfaceId);
+            var sphere=CT3DSurfaceSphereAnalysis.FitSphere(surface,condition,sphereId);
+            if(r.ReadInt32()!=sphere.SampleCount)throw new InvalidDataException("球结果样本数不一致。");
+            foreach(double expected in SphereValues(sphere))
+            {
+                double actual=r.ReadDouble();
+                if(double.IsNaN(actual)||double.IsInfinity(actual)||Math.Abs(actual-expected)>Math.Max(1e-10,Math.Abs(expected)*1e-10))
+                    throw new InvalidDataException("保存的毫米球参数或残差与复算不一致。");
+            }
+            if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException("球制品含多余数据。");
+            cancellation.ThrowIfCancellationRequested();
+            return new CT3DAnalysisCase(source,surface,sphere);
+        }
+
+        private static double[] SphereValues(CT3DSphereFitResult sphere)
+        {return new[]{sphere.Center.X,sphere.Center.Y,sphere.Center.Z,sphere.RadiusMm,
+            sphere.RmsResidualMm,sphere.MaxAbsoluteResidualMm,sphere.ConditionNumber};}
 
         private static int ReadCount(BinaryReader r,int maximum,int stride)
         {

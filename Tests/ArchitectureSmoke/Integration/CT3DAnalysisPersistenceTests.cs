@@ -14,7 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             string folder=Path.Combine(Path.GetTempPath(),"CxVisual-CT3D-V04-"+Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
-            try{VerifyRoundtrip(folder);}
+            try{VerifyRoundtrip(folder);VerifySphere(Path.Combine(folder,"sphere"));VerifySchema1Compatibility(folder);}
             finally{Directory.Delete(folder,true);}
             Console.WriteLine("PASS CT3D V04 MEM source/hash/frame, mesh/plane save reopen recompute, cancellation and corruption");
         }
@@ -111,6 +111,86 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(!Directory.GetFiles(folder,"*.tmp",SearchOption.AllDirectories).Any(),"失败不遗留临时制品");
         }
         private static void Check(bool value,string message){if(!value)throw new InvalidOperationException(message);}
+        private static void VerifySphere(string folder)
+        {
+            Directory.CreateDirectory(folder);
+            const int n=24;var bytes=new byte[n*n*n*4];
+            for(int z=0;z<n;z++)for(int y=0;y<n;y++)for(int x=0;x<n;x++)
+            {
+                double dx=x-11.5,dy=y-11.5,dz=z-11.5;
+                float scalar=dx*dx+dy*dy+dz*dz<=36?1800.25f:0;
+                Array.Copy(BitConverter.GetBytes(scalar),0,bytes,4*(x+y*n+z*n*n),4);
+            }
+            File.WriteAllBytes(Path.Combine(folder,"sphere.raw"),bytes);
+            var frame=new FVOVolumeSpatialFrame(.5,.5,.5,100,200,300,new double[]{1,0,0,0,1,0,0,0,1},true);
+            var info=new FVORawVolumeInfo(n,n,n,.5f,.5f,.5f,FVORawVoxelFormat.Float32,"sphere.raw");
+            var source=CT3DAssetReference.Capture(folder,"sphere.raw",info,frame,3,CancellationToken.None);
+            var analysis=CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,4000,CancellationToken.None,5000000);
+            Check(analysis.Kind==CT3DAnalysisKind.SurfaceSphere&&analysis.Mesh==null&&analysis.Plane==null&&
+                analysis.Surface.Count>100&&analysis.Sphere.RadiusMm>2.5&&analysis.Sphere.RadiusMm<3.25&&
+                Math.Abs(analysis.Sphere.Center.X-105.75)<1e-9&&analysis.Sphere.Unit=="mm"&&
+                analysis.Sphere.SourceSurfaceResultId==analysis.Surface.ResultId&&
+                Object.ReferenceEquals(analysis.Sphere.SpatialFrame,source.SpatialFrame)&&
+                !analysis.HasEvaluatedMeasurementUncertainty,
+                "Float32原值Surface→球特征具有独立身份、毫米Frame与质量证据");
+            string path=Path.Combine(folder,"sphere.cxproj");MRIObjectAddress address;
+            using(var engineering=MEMEngineering.Create("Surface Sphere"))
+            {
+                var owner=engineering.AddPage("Sphere").RootContent;
+                address=CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,folder,analysis,CancellationToken.None);
+                engineering.SaveAs(path);
+            }
+            using(var engineering=MEMEngineering.Open(path))
+            {
+                var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
+                Check(restored.Kind==CT3DAnalysisKind.SurfaceSphere&&restored.Surface.ResultId==analysis.Surface.ResultId&&
+                    restored.Sphere.ResultId==analysis.Sphere.ResultId&&restored.Surface.SampleStep==1&&
+                    restored.Surface.MaximumPoints==4000&&restored.Sphere.MaximumConditionNumber==5000000&&
+                    restored.Surface.Points.SequenceEqual(analysis.Surface.Points)&&
+                    restored.Sphere.SourceSurfaceResultId==restored.Surface.ResultId&&
+                    Math.Abs(restored.Sphere.RmsResidualMm-analysis.Sphere.RmsResidualMm)<1e-10,
+                    "Surface/球重开保留采样参数、点集、结果依赖、半径与残差");
+                var recomputed=restored.Recompute(folder,CancellationToken.None);
+                Check(recomputed.Surface.ResultId!=restored.Surface.ResultId&&recomputed.Sphere.ResultId!=restored.Sphere.ResultId&&
+                    recomputed.Source.Signature==restored.Source.Signature&&
+                    Math.Abs(recomputed.Sphere.RadiusMm-restored.Sphere.RadiusMm)<1e-10,
+                    "Surface/球复算形成新身份且原值/毫米数值不漂移");
+                Reject<OperationCanceledException>(()=>restored.Recompute(folder,new CancellationToken(true)));
+            }
+            Reject<InvalidOperationException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,6,CancellationToken.None));
+            Reject<ArgumentOutOfRangeException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,0,4000,CancellationToken.None));
+            Console.WriteLine("PASS CT3D Float32 surface/sphere artifact identities, physical fit quality and recompute");
+        }
+
+        private static void VerifySchema1Compatibility(string folder)
+        {
+            var root=new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            while(root!=null&&!File.Exists(Path.Combine(root.FullName,"CxVisual.Unified.sln")))root=root.Parent;
+            if(root==null)throw new DirectoryNotFoundException("Cannot locate schema1 fixture repository");
+            string fixture=Path.Combine(root.FullName,"AppData","Cases","CT3D","V04Schema1");
+            string migrated=Path.Combine(folder,"schema1-migrated");Directory.CreateDirectory(migrated);
+            File.Copy(Path.Combine(fixture,"source.raw"),Path.Combine(migrated,"source.raw"));
+            string output=Path.Combine(migrated,"schema2.cxproj");MRIObjectAddress address;Guid meshId,planeId;
+            using(var engineering=MEMEngineering.Open(Path.Combine(fixture,"schema1.cxproj")))
+            {
+                var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                    .Single(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId));
+                address=engineering.GetAddress(owner);
+                var legacy=CT3DAnalysisPersistence.Open(engineering,address,fixture,CancellationToken.None);
+                meshId=legacy.Mesh.ResultId;planeId=legacy.Plane.ResultId;
+                Check(legacy.Kind==CT3DAnalysisKind.MeshPlane&&legacy.Mesh.Mesh.TriangleCount==48,
+                    "由旧Schema1正式DLL生成的固定工程/制品仍可读取");
+                CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,migrated,legacy,CancellationToken.None);
+                engineering.SaveAs(output);
+            }
+            using(var engineering=MEMEngineering.Open(output))
+            {
+                var upgraded=CT3DAnalysisPersistence.Open(engineering,address,migrated,CancellationToken.None);
+                Check(upgraded.Mesh.ResultId==meshId&&upgraded.Plane.ResultId==planeId&&upgraded.Plane.SampleCount==9,
+                    "旧Schema1另存为新制品后保留结果身份、ROI及毫米量值");
+            }
+            Console.WriteLine("PASS CT3D fixed schema1 fixture read and schema2 resave compatibility");
+        }
         private static void Reject<T>(Action operation) where T:Exception
         {
             try{operation();}catch(T){return;}

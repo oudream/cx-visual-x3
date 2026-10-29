@@ -6,28 +6,58 @@ using CxVisual.Foundation.Volume;
 
 namespace CxVisual.Professional.CT3D
 {
+    public enum CT3DAnalysisKind { MeshPlane=1, SurfaceSphere=2 }
     /// <summary>V03专业结果及其可复算配方；不拥有MEM树、WPF状态或原始数据副本。</summary>
     public sealed class CT3DAnalysisCase
     {
         internal CT3DAnalysisCase(CT3DAssetReference source,CT3DVoxelBoundaryMeshResult mesh,
             CT3DPlaneFitResult plane,IReadOnlyList<int> roi,double planarity,double condition,int budget)
         {
+            Kind=CT3DAnalysisKind.MeshPlane;
             Source=source;Mesh=mesh;Plane=plane;
             var copy=new int[roi.Count];for(int i=0;i<copy.Length;i++)copy[i]=roi[i];
             SelectedVertexIndices=Array.AsReadOnly(copy);
             MaxPlanarityRatio=planarity;MaxInPlaneCondition=condition;MaximumTriangles=budget;
         }
+        internal CT3DAnalysisCase(CT3DAssetReference source,CT3DSurfaceSamples surface,CT3DSphereFitResult sphere)
+        {
+            Kind=CT3DAnalysisKind.SurfaceSphere;Source=source;Surface=surface;Sphere=sphere;
+            SelectedVertexIndices=Array.AsReadOnly(new int[0]);
+        }
+        public CT3DAnalysisKind Kind {get;private set;}
         public CT3DAssetReference Source {get;private set;}
+        /// <summary>仅MeshPlane种类具有Mesh和Plane；SurfaceSphere种类具有Surface和Sphere。</summary>
         public CT3DVoxelBoundaryMeshResult Mesh {get;private set;}
         public CT3DPlaneFitResult Plane {get;private set;}
+        public CT3DSurfaceSamples Surface {get;private set;}
+        public CT3DSphereFitResult Sphere {get;private set;}
         public ReadOnlyCollection<int> SelectedVertexIndices {get;private set;}
         public double MaxPlanarityRatio {get;private set;}
         public double MaxInPlaneCondition {get;private set;}
         public int MaximumTriangles {get;private set;}
-        public string AlgorithmVersion {get{return "ct3d.voxel-mesh-plane/1";}}
+        public string AlgorithmVersion {get{return Kind==CT3DAnalysisKind.MeshPlane
+            ? "ct3d.voxel-mesh-plane/1":"ct3d.surface-sphere/1";}}
         public string Unit {get{return "mm";}}
         /// <summary>现有残差/拓扑证据不构成工业计量不确定度评定。</summary>
         public bool HasEvaluatedMeasurementUncertainty {get{return false;}}
+
+        public static CT3DAnalysisCase AnalyzeSphere(string root,CT3DAssetReference source,
+            float threshold,int sampleStep,int maximumPoints,CancellationToken cancellation,
+            double maximumConditionNumber=10000000)
+        {
+            if(source==null)throw new ArgumentNullException("source");
+            if(!source.SpatialFrame.IsCalibrated)
+                throw new InvalidOperationException("ct3d.precision.unavailable：未标定来源不能生成物理测量案例。");
+            using(var volume=source.LoadVolume(root,cancellation))
+            using(var lease=volume.AcquireOriginalScalarLease())
+            {
+                var surface=CT3DSurfaceSphereAnalysis.SampleBoundary(lease,source.SourceRef,
+                    source.Revision,threshold,sampleStep,maximumPoints,cancellation);
+                var sphere=CT3DSurfaceSphereAnalysis.FitSphere(surface,maximumConditionNumber);
+                cancellation.ThrowIfCancellationRequested();
+                return new CT3DAnalysisCase(source,surface,sphere);
+            }
+        }
 
         public static CT3DAnalysisCase Analyze(string root,CT3DAssetReference source,
             float threshold,int maximumTriangles,
@@ -84,6 +114,9 @@ namespace CxVisual.Professional.CT3D
 
         public CT3DAnalysisCase Recompute(string root,CancellationToken cancellation)
         {
+            if(Kind==CT3DAnalysisKind.SurfaceSphere)
+                return AnalyzeSphere(root,Source,Surface.Threshold,Surface.SampleStep,
+                    Surface.MaximumPoints,cancellation,Sphere.MaximumConditionNumber);
             return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
                 mesh=>SelectedVertexIndices,cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
         }

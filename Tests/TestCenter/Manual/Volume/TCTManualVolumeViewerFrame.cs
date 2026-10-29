@@ -51,7 +51,7 @@ namespace CxVisual.TestCenter.UI
                     WorkspaceAction("ct3d.openBmp","打开 BMP 目录",OpenBmpDirectory),
                     WorkspaceAction("ct3d.case.open","重开专业案例",OpenProfessionalCaseDialog),
                     WorkspaceAction("ct3d.case.save","保存专业案例",SaveProfessionalCaseDialog,
-                        ()=>LastMeshPlaneFit!=null&&_volume!=null&&_volume.HasRawSource),
+                        ()=>CanSaveProfessionalCase),
                     WorkspaceAction("ct3d.load.cancel","取消后台加载",CancelPendingVolumeLoads,
                         ()=>HasPendingVolumeLoads),
                     WorkspaceAction("ct3d.demo","演示体",LoadDemo),

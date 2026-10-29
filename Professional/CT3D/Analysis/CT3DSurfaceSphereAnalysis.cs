@@ -14,14 +14,20 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DSurfaceSamples
     {
         internal CT3DSurfaceSamples(List<FVOPhysicalPoint3D> points, float threshold,
-            FVOVolumeSpatialFrame frame, bool touchesBoundary,string sourceRef,long sourceRevision)
+            FVOVolumeSpatialFrame frame, bool touchesBoundary,string sourceRef,long sourceRevision,
+            int sampleStep=1,int maximumPoints=10000,Guid? resultId=null)
         {
+            ResultId=resultId??Guid.NewGuid();
             Points=new ReadOnlyCollection<FVOPhysicalPoint3D>(points);
             Threshold=threshold;
             SourceRef=sourceRef;SourceRevision=sourceRevision;
             SpatialFrame=frame;
             TouchesVolumeBoundary=touchesBoundary;
+            SampleStep=sampleStep;MaximumPoints=maximumPoints;
         }
+        public Guid ResultId {get;private set;}
+        public int SampleStep {get;private set;}
+        public int MaximumPoints {get;private set;}
         public ReadOnlyCollection<FVOPhysicalPoint3D> Points {get;private set;}
         public int Count {get{return Points.Count;}}
         public float Threshold {get;private set;}
@@ -37,16 +43,22 @@ namespace CxVisual.Professional.CT3D
     {
         internal CT3DSphereFitResult(FVOPhysicalPoint3D center,double radius,
             double rms,double maximum,double condition,int count,
-            string sourceRef,long sourceRevision)
+            string sourceRef,long sourceRevision,FVOVolumeSpatialFrame frame,
+            Guid surfaceResultId,double maximumConditionNumber,Guid? resultId=null)
         {
-            ResultId=Guid.NewGuid();SourceRef=sourceRef;SourceRevision=sourceRevision;
+            ResultId=resultId??Guid.NewGuid();SourceRef=sourceRef;SourceRevision=sourceRevision;
             Center=center;RadiusMm=radius;RmsResidualMm=rms;
             MaxAbsoluteResidualMm=maximum;ConditionNumber=condition;SampleCount=count;
+            SpatialFrame=frame;SourceSurfaceResultId=surfaceResultId;MaximumConditionNumber=maximumConditionNumber;
         }
-        /// <summary>本次算法结果临时身份；保存到工程时由MEM统一登记资源。</summary>
+        /// <summary>算法结果稳定身份；工程重开保留，主动复算生成新身份。</summary>
         public Guid ResultId {get;private set;}
         public string SourceRef {get;private set;}
         public long SourceRevision {get;private set;}
+        public Guid SourceSurfaceResultId {get;private set;}
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+        public double MaximumConditionNumber {get;private set;}
+        public string Unit {get{return "mm";}}
         public FVOPhysicalPoint3D Center {get;private set;}
         public double RadiusMm {get;private set;}
         public double DiameterMm {get{return RadiusMm*2;}}
@@ -111,7 +123,7 @@ namespace CxVisual.Professional.CT3D
             if(points.Count<6)
                 throw new InvalidOperationException("有效表面边界点不足，无法进行可靠三维拟合。");
             return new CT3DSurfaceSamples(points,threshold,source.SpatialFrame,touchesBoundary,
-                sourceRef,sourceRevision);
+                sourceRef,sourceRevision,sampleStep,maxPoints);
         }
 
         /// <summary>
@@ -120,6 +132,12 @@ namespace CxVisual.Professional.CT3D
         /// </summary>
         public static CT3DSphereFitResult FitSphere(
             CT3DSurfaceSamples surface,double maxConditionNumber=10000000)
+        {
+            return FitSphere(surface,maxConditionNumber,null);
+        }
+
+        internal static CT3DSphereFitResult FitSphere(CT3DSurfaceSamples surface,
+            double maxConditionNumber,Guid? resultId)
         {
             if(surface==null)throw new ArgumentNullException("surface");
             if(!surface.SpatialFrame.IsCalibrated)
@@ -162,7 +180,8 @@ namespace CxVisual.Professional.CT3D
             return new CT3DSphereFitResult(
                 new FVOPhysicalPoint3D(ox+c[0],oy+c[1],oz+c[2]),
                 radius,rms,max,fit.ConditionNumber,n,
-                surface.SourceRef,surface.SourceRevision);
+                surface.SourceRef,surface.SourceRevision,surface.SpatialFrame,
+                surface.ResultId,maxConditionNumber,resultId);
         }
     }
 }

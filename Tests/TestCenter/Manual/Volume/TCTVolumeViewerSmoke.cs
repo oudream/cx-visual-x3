@@ -809,7 +809,7 @@ namespace CxVisual.TestCenter.UI
                     Check(sphereFit.RadiusMm>5 && sphereFit.RadiusMm<6.5 &&
                         frame.SurfaceDisplayedPointCount>100 &&
                         frame.Scene.SlicePlaneCount==3 &&
-                        frame.ViewState.Scene3D.Count==2 &&
+                        frame.ViewState.Scene3D.Count==3 &&
                         frame.ViewState.Scene3D.SelectedId.HasValue &&
                         frame.LastSphereFit!=null,
                         "实际UInt16原值拟合结果须进入同一WPF三维Scene及MVI专业引用");
@@ -831,7 +831,7 @@ namespace CxVisual.TestCenter.UI
                         1000f,10000);
                     Check(meshResult.Mesh.TriangleCount>100 &&
                           frame.MeshDisplayedTriangleCount==meshResult.Mesh.TriangleCount &&
-                          frame.ViewState.Scene3D.Count==3 &&
+                          frame.ViewState.Scene3D.Count==4 &&
                           frame.ViewState.Scene3D.SelectedId.HasValue,
                         "真正FGE三角Mesh须进入WPF MeshGeometry3D和MVI会话");
                     if(frame.IsGpuVolumeRendering)
@@ -853,19 +853,19 @@ namespace CxVisual.TestCenter.UI
                           Math.Abs(fittedTop.Normal.Z-1)<1e-7 &&
                           fittedTop.SourceMeshResultId==meshResult.ResultId &&
                           frame.LastMeshPlaneFit!=null &&
-                          frame.ViewState.Scene3D.Count==4 &&
+                          frame.ViewState.Scene3D.Count==5 &&
                           frame.ViewState.Scene3D.SelectedId.HasValue,
                         "真实UInt16球的+Z体素端面须经过CT3D/FNU平面拟合并登记MVI Measurement引用");
                     // Mesh重提取必须丢弃旧平面拟合结果，防止旧SourceMeshRevision污染工程。
                     CT3DVoxelBoundaryMeshResult replacement=frame.AnalyzeCurrentVolumeMesh(
                         1000f,10000);
                     Check(frame.LastMeshPlaneFit==null &&
-                          frame.ViewState.Scene3D.Count==3 &&
+                          frame.ViewState.Scene3D.Count==4 &&
                           replacement.ResultId!=meshResult.ResultId,
                         "同一Volume新Mesh应使旧Measurement失效，MVI不能保留旧平面结果");
                     CT3DPlaneFitResult replacedPlane=frame.AnalyzeCurrentMeshPlaneTopZ();
                     Check(replacedPlane.SourceMeshResultId==replacement.ResultId &&
-                          frame.ViewState.Scene3D.Count==4,
+                          frame.ViewState.Scene3D.Count==5,
                         "新平面只引用当前Mesh并避免累积过期专业结果");
                     int surfacePointsBeforeSlice=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
@@ -879,6 +879,7 @@ namespace CxVisual.TestCenter.UI
                     frame.LoadDemo();
                 }
                 VerifyProfessionalPersistence(frame);
+                VerifySurfaceSpherePersistence(frame);
                 Check(frame.LastMeshPlaneFit==null,
                     "切换Volume必须撤销过期平面Measurement专业结果");
                 Check(frame.MeshDisplayedTriangleCount==0 && frame.LastVoxelMesh==null,
@@ -994,6 +995,59 @@ namespace CxVisual.TestCenter.UI
                 try{AwaitProfessional(late);}catch(OperationCanceledException){discarded=true;}
                 Check(discarded && frame.LastMeshPlaneFit==null && frame.LastOpenedProfessionalCase==null,
                     "晚到案例不得覆盖已经切换的新Volume");
+            }
+            finally{frame.LoadDemo();Directory.Delete(root,true);}
+        }
+
+        private static void VerifySurfaceSpherePersistence(TCTManualVolumeViewerFrame frame)
+        {
+            string root=Path.Combine(Path.GetTempPath(),"CxVisual-CT3D-WPF-Sphere-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                const int n=24;byte[] raw=new byte[n*n*n*2];
+                for(int z=0;z<n;z++)for(int y=0;y<n;y++)for(int x=0;x<n;x++)
+                {
+                    double dx=x-11.5,dy=y-11.5,dz=z-11.5;
+                    if(dx*dx+dy*dy+dz*dz>36)continue;
+                    int offset=(x+y*n+z*n*n)*2;raw[offset]=0x08;raw[offset+1]=0x07;
+                }
+                string path=Path.Combine(root,"sphere.raw"),project=Path.Combine(root,"sphere.cxproj");
+                File.WriteAllBytes(path,raw);
+                var info=new FVORawVolumeInfo(n,n,n,0.5f,0.5f,0.5f,FVORawVoxelFormat.UInt16,"sphere.raw");
+                var volume=FVORawVolumeLoader.Load(path,info,64,System.Threading.CancellationToken.None);
+                volume.SetRawBuffer(FVORawVolumeLoader.MapRawBuffer(volume,System.Threading.CancellationToken.None));
+                volume.SetSpatialFrame(new FVOVolumeSpatialFrame(0.5,0.5,0.5,100,200,300,
+                    new double[]{1,0,0,0,1,0,0,0,1},true));
+                frame.LoadVolume(volume);
+                var fit=frame.AnalyzeCurrentVolumeSphere(1000,1,4000);
+                Check(frame.LastSurfaceSamples.ResultId==fit.SourceSurfaceResultId &&
+                    frame.LastVoxelMesh==null&&frame.LastMeshPlaneFit==null,
+                    "独立Surface/球分析不依赖Mesh或平面结果");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                var saved=frame.LastOpenedProfessionalCase;
+                Check(saved.Kind==CT3DAnalysisKind.SurfaceSphere&&frame.SurfaceDisplayedPointCount>100&&
+                    frame.ViewState.Scene3D.Count==3&&saved.Sphere.Unit=="mm",
+                    "Surface/球保存后保留原值点集和独立Measurement引用");
+                Guid sourceId=saved.Source.Id,surfaceId=saved.Surface.ResultId,sphereId=saved.Sphere.ResultId;
+                double radius=saved.Sphere.RadiusMm;
+                frame.LoadDemo();
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                Check(frame.Volume.HasOriginalRawData&&frame.LastSurfaceSamples.ResultId==surfaceId&&
+                    frame.LastSphereFit.ResultId==sphereId&&frame.LastSphereFit.SourceSurfaceResultId==surfaceId&&
+                    Math.Abs(frame.LastSphereFit.RadiusMm-radius)<1e-10&&
+                    Math.Abs(frame.LastSphereFit.Center.X-105.75)<1e-9&&frame.SurfaceDisplayedPointCount>100&&
+                    frame.ViewState.Scene3D.Count==3&&frame.LastVoxelMesh==null&&frame.LastMeshPlaneFit==null,
+                    "真实WPF重开恢复Surface/球稳定身份、毫米Frame及三对象Scene");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                Check(frame.LastOpenedProfessionalCase.Source.Id==sourceId,
+                    "Surface/球重复保存沿用资产身份与存储Token");
+                var newerSave=frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None);
+                var newerFit=frame.AnalyzeCurrentVolumeSphere(1000,1,4000);
+                AwaitProfessional(newerSave);
+                Check(Object.ReferenceEquals(frame.LastSphereFit,newerFit),
+                    "Surface/球保存期间重新分析不能被旧快照覆盖");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
             }
             finally{frame.LoadDemo();Directory.Delete(root,true);}
         }

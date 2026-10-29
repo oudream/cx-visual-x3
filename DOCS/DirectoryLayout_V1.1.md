@@ -23,7 +23,6 @@
 | Mechanism | `Mechanism/Connectivity` | `CxVisual.Mechanism.Connectivity.csproj` | `CxVisual.Mechanism.Connectivity` |
 | Mechanism | `Mechanism/Core` | `CxVisual.Mechanism.Core.csproj` | `CxVisual.Mechanism.Core` |
 | Mechanism | `Mechanism/Data` | `CxVisual.Mechanism.Data.csproj` | `CxVisual.Mechanism.Data` |
-| Mechanism | `Mechanism/Lifecycle` | `CxVisual.Mechanism.Lifecycle.csproj` | `CxVisual.Mechanism.Lifecycle` |
 | Mechanism | `Mechanism/Logic` | `CxVisual.Mechanism.Logic.csproj` | `CxVisual.Mechanism.Logic` |
 | Mechanism | `Mechanism/Orchestration` | `CxVisual.Mechanism.Orchestration.csproj` | `CxVisual.Mechanism.Orchestration` |
 | Mechanism | `Mechanism/Presentation.Wpf` | `CxVisual.Mechanism.Presentation.Wpf.csproj` | `CxVisual.Mechanism.Presentation.Wpf` |

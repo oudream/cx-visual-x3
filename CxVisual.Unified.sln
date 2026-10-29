@@ -44,7 +44,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Orchestr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Runtime", "Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj", "{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}"
 EndProject
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Presentation.Wpf", "Mechanism\Presentation.Wpf\CxVisual.Mechanism.Presentation.Wpf.csproj", "{718A728A-4133-59EF-804F-62B7E8EE11EA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Professional.Automation", "Professional\Automation\CxVisual.Professional.Automation.csproj", "{02494452-8A8C-593B-8B49-A58D05218D88}"

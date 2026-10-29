@@ -23,6 +23,7 @@ namespace CxVisual.TestCenter.UI
             Margin=new System.Windows.Thickness(3)};
         private IReadOnlyList<Vector3> _surfacePreviewPoints;
         private Guid? _surfaceSceneItemId;
+        private Guid? _sphereSceneItemId;
         private Guid? _meshSceneItemId;
         private Guid? _planeSceneItemId;
         public CT3DPlaneFitResult LastMeshPlaneFit {get;private set;}
@@ -42,6 +43,7 @@ namespace CxVisual.TestCenter.UI
         private CancellationTokenSource _sphereCancellation;
         private long _sphereEpoch;
         public CT3DSphereFitResult LastSphereFit {get;private set;}
+        public CT3DSurfaceSamples LastSurfaceSamples {get;private set;}
         public int SurfaceDisplayedPointCount {get{return _scene.SurfacePreviewPointCount;}}
         private IReadOnlyList<Vector3> SurfacePointsForPresentation
         {
@@ -109,6 +111,7 @@ namespace CxVisual.TestCenter.UI
             CancelSurfaceAnalysis();
             _surfacePreviewPoints=null;
             _surfaceSceneItemId=null;
+            _sphereSceneItemId=null;
             _meshSceneItemId=null;
             _planeSceneItemId=null;
             LastMeshPlaneFit=null;
@@ -118,6 +121,7 @@ namespace CxVisual.TestCenter.UI
             _professionalSource=null;
             _meshPreview=null;
             LastSphereFit=null;
+            LastSurfaceSamples=null;
             LastVoxelMesh=null;
             _scene.ClearSurfacePoints();
             _scene.ClearSurfaceMesh();
@@ -204,8 +208,9 @@ namespace CxVisual.TestCenter.UI
         {
             if(_state==null || _volume==null || LastVoxelMesh==null)
                 throw new InvalidOperationException("请先从原始RAW建立三角Mesh并选择局部面片。");
-            if(LastVoxelMesh.SourceRevision!=(LastOpenedProfessionalCase==null
-                ? _sphereEpoch:LastOpenedProfessionalCase.Source.Revision) ||
+            if(LastVoxelMesh.SourceRevision!=(LastOpenedProfessionalCase!=null&&
+                Object.ReferenceEquals(LastVoxelMesh,LastOpenedProfessionalCase.Mesh)
+                ? LastOpenedProfessionalCase.Source.Revision:_sphereEpoch) ||
                !Object.ReferenceEquals(LastVoxelMesh.SpatialFrame,_volume.SpatialFrame))
                 throw new InvalidOperationException("原始Volume或空间Frame已变化，旧Mesh不能用于拟合。");
             CT3DPlaneFitResult result=CT3DMeshPlaneAnalysis.FitSelectedVertices(
@@ -331,13 +336,17 @@ namespace CxVisual.TestCenter.UI
             // 同一会话的最后一次分析替换旧Surface引用；旧结果不再伪装可见。
             if(_surfaceSceneItemId.HasValue)
                 _state.Scene3D.Remove(_surfaceSceneItemId.Value);
+            if(_sphereSceneItemId.HasValue)_state.Scene3D.Remove(_sphereSceneItemId.Value);
             _surfacePreviewPoints=points;
             LastSphereFit=fit;
+            LastSurfaceSamples=surface;
             Guid itemId=_state.Scene3D.Add(MVI3DSceneKind.Surface,
-                "ct3d:result:"+fit.ResultId.ToString("N"),fit.SourceRevision,
+                "ct3d:surface:"+surface.ResultId.ToString("N"),surface.SourceRevision,
                 "volume:physical-frame");
             _surfaceSceneItemId=itemId;
-            _state.Scene3D.Select(itemId);
+            _sphereSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Measurement,
+                "ct3d:sphere:"+fit.ResultId.ToString("N"),fit.SourceRevision,"volume:physical-frame");
+            _state.Scene3D.Select(_surfaceSceneItemId);
             UpdateSurfacePresentation();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
                 "离散球分析 · 直径 {0:0.###} mm · RMS {1:0.###} mm · 显示 {2} 点（非工业验收）",
