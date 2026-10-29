@@ -126,6 +126,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
             foreach (long count in stats.Histogram.Bins) total += count;
             Assert(total == 16 && stats.Histogram.Bins[0] == 1 &&
                 stats.Histogram.Bins[15] == 1, "直方图末区间");
+            // 大型Gray16直方图新单遍整数频数路径：验证Stride padding、ROI、
+            // 分箱及均值/总体方差与原Welford独立统计合同等价。
+            byte[] gray16Padded={
+                0x61,0x15, 0x62,0x15, 0x63,0x15, 77,88,
+                0x64,0x15, 0x65,0x15, 0x66,0x15, 77,88
+            };
+            FIMImageBuffer padded=new FIMImageBuffer(3,2,FIMPixelFormat.Gray16,
+                gray16Padded,8);
+            FIMPixelRegion paddedRoi=new FIMPixelRegion(1,0,2,1);
+            FIMImageAnalysisResult fast=FIMImageAnalyzer.Analyze(padded,256,paddedRoi);
+            FIMImageStatistics reference=FIMImageAnalyzer.Calculate(padded,paddedRoi);
+            Assert(fast.Statistics.PixelCount==4 &&
+                fast.Statistics.Min==5474 && fast.Statistics.Max==5478 &&
+                Near(fast.Statistics.Mean,reference.Mean) &&
+                Near(fast.Statistics.StandardDeviation,reference.StandardDeviation) &&
+                fast.Histogram.Bins.Sum()==4 && fast.Histogram.Bins[0]==1 &&
+                fast.Histogram.Bins[255]==1,
+                "Gray16整数快路径未保持真实ROI、Stride、浮点统计和256档末端");
+            FIMImageBuffer constant16=new FIMImageBuffer(2,2,FIMPixelFormat.Gray16,
+                new byte[]{255,255,255,255,255,255,255,255});
+            FIMImageAnalysisResult oneBin=FIMImageAnalyzer.Analyze(constant16,256);
+            Assert(oneBin.Statistics.Min==65535 &&
+                oneBin.Statistics.Max==65535 &&
+                oneBin.Statistics.StandardDeviation==0 &&
+                oneBin.Histogram.Bins[0]==4 &&
+                oneBin.Histogram.Bins.Skip(1).Sum()==0,
+                "Gray16常量直方图必须收敛到第0档而不溢出");
+            using(CancellationTokenSource histogramCancel=new CancellationTokenSource())
+            {
+                histogramCancel.Cancel();
+                Throws<OperationCanceledException>(()=>
+                    FIMImageAnalyzer.Analyze(padded,256,null,histogramCancel.Token),
+                    "已取消的整数频数统计不得提交直方图");
+            }
             // 非矩形ROI：只统计精确掩膜包含的原图像素中心，而不是整块外接矩形。
             FIMImageAnalysisResult diagonal=FIMImageAnalyzer.AnalyzeMasked(
                 image,16,new FIMPixelRegion(0,0,3,3),(x,y)=>x==y);
