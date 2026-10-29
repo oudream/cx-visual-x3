@@ -256,6 +256,28 @@ namespace CxVisual.Professional.CT3D
             return roi.AsReadOnly();
         }
 
+        /// <summary>替换物理Mesh ROI并生成新Case；来源资产与算法质量约束保持一致。
+        /// 后续工程修改由MEM Commit负责，旧ResultId不能复用。</summary>
+        public CT3DAnalysisCase RecomputeWithMeshRoi(string root,IReadOnlyList<int> selectedVertexIndices,
+            CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("仅MeshPlane结果可修改顶点ROI。");
+            if(selectedVertexIndices==null)throw new ArgumentNullException("selectedVertexIndices");
+            return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
+                mesh=>selectedVertexIndices,cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
+        }
+
+        /// <summary>更新圆柱轴向约束并进行原值重算，返回新Feature/Measurement。</summary>
+        public CT3DAnalysisCase RecomputeWithCylinderAxis(string root,
+            FVOPhysicalPoint3D axisDirection,CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.SurfaceCylinder)
+                throw new InvalidOperationException("仅圆柱结果可更新轴向约束。");
+            return AnalyzeCylinder(root,Source,Surface.Threshold,Surface.SampleStep,
+                Surface.MaximumPoints,axisDirection,cancellation,Cylinder.MaximumConditionNumber);
+        }
+
         public CT3DAnalysisCase Recompute(string root,CancellationToken cancellation)
         {
             if(Kind==CT3DAnalysisKind.SurfaceCylinder)
