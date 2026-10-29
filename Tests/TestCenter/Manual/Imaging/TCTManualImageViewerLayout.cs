@@ -772,12 +772,13 @@ namespace CxVisual.TestCenter.UI
             _comparisonSync.Checked += (s,e) => _viewer.SetComparisonSynchronization(true);
             _comparisonSync.Unchecked += (s,e) => _viewer.SetComparisonSynchronization(false);
             content.Children.Add(Row(_comparisonSync));
-            content.Children.Add(Heading("本次CPU视觉结果  ·  Image / Mask / Region / Statistic"));
+            content.Children.Add(Heading("本次CPU视觉结果  ·  Image / Mask / Region / Contour / Measurement"));
+            Action(content,"从本次Run生成轮廓结果项","CpuGenerateContours",GenerateCpuContourResults);
             AutomationProperties.SetAutomationId(_cpuResultItems,"TCT.Imaging.CpuResultItems");
             content.Children.Add(_cpuResultItems);
-            content.Children.Add(Hint("点选处理图或阈值Mask，会在同一Viewer的结果槽显示；"
-                +"点选区域和统计只查看本次Run证据。来源变化自动清除列表，"
-                +"结果不会加入工程树或覆盖原图。"));
+            content.Children.Add(Hint("点选Image/Mask显示真实图像；点选Contour在原图上高亮只读外环或孔洞，"
+                +"仍保留RunId与SourceId。切图、改检测参数或重新运行会清理旧Run临时轮廓，"
+                +"用户手绘ROI不受影响。轮廓不是正式工程ROI或标定毫米面积。"));
             content.Children.Add(Heading("导出  ·  区分原像素与视口截图"));
             WrapPanel export = Row();
             Action(export,"保存图像PNG","SaveRawPng",Save);
