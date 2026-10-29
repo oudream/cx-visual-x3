@@ -514,3 +514,20 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **门禁**：Windows Release/x64 .NET Framework4.8（FIM编译项必须包含`FIMRawImageWriter.cs`）、`CxVisual.Tests.ArchitectureSmoke.exe --imaging`与默认回归、`CxVisual.TestCenter.exe --imaging-viewer-smoke`。512MiB边界、大尺寸实机磁盘吞吐、故障注入与Windows原子替换的故障恢复需另行性能/资源测试；硬件HIL仍未验证。没有匹配提交的实际CI结论，不登记G3/G4/G5通过。
 
+## 31. R1 CASE-01/02/07：同工程内存重跑与真实负例门禁（2026-10-30）
+
+**R1第一批真实代码**：`CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync`、`ValidateSavedMeasuredWiring`以及`RuntimeVisionArtifactsTests.SavedMemoryVisionR1RoundTrip`。修订时点master与实际执行CI须区分；测试源码存在不等于已经运行成功。
+
+| R1测试ID | 目标、反例及最小实际结果 | 截止本轮证据 |
+|---|---|---|
+| R1-S01 | Gray16 3×2、Stride8经FIM直接进入正式PVC/MOC/MRK，Mask像素3、接受面积3px²、Contour净面积3px²，源Buffer含Padding不变 | G2已提交，G3/G4待验 |
+| R1-S02 | 同一MEM/MOL SaveAs→Close→Open→FIM内存图重绑，不再经临时RAW文件；新RunId、同SourceId、固定定义指纹、执行原始像素快照、Revision不变且非Dirty | G2已提交，G3/G4待验 |
+| R1-S03 | Gray8伪装Gray16、错误Threshold、预取消不能发布新Run或污染已保存工程 | G2已提交，G3/G4待验 |
+| R1-S04 | 显式删除`ThresholdMask`结果出口后固定链必须拒绝，失败不得改变工程Revision | G2已提交，G3/G4待验 |
+| R1-S05 | 手工断开Segmentation→Region Control连接后固定链必须拒绝，失败不得进一步改变工程Revision | G2已提交，G3/G4待验 |
+| R1-U01 | Studio单窗口从加载Gray16→绘制ROI→原图分析→结果/导出，缺图/非法ROI/切图中取消 | 既有部分专项测试，本R1完整跨页UI尚未证明 |
+| R1-U02 | Studio由用户修改流程和参数，执行增强→Mask→Region→Contour→测量/拟合，结果项来源及旧Run保护 | 既有零散UI/API测试，整体Case未验 |
+| R1-U07 | Studio显式ROI转MEM事务、Undo/Redo、Save/Open/再运行及错误版本/权限拒绝 | 后续需补统一Studio端到端UI回归，不得标通过 |
+
+**门禁依赖**：`.github/workflows/imaging-foundation-windows.yml`按`Professional/Vision/**`、`Tests/ArchitectureSmoke/Integration/Vision/**`触发，`--vision-results`/`--imaging`/默认回归；`module-center-cpu-windows.yml`与`studio-shell-windows.yml`负责Studio真实入口。当前无匹配新提交SHA的成功日志，故G3～G5均待证。
+
