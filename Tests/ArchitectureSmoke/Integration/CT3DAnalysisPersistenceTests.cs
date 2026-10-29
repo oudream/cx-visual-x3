@@ -14,7 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             string folder=Path.Combine(Path.GetTempPath(),"CxVisual-CT3D-V04-"+Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
-            try{VerifyRoundtrip(folder);VerifySphere(Path.Combine(folder,"sphere"));VerifySchema1Compatibility(folder);}
+            try{VerifyRoundtrip(folder);VerifySphere(Path.Combine(folder,"sphere"));VerifyCylinder(Path.Combine(folder,"cylinder"));VerifySchema1Compatibility(folder);}
             finally{Directory.Delete(folder,true);}
             Console.WriteLine("PASS CT3D V04 MEM source/hash/frame, mesh/plane save reopen recompute, cancellation and corruption");
         }
@@ -220,6 +220,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<InvalidOperationException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,6,CancellationToken.None));
             Reject<ArgumentOutOfRangeException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,0,4000,CancellationToken.None));
             Console.WriteLine("PASS CT3D Float32 surface/sphere artifact identities, physical fit quality and recompute");
+        }
+
+        private static void VerifyCylinder(string folder)
+        {
+            Directory.CreateDirectory(folder);
+            const int n=24;
+            byte[] raw=new byte[n*n*n*2];
+            for(int z=5;z<=18;z++)for(int y=0;y<n;y++)for(int x=0;x<n;x++)
+            {
+                double dx=x-11.5,dy=y-11.5;
+                if(dx*dx+dy*dy>25)continue;
+                int i=2*(x+y*n+z*n*n);raw[i]=0xd0;raw[i+1]=0x07;
+            }
+            File.WriteAllBytes(Path.Combine(folder,"cylinder.raw"),raw);
+            var frame=new FVOVolumeSpatialFrame(.5,.5,.5,100,200,300,
+                new double[]{1,0,0,0,1,0,0,0,1},true);
+            var info=new FVORawVolumeInfo(n,n,n,.5f,.5f,.5f,FVORawVoxelFormat.UInt16,"cylinder.raw");
+            var source=CT3DAssetReference.Capture(folder,"cylinder.raw",info,frame,1,CancellationToken.None);
+            using(var volume=source.LoadVolume(folder,CancellationToken.None))
+            using(var lease=volume.AcquireOriginalScalarLease())
+            {
+                var samples=CT3DSurfaceSphereAnalysis.SampleBoundary(lease,source.SourceRef,
+                    source.Revision,1000,1,10000,CancellationToken.None);
+                var axis=new FVOPhysicalPoint3D(0,0,1);
+                var result=CT3DSurfaceCylinderAnalysis.FitCylinder(samples,axis);
+                Check(result.RadiusMm>2&&result.RadiusMm<3&&
+                    result.DiameterMm==2*result.RadiusMm&&
+                    result.SourceSurfaceResultId==samples.ResultId&&
+                    result.SourceRevision==source.Revision&&
+                    Object.ReferenceEquals(result.SpatialFrame,source.SpatialFrame)&&
+                    !result.HasEvaluatedUncertainty,
+                    "UInt16离散圆柱侧壁拟合保留来源、毫米单位与质量证据");
+                Reject<ArgumentOutOfRangeException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(
+                    samples,new FVOPhysicalPoint3D(0,0,0)));
+                Reject<OperationCanceledException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(
+                    samples,axis,10000000,new CancellationToken(true)));
+            }
+            Console.WriteLine("PASS CT3D constrained-axis UInt16 cylinder fit and provenance");
         }
 
         private static void VerifySchema1Compatibility(string folder)
