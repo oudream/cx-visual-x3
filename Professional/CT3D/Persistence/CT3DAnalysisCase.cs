@@ -95,6 +95,44 @@ namespace CxVisual.Professional.CT3D
         public string AlgorithmVersion {get{return Kind==CT3DAnalysisKind.MeshPlane
             ? "ct3d.voxel-mesh-plane/1":Kind==CT3DAnalysisKind.SurfaceSphere
             ? "ct3d.surface-sphere/1":"ct3d.surface-cylinder-axis/1";}}
+        /// <summary>稳定配方签名：输入版本、算法版本、阈值、预算、ROI或约束轴变化均影响结果有效性。
+        /// 相同输入重算保持签名，不依赖随机ResultId。</summary>
+        public string ParameterSignature
+        {
+            get
+            {
+                using(var stream=new MemoryStream())
+                {
+                    using(var w=new BinaryWriter(stream,Encoding.UTF8,true))
+                    {
+                        w.Write(Source.Signature);
+                        w.Write(AlgorithmVersion);
+                        w.Write((int)Kind);
+                        if(Kind==CT3DAnalysisKind.MeshPlane)
+                        {
+                            w.Write(Mesh.Threshold);w.Write(MaximumTriangles);
+                            w.Write(MaxPlanarityRatio);w.Write(MaxInPlaneCondition);
+                            w.Write(RoiSignature);
+                        }
+                        else
+                        {
+                            w.Write(Surface.Threshold);w.Write(Surface.SampleStep);
+                            w.Write(Surface.MaximumPoints);
+                            if(Kind==CT3DAnalysisKind.SurfaceSphere)
+                                w.Write(Sphere.MaximumConditionNumber);
+                            else
+                            {
+                                w.Write(Cylinder.MaximumConditionNumber);
+                                w.Write(Cylinder.AxisDirection.X);
+                                w.Write(Cylinder.AxisDirection.Y);
+                                w.Write(Cylinder.AxisDirection.Z);
+                            }
+                        }
+                    }
+                    return CT3DArtifactFiles.HashBytes(stream.ToArray());
+                }
+            }
+        }
         /// <summary>同一专业结果的派生Feature测量，重开时从保存并验证的原值结果确定性恢复。
         /// ROI平面的残差是质量量，不冒充有基准的距离或GD&T。</summary>
         public IReadOnlyList<CT3DFeatureMeasurement> GetFeatureMeasurements()
