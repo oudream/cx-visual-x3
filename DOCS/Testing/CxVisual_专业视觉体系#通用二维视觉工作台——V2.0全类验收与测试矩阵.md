@@ -403,3 +403,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | CT-06 | 旧无Mask MRK Plan保持5项默认结果且拒绝生成Contour；不强制额外处理和内存成本 | G2测试已提交，G4待执行 |
 
 **门禁**：Windows Release/x64编译，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`及默认回归；必要时TestCenter WPF中验证Contour选择与显示，再登记G5。未实施设备HIL/G6；当前仍是同Run内存结果，不是持久ArtifactRef、完整FrameRef、Region过滤后轮廓或独立MOC轮廓Capability。
+
+## 23. 独立专业节点四/五步真实工程反证（2026-10-29）
+
+新可执行测试已加入`Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs`的`ProjectBackedSeparatedNodes`并由原`--imaging`/`--vision-results`/默认运行入口覆盖；新增测试代码提交[4ef84c0](https://github.com/oudream/cx-visual-x3/commit/4ef84c0d5001399fc1fbc41fa5a4f52820150598)。**用例存在不等于运行通过。**
+| 测试ID | 正/反场景 | 当前证据 |
+|---|---|---|
+| SPLIT-01 | FIM 5×3 RAW→独立Mask→四邻域Region→面积，Mask命中4像素、筛选接受3px²，原图不变 | G2已编码，G3/G4待执行 |
+| SPLIT-02 | MOL 4块、3条数据连线、公开Mask及面积；RunId/SourceId/SegmentBlockId/Trace及同Run Mask结果 | G2已编码，G3/G4待执行 |
+| SPLIT-03 | 真实已保存MEM关闭重开、显式RAW重绑定重复计算，Revision/Dirty不变化 | G2已编码，G3/G4待执行 |
+| SPLIT-04 | 同工程篡改阈值或Region面积规则，编译前拒绝且不修改工程 | G2已编码，G3/G4待执行 |
+| SPLIT-05 | FIM 7×7中值增强→阈值Mask→Region→面积真实5节点，孤立点消失，接受面积5px² | G2已编码，G3/G4待执行 |
+| SPLIT-06 | 超出Gray8阈值范围拒绝；Mask/Region TypeId与Provider端口强类型一致，Mask轮廓是筛选前面积 | G2已编码，G3/G4待执行 |
+
+门禁：Windows MSBuild Release/x64 + Owner DAG + `--vision-results` + `--imaging` + 默认ArchitectureSmoke；WPF TestCenter独立交互和6144×3072大图工业耗时仍必须额外取证。注意本功能采用现有专业CPU算法及模拟RAW文件，不是设备HIL；无真实测试记录时不得登记成功。
