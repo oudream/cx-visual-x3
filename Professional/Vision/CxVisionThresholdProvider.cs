@@ -31,7 +31,12 @@ namespace CxVisual.Professional.Vision
                     new MPCPortDescriptor("Width",MPCPortDirection.Input,
                         "int",MPCPortKind.Data,required:true),
                     new MPCPortDescriptor("Height",MPCPortDirection.Input,
-                        "int",MPCPortKind.Data,required:true)
+                        "int",MPCPortKind.Data,required:true),
+                    // 专业检测的CLR返回值仍是唯一StepResult，不另建结果仓库。
+                    // MOC保留专业语义TypeId，运行时以Provider校验真实类型。
+                    new MPCPortDescriptor("Inspection",MPCPortDirection.Output,
+                        CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        MPCPortKind.Data)
                 }) };
         }
         // 专业Owner给Host提供不可变的软件能力+配置Revision标识；不能冒充模型/设备版本。
@@ -174,6 +179,63 @@ namespace CxVisual.Professional.Vision
             var frame=new CxVisionGrayFrame(w,h,_depth,values);
             CxVisionInspectionResult outcome=_pipeline.Inspect(frame,_configRevision,token);
             return Task.FromResult((object)outcome);
+        }
+    }
+
+    /// <summary>
+    /// 真正独立的面积测量专业Capability，接收MOC正式连接的Inspect.StepResult。
+    /// 不重新实现计算，也不注册新图或执行器；同一输入合同可由其他专业Host使用。
+    /// </summary>
+    public sealed class CxVisionAcceptedRegionMeasureProvider :
+        IMOCCapabilityProvider, IMRKVersionedCapabilityResolver
+    {
+        public const string CapabilityId="vision.cpu.region.accepted-area";
+        public const string InspectionTypeId="vision.cpu.inspection.result";
+        public const string Version="vision.cpu.region.accepted-area.v1";
+        private readonly IMRKVersionedCapabilityResolver _fallback;
+        private readonly MRKResolvedCapability _resolved;
+
+        public CxVisionAcceptedRegionMeasureProvider(IMRKVersionedCapabilityResolver fallback=null)
+        {
+            _fallback=fallback;
+            _resolved=new MRKResolvedCapability((context,ct)=>{
+                ct.ThrowIfCancellationRequested();
+                object value;
+                if(!context.BoundInputs.TryGetValue("Inspection",out value) ||
+                   !(value is CxVisionInspectionResult))
+                    throw new InvalidOperationException("vision.measure.inspection_required");
+                long area=CxVisionDataFlow.MeasureAcceptedPixelArea(
+                    (CxVisionInspectionResult)value,ct);
+                return Task.FromResult((object)area);
+            },new MRKExecutionOutput(typeof(long)),
+            inputs:new[]{new MRKCapabilityInput("Inspection",typeof(object))});
+        }
+
+        public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+        {
+            return new[]{new MOCCapabilityDescriptor(CapabilityId,
+                "接受区域面积测量（像素）","Vision/Measurement",
+                new[]{
+                    new MPCPortDescriptor("Inspection",MPCPortDirection.Input,
+                        InspectionTypeId,MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Area",MPCPortDirection.Output,
+                        "long",MPCPortKind.Data)
+                })};
+        }
+
+        public bool TryResolve(string id,out MRKResolvedCapability result)
+        {
+            if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
+            {result=_resolved;return true;}
+            if(_fallback!=null)return _fallback.TryResolve(id,out result);
+            result=null;return false;
+        }
+        public bool TryGetCapabilityVersion(string id,out string version)
+        {
+            if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
+            {version=Version;return true;}
+            if(_fallback!=null)return _fallback.TryGetCapabilityVersion(id,out version);
+            version=null;return false;
         }
     }
 }
