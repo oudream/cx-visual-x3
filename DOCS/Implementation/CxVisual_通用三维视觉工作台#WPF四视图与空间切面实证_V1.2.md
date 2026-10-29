@@ -37,3 +37,10 @@
 5. TestCenter 总体验收中的其它 UIA 失败不因 Imaging 专项 PASS 而自动消除，必须看各自 CI。
 
 **下一可执行工作包**：先核实真实可部署的 OpenTK/OpenGL 版本与原生 WPF OpenGL 上下文实现方案，保证不引入 WinForms GLControl 或多层 Adapter/Wrapper；将既有 `RenderingVolumeControl` 的体纹理、Raymarch、shader/uniform、透明度、光照、资源释放迁为一套正式 MPW/CT3D 可运行流水线。以真实 Windows GPU 上下文、旧新同 RAW 对照截图、帧时/显存/重复加载/释放/异常反证为验收口径。
+
+
+## 4. B工作包：多对象MVI组织/结果定位增量（2026-10-29）
+
+- `MVI3DSceneState`沿用既有不可变`MVI3DSceneItem`，新增可视`LayerKey/GroupKey`、`SetOrganization`、`SnapshotLayer`、`SetGroupVisibility`、`SetGroupOpacity`与`TrySelectSource`；变更只影响会话可视引用，不复制RAW、CAD/Mesh实体、不另建MEM资源存储。空图层、不合法透明度拒绝；整组批量修改只发一次Revision，隐藏已选成员时清理Selection；同SourceRef多个可见Scene实例拒绝无歧义自动选择。
+- 对应源提交：`e1da3e4`（多对象图层分组）、`8ffdf95`（Headless组合反证）、`6cc8f14`/`49390bd`（真实WPF Surface与Measurement整组显隐）、`2ea1552`/`a9639a3`（整组透明度及非法值验证）、`acd8498`/`ab23524`（专业来源反向选择与歧义拒绝）。
+- **证据边界**：上述提交均已推送GitHub，最新固定SHA Windows CI在记录时仍处于queued/in_progress；未能宣布G1/G3通过。仍待统一组层次的WPF可视编辑入口、MEM工程场景样式保存重开、真正Mesh/Volume混合透明深度与对象级GPU拾取、资源预算/Context恢复实证、三维ROI四视图精准交互。因此B**未完成**，不得将MVI状态单测当作完整工业三维工作台。
