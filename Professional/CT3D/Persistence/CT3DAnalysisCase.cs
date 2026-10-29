@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Text;
 using System.Threading;
 using CxVisual.Foundation.Volume;
 
@@ -65,6 +67,28 @@ namespace CxVisual.Professional.CT3D
         public CT3DSphereFitResult Sphere {get;private set;}
         public CT3DCylinderFitResult Cylinder {get;private set;}
         public ReadOnlyCollection<int> SelectedVertexIndices {get;private set;}
+        /// <summary>同来源与几何ROI复算不变的稳定身份指纹；不同源或ROI变化即失效。</summary>
+        public string RoiSignature
+        {
+            get
+            {
+                if(Kind!=CT3DAnalysisKind.MeshPlane)return null;
+                using(var stream=new MemoryStream())
+                {
+                    using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
+                    {
+                        writer.Write(Source.Signature);
+                        writer.Write(SelectedVertexIndices.Count);
+                        foreach(int index in SelectedVertexIndices)
+                        {
+                            var point=Mesh.Mesh.Vertices[index];
+                            writer.Write(index);writer.Write(point.X);writer.Write(point.Y);writer.Write(point.Z);
+                        }
+                    }
+                    return CT3DArtifactFiles.HashBytes(stream.ToArray());
+                }
+            }
+        }
         public double MaxPlanarityRatio {get;private set;}
         public double MaxInPlaneCondition {get;private set;}
         public int MaximumTriangles {get;private set;}
