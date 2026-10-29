@@ -137,6 +137,12 @@ namespace CxVisual.TestCenter.UI
                 Check(first.Inspection.ThresholdPixelCount==4 &&
                     first.Inspection.Regions.Count==1&&
                     first.Inspection.Regions[0].PixelArea==3 &&
+                    first.AcceptedRegionPixelArea==3 &&
+                    first.MeasureBlockId!=Guid.Empty &&
+                    first.Evidence.Items.Any(x=>
+                        x.Kind==CxVisionResultKind.Measurement && x.IntegerValue==3) &&
+                    first.Trace.Any(x=>x.BlockId==first.MeasureBlockId &&
+                        x.State=="Completed") &&
                     !first.Inspection.Passed &&first.CompletedTraceEvents>0 &&
                     first.Trace.Count>0 &&first.FlowId!=Guid.Empty &&
                     first.Fingerprint.Length==64,
