@@ -241,6 +241,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try { state.ScrollSlice((FVOSlicePlane)99,1,data); }
                 catch(ArgumentOutOfRangeException) { invalidPlane=true; }
                 Check(invalidPlane,"非法切面不能隐式修改三刀状态");
+                using(FVOVolumeData calibrated=FVOVolumeData.CreateDemo(8,10,12))
+                {
+                    var frame=new FVOVolumeSpatialFrame(.5,.75,1.2,10,20,30,
+                        new double[]{0,-1,0,1,0,0,0,0,1},true);
+                    calibrated.SetSpatialFrame(frame);
+                    var roi=FVOSliceImageBuilder.RectangleToPhysical(calibrated,3,4,5,
+                        FVOSlicePlane.XY,0,0,
+                        FVOSliceImageBuilder.GetImageWidth(calibrated,FVOSlicePlane.XY)-1,
+                        FVOSliceImageBuilder.GetImageHeight(calibrated,FVOSlicePlane.XY)-1);
+                    Check(roi.Unit=="mm"&&Object.ReferenceEquals(roi.SpatialFrame,frame)&&
+                        Math.Abs(roi.TopLeft.X-10)<1e-9&&
+                        Math.Abs(roi.TopLeft.Y-20)<1e-9&&
+                        Math.Abs(roi.TopLeft.Z-36)<1e-9&&
+                        Math.Abs(roi.BottomRight.Z-roi.TopLeft.Z)<1e-9,
+                        "XY显示ROI须经过旋转/非各向同性Frame准确映射为毫米空间四角");
+                    int vx,vy,vz;
+                    FVOSliceImageBuilder.ImageToVoxel(calibrated,3,4,5,FVOSlicePlane.XY,
+                        roi.Right,roi.Bottom,out vx,out vy,out vz);
+                    FVOPhysicalPoint3D corner=frame.VoxelToPhysical(vx,vy,vz);
+                    Check(Math.Abs(corner.X-roi.BottomRight.X)<1e-9&&
+                        Math.Abs(corner.Y-roi.BottomRight.Y)<1e-9,
+                        "ROI右下点须对应当前切片实际采样的原始Voxel而非屏幕近似值");
+                    bool boundsRejected=false;
+                    try{FVOSliceImageBuilder.RectangleToPhysical(calibrated,3,4,5,
+                        FVOSlicePlane.XY,0,0,100000,5);}
+                    catch(ArgumentOutOfRangeException){boundsRejected=true;}
+                    Check(boundsRejected,"二维ROI超出可视像素域必须拒绝");
+                }
+                using(FVOVolumeData uncalibrated=FVOVolumeData.CreateDemo(8,10,12))
+                {
+                    bool rejected=false;
+                    try{FVOSliceImageBuilder.RectangleToPhysical(uncalibrated,0,0,0,
+                        FVOSlicePlane.YZ,0,0,1,1);}
+                    catch(InvalidOperationException){rejected=true;}
+                    Check(rejected,"未标定的二维ROI不得冒充毫米几何");
+                }
                 Console.WriteLine("PASS MVI single volume view state and 4-view synchronization contracts");
             }
         }
