@@ -390,3 +390,20 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 ### 21.3 最新MPW增强图像像素级UIA完成
 
 固定`a6f43b8d0016c4ca08e6aa95e7a6c1428d74fcec` 的[TestCenter Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787) **success**，包括`PreviewImage`从原`MPWImageViewerControl`实际读取像素(0,0)=0、(3,3)=210，对应同一MRK四节点增强结果；[Module Center CPU RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) **success**。此固定SHA只是追加Studio Decision文档及代码的并行提交，不扩大本轮Vision业务Owner。TestCenter全项目其他工作流仍独立验收。
+
+## 22. 2026-10-29 用户真实6144×3072 Gray16大图四问题修复：显示、取消、窗位、直方图
+
+**截图输入（人工报告，不代表CI截图）**：
+1. X-Ray Gray16全图在大尺寸工作区域没完整适应、看起来被裁切；
+2. VS暂停在`FIMImageAnalyzer.Calculate`的`OperationCanceledException`（取消本身是合法合同，不能将其改造成静默发布旧统计；是否VS首发/用户未处理取决于调试设置）；
+3. 窗宽/窗位大数值输入框窄且缺可见两端范围信息；
+4. 6144×3072、18874368像素、256档原始灰度直方图需要手动点且曾实际显示12542.9ms。
+
+**定位与真实修改**：
+- `Mechanism/Presentation.Wpf/Imaging/MPWImageViewerControl.xaml`（[6709e45](https://github.com/oudream/cx-visual-x3/commit/6709e453530d89b55ff02de019854876369901b4)）：原`PixelImage`/`SecondaryPixelImage`宽高直接参与Grid DesiredSize，原生大图可能撑大可用Viewport并使Fit和居中与物理裁剪错位。增加不参与测量的Canvas容器；原`MVIImageViewport.Fit`缩放矩阵及ROI/Overlay原坐标Owner不变。测试`TCTImageViewerSmoke`增加4096×2048实际视口比例/中心/矩阵反证（[ff9d6cd](https://github.com/oudream/cx-visual-x3/commit/ff9d6cd6e909c27b880b61f99704a16534ca3cfe)、[aa2ff1b](https://github.com/oudream/cx-visual-x3/commit/aa2ff1b8be33d8794025d7eb51739c407f9c9f3e)）。
+- `Foundation/Imaging/Processing/FIMImageAnalyzer.cs`：Gray8/16`Analyze`和`Calculate`改为单遍逐行`CopyRow`、原始整数精确频数(256/65536槽)、ROI/Stride有效像素、频数计算均值和中心化总体标准差；256档由实际Min/Max聚合，常量图和取消不回退到全图双遍像素Welford。未改Float32/彩色旧行为。源码[bdc4514](https://github.com/oudream/cx-visual-x3/commit/bdc4514a1a979a49982b6964e803391e6505899d)、[83dd8ed](https://github.com/oudream/cx-visual-x3/commit/83dd8ed58276347e68569522c9ffca38063d2148)。
+- `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs`：自动后台统计（图片打开即自动触发，不抢占右侧当前页签），同图显示窗调整不重扫原像素；ROI/切图最新请求取消旧结果。并在`Task.Run`工作线程就地消费“已取消的旧请求”OCE，不把预期取消冒泡成VS用户未处理，仍保留FIM算法公共取消测试，失败不发布旧统计。源码[0ab264f](https://github.com/oudream/cx-visual-x3/commit/0ab264fdfa1909e98031499591a38853d4001b66)、[8ff63f3](https://github.com/oudream/cx-visual-x3/commit/8ff63f336b68b70736e88ad9c59cf155d2a57035)、[ff79ea2](https://github.com/oudream/cx-visual-x3/commit/ff79ea2e846fdc4ea57bc399f1f59c01456c5e0b)。
+- `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerLayout.cs`/`Frame.cs`：加宽窗宽/窗位数值框、动态显示Gray8/Gray16原始数值及滑条两端范围、AutomationId可测；保留手动/ROI/自动映射为显示操作，不修改Raw。源码[333c56c](https://github.com/oudream/cx-visual-x3/commit/333c56c658f85ecd750bedbe001576f651372a52)、[25f2d51](https://github.com/oudream/cx-visual-x3/commit/25f2d511f3ceef5986c6a4a7d0537b29d3ec071b)。
+- 回归`Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs`：带Padding Gray16、精确ROI、末端Bin、常量65535、取消；首次Windows CI报CS0128局部`padded`重名，已修复[788a7b0](https://github.com/oudream/cx-visual-x3/commit/788a7b0260d54f4fbd73047157b2b503eed3405a)；`TCTImageViewerSmoke.cs`在打开图后**无需点击**统计按钮检查256点、Gray8/16范围、4096×2048真实Fit、像素不变。注意UI实际临界效果需等最新固定SHA/工业大图人工截图确认。
+
+**已核实**：修复变量冲突后的[Imaging Windows #40828384405](https://github.com/oudream/cx-visual-x3/actions/runs/40828384405) success；包含大图Fit新增回归的[Imaging #40828542464](https://github.com/oudream/cx-visual-x3/actions/runs/40828542464) success。最新打开即统计与取消修订后的CI仍须按新固定SHA结果核验；不能臆测6144大图实际耗时已降至某个毫秒数，也不把合成4096图布局测试当用户现场截图验收。
