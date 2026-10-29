@@ -315,3 +315,19 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 
 `a34e03411fa715ff04a3c64e783ba7d30d97e0dd` 的 [Imaging Windows #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846) **success**，包含.NET Framework4.8 x64全项目构建、结构与Owner DAG、真实WPF二维图窗/PNG回环、ArchitectureSmoke `--imaging`及默认回归、三维切片WPF交互；本次新`MeasuredArtifactsRemainSourceCorrect`和`SharedHeadlessPreviewApi`纳入现有`--imaging` Run路径。因此该固定SHA可以作为算法测量与无界面API的Windows自动行为证据，**不等于**完成MEM/MOC四种可编排专业节点，也不证明工业HIL/大图性能。
 同期 [Runtime Windows #40693675869](https://github.com/oudream/cx-visual-x3/actions/runs/40693675869) 对同SHA **success**，包含完整解决方案构建及统一Runtime专项。不同固定SHA的[TestCenter Windows #40693629251](https://github.com/oudream/cx-visual-x3/actions/runs/40693629251) 在首次登记仍in_progress，待单独完成UIA核实。
+
+## 20. CASE-ARCH-01第二阶段：工程化MOL检测→测量能力节点与公开输出（2026-10-29）
+
+**实际开发范围**：在已有P3、MRK直接Plan和无界面API之上，进一步把RAW输入→CPU阈值检测→已筛选区域面积测量作为**唯一MEM/MOL工程中的3个真正节点**，MOC负责编译、来源图及软件发布，MRK负责运行、Trace和MDS具名结果；原2节点`CxVisionRawCpuRunner.ExecuteAsync`不强制升级，新`ExecuteMeasuredAsync`显式启用3节点。Studio专业CPU入口和TestCenter Compute共享同一Professional调用（无另建VisionGraph或执行器）。
+
+**源码**：
+- `Professional/Vision/CxVisionDataFlow.cs`：抽出内部`MeasureAcceptedPixelArea`，直接MRK Plan与MOC专业Measurement能力共用，单位仅px²。
+- `Professional/Vision/CxVisionThresholdProvider.cs`：已有检测Provider声明专业`Inspection`输出端口；另外在同一Professional Owner新增`CxVisionAcceptedRegionMeasureProvider`，能力`vision.cpu.region.accepted-area`，输入`Inspection: vision.cpu.inspection.result`、输出`Area: long`，发布唯一MRK能力及版本标识；运行时验证真实`CxVisionInspectionResult`，不在Foundation/MOC重实现算法。面积走MDS `Data.Return("Area")`。
+- `Professional/Vision/CxVisionRawCpuRunner.cs`：MEM/MOL创建三节点/两条真实Data连线（RAW→Inspect→Measure），明确声明`AcceptedRegionPixelArea`公开输出；原MOCPrepare/Stage、版本指纹、受限PlanSlot和MRK执行全部复用。运行验证StepResult、CommittedOutput、已接受Region合计一致并通过SourceMap Trace验证Measurement已完成。
+- `Professional/Vision/CxVisionRunSummary.cs`：`FromInspection`新增可选测量字段，老调用仍得到原Item；测量项目与Region、阈值命中数、尺寸一致后才以同RunId发布Measurement。
+- `Applications/Studio/StudioShell.ModuleCenter.cs`和`Tests/TestCenter/Manual/Module/TCTCpuComputePanel.cs`：实际CPU RAW入口改为显式测量工程版，界面显示px²面积；并未改动MFM/MPM公共注册中心。
+- `Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs`：创建真实内存工程、从RAW路径执行3节点、核对Trace与端口和测量值、MEM Save/Open确认三块及连线、旧2节点兼容；`Tests/TestCenter/Verification/TCTCpuComputeUiSmoke.cs`补真实WPF新MeasureBlockId/Trace/Measurement证据断言。
+
+**现实边界**：`vision.cpu.inspection.result`属于现有MOC专业端口TypeId，在当前MOC编译器对非基础CLR类型采用`object`承载，Provider运行时对实际`CxVisionInspectionResult`做强类型拒绝；尚不等于跨所有Professional CLR类型的静态编译类型注册。RAW内容现由一次调用的Provider克隆持有：MEM Save/Open只证明流程定义持久化，不代表重新打开后无需重新绑定RAW就能执行、生产发布或长时复现。下一阶段需通过正式工程输入ResourceRef/Frame/Artifact/Calibration与版本管理解决，不允许第二套缓存或推断设备已验收。
+
+**Windows状态**：初次CI在[Imaging #40809026028](https://github.com/oudream/cx-visual-x3/actions/runs/40809026028) / [Engineering #40809025895](https://github.com/oudream/cx-visual-x3/actions/runs/40809025895) 因新增回归对脏工程`Dispose`触发`Unsaved changes`失败；[Studio S1 #40808893404](https://github.com/oudream/cx-visual-x3/actions/runs/40808893404) 因旧测试误设专业输出端口数为0失败。已在[be62449](https://github.com/oudream/cx-visual-x3/commit/be624496c2360f37485d61455402c986040303b0)及[13f5b42](https://github.com/oudream/cx-visual-x3/commit/13f5b42c2949dd24e518e2f3fc4e52ada13dac60)修正，保留正确强类型输出断言。后续MDS正式具名输出与运行提交一致性补充见最新代码。**新固定SHA必须重新跑CI，不能从先前的Windows成功推断全部通过。**
