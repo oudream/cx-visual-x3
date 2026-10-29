@@ -341,7 +341,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Object.ReferenceEquals(result.SpatialFrame,source.SpatialFrame)&&
                     !result.HasEvaluatedUncertainty,
                     "UInt16离散圆柱侧壁拟合保留来源、毫米单位与质量证据");
-                var caseValue=CT3DAnalysisCase.AnalyzeCylinder(folder,source,1000,1,10000,axis,CancellationToken.None);
+                var sidewall=Enumerable.Range(0,samples.Count)
+                    .Where(i=>samples.Points[i].Z>302.5&&samples.Points[i].Z<309).ToArray();
+                Check(sidewall.Length>=6&&sidewall.Length<samples.Count,
+                    "侧壁点ROI必须实际排除圆柱两端端盖");
+                var sidewallFit=CT3DSurfaceCylinderAnalysis.FitCylinder(samples,axis,sidewall);
+                Check(sidewallFit.HasExplicitSidewallRoi&&
+                    sidewallFit.SelectedPointIndices.SequenceEqual(sidewall)&&
+                    sidewallFit.RadiusMm>2&&sidewallFit.RadiusMm<3,
+                    "显式侧壁ROI保留选择身份并输出毫米半径");
+                Reject<ArgumentException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(samples,axis,
+                    new[]{sidewall[0],sidewall[0],sidewall[0],sidewall[0],sidewall[0],sidewall[0]}));
+                var caseValue=CT3DAnalysisCase.AnalyzeCylinder(folder,source,1000,1,10000,axis,
+                    CancellationToken.None,10000000,sidewall);
                 Check(caseValue.GetFeatureMeasurements().Count==2,"圆柱Feature提供半径和直径测量");
                 string projectFile=Path.Combine(folder,"cylinder.cxproj");MRIObjectAddress address;
                 using(var engineering=MEMEngineering.Create("Cylinder"))
@@ -355,6 +367,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
                     Check(restored.Kind==CT3DAnalysisKind.SurfaceCylinder&&
                         restored.ParameterSignature==caseValue.ParameterSignature&&
+                        restored.Cylinder.SelectedPointIndices.SequenceEqual(sidewall)&&
+                        restored.Cylinder.HasExplicitSidewallRoi&&
                         restored.Cylinder.ResultId==caseValue.Cylinder.ResultId&&
                         restored.Surface.ResultId==caseValue.Surface.ResultId&&
                         restored.Cylinder.SourceSurfaceResultId==restored.Surface.ResultId&&
@@ -364,6 +378,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             m.ParameterSignature==restored.ParameterSignature&&
                             Object.ReferenceEquals(m.SpatialFrame,restored.Source.SpatialFrame)),
                         "MEM重开圆柱保留Feature、Surface、来源签名及毫米量值");
+                    var changedRoi=restored.RecomputeWithCylinderRoi(folder,
+                        sidewall.Reverse().ToArray(),CancellationToken.None);
+                    Check(changedRoi.Cylinder.ResultId!=restored.Cylinder.ResultId&&
+                        changedRoi.ParameterSignature!=restored.ParameterSignature&&
+                        changedRoi.Cylinder.SelectedPointIndices.Count==sidewall.Length,
+                        "侧壁ROI修改须使圆柱Feature与配方指纹更新");
                     var changedAxis=restored.RecomputeWithCylinderAxis(folder,
                         new FVOPhysicalPoint3D(0,0,-1),CancellationToken.None);
                     Check(changedAxis.Cylinder.ResultId!=restored.Cylinder.ResultId&&
@@ -371,7 +391,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Math.Abs(changedAxis.Cylinder.RadiusMm-restored.Cylinder.RadiusMm)<1e-9,
                         "修改圆柱轴向约束形成新配方和独立测量身份");
                     var recomputed=restored.Recompute(folder,CancellationToken.None);
-                    Check(recomputed.Cylinder.ResultId!=restored.Cylinder.ResultId&&
+                    Check(recomputed.Cylinder.SelectedPointIndices.SequenceEqual(sidewall)&&
+                        recomputed.Cylinder.ResultId!=restored.Cylinder.ResultId&&
                         Math.Abs(recomputed.Cylinder.DiameterMm-restored.Cylinder.DiameterMm)<1e-10,
                         "固定轴向圆柱重新计算不复用旧结果身份");
                 }
