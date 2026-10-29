@@ -515,3 +515,24 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **提交**：[FIM有填充行安全访问](https://github.com/oudream/cx-visual-x3/commit/34eba439ef40776e039f0250e9d0c73a4c8a5d42)、[RAW写入与原子保存](https://github.com/oudream/cx-visual-x3/commit/ced230e68f829ca0ed27473b1a4963b5dd957f45)、[正式编译清单](https://github.com/oudream/cx-visual-x3/commit/651a6f48044474064a19feb938f1ba1ab7f628f0)、[Foundation回环正反测试](https://github.com/oudream/cx-visual-x3/commit/71eda19a5f7f84aaed63a0c456db9b71b999845d)、[WPF可用API/操作](https://github.com/oudream/cx-visual-x3/commit/d043c42a5e50d72c28b5e4f877e6417d653b75c1)、[输出页按钮](https://github.com/oudream/cx-visual-x3/commit/9bbce8c75873a1a26132a6797b6cbc9e829f7f5a)、[WPF真回环测试](https://github.com/oudream/cx-visual-x3/commit/ea7e7ec35cbbe1f018aa93da2ccfadcba819e4e0)。
 - **验收**：截止本条，只核对GitHub代码与.csproj源码状态，尚未获得**匹配最新SHA**的Windows MSBuild/ArchitectureSmoke --imaging/ TestCenter --imaging-viewer-smoke运行日志，严格G2，不声称G3/G4/G5。当前RAW是无头数据格式；图像序列导出、带元数据封装、TIFF/PNG/JPG高保真编码、报告与现有HALCON硬件/SDK完整集成仍各自待按60条要求推进。
 
+## 32. R1产品闭环：CASE-01/02/07统一工程重开和FIM内存重绑定（2026-10-30）
+
+**执行基线**：最新master（本轮提交前约`6987af9c3fd5bedbe2aea746032b89e2bb2ad944`，并行修改须继续复核）。遵从AGENTS和当前26工程F/M/P，继续已有MOC/MOL/MRK/MDS、PVC、FIM、MVI/MPW，不创建新的Graph、数据仓或试验宿主。本节为R1首个集成缺口修复，**不是R1产品整体验收通过**。
+
+**已增构的生产API与Owner**：
+
+- `Professional/Vision/CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(session, contentId, options, revision, image, sourceId, medianRadius, cancellation)`：同一已保存、关闭、重开的四/五节点MOL正式工程，无临时RAW文件中转，直接把Gray8/Gray16的`FIMImageBuffer`（含任意有效Stride）经现有`CxVisionImageInterop.ToPackedRawPixels`重绑为本次输入；不新建Page/Content，不篡改工程定义；按需产生与真实MRK输入字节相同的`SourceImage`快照供Studio/嵌入图窗显示。输入位深、尺寸、SourceId、阈值、面积规则/版本、增强半径、取消均沿用既有验证。
+- `ValidateSavedMeasuredWiring`：仅对固定链快速重跑入口校验原MEM/MOL的确切Control/Data连接、入口Block、外部FlowInputs空集、同源`ThresholdMask`/`EnhancedPixels`/`AcceptedRegionPixelArea`结果出口映射及可执行状态。**这不是限制自由MOL编辑**；用户改为其它拓扑仍走已有通用MOC编译/MRK执行，不能借固定链快捷API冒充未经重新验证的原始固定定义。
+- **真实测试源码**：在`Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs`注册`SavedMemoryVisionR1RoundTrip`，Gray16 3×2、Stride8样本→原MRK Mask/3px²→真实MEM SaveAs/Close/Open→FIM内存重绑→新RunId、原SourceId、同定义指纹、同原像素及Contour、无工程Dirty；坏位深、错误阈值、预取消、删除结果出口、断控制边均有正反断言且拒绝不会再增加Revision。通过原`--imaging`/`--vision-results`/默认ArchitectureSmoke入口覆盖。
+- **源码提交**：[正式API及精确MOL结构验证](https://github.com/oudream/cx-visual-x3/commit/d170c060a0092909ff377c78a86ac0f08809dca4)、[真实保存重开/内存重跑测试](https://github.com/oudream/cx-visual-x3/commit/0ae952c9633bccfba5c4b361f6627da1f85b9ec9)、[错误出口/断线反证](https://github.com/oudream/cx-visual-x3/commit/9e049dc4412dbd36244afc694e42514caf22c2b2)。
+
+**R1完整业务场景未闭合的事实**：
+
+| 正式Case | 本轮复用及完成部分 | 仍须同用户工作流验证 |
+|---|---|---|
+| CASE-01 单图 | FIM Gray16/Stride、MVI/MPW图窗与ROI、FIM计算、RAW/PNG/CSV历史入口 | 真正同一张带ROI图像：ROI分析/测量→结果表→无损图/数值导出连贯操作与数值单位 |
+| CASE-02 算法实验 | PVC四/五节点、MOC/MRK、Run/Image/Mask/Contour/Measurement，Studio/TestCenter可视选择 | 从同一用户可编辑流程配置参数、ROI与多个中间产物，算法拟合/版本重跑及非法端口负例 |
+| CASE-07 正式工程 | MEM/MOL真实Save/Open、固定链FIM内存重绑、错连线拒绝、稳定版本/Trace | 同一个Studio真实WPF闭环：从ROI→工程显式提交、Undo/Redo、保存重开后直接再运行、版本冲突/授权 |
+
+**下一道门禁**：取得匹配后续固定master SHA的Windows .NET Framework4.8 Release/x64编译与`--imaging`、`--vision-results`、默认架构回归；同时跑Studio `--module-center-cpu-self-test`、`--shell-self-test` 和TestCenter `--imaging-viewer-smoke`。未取得真实日志前**仅G2源码登记**；不以此前历史CI成功冒充本次通过，不标R1已交付。
+
