@@ -166,3 +166,12 @@ sequenceDiagram
 **三个不同入口**：局部即时校验、整工程Build静态校验、专业Simulation+MRK受控虚拟执行。静态可能路径与真实执行轨迹必须分开，未建模型时不伪造仿真结果。
 
 **验收**：REV-02/04/05/08 + AUT-01～10，额外确认不兼容候选可查看原因、Fast Drag不阻塞UI、两个版本的候选缓存不串用、Undo正确、同一RuleId在Studio/SDK/Build下得到一致静态诊断。
+
+
+---
+
+## 12. 首批SDK候选筛选实现与Studio集成差距
+
+已经新增的`MDCDecisionService.FindCandidates`支持以一个MPC输出端口过滤MOC只读能力目录：每个候选在同一个结果集中可被标识为`Allowed/Rejected/Unknown`、给出稳定ReasonCode、匹配输入端口；适合后续Studio/ModuleCenter直接消费并展示“不适用原因”。首批只验证已声明的静态端口TypeId/MTU，不运行Provider/设备，不使用软目标评分，不隐式编辑Core。
+
+**仍是待实现**：WPF画布实际调用此结果、自动高亮/候选面板、增量失效/取消、参数Schema联动、自动适配确认、完整Plan与运行Trace映射。不得把SDK端静态筛选源码存在解释为Studio用户体验已完整交付。

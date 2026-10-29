@@ -89,6 +89,10 @@
 - [Logic+Orchestration融合/Runtime解耦迁移 V1.0（含V2门禁）](Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)：逐文件类型和P0～P5迁移，目标28→27、Mechanism9→8。
 - [Decision功能与迁移验收矩阵 V1.0（含V2验收索引）](Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)：D-T、M、REG/CST/AUT/RUN/CASE/UX的正反例、性能与证据等级。
 
+
+
+**Decision首批源码实装（2026-10-29）**：[P0离线能力发现与静态约束筛选实现验收](Implementation/CxVisual_Decision_P0离线能力发现与静态约束筛选_实现验收_V1.0.md)：沿用现有MOC目录/MPC端口，增加无Runtime Resolver的离线发现、`AvailabilityKnown`和`MDCDecisionService`静态端口三态/候选筛选，新增ArchitectureSmoke `--decision`测试。当前仅是**过渡源码切片**，未迁移物理工程、未完全解耦MOC→MRK，也未实现Studio界面或复杂优化；Windows CI证据以实际run为准。
+
 **历史与现状**：原[#0 V1.0](Architecture/CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md)、[#1 V1.0](Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)仅保留历史可追溯，不再双线维护。最新设计**不等于源码交付**：目前仍是 `Mechanism/Logic`、`Mechanism/Orchestration`、`Mechanism/Runtime` 既有工程，MOC→MRK编译时依赖未断，Decision新项目/新MDC接口/统一注解/约束求解尚未实施；只有真实CI与现场证据可证明功能与安全。对于DOCS/02～04 XLSX需要实施前逐Sheet比对Owner/签名，不得将当前文本性摘要冒称表格审计。
 
 ### 运行体系专项讨论稿（六角色期望 → 统一能力 → 执行模型）

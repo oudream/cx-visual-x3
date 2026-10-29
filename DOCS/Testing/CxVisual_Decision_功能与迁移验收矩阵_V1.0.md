@@ -201,3 +201,25 @@ flowchart LR
 | REV-12 工业安全 | 非幂等设备ACK未知需对账、实机安全权限/联锁专业HIL签署 | 未经授权重发、将静态Allowed当现场许可 |
 
 **证据登记列**：ScenarioId、RequirementId、Dxx、Owner、源码路径/签名、实际测试方法、失败/正常夹具、环境/设备、SHA/CI URL、Expected/Actual、EvidenceTier、性能对照与缺陷Owner；未有运行证据的一律标Design。**门槛**：P0/P1未解决前，不得宣称可直接完整实现或工业验收完成。
+
+
+---
+
+## P0正式源码切片：离线目录与三态静态筛选的证据记录（2026-10-29）
+
+**实际变更**：`MOCCapabilityCatalog(providers)`、`AvailabilityKnown`、`MDCDecisionService.AssessConnection/FindCandidates/AssessHardConstraints`、`MDCDecisionTests`。对应[实施记录](../Implementation/CxVisual_Decision_P0离线能力发现与静态约束筛选_实现验收_V1.0.md)。首批静态合同不执行设备、不更改MEM工程，不替代主MOC/MRK编译/运行。
+
+| Case | 真实专项用例 | 期望 |
+|---|---|---|
+| MDC-01 | 无Resolver的Descriptor查询 | 离线Catalog完整，AvailabilityKnown=false |
+| MDC-02 | 原Resolver构造保持兼容 | 查询结果正确，AvailabilityKnown=true |
+| MDC-03 | 重复CapabilityId | 拒绝，不覆盖旧描述 |
+| MDC-04 | Gray16/Gray8 TypeId不一致 | Rejected + MDC_PORT_TYPE |
+| MDC-05 | 单位声明缺失/不一致 | Unknown或Rejected，不隐式换算 |
+| MDC-06 | 方向不符合Output→Input | Rejected + MDC_PORT_DIRECTION |
+| MDC-07 | 多候选中可用/拒绝/未知 | 三者保留，返回目标Port及原因 |
+| MDC-08 | 硬Fail与Unknown同时存在 | 聚合Rejected优先，不软评分越过Hard |
+| MDC-09 | 重复ConstraintId | 抛出明确异常，防止不一致规则覆盖 |
+| MDC-10 | 不存在输入端口 | Rejected + MDC_NO_INPUT |
+
+**验收运行入口**：`CxVisual.Tests.ArchitectureSmoke.exe --decision`；默认ArchitectureSmoke也会调用。文档更新时若无对应Actions日志，必须继续标记“源码存在/待Windows编译验收”，不可写“测试通过”。后续还需复核外部主仓并行CI阻断、MOC SourceMap/Runtime Golden和设备安全边界。

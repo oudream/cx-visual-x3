@@ -161,3 +161,14 @@ flowchart TB
 **GoF与性能**：规则可用Composite+Specification表达，但不复制MOL/FCM逻辑；Ranker/Estimator确有变体时使用Strategy，来源转换用Adapter，外部缓存/取消/审计用Decorator。规则依赖图和失效缓存按Revision/Policy/Capability/EnvironmentEpoch确定；不能在WPF UI线程运行非有界Pareto或蒙特卡洛。
 
 **验收加项**：跨来源相互矛盾的Hard、过期性能样本、未知设备许可、单位混淆、软目标重权覆盖Hard、相同种子稳定Pareto、外部非幂等重试拒绝，均有明确ReasonCode/Owner与前置验证；参见Testing中的REV系列。
+
+
+---
+
+## 12. 已落地首批规则的范围：类型/端口与三态（源码阶段）
+
+`MDCDecisionService` 首批只处理**已声明的硬语义**：端口方向、Kind、TypeId、单位/坐标系/时间基、校准身份；专业所有者未提供单位等一侧必要声明时返回Unknown，已证实不一致则Rejected。**TypeId直接连接采用区分大小写的严格相等，不自动推断CLR赋值兼容，也不隐式进行Gray16→Gray8有损转换。**`MDCVerdict.Allowed`只代表本组端口静态规则成立，绝非GPU资源、设备安全或现场授权已通过。
+
+首批`AssessHardConstraints`可对已明确给出的`MDCConstraintOutcome`做纯聚合，拒绝重复RuleId；未来完整RuleOwner、策略、目标基线、多目标Pareto以及证据版本仍属设计。输入如无任何规则，聚合结果的数学真值为Allowed，但这并不证明该场景所需安全/资源规则已经被供应；应用层必须明确RequiredChecks且不可自动发布。
+
+测试入口：`CxVisual.Tests.ArchitectureSmoke.exe --decision`；期望含三态、重复ID拒绝、非隐式转换和离线元数据验证。CI是否通过以具体提交的Windows运行记录为准。

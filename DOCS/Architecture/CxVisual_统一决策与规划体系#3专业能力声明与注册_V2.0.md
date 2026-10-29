@@ -175,3 +175,12 @@ sequenceDiagram
 4. L0无需注册；L1最低元数据获得发现/编排与MRK基本运行；L2明确约束/专业参数得到引导；L3必须提供测量/模型才可比较、推演、优化。不能用注解自动宣称真实仿真或AI模型质量。
 
 **最小可验证实施切片**：以真实 `CxVisionThresholdProvider` 作为旧黄金，增加一个第二专业（例如CT3D纯CPU、Automation虚拟设备），用同一个规范化描述完成 Headless/Studio 的端口发现、一次连线合法性、MRK执行、SourceMap定位。要求目录和执行的端口/类型/版本一致，且没有新Decision→MRK编译依赖。新增专业不得修改Studio内置专业类型Switch。详见REV-02/03。
+
+
+---
+
+## 11. 首批实际可用：MOC离线目录与运行可用性解耦（部分实现）
+
+**源码实装**：保留原`MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider>, IMRKCapabilityResolver)`，增加只接收providers的重载；同一个原有`MOCCapabilityDescriptor`可以在**无Resolver实例**的编辑/SDK阶段被枚举和搜索。目录Item新加`AvailabilityKnown`，明确区分“没有检查”与“检查过且不可解析”；不以`RuntimeAvailable`冒充设备Ready/Authorized。新增`MDCDecisionService`消费原目录/原MPCPortDescriptor，未建第二Registry。
+
+**仍未完成**：Attribute/Fluent自动发布、FCM Schema自动归一、MPC TypeId↔MRK CLR精确映射/SchemaFingerprint、完整专业资源/安全/仿真模型、Runtime纯绑定接口、六专业实际接入；这些继续标为设计/待开发。首批过渡代码位于Orchestration程序集，不代表最终项目已迁移。具体API见[#1 §10](CxVisual_统一决策与规划体系%231对象合同与开发者API_V2.0.md)。

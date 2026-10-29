@@ -269,3 +269,31 @@ flowchart LR
 3. 对FCM、MPC、MOC、MRK四方类型/端口/版本差异设置拒绝与兼容测试，不靠CLR Type.FullName随意转TypeId。
 4. PurePlan对包含动态Loop/Foreach/Try/子Content的结构不按迭代次数展开，跨进程序列化没有Delegate。
 5. 所有公开MDC目标API保留Proposed状态，实际可用SDK须列出代码位置、签名、消费测试SHA及CI。
+
+
+---
+
+## 10. 首批正式 API 代码切片——离线发现与局部三态评估（2026-10-29）
+
+> 本节对应实际新增源码 `Mechanism/Orchestration/MDCDecisionService.cs`，程序集当前仍为 **CxVisual.Mechanism.Orchestration**，C# 命名空间预先使用 `CxVisual.Mechanism.Decision`。**这是过渡式静态功能落点，并非已完成Decision项目合并或Runtime断环。** 先前#1完整`IMDCDecisionService`、PurePlan/Compare/Compile仍属目标设计；本文下列简洁方法是已编写源码，验证等级以对应CI结果为准。
+
+| API | 当前行为（严格范围） | 不支持/需要现场验证的部分 |
+|---|---|---|
+| `new MOCCapabilityCatalog(providers)` | 离线发现MPC能力及端口，绝不查询IMRK Resolver | `AvailabilityKnown=false`、`RuntimeAvailable=false`并不表示设备不可用 |
+| `new MOCCapabilityCatalog(providers,resolver)` | 保持原运行解析语义，`AvailabilityKnown=true` | 仅已解析，不是Host授权和生产Ready |
+| `MDCDecisionService.AssessConnection(source,target)` | 基于现有MPC静态Direction/Kind/TypeId/MTU单位、坐标、时间基与校准合同返回三态和稳定ReasonCode | 不执行用户编写的转换、真实设备权限、动态资源/AI质量 |
+| `MDCDecisionService.FindCandidates(source,catalog,query,limit)` | 复用原MOC目录搜索候选，保留每一项已知Allowed/Rejected/Unknown与匹配端口 | 不按性能自动排序，不构建Plan，不执行Provider |
+| `MDCDecisionService.AssessHardConstraints(outcomes)` | 聚合已有规则的三态结果，已证实Fail优先于Unknown；重复RuleId拒绝 | 不运行未注册专业规则，不取实时设备事实 |
+
+~~~csharp
+// 已新增源码示例：使用现有专业Provider的DescribeCapabilities，静态检查不启动MRK。
+var catalog = new MOCCapabilityCatalog(new[] { provider }); // 离线、只读
+var decision = new CxVisual.Mechanism.Decision.MDCDecisionService();
+var selected = decision.FindCandidates(sourceOutputPort, catalog);
+foreach (var candidate in selected)
+    Console.WriteLine(candidate.CapabilityId + ": " +
+        candidate.Assessment.Verdict);
+// 判断不等于正式编辑；Studio仍由Core事务插入/连接。
+~~~
+
+**边界**：只有项目实际编译与专项/默认回归成功后才称为Build/Automated。后续纯Decision程序集仍必须先拆旧MOC对MRK的依赖；本轮保留既有28工程，不提前伪称27工程/单DLL完成。

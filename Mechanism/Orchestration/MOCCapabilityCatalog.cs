@@ -45,9 +45,13 @@ namespace CxVisual.Mechanism.Orchestration
     public sealed class MOCCapabilityCatalogItem
     {
         internal MOCCapabilityCatalogItem(MOCCapabilityDescriptor item,bool ready)
-        {Definition=item;RuntimeAvailable=ready;}
+        {Definition=item;RuntimeAvailable=ready;AvailabilityKnown=true;}
+        internal MOCCapabilityCatalogItem(MOCCapabilityDescriptor item)
+        {Definition=item;RuntimeAvailable=false;AvailabilityKnown=false;}
         public MOCCapabilityDescriptor Definition{get;private set;}
         public bool RuntimeAvailable{get;private set;}
+        /// <summary>离线描述没有查询Resolver，不可把false解释成运行不可用。</summary>
+        public bool AvailabilityKnown{get;private set;}
     }
     /// <summary>
     /// MFM descriptors and existing MOC catalog are cross-indexed on demand.
@@ -73,10 +77,26 @@ namespace CxVisual.Mechanism.Orchestration
     {
         private readonly IReadOnlyList<MOCCapabilityCatalogItem> _all;
         private readonly IDictionary<string,MOCCapabilityCatalogItem> _ids;
+        /// <summary>无需MRK实例的离线只读能力发现。此构造不会解析或执行Provider。</summary>
+        public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers)
+            : this(providers,(Func<string,bool>)null) { }
+
+        /// <summary>保留旧构造合同；只查询Resolver是否存在，不代表设备Ready或授权。</summary>
         public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
             IMRKCapabilityResolver runtime)
+            : this(providers,GetAvailability(runtime)) { }
+
+        private static Func<string,bool> GetAvailability(IMRKCapabilityResolver runtime)
         {
-            if(providers==null||runtime==null)throw new ArgumentNullException("providers/runtime");
+            if(runtime==null)throw new ArgumentNullException("runtime");
+            return id => { MRKResolvedCapability action;
+                return runtime.TryResolve(id,out action)&&action!=null; };
+        }
+
+        private MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
+            Func<string,bool> availability)
+        {
+            if(providers==null)throw new ArgumentNullException("providers");
             var map=new Dictionary<string,MOCCapabilityCatalogItem>(StringComparer.Ordinal);
             foreach(var provider in providers)
             {
@@ -88,9 +108,9 @@ namespace CxVisual.Mechanism.Orchestration
                     if(descriptor==null||map.Count>=4096)throw new InvalidOperationException("moc.catalog.invalid_item");
                     if(map.ContainsKey(descriptor.Id))
                         throw new InvalidOperationException("moc.catalog.duplicate:"+descriptor.Id);
-                    MRKResolvedCapability action;
-                    bool available=runtime.TryResolve(descriptor.Id,out action)&&action!=null;
-                    map.Add(descriptor.Id,new MOCCapabilityCatalogItem(descriptor,available));
+                    map.Add(descriptor.Id,availability==null
+                        ? new MOCCapabilityCatalogItem(descriptor)
+                        : new MOCCapabilityCatalogItem(descriptor,availability(descriptor.Id)));
                 }
             }
             _ids=new ReadOnlyDictionary<string,MOCCapabilityCatalogItem>(map);

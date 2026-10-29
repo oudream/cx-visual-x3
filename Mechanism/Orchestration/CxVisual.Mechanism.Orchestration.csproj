@@ -24,6 +24,7 @@
     <Compile Include="Properties\AssemblyInfo.cs"/>
     <Compile Include="MOCEngineeringCompiler.cs"/>
     <Compile Include="MOCCapabilityCatalog.cs"/>
+    <Compile Include="MDCDecisionService.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>
