@@ -187,11 +187,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 Width=72,Margin=new Thickness(3,0,2,0)};
             AutomationProperties.SetAutomationId(groupOpacity,"MPW.Scene.GroupOpacity");
             ToolTipService.SetToolTip(groupOpacity,"整组透明度（0–100%）");
-            groupOpacity.ValueChanged+=(sender,args)=>{
-                if(_scene==null||!groupOpacity.IsMouseCaptureWithin||
-                    string.IsNullOrWhiteSpace(_groupInput.Text))return;
+            Action applyGroupOpacity=()=>{
+                if(_scene==null||string.IsNullOrWhiteSpace(_groupInput.Text))return;
                 _scene.SetGroupOpacity(_groupInput.Text,groupOpacity.Value/100);
             };
+            groupOpacity.LostMouseCapture+=(sender,args)=>applyGroupOpacity();
+            groupOpacity.KeyUp+=(sender,args)=>applyGroupOpacity();
             editor.Children.Add(groupOpacity);
             Children.Add(editor);
             Children.Add(_feedback);
@@ -243,10 +244,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                     Width=80,Margin=new Thickness(5,0,2,0),
                     VerticalAlignment=VerticalAlignment.Center};
                 AutomationProperties.SetAutomationId(opacity,"MPW.Scene.Opacity."+id.ToString("N"));
-                opacity.ValueChanged+=(sender,args)=>{
-                    if(_scene!=null&&opacity.IsMouseCaptureWithin)
+                Action applyOpacity=()=>{
+                    MVI3DSceneItem current;
+                    if(_scene!=null&&_scene.TryGet(id,out current))
                         _scene.SetOpacity(id,opacity.Value/100);
                 };
+                opacity.LostMouseCapture+=(sender,args)=>applyOpacity();
+                opacity.KeyUp+=(sender,args)=>applyOpacity();
                 row.Children.Add(opacity);
                 _rows.Children.Add(row);
             }
