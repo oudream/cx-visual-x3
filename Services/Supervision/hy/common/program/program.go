@@ -126,7 +126,7 @@ func GetProgramByDbMap(dbMap gorp.DbMap, id int64) (*Program, error) {
 	var sqlSelect = fmt.Sprintf("select * from `%s` where `Id`=?", TableNameProgramRun)
 	err2 := dbMap.SelectOne(&program, sqlSelect, id)
 	if err2 != nil {
-		return nil, errors.New(fmt.Sprintf("GetProgramById [TableNameProgramName: %s] [Id: %s] FAIL. err: %s", TableNameProgramRun, id, err2))
+		return nil, errors.New(fmt.Sprintf("GetProgramById [TableNameProgramName: %s] [Id: %d] FAIL. err: %s", TableNameProgramRun, id, err2))
 	} else {
 		return &program, nil
 	}
