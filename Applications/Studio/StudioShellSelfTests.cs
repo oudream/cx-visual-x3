@@ -3275,6 +3275,48 @@ namespace CxVisual.Studio
                         catch(ArgumentOutOfRangeException){badRadius=true;}
                         Assert(badRadius && session.Revision==unchanged,
                             "超出半径预算的Studio执行修改了正式工程");
+                        // 与Studio按钮共用唯一的静态合同/版本/编辑方法；
+                        // 独立插入三个算子而不建立第二套持久Graph。
+                        var compositionPage=session.AddPage("Studio Vision独立节点参数合同");
+                        var thresholdBlock=MainWindow.AddStudioVisionCapabilityToFlow(
+                            session,compositionPage.RootContent,provider,
+                            CxVisionBinaryThresholdProvider.CapabilityId);
+                        var currentPage=session.Find(compositionPage.Id) as MEMPage;
+                        Assert(currentPage!=null,"拆分式Studio Content未入工程");
+                        var regionBlock=MainWindow.AddStudioVisionCapabilityToFlow(
+                            session,currentPage.RootContent,provider,
+                            CxVisionMaskRegionsProvider.CapabilityId);
+                        currentPage=session.Find(compositionPage.Id) as MEMPage;
+                        var areaBlock=MainWindow.AddStudioVisionCapabilityToFlow(
+                            session,currentPage.RootContent,provider,
+                            CxVisionAcceptedRegionMeasureProvider.CapabilityId);
+                        currentPage=session.Find(compositionPage.Id) as MEMPage;
+                        var composed=MOLWiringCodec.Get(currentPage.RootContent);
+                        var controls=new CxVisionMaskRegionsProvider(
+                            provider.CaptureInspectionOptions(),provider.ConfigurationRevision);
+                        Assert(composed.Blocks.Count==3 &&
+                            composed.Blocks.Select(x=>x.Id).Distinct().Count()==3 &&
+                            composed.Blocks.Any(x=>x.Id==thresholdBlock &&
+                                x.CapabilityId==CxVisionBinaryThresholdProvider.CapabilityId) &&
+                            composed.Blocks.Any(x=>x.Id==regionBlock &&
+                                x.CapabilityId==CxVisionMaskRegionsProvider.CapabilityId) &&
+                            composed.Blocks.Any(x=>x.Id==areaBlock &&
+                                x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId) &&
+                            composed.Parameters[thresholdBlock]["Threshold"]=="200" &&
+                            composed.Parameters[regionBlock]["RuleVersion"]==controls.ReleaseVersion &&
+                            composed.Links.Count==0,
+                            "Studio独立算子未固定MHS参数、MOL身份或错误自动连接尚缺的图像输入");
+                        unchanged=session.Revision;
+                        bool unknownDenied=false;
+                        try
+                        {
+                            MainWindow.AddStudioVisionCapabilityToFlow(
+                                session,currentPage.RootContent,provider,
+                                "vision.missing.unverified");
+                        }
+                        catch(InvalidOperationException){unknownDenied=true;}
+                        Assert(unknownDenied && session.Revision==unchanged,
+                            "未知Capability未拒绝或非法添加修改了MEM Revision");
                         var update=config.UpdateAsync(c=>c.GrayThreshold=201,
                             "Studio Effective变化栅栏",System.Threading.CancellationToken.None)
                             .GetAwaiter().GetResult();
@@ -3296,6 +3338,16 @@ namespace CxVisual.Studio
                         catch(InvalidOperationException){staleRunDenied=true;}
                         Assert(staleRunDenied && session.Revision==unchanged,
                             "已失效MHS Provider仍可新增工程或污染Revision");
+                        bool staleInsertDenied=false;
+                        try
+                        {
+                            MainWindow.AddStudioVisionCapabilityToFlow(
+                                session,currentPage.RootContent,provider,
+                                CxVisionBinaryThresholdProvider.CapabilityId);
+                        }
+                        catch(InvalidOperationException){staleInsertDenied=true;}
+                        Assert(staleInsertDenied && session.Revision==unchanged,
+                            "配置变更后旧MHS Provider仍允许向Studio主流程添加节点");
                     }
                     finally
                     {
