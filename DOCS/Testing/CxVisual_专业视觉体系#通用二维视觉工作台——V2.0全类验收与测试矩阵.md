@@ -361,3 +361,7 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - 固定`49b40da48099219a8114b2ddd3b671981aa9e57a`：[Compute UIA #40820622091](https://github.com/oudream/cx-visual-x3/actions/runs/40820622091) success / [Four G1 #40820622056](https://github.com/oudream/cx-visual-x3/actions/runs/40820622056) success，真实WPF切换半径、RAW→FIM增强→区域/面积数值验证成功。
 - 固定`2847c2c7af10e02c8fab197cc9a712f36fc509fc`：[Compute UIA #40821068464](https://github.com/oudream/cx-visual-x3/actions/runs/40821068464) success，MPW Viewer加入后真实Compute UIA未回退。
 - 增量图窗`PreviewImage`像素校验后的[Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787)首次登记in_progress；[Module Center RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) success。不同固定SHA不能相互冒用完成结论。
+
+### 20.3 UI-ALG-M02最终固定SHA核实
+
+`a6f43b8d0016c4ca08e6aa95e7a6c1428d74fcec`：[TestCenter Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787) **success**，真正原MPW/MVI图窗像素级验证通过；[Module Center CPU RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) **success**。以上属WPF UIA + CPU软件自动测试，不等于真实相机/AI/GPU/工业设备现场HIL，也未实现独立分割与区域Provider。
