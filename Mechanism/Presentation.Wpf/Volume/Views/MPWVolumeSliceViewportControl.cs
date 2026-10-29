@@ -240,13 +240,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 _state.SliceX,_state.SliceY,_state.SliceZ,Plane,
                 (int)Math.Round(point.X),(int)Math.Round(point.Y),out x,out y,out z);
             var handler=VoxelInspected;
-            if(handler!=null)
-            {
-                FVOPhysicalPoint3D physical=_volume.SpatialFrame.VoxelToPhysical(x,y,z);
-                handler(this,new MPWVolumeVoxelInspectedEventArgs(x,y,z,
-                    _volume.GetScalarByOriginalIndex(x,y,z),
-                    physical.X,physical.Y,physical.Z));
-            }
+            if(handler!=null)handler(this,InspectVoxel(x,y,z));
+        }
+
+        /// <summary>同鼠标悬停使用一条原值与空间Frame路径，可供嵌入式工作台直接读取。</summary>
+        public MPWVolumeVoxelInspectedEventArgs InspectVoxel(int x,int y,int z)
+        {
+            if(_volume==null)throw new InvalidOperationException("尚未绑定体数据。");
+            if(x<0||y<0||z<0||x>=_volume.OriginalWidth||
+                y>=_volume.OriginalHeight||z>=_volume.OriginalDepth)
+                throw new ArgumentOutOfRangeException("x","原始Voxel索引超出体数据范围。");
+            FVOPhysicalPoint3D physical=_volume.SpatialFrame.VoxelToPhysical(x,y,z);
+            return new MPWVolumeVoxelInspectedEventArgs(x,y,z,
+                _volume.GetScalarByOriginalIndex(x,y,z),
+                physical.X,physical.Y,physical.Z);
         }
 
         private static bool TryPixel(MouseEventArgs e,Image image,out int x,out int y)
