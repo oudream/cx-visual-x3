@@ -464,7 +464,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             while(root!=null&&!File.Exists(Path.Combine(root.FullName,"CxVisual.Unified.sln")))root=root.Parent;
             if(root==null)throw new DirectoryNotFoundException("Cannot locate schema1 fixture repository");
             string fixture=Path.Combine(root.FullName,"AppData","Cases","CT3D","V04Schema1");
-            // 旧DLL生成的二进制fixture是外部验收资产；未入库时不能伪造或误报兼容通过。
+            // 固定样本由Schema1正式DLL生成；不能用当前Schema写入器重新生成冒充旧版本。
             string rawFixture=Path.Combine(fixture,"source.raw");
             string projectFixture=Path.Combine(fixture,"schema1.cxproj");
             if(!File.Exists(rawFixture)||!File.Exists(projectFixture)||
@@ -480,6 +480,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 return;
             }
             string migrated=Path.Combine(folder,"schema1-migrated");Directory.CreateDirectory(migrated);
+            string legacyArtifact=Directory.GetFiles(Path.Combine(fixture,"artifacts","ct3d"),"*.analysis").Single();
+            using(var input=File.OpenRead(legacyArtifact))
+            using(var reader=new BinaryReader(input))
+                Check(reader.ReadInt32()==0x33444358&&reader.ReadInt32()==1,
+                    "兼容样本必须具有真实旧V1制品头，不能由新Schema样本替代");
             File.Copy(Path.Combine(fixture,"source.raw"),Path.Combine(migrated,"source.raw"));
             string output=Path.Combine(migrated,"schema2.cxproj");MRIObjectAddress address;Guid meshId,planeId;
             using(var engineering=MEMEngineering.Open(Path.Combine(fixture,"schema1.cxproj")))
@@ -500,7 +505,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(upgraded.Mesh.ResultId==meshId&&upgraded.Plane.ResultId==planeId&&upgraded.Plane.SampleCount==9,
                     "旧Schema1另存为新制品后保留结果身份、ROI及毫米量值");
             }
-            Console.WriteLine("PASS CT3D fixed schema1 fixture read and schema2 resave compatibility");
+            Console.WriteLine("PASS CT3D fixed schema1 fixture read and current schema resave compatibility");
         }
         private static void Reject<T>(Action operation) where T:Exception
         {

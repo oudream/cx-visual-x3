@@ -251,3 +251,13 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`422242c`](https://github.com/oudream/cx-visual-x3/commit/422242ce9fcc3e164a03ffb53a9a37a100332e4b)新增`CXVISUAL_CT3D_REQUIRE_LEGACY_FIXTURE=1`：执行正式Schema1跨版本验收时，如旧DLL生成的RAW、`schema1.cxproj`及`artifacts/ct3d`任一缺失，抛`FileNotFoundException`明确失败；普通ArchitectureSmoke仍明确SKIP，不能称兼容通过。严禁新算法伪造旧DLL固定二进制资产。
 - 对应`master@0a06f4e`的Config公共底座与Config L1均SUCCESS（Runs `40865796814`/`40865796654`），但这些不是G5，也不覆盖工业准确度验收。`d7dcab1`的Imaging SUCCESS（`40865537994`），TestCenter Windows .NET48 run `40865538045`失败于一般`--ui-automation`超时，最后阶段为`InteractManualModule`；其`--connector-ui-automation`、Graphics窗口与前置部分已通过。属于MFM/TestCenter公共UIA待排，不可冒充A包算法失败，也不能标整体UIA成功。
 - 继续区分：A包源码闭环、G1/G2/G3固定SHA已取得部分成功；严格历史格式fixture、真实工业标准件（G5）及Studio完整专业场景操作仍未取得证据。禁止标记完整验收。
+
+### 10.16 收敛与新聊天交接（2026-10-29）
+
+- 快进同步到`119ccf41`，按最新26产品项目执行；本轮收敛修改后的Unified Debug/Release x64均0错误，结构检查26清单一致，DAG审计27项目/112引用无非法边或环。本机证据位于`Output/CT3D-Handoff/`，不替代固定提交CI。
+- 默认回归实际发现Decision `ImmutablePlanExecutionLoweringParity`的旧源错误码断言失败：`RequireCurrent`重建新源Manifest时会先触发新图的结构异常，掩盖已确定的修订过期。现先检查ProjectId/Revision/Catalog，再执行同版本内容Fingerprint校验，不降低同版本完整内容检测，也不提前调用Resolver。修复后默认ArchitectureSmoke退出0，`--imaging`和`--concurrency`分别退出0。
+- **旧格式证据补齐**：此前本机已在改Schema前用`2386b7d4`正式旧DLL生成Schema1工程/RAW/制品，但这些样本未入Git，因此其它工作站和CI缺失。现将`AppData/Cases/CT3D/V04Schema1`真实固定文件、当时生成入口及SHA256摘要纳入版本控制；测试额外断言制品头为V1，再执行当前读取/复算/新Schema另存重开。`CXVISUAL_CT3D_REQUIRE_LEGACY_FIXTURE=1 --volume`和默认回归均通过，不能再将这次结果写成缺样本SKIP。旧CI缺样本记录保留其历史语境；完整兼容性仍只覆盖该固定合成样本。
+- **本机WPF仍有未通过门禁**：带截图`--volume-viewer-smoke`退出2，四视图PNG 2482字节且整窗亦黑；祖先可见性、Opacity和布局尺寸检查正常。Render队列及软件模式试验未消除，临时修改均已撤回，不关闭原PNG断言。未设置截图输出变量时同一入口全部行为检查退出0，仅为功能定位，不算完整G3通过。会话/硬件呈现原因与产品导出原因尚需区分。
+- **当前真实GL单独通过**：`--volume-gpu-smoke`退出0，日志`3.3.0 NVIDIA 576.02; replay=3; elapsedMs=762`。此入口实际检查原生鼠标、Raymarch像素、FGE Mesh上传像素差、两VBO独立清理、MVI绑定、样式零重传及隐藏/删除释放。截图`gpu-raymarch.png`为实际GL framebuffer。透明混合完整顺序、拾取和工业G5未据此验收。
+- **需求原文补齐**：用户目标附件完整R01～R90已归档到架构Assets，原附件SHA256及格式去转义说明保留；R5附录C回填原先缺失36条，需求原文存在性和实现/验收分离。唯一总体架构仍是原V2.0 R5，没有新建V3总纲。
+- 后续执行从[新聊天续接与大工作包交接](CxVisual_通用三维视觉工作台%23新聊天续接与大工作包交接_20261029.md)进入：先核实本提交CI和关闭WPF截图门禁，再承接A/B包现有成果，推进交互ROI→专业结果→组合显示→保存重开的完整业务包；不重复现有圆柱、多Case或多Mesh。完整26能力/90条要求仍未完成。

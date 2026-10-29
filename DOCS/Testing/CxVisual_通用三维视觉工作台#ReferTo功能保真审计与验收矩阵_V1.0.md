@@ -80,3 +80,14 @@
 Windows本地Build/Headless/WPF/GPU与GitHub CI分开登记；推送后只依据对应SHA Run升级CI。本包未完成完整三维ROI编辑、Studio专业工作区、通用Artifact注册、CAD/GD&T或工业标准件精度验收。
 
 **固定CI更新**：`b71827db`的Windows Imaging `40837507856`、TestCenter `40837508115`、Graphics `40837507948`已SUCCESS；其Imaging日志含V04 Headless与三维WPF成功步骤。Studio S1 `40837507882`构建成功，但配置组合响应式容器断言失败。V04-06后续新增修复不借用这些旧SHA结果。详细日志结论统一维护于实施记录第10.5节。
+
+### 收敛补充（2026-10-29，本机）
+
+| 验收项 | 本轮证据 | 限制 |
+|---|---|---|
+| 历史Schema1读取/另存 | 真实旧DLL固定样本、SHA256及V1头断言；严格环境变量下`--volume`与默认回归PASS | 本次固定合成案例；旧CI的SKIP不升级为成功，后续按本提交CI核对 |
+| 全工程与公共回归 | Debug/Release x64 0错误；结构/DAG、默认、Imaging、Concurrency均PASS | 当前26正式项目，审计含一个独立验证项目；存在既有警告 |
+| WPF全窗口/四视图PNG | **FAIL**：真实PNG全黑；同入口不设PNG的行为检查PASS | 不能以行为PASS替代完整G3；环境与导出故障归因仍待查 |
+| 实卡GL多对象 | NVIDIA OpenGL3.3/576.02，真实像素、VBO隔离/MVI绑定/显隐删除/样式零重传和3次重装载PASS | 不代表工业精度、全部深度/透明混合/拾取通过 |
+
+完整交接与下一包入口见[新聊天续接](../Implementation/CxVisual_通用三维视觉工作台%23新聊天续接与大工作包交接_20261029.md)，详细结果见实施记录10.16；不新增竞争性状态总纲。
