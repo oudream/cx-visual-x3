@@ -139,4 +139,71 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _navigation.Add(plane,nav);
         }
     }
+
+    /// <summary>统一三维场景可视引用面板；仅操作MVI显隐、选择与透明度，不改专业实体。</summary>
+    public sealed class MPWVolumeSceneObjectListControl : StackPanel
+    {
+        private MVI3DSceneState _scene;
+        private readonly StackPanel _rows=new StackPanel();
+        public int DisplayedObjectCount {get;private set;}
+        public MPWVolumeSceneObjectListControl()
+        {
+            AutomationProperties.SetAutomationId(this,"MPW.Volume.SceneObjects");
+            Children.Add(_rows);
+        }
+        public void Bind(MVI3DSceneState scene)
+        {
+            if(Object.ReferenceEquals(scene,_scene))return;
+            if(_scene!=null)_scene.Changed-=SceneChanged;
+            _scene=scene;
+            if(_scene!=null)_scene.Changed+=SceneChanged;
+            Refresh();
+        }
+        private void SceneChanged(object sender,EventArgs e)
+        {
+            if(Dispatcher.CheckAccess())Refresh();
+            else Dispatcher.BeginInvoke(new Action(Refresh));
+        }
+        private void Refresh()
+        {
+            _rows.Children.Clear();
+            DisplayedObjectCount=0;
+            if(_scene==null)return;
+            foreach(MVI3DSceneItem item in _scene.Snapshot())
+            {
+                if(DisplayedObjectCount>=256)break;
+                DisplayedObjectCount++;
+                var row=new StackPanel {Orientation=Orientation.Horizontal,
+                    Margin=new Thickness(2)};
+                Guid id=item.Id;
+                var visible=new CheckBox {IsChecked=item.Visible,
+                    VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(1,0,4,0)};
+                AutomationProperties.SetAutomationId(visible,"MPW.Scene.Visible."+id.ToString("N"));
+                visible.Checked+=(sender,args)=>{if(_scene!=null)_scene.SetVisibility(id,true);};
+                visible.Unchecked+=(sender,args)=>{if(_scene!=null)_scene.SetVisibility(id,false);};
+                row.Children.Add(visible);
+                var select=new Button {
+                    Content=item.Kind+" · "+item.LayerKey+
+                        (string.IsNullOrEmpty(item.GroupKey)?"":" / "+item.GroupKey),
+                    MinWidth=130,MaxWidth=225,Margin=new Thickness(1),Padding=new Thickness(3,1,3,1),
+                    IsEnabled=item.Visible,
+                    FontWeight=_scene.SelectedId==id?FontWeights.Bold:FontWeights.Normal
+                };
+                AutomationProperties.SetAutomationId(select,"MPW.Scene.Select."+id.ToString("N"));
+                select.Click+=(sender,args)=>{if(_scene!=null)_scene.Select(id);};
+                ToolTipService.SetToolTip(select,item.SourceRef);
+                row.Children.Add(select);
+                var opacity=new Slider {Minimum=0,Maximum=100,Value=item.Opacity*100,
+                    Width=80,Margin=new Thickness(5,0,2,0),
+                    VerticalAlignment=VerticalAlignment.Center};
+                AutomationProperties.SetAutomationId(opacity,"MPW.Scene.Opacity."+id.ToString("N"));
+                opacity.ValueChanged+=(sender,args)=>{
+                    if(_scene!=null&&opacity.IsMouseCaptureWithin)
+                        _scene.SetOpacity(id,opacity.Value/100);
+                };
+                row.Children.Add(opacity);
+                _rows.Children.Add(row);
+            }
+        }
+    }
 }
