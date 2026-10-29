@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MeasuredArtifactsRemainSourceCorrect();
             SharedHeadlessPreviewApi();
             ProjectBackedMeasuredInspection();
+            ProjectBackedMedianEnhancement();
             MviImageMaskProjection();
         }
 
@@ -414,6 +415,116 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 if(File.Exists(rawPath))File.Delete(rawPath);
                 if(File.Exists(resizedPath))File.Delete(resizedPath);
+                if(File.Exists(projectPath))File.Delete(projectPath);
+            }
+        }
+
+
+        /// <summary>
+        /// V2D D05: 真正的4节点RAW→FIM中值→Inspection→Measure。
+        /// 数据对照唯一FIM，原始输入保持、增强中间产物公开、SourceMap可追踪。
+        /// 保存/重开/重绑仍使用同一个MEM Content，Radius变更需明确拒绝。
+        /// </summary>
+        private static void ProjectBackedMedianEnhancement()
+        {
+            string basename="vision-median-"+Guid.NewGuid().ToString("N");
+            string rawPath=Path.Combine(Path.GetTempPath(),basename+".raw");
+            string projectPath=Path.Combine(Path.GetTempPath(),basename+".cxproj");
+            byte[] raw=new byte[49];
+            for(int y=2;y<=4;y++)
+                for(int x=2;x<=4;x++)raw[y*7+x]=210;
+            raw[0]=250; // 单独噪点，1像素
+            File.WriteAllBytes(rawPath,raw);
+            try
+            {
+                var provider=new CxVisionThresholdProvider(
+                    Options(CxVisionPixelDepth.Bits8,200),48);
+                var enhance=new CxVisionMedianEnhanceProvider(
+                    CxVisionPixelDepth.Bits8,1,provider);
+                var descriptor=enhance.DescribeCapabilities().Single();
+                Check(descriptor.Ports.Any(x=>x.MemberId=="EnhancedPixels" &&
+                    x.TypeId=="byte[]" && x.Direction==MPCPortDirection.Output) &&
+                    descriptor.Ports.Any(x=>x.MemberId=="Radius" && x.Required) &&
+                    enhance.ReleaseVersion!=new CxVisionMedianEnhanceProvider(
+                        CxVisionPixelDepth.Bits8,2).ReleaseVersion,
+                    "FIM增强的能力目录、工程参数与Pinned版本不正确");
+                Reject<ArgumentOutOfRangeException>(()=>
+                    new CxVisionMedianEnhanceProvider(CxVisionPixelDepth.Bits8,0),
+                    "中值半径0必须在工程创建前拒绝");
+                Reject<ArgumentOutOfRangeException>(()=>
+                    new CxVisionMedianEnhanceProvider(CxVisionPixelDepth.Bits8,4),
+                    "超出限定滤波半径必须拒绝");
+
+                Guid contentId;
+                using(var session=MEMEngineering.Create("FIM四节点视觉工程"))
+                {
+                    try
+                    {
+                        var result=CxVisionRawCpuRunner.ExecuteEnhancedMeasuredAsync(
+                            session,provider,rawPath,7,7,1,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        var expected=FIMImageFilters.Apply(new FIMImageBuffer(7,7,
+                            FIMPixelFormat.Gray8,raw),FIMNeighborhoodFilter.Median,1);
+                        Check(result.EnhanceBlockId!=Guid.Empty &&
+                            result.EnhanceBlockId!=result.InspectBlockId &&
+                            result.MeasureBlockId!=result.EnhanceBlockId &&
+                            result.Inspection.ThresholdPixelCount==5 &&
+                            result.Inspection.Regions.Count==1 &&
+                            result.AcceptedRegionPixelArea==5 &&
+                            result.EnhancedImage!=null &&
+                            result.EnhancedImage.PixelFormat==FIMPixelFormat.Gray8 &&
+                            result.EnhancedImage.GetGrayValue(0,0)==0 &&
+                            result.EnhancedImage.GetGrayValue(3,3)==210 &&
+                            result.EnhancedImage.CopyPixels().SequenceEqual(expected.CopyPixels()) &&
+                            result.Evidence.Items.Single(x=>
+                                x.Kind==CxVisionResultKind.Measurement).IntegerValue==5 &&
+                            result.Trace.Any(x=>x.BlockId==result.EnhanceBlockId &&
+                                x.State=="Completed"),
+                            "四节点真实FIM中值处理/阈值/区域面积/Trace不一致");
+                        Check(File.ReadAllBytes(rawPath).SequenceEqual(raw),
+                            "FIM专业滤波修改了源RAW文件");
+                        var root=session.GetSnapshot();
+                        var content=root.Nodes.Single(n=>n.Kind==MEMNodeKind.Content &&
+                            n.ParentId==result.PageId);
+                        contentId=content.Id;
+                        var wiring=MOLWiringCodec.Get(content);
+                        Check(wiring.Blocks.Count==4 &&
+                            wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==3 &&
+                            wiring.FlowOutputs.ContainsKey("EnhancedPixels") &&
+                            wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea") &&
+                            wiring.Blocks.Any(x=>x.Id==result.EnhanceBlockId &&
+                                x.CapabilityId==CxVisionMedianEnhanceProvider.CapabilityId),
+                            "增强节点未保存成正式MEM/MOL多类型连线与公开产物");
+                        session.SaveAs(projectPath);
+                    }
+                    finally {session.Close(true);}
+                }
+                using(var reopened=MEMEngineering.Open(projectPath))
+                {
+                    var before=reopened.GetSnapshot();
+                    Check(before.Find(contentId)!=null,
+                        "重开后增强Content身份丢失");
+                    var run=CxVisionRawCpuRunner.ExecuteSavedEnhancedMeasuredAsync(
+                        reopened,contentId,provider,rawPath,7,7,1,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(run.AcceptedRegionPixelArea==5 &&
+                        run.EnhancedImage!=null &&
+                        run.Trace.Any(x=>x.BlockId==run.EnhanceBlockId &&
+                            x.State=="Completed") &&
+                        reopened.GetSnapshot().Revision==before.Revision && !reopened.IsDirty,
+                        "已保存四节点工程重绑RAW再执行失败或篡改工程Revision");
+                    Reject<InvalidOperationException>(()=>
+                        CxVisionRawCpuRunner.ExecuteSavedEnhancedMeasuredAsync(
+                            reopened,contentId,provider,rawPath,7,7,2,CancellationToken.None)
+                        .GetAwaiter().GetResult(),
+                        "已保存半径与新Provider版本不一致却仍执行");
+                    Check(reopened.GetSnapshot().Revision==before.Revision,
+                        "错误半径运行污染了正式工程定义");
+                }
+            }
+            finally
+            {
+                if(File.Exists(rawPath))File.Delete(rawPath);
                 if(File.Exists(projectPath))File.Delete(projectPath);
             }
         }
