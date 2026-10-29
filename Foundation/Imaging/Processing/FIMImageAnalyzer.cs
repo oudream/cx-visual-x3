@@ -12,6 +12,11 @@ namespace CxVisual.Foundation.Imaging
             CancellationToken cancellationToken = default(CancellationToken))
         {
             if (image == null) throw new ArgumentNullException("image");
+            // ROI窗值/统计只需要统计量，Gray8/16也复用一次扫描整数频数，
+            // 避免6144x3072大图在UI上走逐像素Welford慢路径。
+            if (image.PixelFormat==FIMPixelFormat.Gray8 ||
+                image.PixelFormat==FIMPixelFormat.Gray16)
+                return AnalyzeInteger(image,256,roi,cancellationToken).Statistics;
             FIMPixelRegion r = roi.HasValue ? roi.Value.ClipTo(image) : FIMPixelRegion.Entire(image);
             var accumulator = new FNURunningStatistics();
             for (int y = r.Top; y <= r.Bottom; y++)
