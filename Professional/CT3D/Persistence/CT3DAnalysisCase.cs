@@ -383,6 +383,37 @@ namespace CxVisual.Professional.CT3D
             return roi.AsReadOnly();
         }
 
+        /// <summary>跨MEM重开继续编辑二维切片ROI：先验证同一资产Frame，
+        /// 从保存的物理四角重建原Voxel切片，不依赖旧WPF或旧FVO对象引用。</summary>
+        public CT3DAnalysisCase RecomputeWithSliceRectangle(string root,
+            FVOPhysicalSliceRectangle rectangle,double minimumOffsetMm,double maximumOffsetMm,
+            CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("只有MeshPlane案例可从切片ROI重新拟合。");
+            if(rectangle==null)throw new ArgumentNullException("rectangle");
+            if(!Source.MatchesSpatialFrame(rectangle.SpatialFrame))
+                throw new InvalidOperationException("切片ROI不是当前资产的物理Frame，拒绝跨源编辑。");
+            cancellation.ThrowIfCancellationRequested();
+            using(var volume=Source.LoadVolume(root,cancellation))
+            {
+                var index=volume.SpatialFrame.PhysicalToVoxel(
+                    rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z);
+                int x=checked((int)Math.Round(index.X));
+                int y=checked((int)Math.Round(index.Y));
+                int z=checked((int)Math.Round(index.Z));
+                if(Math.Abs(index.X-x)>1e-6||Math.Abs(index.Y-y)>1e-6||
+                    Math.Abs(index.Z-z)>1e-6)
+                    throw new InvalidOperationException("ROI四角没有对应有效的原始体素中心。");
+                var current=FVOSliceImageBuilder.RectangleToPhysical(volume,x,y,z,
+                    rectangle.Plane,rectangle.Left,rectangle.Top,rectangle.Right,rectangle.Bottom);
+                return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
+                    mesh=>CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,current,
+                        minimumOffsetMm,maximumOffsetMm,cancellation),
+                    cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
+            }
+        }
+
         /// <summary>替换物理Mesh ROI并生成新Case；来源资产与算法质量约束保持一致。
         /// 后续工程修改由MEM Commit负责，旧ResultId不能复用。</summary>
         public CT3DAnalysisCase RecomputeWithMeshRoi(string root,IReadOnlyList<int> selectedVertexIndices,
