@@ -195,3 +195,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`d83883d`](https://github.com/oudream/cx-visual-x3/commit/d83883d922fb4231fd0aeee9bf2f1f868b181755) 在原`CT3DAnalysisPersistence`提供`OpenAll(engineering,root,token)`，只遍历MEM正式数据Aspect，逐案例调用已存在的`Open`校验Source/Hash/Frame/算法，不生成平行工程索引、第二套ResultStore，任何损坏整体失败。
 - [`bb396f6`](https://github.com/oudream/cx-visual-x3/commit/bb396f6e6aaf7d3e56dbee58bcc2e21ec6781d70) 的真实Headless测试将两次独立Surface/Sphere分析写到同一工程的两个MEMContent，保存、关闭、重开后批量读取，验证两个Feature ResultId独立、共享来源签名，及取消拒绝。
 - **限制**：同工程多个Case不是单个Case内多Feature共享复合配方；当前TestCenter的单案例`OpenProfessionalCaseAsync`仍要求恰好一个CT3D内容，尚未接入工程级多案例交互。Windows固定SHA及真实现场尚待证据，不得宣称A完成。
+
+
+### 10.9 A包：原位专业结果复算及MEM事务（2026-10-29）
+
+- [`44df8aa`](https://github.com/oudream/cx-visual-x3/commit/44df8aa18b94f6310714c5286ce682b09af44dfc)：沿用`CT3DAnalysisPersistence`增加`RecomputeAndCommit`，先核对MEM当前Owner/期望工程Revision、读入并验证旧Source与Artifact，再用旧参数在Headless重新提取Feature、生成新结果身份；最后交由既有`Commit`登记到同一个MEMContent。没有新增工程树或UndoStore。
+- [`14d8586`](https://github.com/oudream/cx-visual-x3/commit/14d85866dfc6da885ae672f7d0cd034f2ef6ba69)及[`4294b32`](https://github.com/oudream/cx-visual-x3/commit/4294b32bf49af36ac18bd32f164a919f5fc745e1)：加入原位结果身份切换、来源签名保持、旧Revision冲突、取消不改工程、MEM Undo/Redo反证；测试结束恢复原分析，保持已存在V04保存重开断言的基线。
+- **验收限制**：提交时CI处于queued，暂无这一SHA的Release x64/ArchitectureSmoke成功证据；本提交仍未实现圆柱、参数编辑与新ROI选择后的完全失效级联、稳定子元素ID、多Case WPF完整工作流以及旧Schema1外部fixture实证，因此仍不应标A包全部完成。
