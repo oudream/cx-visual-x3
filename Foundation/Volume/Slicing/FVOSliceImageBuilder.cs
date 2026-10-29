@@ -4,6 +4,32 @@ using CxVisual.Foundation.Imaging;
 namespace CxVisual.Foundation.Volume
 {
     /// <summary>保存二维切片位图及其在原始体素空间中的尺寸和显示比例。</summary>
+    /// <summary>二维原始显示像素ROI在已标定Frame下的四角物理值；
+    /// 每角对应当前切片实际采样的原始Voxel，不宣称降采样像素可逆。</summary>
+    public sealed class FVOPhysicalSliceRectangle
+    {
+        internal FVOPhysicalSliceRectangle(FVOSlicePlane plane,
+            FVOPhysicalPoint3D topLeft,FVOPhysicalPoint3D topRight,
+            FVOPhysicalPoint3D bottomRight,FVOPhysicalPoint3D bottomLeft,
+            int left,int top,int right,int bottom,FVOVolumeSpatialFrame frame)
+        {
+            Plane=plane;TopLeft=topLeft;TopRight=topRight;
+            BottomRight=bottomRight;BottomLeft=bottomLeft;
+            Left=left;Top=top;Right=right;Bottom=bottom;SpatialFrame=frame;
+        }
+        public FVOSlicePlane Plane {get;private set;}
+        public FVOPhysicalPoint3D TopLeft {get;private set;}
+        public FVOPhysicalPoint3D TopRight {get;private set;}
+        public FVOPhysicalPoint3D BottomRight {get;private set;}
+        public FVOPhysicalPoint3D BottomLeft {get;private set;}
+        public int Left {get;private set;}
+        public int Top {get;private set;}
+        public int Right {get;private set;}
+        public int Bottom {get;private set;}
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+        public string Unit {get{return "mm";}}
+    }
+
     public static class FVOSliceImageBuilder
     {
         private const int MaxSliceImageAxis = 4096;
@@ -156,6 +182,33 @@ namespace CxVisual.Foundation.Volume
             }
 
             WritePseudoBgr(buffer, offset, displayValue);
+        }
+
+        /// <summary>显示图像矩形ROI精确关联当前采样的体素位置并返回毫米四角。
+        /// 方向矩阵保留斜置标定；越界或未标定拒绝而不静默截取。</summary>
+        public static FVOPhysicalSliceRectangle RectangleToPhysical(
+            FVOVolumeData volume,int sliceX,int sliceY,int sliceZ,
+            FVOSlicePlane plane,int left,int top,int right,int bottom)
+        {
+            if(volume==null)throw new ArgumentNullException("volume");
+            if(volume.SpatialFrame==null||!volume.SpatialFrame.IsCalibrated)
+                throw new InvalidOperationException("二维ROI转换为毫米空间要求已标定Frame。");
+            int width=GetImageWidth(volume,plane),height=GetImageHeight(volume,plane);
+            if(left<0||top<0||right<left||bottom<top||right>=width||bottom>=height)
+                throw new ArgumentOutOfRangeException("left","ROI超出当前二维切片采样边界。");
+            FVOPhysicalPoint3D a=PhysicalPixel(volume,sliceX,sliceY,sliceZ,plane,left,top);
+            FVOPhysicalPoint3D b=PhysicalPixel(volume,sliceX,sliceY,sliceZ,plane,right,top);
+            FVOPhysicalPoint3D c=PhysicalPixel(volume,sliceX,sliceY,sliceZ,plane,right,bottom);
+            FVOPhysicalPoint3D d=PhysicalPixel(volume,sliceX,sliceY,sliceZ,plane,left,bottom);
+            return new FVOPhysicalSliceRectangle(plane,a,b,c,d,left,top,right,bottom,
+                volume.SpatialFrame);
+        }
+        private static FVOPhysicalPoint3D PhysicalPixel(
+            FVOVolumeData volume,int sx,int sy,int sz,FVOSlicePlane plane,int ix,int iy)
+        {
+            int x,y,z;
+            ImageToVoxel(volume,sx,sy,sz,plane,ix,iy,out x,out y,out z);
+            return volume.SpatialFrame.VoxelToPhysical(x,y,z);
         }
 
         public static void ImageToVoxel(
