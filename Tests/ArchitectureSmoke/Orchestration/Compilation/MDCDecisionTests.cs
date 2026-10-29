@@ -1258,6 +1258,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(loopPlan.Contents.Single().Semantics.Loops.Any(x=>
                     x.BlockId==loop.Id && x.MaxIterations==7),
                     "dynamic loop remains a single immutable Plan control instead of being expanded");
+                // V2 parent invokes a distinct V2 child by the original Core
+                // ContentReference. The immutable Plan must carry the whole
+                // closure; the loader may use MEM only for IDs and SourceMap.
+                var nestedChild=session.AddPage("NestedChild").RootContent;
+                Guid nestedAction=Guid.Empty;
+                MOCFlowBuilder.Edit(session,nestedChild,flow=>{
+                    nestedAction=flow.Step("vision.gray16");
+                });
+                var nestedParent=session.AddPage("NestedCaller").RootContent;
+                session.Edit("Decision nested reference",edit=>{
+                    edit.Reference(nestedParent,nestedChild,"child");return true;
+                }).RequireValue();
+                MOCFlowBuilder.Edit(session,nestedParent,flow=>{
+                    flow.InvokeContent(nestedChild);
+                });
+                var nestedSnapshot=session.GetSnapshot();
+                var nestedStatic=staticCompiler.Compile(
+                    nestedSnapshot,nestedParent.Id,catalog);
+                Check(nestedStatic.Contents.Count==2,
+                    "Plan must carry the complete referenced V2 Content closure");
+                var nestedDirect=sourceCompiler.Compile(nestedSnapshot,nestedParent.Id,
+                    new ProbeResolver());
+                var nestedBound=binder.Bind(nestedSnapshot,nestedStatic,catalog,
+                    new ProbeResolver());
+                Check(nestedBound.Plan.Id==nestedDirect.Plan.Id &&
+                    nestedBound.SourceMap.Find(nestedAction).Count>0 &&
+                    nestedBound.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)
+                      .SequenceEqual(nestedDirect.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)),
+                    "nested V2 Content must lower from immutable Plan with original SourceMap identities");
+
                 var wiringPlan=staticCompiler.Compile(snapshot,wiringPage.RootContent.Id,catalog);
                 Check(wiringPlan.Contents.Single().Blocks.Single().BlockId==wiredBlock,
                     "V2 wiring BlockId must preserve real source identity");
