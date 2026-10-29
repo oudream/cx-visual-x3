@@ -79,3 +79,8 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 十、静态资源预算与方案优化的第一次组合实现
 
 新增`Mechanism/Orchestration/MDCResourceBudgetPlanner.cs`，资源容量快照由Host提供、需求上下界由专业模型提供，两者均需证据Id。判断可用容量与需求区间为Allowed/Rejected/Unknown；结果可以直接进入已有多目标选择的Hard门禁，阻止资源已证实超限的极速GPU方案被推荐。新增`MDCDecisionTests.ResourcePlanningFeedsSelection`覆盖资源区间、单位、证据缺失、预算冲突与CPU/GPU选择反例；当前是静态软件能力，真实运行资源租约归F19/MRK不变。具体Windows通过状态应在实际Run后记录。
+
+
+## 十一、能力目录内容指纹、版本封印与变更影响集合
+
+新增`MDCStaticCatalogSnapshot`、`MDCDecisionVersionStamp`、`MDCStampedCandidates`、`MDCCatalogImpactAnalyzer`及`FindCandidatesStamped`入口。消费原`MOCCapabilityCatalog`的MPC端口，只读计算稳定SHA-256；现有Source/Runtime/Config Owner不变。旧候选只能在Project Revision、Catalog Fingerprint、PolicyRevision、EnvironmentEpoch全部一致时由使用方显式应用，避免因WPF异步刷新造成过期决策结果变更Core。新增MDC-29～36测试覆盖乱序稳定、类型单位变化、增删改、版本过期和重复Id。完整WPF端事务集成仍待下一工程切片；本批软件编译结果必须引用实际Windows Actions SHA，不得提前标成通过。

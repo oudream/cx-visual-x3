@@ -337,3 +337,32 @@ var resources = new MDCResourceBudgetPlanner().Assess(
 // 结果Unknown：剩余3072MiB落在[2800,3500]需求区间，需验证。
 ~~~
 成功条件：有证明的UpperBound≤剩余容量；确定不可行：LowerBound>剩余容量。实际Runtime资源获取仍由F19/MRK负责。本接口与有界MDCChoiceService组合时作为硬约束输入；SourceMap、Core编辑和发布无需更改。
+
+
+## 14. 静态能力快照、版本封印与增量影响判断（新增源码，CI待本提交验证）
+
+**现阶段API落点**：`Mechanism/Orchestration/MDCStaticCatalogSnapshot.cs`、`MDCDecisionService.FindCandidatesStamped()`。这是现有MOC描述的纯只读投影，仍处于Orchestration过渡程序集；完整Decision物理合并尚未执行。它不是第二ModuleCatalog、Runtime Resolver或持久化Graph。
+
+| 对象/API | 输入/输出 | 作用与边界 |
+|---|---|---|
+| `MDCStaticCatalogSnapshot(catalog)` | MOC离线目录 → 描述只读集合、每能力SHA-256、整体指纹 | 依据静态端口结构求指纹，不查询运行Resolver/权限 |
+| `MDCDecisionVersionStamp` | ProjectId、工程Revision、目录Fingerprint、策略Revision、环境Epoch | 将某次建议绑定到不可变评估上下文 |
+| `FindCandidatesStamped(source,catalog,stamp)` | 当前端口/目录/完整Stamp → StampedCandidates | 目录指纹必须匹配，否则拒绝计算 |
+| `batch.RequireCurrent(actualStamp)` | 当前实际版本 | 在Core Edit事务前由调用方验证；失效抛出稳定错误 |
+| `MDCCatalogImpactAnalyzer.Compare(old,new)` | 两版目录快照 → Added/Removed/Modified ID列表 | 只报告影响候选，不自动修改工程或运行Plan |
+
+**指纹确定性**：采用SHA-256、UTF8长度前缀、按CapabilityId和Port MemberId序列化排序；覆盖ID/名称/分类/整数版本、方向、类型、Kind、多重性、可见性、必填、单位/坐标系/时间基。与运行中的`RuntimeAvailable`无关。所有新增类不包含Delegate、Provider或真实设备句柄。
+
+~~~csharp
+// 已编写源码签名；必须在提交与Windows CI通过后才标记为Automated。
+var catalog = new MOCCapabilityCatalog(new[] { provider });
+var snapshot = new MDCStaticCatalogSnapshot(catalog);
+var stamp = new MDCDecisionVersionStamp(projectId, revision,
+    snapshot.Fingerprint, policyRevision, environmentEpoch);
+var batch = new MDCDecisionService().FindCandidatesStamped(
+    sourcePort, catalog, stamp);
+// 用户确认后、调用Core正式Edit事务前：
+batch.RequireCurrent(currentStamp);
+~~~
+
+**重要限制**：Stamp携带的是调用方实际提供的版本，Decision不凭空感知工程/策略/环境变化；Studio应在真正提交Core编辑事务前重新获取当前Stamp并调用RequireCurrent。此功能不能替代Host在生产发布时复核权限、资源和专业Provider的Effective版次。

@@ -273,3 +273,19 @@ flowchart LR
 | MDC-28 | 重复资源Id → 拒绝，不静默覆盖 |
 
 备注：此时只验证调用方提供的证据、区间与静态数学结果，不代表实际GPU余量、运行资源锁或硬件HIL通过；证据等级须附本批Windows CI。
+
+
+### 版本一致性与能力变更影响专项（新增测试）
+
+| Case | 必须断言 |
+|---|---|
+| MDC-29 | Capability描述反序、Port声明顺序变化，指纹稳定；长度64位十六进制 |
+| MDC-30 | TypeId、单位、必填等静态语义改变，目录指纹变化 |
+| MDC-31 | 增删改能力返回精确Added/Removed/Modified及稳定顺序 |
+| MDC-32 | 完全相同Project/Revision/Catalog/Policy/Environment可复用同版本候选 |
+| MDC-33 | Core Revision变化，旧建议拒绝应用 |
+| MDC-34 | 目录版本、策略或环境Epoch变化，旧建议拒绝应用 |
+| MDC-35 | 提供与当前Catalog不同的Stamp，FindCandidatesStamped拒绝请求 |
+| MDC-36 | 重复CapabilityId拒绝，不创建第二模块目录 |
+
+测试入口：`ArchitectureSmoke.exe --decision`及默认回归。未在Studio端到端实现前，此组只能认定SDK版本/内容一致性，不代表全部Studio画布编辑已防止并发变化。

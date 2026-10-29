@@ -175,3 +175,31 @@ sequenceDiagram
 已经新增的`MDCDecisionService.FindCandidates`支持以一个MPC输出端口过滤MOC只读能力目录：每个候选在同一个结果集中可被标识为`Allowed/Rejected/Unknown`、给出稳定ReasonCode、匹配输入端口；适合后续Studio/ModuleCenter直接消费并展示“不适用原因”。首批只验证已声明的静态端口TypeId/MTU，不运行Provider/设备，不使用软目标评分，不隐式编辑Core。
 
 **仍是待实现**：WPF画布实际调用此结果、自动高亮/候选面板、增量失效/取消、参数Schema联动、自动适配确认、完整Plan与运行Trace映射。不得把SDK端静态筛选源码存在解释为Studio用户体验已完整交付。
+
+
+## 13. 候选版本失效与局部影响集（新增SDK阶段）
+
+`MDCStaticCatalogSnapshot`将已有MOC描述归一成一个可比较、可跨注册顺序稳定计算的只读版本指纹。`MDCDecisionVersionStamp`进一步包含Core工程Revision、策略Revision与环境Epoch。`FindCandidatesStamped`会阻止目录与Stamp不一致的请求；`MDCStampedCandidates.RequireCurrent`用作实际Edit之前的版本门禁，未通过则拒绝旧建议，重新评估。
+
+~~~mermaid
+sequenceDiagram
+    actor U as Studio开发者
+    participant Core as Core工程真源
+    participant MOC as MOC现有能力目录
+    participant D as Decision静态SDK
+    U->>Core: 取得Project/Revision
+    U->>MOC: 查询CapabilitySnapshot/Fingerprint
+    U->>D: FindCandidatesStamped(Port, ContextStamp)
+    D-->>U: Candidates+绑定版本
+    U->>Core: 用户确认前重新读取实际Revision
+    U->>MOC: 读取当前Catalog/Policy/Environment版本
+    U->>D: RequireCurrent(ActualStamp)
+    alt 版本一致
+        U->>Core: 唯一Edit事务（Undo/Redo）
+    else 过期
+        D-->>U: decision.assessment.stale_version
+        U->>D: 重新Assess
+    end
+~~~
+
+**已实现范围**：静态SDK版本封印、目录对比及变更CapabilityId集合；**未实现**：Studio所有画布操作对版本SDK的完整接入、仅局部子图的异步增量重新计算、预先估计专业计算成本。变更影响集不等于真实运行错误根因，也不自动重新发布活动Plan。

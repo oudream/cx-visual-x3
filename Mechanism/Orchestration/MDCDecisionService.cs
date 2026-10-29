@@ -68,6 +68,20 @@ namespace CxVisual.Mechanism.Decision
         public MDCAssessment Assessment { get; private set; }
     }
 
+    /// <summary>A candidate batch is tied to a complete immutable assessment context.</summary>
+    public sealed class MDCStampedCandidates
+    {
+        internal MDCStampedCandidates(MDCDecisionVersionStamp version,
+            IReadOnlyList<MDCCandidate> candidates)
+        {
+            Version = version; Candidates = candidates;
+        }
+        public MDCDecisionVersionStamp Version { get; private set; }
+        public IReadOnlyList<MDCCandidate> Candidates { get; private set; }
+        public void RequireCurrent(MDCDecisionVersionStamp current)
+        { Version.RequireCurrent(current); }
+    }
+
     /// <summary>纯静态端口评估与候选发现，渐进迁移至Mechanism.Decision。
     /// 复用MPC端口和现有MOC目录，既不创建第二Registry，也不调用MRK Resolver。
     /// </summary>
@@ -150,6 +164,23 @@ namespace CxVisual.Mechanism.Decision
                 results.Add(new MDCCandidate(item.Definition.Id, selectedPort, selected));
             }
             return new ReadOnlyCollection<MDCCandidate>(results);
+        }
+
+        /// <summary>
+        /// Bind a purely static recommendation to Core/Catalog/Policy/Environment versions.
+        /// Studio must call RequireCurrent against its actual state immediately before Edit.
+        /// </summary>
+        public MDCStampedCandidates FindCandidatesStamped(MPCPortDescriptor source,
+            CxVisual.Mechanism.Orchestration.MOCCapabilityCatalog catalog,
+            MDCDecisionVersionStamp version, string query = null, int limit = 50)
+        {
+            if (catalog == null) throw new ArgumentNullException("catalog");
+            if (version == null) throw new ArgumentNullException("version");
+            var staticCatalog = new MDCStaticCatalogSnapshot(catalog);
+            if (!StringComparer.Ordinal.Equals(staticCatalog.Fingerprint,
+                version.CatalogFingerprint))
+                throw new InvalidOperationException("decision.catalog.stamp_mismatch");
+            return new MDCStampedCandidates(version, FindCandidates(source,catalog,query,limit));
         }
 
         private static int Rank(MDCVerdict verdict)

@@ -52,6 +52,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             HardConstraintAggregation();
             MultiObjectiveSelection();
             ResourcePlanningFeedsSelection();
+            CatalogFingerprintVersionAndImpact();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -340,6 +341,107 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[]{new MDCResourceRequirement("GPU_MEMORY","MiB",1m,2m,"proof")});}
             catch(ArgumentException){duplicate=true;}
             Check(duplicate,"duplicate Host resource budgets must be rejected");
+        }
+
+        private static void CatalogFingerprintVersionAndImpact()
+        {
+            var a = new MOCCapabilityDescriptor("p.compute", "Professional Compute", "Vision",
+                new[] {
+                    Port("In", MPCPortDirection.Input, "byte[]", "px"),
+                    Port("Out", MPCPortDirection.Output, "long", "px")
+                });
+            var b = new MOCCapabilityDescriptor("p.measure", "Professional Measure", "CT",
+                new[] { Port("Region", MPCPortDirection.Input, "object") });
+            var ordered = new MDCStaticCatalogSnapshot(new[] { a, b });
+            var reversed = new MDCStaticCatalogSnapshot(new[] { b, a });
+            Check(ordered.Fingerprint.Length == 64 &&
+                ordered.Fingerprint == reversed.Fingerprint,
+                "catalog fingerprint must be stable across provider ordering");
+            var samePortsReordered = new MOCCapabilityDescriptor("p.compute",
+                "Professional Compute", "Vision",
+                new[] {
+                    Port("Out", MPCPortDirection.Output, "long", "px"),
+                    Port("In", MPCPortDirection.Input, "byte[]", "px")
+                });
+            var equivalent = new MDCStaticCatalogSnapshot(new[] { b, samePortsReordered });
+            Check(equivalent.Fingerprint == ordered.Fingerprint,
+                "port enumeration order must not modify semantic fingerprint");
+            var changed = new MOCCapabilityDescriptor("p.compute",
+                "Professional Compute", "Vision",
+                new[] {
+                    Port("In", MPCPortDirection.Input, "byte[]", "mm"),
+                    Port("Out", MPCPortDirection.Output, "long", "px")
+                });
+            var updated = new MDCStaticCatalogSnapshot(new[] { changed, b });
+            Check(ordered.Fingerprint != updated.Fingerprint &&
+                !ordered.DescriptorFingerprints["p.compute"].Equals(
+                    updated.DescriptorFingerprints["p.compute"], StringComparison.Ordinal),
+                "unit changes must invalidate capability snapshot");
+            var impact = MDCCatalogImpactAnalyzer.Compare(ordered, updated);
+            Check(impact.Count == 1 && impact[0].CapabilityId == "p.compute" &&
+                impact[0].Kind == MDCCatalogChangeKind.Modified,
+                "incremental impact should identify modified capability only");
+            var added = new MDCStaticCatalogSnapshot(new[] { changed,
+                new MOCCapabilityDescriptor("p.extra", "Extra", "Vision") });
+            var addRemove = MDCCatalogImpactAnalyzer.Compare(updated, added);
+            Check(addRemove.Count == 2 &&
+                addRemove.Any(x => x.CapabilityId == "p.extra" &&
+                    x.Kind == MDCCatalogChangeKind.Added) &&
+                addRemove.Any(x => x.CapabilityId == "p.measure" &&
+                    x.Kind == MDCCatalogChangeKind.Removed),
+                "added and removed capabilities must be distinguished");
+            var guid = Guid.NewGuid();
+            var stamp = new MDCDecisionVersionStamp(guid, 5, ordered.Fingerprint,
+                "policy-v1", "environment-42");
+            stamp.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                ordered.Fingerprint, "policy-v1", "environment-42"));
+            bool stale = false;
+            try { stamp.RequireCurrent(new MDCDecisionVersionStamp(guid, 6,
+                ordered.Fingerprint, "policy-v1", "environment-42")); }
+            catch (InvalidOperationException) { stale = true; }
+            Check(stale, "Core revision changes must invalidate proposals");
+            stale = false;
+            try { stamp.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                updated.Fingerprint, "policy-v1", "environment-42")); }
+            catch (InvalidOperationException) { stale = true; }
+            Check(stale, "catalog version changes must invalidate proposals");
+            stale = false;
+            try { stamp.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                ordered.Fingerprint, "policy-v2", "environment-42")); }
+            catch (InvalidOperationException) { stale = true; }
+            Check(stale, "policy changes must invalidate proposals");
+            stale = false;
+            try { stamp.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                ordered.Fingerprint, "policy-v1", "environment-43")); }
+            catch (InvalidOperationException) { stale = true; }
+            Check(stale, "environment changes must invalidate proposals");
+            bool duplicate = false;
+            try { new MDCStaticCatalogSnapshot(new[] { a, a }); }
+            catch (ArgumentException) { duplicate = true; }
+            Check(duplicate, "duplicate capability identity must not be accepted");
+            var fromCatalog = new MDCStaticCatalogSnapshot(
+                new MOCCapabilityCatalog(new[] { new Provider(a, b) }));
+            Check(fromCatalog.Fingerprint == ordered.Fingerprint,
+                "offline catalog and direct static descriptors must use the same fingerprint");
+            var catalog = new MOCCapabilityCatalog(new[] { new Provider(a, b) });
+            var batch = new MDCDecisionService().FindCandidatesStamped(
+                Port("source", MPCPortDirection.Output, "byte[]", "px"), catalog, stamp);
+            Check(batch.Candidates.Count == 2 && batch.Version.Equals(stamp),
+                "stamped selection must use the same offline capability catalog");
+            batch.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                ordered.Fingerprint, "policy-v1", "environment-42"));
+            bool prevented = false;
+            try { batch.RequireCurrent(new MDCDecisionVersionStamp(guid, 5,
+                ordered.Fingerprint, "policy-v1", "environment-new")); }
+            catch (InvalidOperationException) { prevented = true; }
+            Check(prevented, "stale candidate results must not be submitted to Core edits");
+            prevented = false;
+            try { new MDCDecisionService().FindCandidatesStamped(
+                Port("source", MPCPortDirection.Output, "byte[]", "px"),
+                new MOCCapabilityCatalog(new[] { new Provider(changed, b) }), stamp); }
+            catch (InvalidOperationException) { prevented = true; }
+            Check(prevented, "candidate query must reject catalog snapshot mismatch");
+
         }
 
     }
