@@ -56,6 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SharedHeadlessPreviewApi();
             ProjectBackedMeasuredInspection();
             ProjectBackedMedianEnhancement();
+            ProjectBackedSeparatedNodes();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
         }
@@ -582,6 +583,150 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+
+        /// <summary>
+        /// V2D-12/18/19/21/23：同一MEM/MOC/MRK上，阈值和区域是独立强类型节点；
+        /// 保存重开后重绑RAW，参数漂移明确拒绝且工程定义不变。
+        /// </summary>
+        private static void ProjectBackedSeparatedNodes()
+        {
+            string label="vision-separated-"+Guid.NewGuid().ToString("N");
+            string rawPath=Path.Combine(Path.GetTempPath(),label+".raw");
+            string projectPath=Path.Combine(Path.GetTempPath(),label+".cxproj");
+            byte[] pixels={210,210,0,0,0,210,0,0,0,0,0,0,0,0,250};
+            File.WriteAllBytes(rawPath,pixels);
+            CxVisionInspectionOptions options=Options(CxVisionPixelDepth.Bits8,200);
+            Guid contentId=Guid.Empty;
+            try
+            {
+                var segmentation=new CxVisionBinaryThresholdProvider(options.PixelDepth,200);
+                var regions=new CxVisionMaskRegionsProvider(options,101);
+                Check(segmentation.DescribeCapabilities().Single().Ports.Any(x=>
+                        x.MemberId=="ThresholdMask" && x.Direction==MPCPortDirection.Output &&
+                        x.TypeId==CxVisionBinaryThresholdProvider.MaskTypeId) &&
+                    regions.DescribeCapabilities().Single().Ports.Any(x=>
+                        x.MemberId=="ThresholdMask" && x.Direction==MPCPortDirection.Input &&
+                        x.TypeId==CxVisionBinaryThresholdProvider.MaskTypeId) &&
+                    regions.DescribeCapabilities().Single().Ports.Any(x=>
+                        x.MemberId=="RuleVersion" && x.Required),
+                    "独立Mask/Region正式端口与冻结规则合同不一致");
+                Reject<ArgumentOutOfRangeException>(()=>
+                    new CxVisionBinaryThresholdProvider(CxVisionPixelDepth.Bits8,256),
+                    "Gray8阈值越界必须拒绝");
+                using(var session=MEMEngineering.Create("独立分割区域工程"))
+                {
+                    try
+                    {
+                        var result=CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync(
+                            session,options,101,rawPath,5,3,0,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        var mask=result.ThresholdMask;
+                        Check(result.SegmentBlockId!=Guid.Empty &&
+                            result.InspectBlockId!=Guid.Empty &&
+                            result.MeasureBlockId!=Guid.Empty &&
+                            result.SegmentBlockId!=result.InspectBlockId &&
+                            result.InspectBlockId!=result.MeasureBlockId &&
+                            result.EnhanceBlockId==Guid.Empty &&
+                            mask!=null && mask.PixelFormat==FIMPixelFormat.Gray8 &&
+                            mask.GetGrayValue(0,0)==255 && mask.GetGrayValue(4,2)==255 &&
+                            mask.GetGrayValue(1,1)==0 &&
+                            result.Inspection.ThresholdPixelCount==4 &&
+                            result.Inspection.Regions.Count==1 &&
+                            result.Inspection.Regions[0].PixelArea==3 &&
+                            result.AcceptedRegionPixelArea==3 &&
+                            result.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask)
+                                .Image.GetGrayValue(4,2)==255 &&
+                            result.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                                .IntegerValue==3 &&
+                            result.Trace.Any(x=>x.BlockId==result.SegmentBlockId &&
+                                x.State=="Completed"),
+                            "独立阈值Mask→区域→面积没有得到真实数值和来源");
+                        var boundaries=result.Evidence.WithThresholdMaskContours();
+                        Check(boundaries.Items.Count(x=>x.Kind==CxVisionResultKind.Contour)==2 &&
+                            boundaries.Items.Where(x=>x.Kind==CxVisionResultKind.Contour)
+                                .Sum(x=>x.Contour.SignedAreaPixels)==4,
+                            "独立Mask轮廓必须反映筛选前4像素而非接受区域3像素");
+                        var snapshot=session.GetSnapshot();
+                        var content=snapshot.Nodes.Single(x=>x.Kind==MEMNodeKind.Content &&
+                            x.ParentId==result.PageId);
+                        contentId=content.Id;
+                        var wiring=MOLWiringCodec.Get(content);
+                        Check(wiring.Blocks.Count==4 &&
+                            wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==3 &&
+                            wiring.FlowOutputs.ContainsKey("ThresholdMask") &&
+                            wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea") &&
+                            wiring.Blocks.Any(x=>x.Id==result.SegmentBlockId &&
+                                x.CapabilityId==CxVisionBinaryThresholdProvider.CapabilityId) &&
+                            wiring.Blocks.Any(x=>x.Id==result.InspectBlockId &&
+                                x.CapabilityId==CxVisionMaskRegionsProvider.CapabilityId),
+                            "独立四节点未在MEM/MOL持久保存强类型连接");
+                        session.SaveAs(projectPath);
+                    }
+                    finally {session.Close(true);}
+                }
+                using(var reopened=MEMEngineering.Open(projectPath))
+                {
+                    var before=reopened.GetSnapshot();
+                    var run=CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredAsync(
+                        reopened,contentId,options,101,rawPath,5,3,0,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(run.AcceptedRegionPixelArea==3 &&
+                        run.ThresholdMask.GetGrayValue(4,2)==255 &&
+                        run.PageId!=Guid.Empty &&
+                        reopened.GetSnapshot().Revision==before.Revision && !reopened.IsDirty,
+                        "已保存独立工程无法重绑复跑或篡改工程Revision");
+                    var changed=Options(CxVisionPixelDepth.Bits8,201);
+                    Reject<InvalidOperationException>(()=>
+                        CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredAsync(
+                            reopened,contentId,changed,101,rawPath,5,3,0,CancellationToken.None)
+                            .GetAwaiter().GetResult(),
+                        "修改阈值仍能绕过持久工程参数版本");
+                    var changedArea=Options(CxVisionPixelDepth.Bits8,200);
+                    changedArea.MinDefectArea=4;
+                    Reject<InvalidOperationException>(()=>
+                        CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredAsync(
+                            reopened,contentId,changedArea,101,rawPath,5,3,0,
+                            CancellationToken.None).GetAwaiter().GetResult(),
+                        "修改区域面积范围仍能绕过规则版本");
+                    Check(reopened.GetSnapshot().Revision==before.Revision && !reopened.IsDirty,
+                        "参数拒绝不能修改已保存的工程");
+                }
+                // 五节点，真实FIM中值先清理孤立噪点再进入分割与测量。
+                byte[] large=new byte[49];
+                for(int y=2;y<=4;y++)for(int x=2;x<=4;x++)large[y*7+x]=210;
+                large[0]=250;
+                File.WriteAllBytes(rawPath,large);
+                using(var project=MEMEngineering.Create("独立五节点"))
+                {
+                    try
+                    {
+                        var run=CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync(
+                            project,options,102,rawPath,7,7,1,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Check(run.EnhanceBlockId!=Guid.Empty &&
+                            run.SegmentBlockId!=Guid.Empty &&
+                            run.EnhancedImage!=null &&
+                            run.EnhancedImage.GetGrayValue(0,0)==0 &&
+                            run.ThresholdMask.GetGrayValue(0,0)==0 &&
+                            run.ThresholdMask.GetGrayValue(3,3)==255 &&
+                            run.Inspection.ThresholdPixelCount==5 &&
+                            run.AcceptedRegionPixelArea==5 &&
+                            project.GetSnapshot().Nodes.Any(n=>n.Kind==MEMNodeKind.Content &&
+                                n.ParentId==run.PageId &&
+                                MOLWiringCodec.Get(n).Blocks.Count==5),
+                            "五节点FIM增强→Mask→连通区域→面积真实执行失败");
+                    }
+                    finally {project.Close(true);}
+                }
+                Check(File.ReadAllBytes(rawPath).SequenceEqual(large),
+                    "独立算子不得改变用户RAW文件");
+            }
+            finally
+            {
+                if(File.Exists(rawPath))File.Delete(rawPath);
+                if(File.Exists(projectPath))File.Delete(projectPath);
+            }
+        }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
         private static void Gray16MedianEnhancement()
