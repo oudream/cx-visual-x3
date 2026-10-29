@@ -32,6 +32,7 @@
     <Compile Include="MDCRecommendationService.cs"/>
     <Compile Include="MDCProjectImpactAnalyzer.cs"/>
     <Compile Include="MDCRecoverySafetyAssessor.cs"/>
+    <Compile Include="MDCStaticBuildPreflight.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

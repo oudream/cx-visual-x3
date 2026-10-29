@@ -62,3 +62,7 @@
 ## 06. D06外部副作用安全策略首批切片（软件阶段）
 
 `MDCRecoverySafetyAssessor`纯静态判断专业OperationEffect与实际ACK收据，拒绝非幂等Unknown重试、保留未验证Idempotency/Host权限为Unknown，对无外部副作用或已证明的合格操作给出**策略资格**。ArchitectureSmoke新增MDC-50～55，真实设备动作数为0。完整“策略制定与协调”（设备主备切换、执行窗口、动态恢复、资源重新规划）与专业HIL仍未完成。本批提交/Windows验收状态按实际CI登记，不因存在此类就将D06标记完整。
+
+## 07. P0静态MOLWiring与专业Schema预检的工程切片
+
+新增`Mechanism/Orchestration/MDCStaticBuildPreflight.cs`，不需要MRK Resolver，对既有`MOLWiringDefinition`和`MOCCapabilityCatalog`进行单一Content端口预检并返回可精确定位的RuleId。复用Core原来的草稿/正式Build校验，不另建工程Graph、第二种Compiler或MRK流程执行器。新增MDC-56～60正反测试。此次只是迈向纯Decision Plan的静态前置检查，`MOCBuildService.Build`与`MOCEngineeringCompiler`仍存在对Runtime的依赖，物理融合P0未解除。

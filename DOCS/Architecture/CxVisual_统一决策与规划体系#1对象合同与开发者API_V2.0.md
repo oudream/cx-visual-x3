@@ -391,3 +391,9 @@ if (recommendation.Comparison.Selected != null) {
 ~~~
 
 **版本门禁**包含完整Source Port、Goals、Budget、每个专业资源需求/指标/硬规则及其证据Id，调用方必须在应用前重新计算InputsFingerprint；即使工程Revision不变，资源预留量或测量数据变化也拒绝旧推荐。所有排序只是给定目标及证据下的非支配集/词典序首选，不能声称现场最优。
+
+## 16. MOLWiring与专业Capability纯静态Build预检（已编写源码）
+
+`MDCStaticBuildPreflight.Assess(MOLWiringDefinition, MOCCapabilityCatalog, requireExecutable=true)`是已有Core/MOL与MOC静态描述的无MRK适配。它首先复用MOL自己的`Validate/ValidateExecutable`，然后只核对原BlockId对应的CapabilityId、已声明端口的MemberId/Kind/方向/TypeId/必填、多重性与MTU合同。无描述的专业能力返回Unknown；必需端口缺失、静态类型不一致返回Rejected+BlockId/PortName；只为普通专业能力检查，不创建或序列化MRK Plan，保留Invoke/StateMachine为Core原Owner。
+
+本接口只证明当前MOLWiring与当前静态目录的局部一致性；完整跨Content编译、真实Provider绑定、Runtime资源、执行授权与SourceMap仍需原MOC/MRK/Host进一步验证。编辑草稿可传`requireExecutable=false`，正式Build必须`true`，不允许用预检成功冒充Plan可执行。

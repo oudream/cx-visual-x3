@@ -203,3 +203,7 @@ sequenceDiagram
 ~~~
 
 **已实现范围**：静态SDK版本封印、目录对比及变更CapabilityId集合；**未实现**：Studio所有画布操作对版本SDK的完整接入、仅局部子图的异步增量重新计算、预先估计专业计算成本。变更影响集不等于真实运行错误根因，也不自动重新发布活动Plan。
+
+## 14. 现有MOL工程静态预检的开发者使用节点
+
+在Studio/SDK选择构建当前Content时，先从唯一Core工程真源获取`MOLWiringCodec.Get(snapshot.Find(contentId))`，再由`MDCStaticBuildPreflight`消费原`MOCCapabilityCatalog`。只读返回Fail/Unknown/Allowed与精确BlockId、MemberId；用户确认后仍由唯一Core Edit事务维护节点/Undo。该切片是增量构建前诊断，**不是第二套Flow编译器**，也不能代替已有MOCBuildService与MRK Loader的全程验证。

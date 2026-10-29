@@ -341,3 +341,15 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-55 | 非幂等动作即使“确认未完成”，仍需要专业额外批准 |
 
 此测试只验证决策结果和ReasonCode，不能代替实际PLC、轴运动、人工许可、通信故障注入或HIL。代码未在MRK引擎里发起任何重试，不会改变现有运行策略。
+
+### P0静态MOLWiring构建前预检（新增正反用例）
+
+| Case | 断言 |
+|---|---|
+| MDC-56 | 合法V2草稿的现有CapabilityId/Port TypeId/Direction/Required与静态目录一致 → Allowed |
+| MDC-57 | 同一Port MemberId静态TypeId不符 → Rejected + MDC_PREFLIGHT_PORT_MISMATCH |
+| MDC-58 | 必需输入端口未在MOL定义中声明 → Rejected |
+| MDC-59 | 离线目录没有对应专业Capability → Unknown（非任意隐式注册） |
+| MDC-60 | 若要求Executable而MOL仍是不完整草稿 → 由原Core校验拒绝，不生成MRK Plan |
+
+该结果无任何设备/Provider执行，也不宣称跨子流程/真实权限完整通过。源代码阶段新增`MDCStaticBuildPreflight`，其专项和默认ArchitectureSmoke实际结果以提交SHA的Windows Run为准。

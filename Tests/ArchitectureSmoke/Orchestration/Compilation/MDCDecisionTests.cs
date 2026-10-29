@@ -56,6 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             EndToEndStaticRecommendation();
             ProjectCapabilityImpactUsesCoreSnapshot();
             RetrySafetyRequiresRealAcknowledgment();
+            StaticWiringPreflightWithoutRuntime();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -655,6 +656,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MDCOperationReceipt.ConfirmedNoEffect, true, true);
             Check(unknownEffect.Verdict == MDCVerdict.Unknown,
                 "unknown side effects remain unknown");
+        }
+
+        private static void StaticWiringPreflightWithoutRuntime()
+        {
+            var block = MOLControlBlock.Action("professional.cpu");
+            var port = new MPCPortDescriptor("Pixels", MPCPortDirection.Input, "byte[]",
+                MPCPortKind.Data,MPCPortMultiplicity.One,required:true);
+            var descriptor = new MOCCapabilityDescriptor("professional.cpu",
+                "CPU", "Vision", new[] {port});
+            var catalog = new MOCCapabilityCatalog(new[] { new Provider(descriptor) });
+            Func<MPCPortDescriptor[],MOLWiringDefinition> make = ports =>
+                new MOLWiringDefinition(block.Id,new[]{block},
+                    new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
+                        {block.Id,ports}
+                    },new MOLLink[0]);
+            var preflight = new MDCStaticBuildPreflight();
+            Check(preflight.Assess(make(new MPCPortDescriptor[] {port}),catalog,false).Verdict==MDCVerdict.Allowed,
+                "identical original Core and professional port contracts should be compatible");
+            var typeMismatch = preflight.Assess(make(new MPCPortDescriptor[] {
+                new MPCPortDescriptor("Pixels",MPCPortDirection.Input,"string",
+                    MPCPortKind.Data,MPCPortMultiplicity.One,required:true)}),catalog,false);
+            Check(typeMismatch.Verdict==MDCVerdict.Rejected &&
+                typeMismatch.ReasonCodes.Any(x=>x.StartsWith(
+                    "MDC_PREFLIGHT_PORT_MISMATCH:",StringComparison.Ordinal)),
+                "static preflight must reject type mismatch without invoking MRK");
+            var missing = preflight.Assess(make(new MPCPortDescriptor[0]),catalog,false);
+            Check(missing.Verdict==MDCVerdict.Rejected &&
+                missing.ReasonCodes.Any(x=>x.StartsWith(
+                    "MDC_PREFLIGHT_PORT_NOT_DECLARED:",StringComparison.Ordinal)),
+                "required professional port cannot silently disappear");
+            var offlineMissing = preflight.Assess(make(new MPCPortDescriptor[] {port}),
+                new MOCCapabilityCatalog(new[] { new Provider() }),false);
+            Check(offlineMissing.Verdict==MDCVerdict.Unknown,
+                "missing capability descriptor must remain Unknown");
         }
 
     }
