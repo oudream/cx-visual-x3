@@ -87,3 +87,7 @@
 ## 12. 修复静态来源闭包的Core ContentReference合法性缺口
 
 审计原`MOCEngineeringCompiler`确认：无论V1 Invoke还是V2 `moc.invoke:GUID`，除了目标Content存在，还必须由父Content正式声明`MRIReferenceKind.Content`。因此强化`MDCStaticSourceManifestBuilder`的显式引用验证（不存在Content和存在但缺Core引用分别报错），测试用真实`MEMEngineeringSession.Edit(...Reference(...))`构造合法父子闭包，新增目标存在但没正式引用的负例。修复前的来源闭包自动CI成功不等于此安全语义已得到覆盖；以本修复提交CI为准。
+
+## 13. P0静态源码层的Runtime防回流工作流门禁
+
+Decision Windows CI新增`Verify static Decision source files are Runtime-free`步骤，覆盖已拆出的12个静态目录/判断/规划源文件，禁止静态侧再导入Runtime命名空间或执行器、Resolver、Plan、FlowHandle等正式MRK类型；原Resolver兼容入口独立留在`MOCCapabilityCatalog.Runtime.cs`。这保护的是**当前部分源码边界**，尚不能证明整个Orchestration程序集已移除Runtime引用、27项目融合或全局依赖无环。该工作流本身的成功与否以本提交的Windows Run为准。

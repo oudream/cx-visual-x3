@@ -20,6 +20,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
+      - name: Verify static Decision source files are Runtime-free
+        shell: pwsh
+        run: |
+          $pure = @(
+            'Mechanism/Orchestration/MOCCapabilityCatalog.cs',
+            'Mechanism/Orchestration/MDCDecisionService.cs',
+            'Mechanism/Orchestration/MDCObjectiveSelection.cs',
+            'Mechanism/Orchestration/MDCResourceBudgetPlanner.cs',
+            'Mechanism/Orchestration/MDCStaticCatalogSnapshot.cs',
+            'Mechanism/Orchestration/MDCRecommendationService.cs',
+            'Mechanism/Orchestration/MDCProjectImpactAnalyzer.cs',
+            'Mechanism/Orchestration/MDCRecoverySafetyAssessor.cs',
+            'Mechanism/Orchestration/MDCStaticBuildPreflight.cs',
+            'Mechanism/Orchestration/MDCStaticPathExplorer.cs',
+            'Mechanism/Orchestration/MDCStaticSourceManifest.cs',
+            'Mechanism/Orchestration/MDCLogicTraversal.cs'
+          )
+          foreach ($file in $pure) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing static Decision source: $file"
+            }
+            $source = Get-Content -LiteralPath $file
+            $code = ($source | Where-Object { $_ -notmatch '^\s*(//|\*|/\*)' }) -join "`n"
+            if ($code -match '(?m)^\s*using\s+CxVisual\.Mechanism\.Runtime\.' -or
+                $code -match '\b(IMRKCapabilityResolver|MRKResolvedCapability|MRKExecutionPlan|MRKFlowHandle|MRKExecutionEngine)\b') {
+              throw "Runtime API leaked into static Decision source: $file"
+            }
+          }
+          if (-not (Test-Path 'Mechanism/Orchestration/MOCCapabilityCatalog.Runtime.cs')) {
+            throw 'Missing legacy MRK resolver bridge'
+          }
       - name: Build unified .NET Framework 4.8 x64 solution
         shell: pwsh
         run: |

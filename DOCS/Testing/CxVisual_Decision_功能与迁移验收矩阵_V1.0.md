@@ -401,3 +401,7 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-79 | 目标Content虽然实际存在，但父Content没有`MRIReferenceKind.Content`引用时显式拒绝；绝不误把字符串GUID当授权引用 |
 
 原MOC编译的`moc.invoke.missing_content_ref`及`moc.deep.missing_content_ref`约束是源事实依据，源提取必须与之对齐；环路也须由Core原引用规则或静态遍历保护。此项只测试软件工程定义，不涉及专业设备安全授权。
+
+### P0静态源码禁止回流Runtime的CI门禁（MDC-80）
+
+`.github/workflows/decision-windows.yml`在Windows Build前检查已经过审的Decision静态源文件，包括静态能力目录、目录快照、约束、选择、资源、恢复策略、工程影响、来源清单与路径推演。若重新引入`CxVisual.Mechanism.Runtime.*`命名空间、MRK Resolver、MRK执行计划/引擎/Handle等类型则提前失败；MRK探测兼容适配明确留在`MOCCapabilityCatalog.Runtime.cs`。同时维持整仓.NET48构建、`--decision`及默认ArchitectureSmoke的真实验证。**仅检查受控文件清单**，不等于全局27项目DAG已无环；文件改名/新增时必须更新清单。
