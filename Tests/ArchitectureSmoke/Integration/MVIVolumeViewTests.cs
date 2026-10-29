@@ -260,6 +260,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     FVOSliceImageBuilder.ImageToVoxel(calibrated,3,4,5,FVOSlicePlane.XY,
                         roi.Right,roi.Bottom,out vx,out vy,out vz);
                     FVOPhysicalPoint3D corner=frame.VoxelToPhysical(vx,vy,vz);
+                    var roiThroughMvi=MVIVolumeViewState.CreateCentered(calibrated)
+                        .MapRectangleRoi(FVOSlicePlane.XY,roi.Left,roi.Top,
+                            roi.Right,roi.Bottom,calibrated);
+                    Check(Math.Abs(roiThroughMvi.TopLeft.X-
+                        frame.VoxelToPhysical(0,0,calibrated.OriginalDepth/2).X)<1e-9&&
+                        roiThroughMvi.Unit=="mm",
+                        "MVI当前三刀使用同一个FVO Frame映射物理ROI");
                     Check(Math.Abs(corner.X-roi.BottomRight.X)<1e-9&&
                         Math.Abs(corner.Y-roi.BottomRight.Y)<1e-9,
                         "ROI右下点须对应当前切片实际采样的原始Voxel而非屏幕近似值");
