@@ -10,7 +10,7 @@ describe('display values', () => {
     expect(formatTime(0)).toBe('未上报')
   })
   it('handles Linux and Windows process paths', () => {
-    expect(programName('C:\\apps\\monitor.exe', 3)).toBe('monitor.exe')
-    expect(programName('/opt/app/daemon', 2)).toBe('daemon')
+    expect(programName('C:\\apps\\monitor.exe', '3')).toBe('monitor.exe')
+    expect(programName('/opt/app/daemon', '2')).toBe('daemon')
   })
 })

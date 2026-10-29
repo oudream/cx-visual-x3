@@ -28,6 +28,6 @@ export function fetchPrograms(): Promise<Envelope<Program[]>> {
   return request<Envelope<Program[]>>('/api/v1/programs')
 }
 
-export function fetchProgram(id: number): Promise<Envelope<Program>> {
+export function fetchProgram(id: string): Promise<Envelope<Program>> {
   return request<Envelope<Program>>('/api/v1/programs/' + encodeURIComponent(id))
 }

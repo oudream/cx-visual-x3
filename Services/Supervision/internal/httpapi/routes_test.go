@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,9 @@ func TestQueryRoutes(t *testing.T) {
 	var envelope struct { Data []supervision.Program `json:"data"` }
 	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(w.Body.String(), `"id":"2"`) {
+		t.Fatalf("program ID must remain exact decimal string: %s", w.Body.String())
 	}
 	if len(envelope.Data) != 2 || envelope.Data[0].ID != 2 {
 		t.Fatalf("programs must be sorted snapshots: %+v", envelope.Data)

@@ -9,7 +9,7 @@ import "sort"
 // HeartbeatHealthy is not interpreted as a boolean: old programs use their
 // own integer health codes, and absence of a heartbeat is not a failure.
 type Program struct {
-	ID               int64   `json:"id"`
+	ID               int64   `json:"id,string"`
 	PID              int     `json:"pid"`
 	Path             string  `json:"path"`
 	Running          bool    `json:"running"`

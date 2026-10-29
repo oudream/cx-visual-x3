@@ -1,5 +1,5 @@
 export interface Program {
-  id: number
+  id: string
   pid: number
   path: string
   running: boolean

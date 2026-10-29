@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
-import type { ECharts } from 'echarts'
+import { init, use, type EChartsType } from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 import type { Program } from '../types/supervision'
 import { programName } from '../utils/format'
 
 const props = defineProps<{ items: Program[] }>()
 const element = ref<HTMLDivElement | null>(null)
-let instance: ECharts | undefined
+let instance: EChartsType | undefined
 let observer: ResizeObserver | undefined
 
 function render() {
@@ -24,7 +28,7 @@ function render() {
 }
 onMounted(() => {
   if (!element.value) return
-  instance = echarts.init(element.value, undefined, { renderer: 'canvas' })
+  instance = init(element.value, undefined, { renderer: 'canvas' })
   observer = new ResizeObserver(() => instance?.resize())
   observer.observe(element.value)
   render()

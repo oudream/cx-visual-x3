@@ -15,6 +15,6 @@ export function formatTime(ms: number): string {
   return ms > 0 ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '未上报'
 }
 
-export function programName(path: string, id: number): string {
+export function programName(path: string, id: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || '程序 #' + id
 }

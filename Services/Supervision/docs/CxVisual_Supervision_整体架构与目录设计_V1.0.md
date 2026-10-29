@@ -84,7 +84,7 @@ Services/Supervision/
 | GET | `/programs_status` | 兼容旧结构 `{status:200,params:[...]}` |
 | GET | `/api/v1/health` | HTTP 进程响应、UTC 时间；不是全部程序健康 |
 | GET | `/api/v1/overview` | `data:{total,running,stopped,heartbeatReporting,cpuPercent,memoryRssBytes}`、`generatedAt` |
-| GET | `/api/v1/programs` | 以 ID 升序的 `Program` 快照数组和生成时间 |
+| GET | `/api/v1/programs` | 以 ID 升序的 `Program` 快照数组和生成时间；`id` 使用十进制字符串以免 JavaScript 丢失 int64 精度 |
 | GET | `/api/v1/programs/:id` | 单程序查询，非法 ID=400，不存在=404 |
 
 字段 `*AtMs` 是 Unix 毫秒；`memoryRssBytes` 是字节。`heartbeatReporting` 只表示有心跳记录；CPU 为各程序采样值，合计不等于整机 CPU。查询失败保留原快照但显示“已失联/旧数据”。不提供任何写操作。
