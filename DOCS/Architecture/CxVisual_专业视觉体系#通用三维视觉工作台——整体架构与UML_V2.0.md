@@ -4,12 +4,15 @@
 > **核心原则：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**  
 > **阅读顺序**：§0～2（需求推导/26项能力）→§3～6（Owner、数据、对象、GPU、专业计算）→**附录E（完整目标类职责、协作关系与26项对应）**→**附录F（对象身份、OOP/GoF/AOP、UML及验收合同）**→**附录G（全类唯一性、公共API与工业闭环收敛）**→§7～8（工业操作/接口时序）→§9～14（源码、证据、实施、决议）；附录A/B为专题UML，C为原文存在性索引，D为实施检查表。
 > **状态图例**：【E】现有源码、【R】现有类需调整、【N】候选新增、【P】远期规划、【T】固定提交自动测试、【H】真实GPU/工业样本尚未实证。**E≠T，T≠H**。  
-> **不可突破**：F/M/P和28项目/135子方面Owner、唯一MEM工程真源、CT3D与MPW不形成循环引用、TestCenter只验收、ReferTo/Vision只读，不另建第二套资源/命令/执行/Undo/专业数据体系。  
+> **不可突破**：F/M/P及最新正式Owner（ProjectCatalog当前26项目；135子方面按既有决议核对）、唯一MEM工程真源、CT3D与MPW不形成循环引用、TestCenter只验收、ReferTo/Vision只读，不另建第二套资源/命令/执行/Undo/专业数据体系。  
 > **需求来源更新**：用户2026-10-29提供两张目标截图，直接可读范围为**R11～R64，共54条**；R01～R10与R65～R90共36条仍无原文。截图是需求证据，不是其中提及SDK已安装或功能已实现的证据。DOCS/04本轮定向读取F_Geometry/F_Volume/M_Visual/M_PresentationWpf，发现F06/F07与F12的Mesh候选重叠；DOCS/02～04尚未完成全Sheet交叉裁决，新增Owner仍按ADR处理。
 > **单一维护规则**：本文件是26项能力、架构决定与实施状态的唯一总体维护入口。旧V0.1能力表仅作历史来源；Implementation/Migration/Testing保留事实与测试证据，不另更新竞争性“完成率”表。
 
 
 ---
+
+> **2026-10-29 A包实际代码续进（需固定SHA新CI验收）**：在V04已有RAW/Surface/Mesh/平面/球/MEM上，增加明确物理轴向约束的圆柱拟合与Case、统一半径/直径/平面质量Measurement（含SourceRef、Revision、Frame、算法与参数签名、ROI指纹）、同工程多Case单MEM事务提交/OpenAll、原位复算/ROI和圆柱轴向编辑及Undo/Redo；TestCenter使用同一专业实现进行圆柱显示、保存重开，WPF Smoke添加交替球/圆柱失效测试。状态是【E】已提交及【T】按实际Run更新，**不等于A包整体完成**：工业圆柱侧面ROI剔除端盖、多结果UI交互、旧Schema1固定样本、精度G5仍未完结。具体提交与原始CI见既有实施台账§10.6以后，不以架构文本代替验收。
+> **当前工程基线**：`DOCS/ProjectCatalog.csv`经Decision合并与Lifecycle移除后为26个正式项目；本文件历史含28项目的段落保留其原审查语境，执行时以最新正式清单与Owner裁决为准，不恢复旧工程。用户后续提供R65～R90截图的事实应据原图逐条回填附录C；本次未在可读取源码中取得逐条文字，不虚构需求原文。
 
 > **2026-10-29 V04源码增量**：`CT3DAssetReference/CT3DAnalysisCase/CT3DAnalysisPersistence`已在原CT3D项目实现首个RAW来源/Frame→Mesh/局部平面→MEM Aspect＋外部制品→保存重开/复算闭环；TestCenter消费正式API并恢复MVI/MPW。是局部实装，不提升全部候选类/ADR。实际命令、CI与硬件适用范围只在[既有V02台账第十节](../Implementation/CxVisual_通用三维视觉工作台%23V02原值三角Mesh与拓扑质量闭环_V1.0.md)维护；本机既有GPU Raymarch专项通过不等于新Mesh混合深度或工业量具验收。
 
