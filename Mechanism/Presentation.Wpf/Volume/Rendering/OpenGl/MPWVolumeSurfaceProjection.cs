@@ -56,6 +56,40 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             return new MPWVolumeDisplayMesh(vertices,new List<int>(mesh.TriangleIndices));
         }
 
+        /// <summary>仅预览级三角抽样LOD：按稳定面片步长选取，原始FGE Mesh不改变。
+        /// 可能出现开放边界，不得用于拓扑、表面积、体积或工业计量。</summary>
+        public static MPWVolumeDisplayMesh ProjectMeshPreviewLod(
+            FGETriangleMesh3D mesh,FVOVolumeSpatialFrame frame,
+            int width,int height,int depth,int triangleBudget=50000)
+        {
+            if(mesh==null)throw new ArgumentNullException("mesh");
+            if(triangleBudget<1||triangleBudget>50000)
+                throw new ArgumentOutOfRangeException("triangleBudget");
+            if(mesh.TriangleCount<=triangleBudget)
+                return ProjectMesh(mesh,frame,width,height,depth,triangleBudget);
+            int stride=(mesh.TriangleCount+triangleBudget-1)/triangleBudget;
+            var indices=new List<int>(triangleBudget*3);
+            var vertices=new List<FGEPoint3D>();
+            var remap=new Dictionary<int,int>();
+            for(int face=0;face<mesh.TriangleCount;face+=stride)
+            {
+                for(int corner=0;corner<3;corner++)
+                {
+                    int oldIndex=mesh.TriangleIndices[face*3+corner];
+                    int newIndex;
+                    if(!remap.TryGetValue(oldIndex,out newIndex))
+                    {
+                        newIndex=vertices.Count;
+                        remap.Add(oldIndex,newIndex);
+                        vertices.Add(mesh.Vertices[oldIndex]);
+                    }
+                    indices.Add(newIndex);
+                }
+            }
+            return ProjectMesh(new FGETriangleMesh3D(vertices,indices),
+                frame,width,height,depth,triangleBudget);
+        }
+
         public static ReadOnlyCollection<Vector3> Project(
             IReadOnlyList<FVOPhysicalPoint3D> physicalPoints,FVOVolumeSpatialFrame frame,
             int width,int height,int depth,int maxPreviewPoints=12000)
