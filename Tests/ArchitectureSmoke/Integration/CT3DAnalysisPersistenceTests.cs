@@ -129,6 +129,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Math.Abs(recomputed.Plane.PointMm.Z-restored.Plane.PointMm.Z)<1e-10 &&
                     recomputed.Mesh.Mesh.TriangleIndices.SequenceEqual(restored.Mesh.Mesh.TriangleIndices),
                     "复算形成新结果身份且几何量值一致");
+                var editedRoi=restored.RecomputeWithMeshRoi(folder,
+                    restored.SelectedVertexIndices.Reverse().ToArray(),CancellationToken.None);
+                Check(editedRoi.Plane.ResultId!=restored.Plane.ResultId&&
+                    editedRoi.Source.Signature==restored.Source.Signature&&
+                    editedRoi.RoiSignature!=restored.RoiSignature&&
+                    editedRoi.ParameterSignature!=restored.ParameterSignature,
+                    "ROI编辑生成新Feature及新配方指纹，旧测量不可冒充当前结果");
+                Reject<InvalidOperationException>(()=>restored.RecomputeWithCylinderAxis(
+                    folder,new FVOPhysicalPoint3D(0,0,1),CancellationToken.None));
                 Reject<OperationCanceledException>(()=>restored.Recompute(folder,new CancellationToken(true)));
                 bytes[0]=1;File.WriteAllBytes(raw,bytes);
                 Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
@@ -282,6 +291,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Math.Abs(restored.Cylinder.RadiusMm-caseValue.Cylinder.RadiusMm)<1e-10&&
                         restored.GetFeatureMeasurements().All(m=>m.SourceSignature==source.Signature),
                         "MEM重开圆柱保留Feature、Surface、来源签名及毫米量值");
+                    var changedAxis=restored.RecomputeWithCylinderAxis(folder,
+                        new FVOPhysicalPoint3D(0,0,-1),CancellationToken.None);
+                    Check(changedAxis.Cylinder.ResultId!=restored.Cylinder.ResultId&&
+                        changedAxis.ParameterSignature!=restored.ParameterSignature&&
+                        Math.Abs(changedAxis.Cylinder.RadiusMm-restored.Cylinder.RadiusMm)<1e-9,
+                        "修改圆柱轴向约束形成新配方和独立测量身份");
                     var recomputed=restored.Recompute(folder,CancellationToken.None);
                     Check(recomputed.Cylinder.ResultId!=restored.Cylinder.ResultId&&
                         Math.Abs(recomputed.Cylinder.DiameterMm-restored.Cylinder.DiameterMm)<1e-10,
