@@ -69,6 +69,96 @@ namespace CxVisual.Professional.CT3D
         public string FitMethod {get{return "centered-algebraic-sphere-SVD";}}
     }
 
+    /// <summary>已知物理轴向的圆柱侧壁拟合；轴方向是显式工装/ROI约束，不推断未知轴。</summary>
+    public sealed class CT3DCylinderFitResult
+    {
+        internal CT3DCylinderFitResult(FVOPhysicalPoint3D axisPoint,FVOPhysicalPoint3D axisDirection,
+            double radius,double rms,double maxResidual,double condition,int count,
+            CT3DSurfaceSamples source,double limit,Guid? resultId=null)
+        {
+            ResultId=resultId??Guid.NewGuid();AxisPoint=axisPoint;AxisDirection=axisDirection;
+            RadiusMm=radius;RmsResidualMm=rms;MaxAbsoluteResidualMm=maxResidual;
+            ConditionNumber=condition;SampleCount=count;SourceSurfaceResultId=source.ResultId;
+            SourceRef=source.SourceRef;SourceRevision=source.SourceRevision;
+            SpatialFrame=source.SpatialFrame;MaximumConditionNumber=limit;
+        }
+        public Guid ResultId {get;private set;}
+        public Guid SourceSurfaceResultId {get;private set;}
+        public string SourceRef {get;private set;}
+        public long SourceRevision {get;private set;}
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+        public FVOPhysicalPoint3D AxisPoint {get;private set;}
+        public FVOPhysicalPoint3D AxisDirection {get;private set;}
+        public double RadiusMm {get;private set;}
+        public double DiameterMm {get{return RadiusMm*2;}}
+        public double RmsResidualMm {get;private set;}
+        public double MaxAbsoluteResidualMm {get;private set;}
+        public double ConditionNumber {get;private set;}
+        public double MaximumConditionNumber {get;private set;}
+        public int SampleCount {get;private set;}
+        public string Unit {get{return "mm";}}
+        public string FitMethod {get{return "constrained-axis-circle-SVD";}}
+        public bool HasEvaluatedUncertainty {get{return false;}}
+    }
+
+    /// <summary>固定轴向侧壁圆柱拟合；调用方必须排除端盖，避免其污染半径。</summary>
+    public static class CT3DSurfaceCylinderAnalysis
+    {
+        public static CT3DCylinderFitResult FitCylinder(CT3DSurfaceSamples surface,
+            FVOPhysicalPoint3D axisDirection,double maxConditionNumber=10000000,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(surface==null)throw new ArgumentNullException("surface");
+            if(!surface.SpatialFrame.IsCalibrated||surface.TouchesVolumeBoundary)
+                throw new InvalidOperationException("圆柱拟合要求已标定且未截断的侧壁采样。");
+            if(surface.Count<6)throw new ArgumentException("圆柱侧壁采样不足。","surface");
+            cancellation.ThrowIfCancellationRequested();
+            double ax=axisDirection.X,ay=axisDirection.Y,az=axisDirection.Z;
+            double length=Math.Sqrt(ax*ax+ay*ay+az*az);
+            if(length<=1e-12||double.IsNaN(length)||double.IsInfinity(length))
+                throw new ArgumentOutOfRangeException("axisDirection");
+            ax/=length;ay/=length;az/=length;
+            double tx=Math.Abs(ax)<0.8?1:0,ty=Math.Abs(ax)<0.8?0:1;
+            double projection=tx*ax+ty*ay;
+            tx-=projection*ax;ty-=projection*ay;
+            double tlen=Math.Sqrt(tx*tx+ty*ty);
+            tx/=tlen;ty/=tlen;
+            double tz=0,ux=ay*tz-az*ty,uy=az*tx-ax*tz,uz=ax*ty-ay*tx;
+            int n=surface.Count;
+            double ox=0,oy=0,oz=0;
+            foreach(FVOPhysicalPoint3D p in surface.Points){ox+=p.X;oy+=p.Y;oz+=p.Z;}
+            ox/=n;oy/=n;oz/=n;
+            double[,] design=new double[n,3];double[] values=new double[n];
+            for(int i=0;i<n;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                FVOPhysicalPoint3D p=surface.Points[i];
+                double dx=p.X-ox,dy=p.Y-oy,dz=p.Z-oz;
+                double x=dx*tx+dy*ty+dz*tz,y=dx*ux+dy*uy+dz*uz;
+                design[i,0]=2*x;design[i,1]=2*y;design[i,2]=1;
+                values[i]=x*x+y*y;
+            }
+            FNULeastSquaresResult fit=FNULinearAlgebra.LeastSquares(design,values,maxConditionNumber);
+            double cx=fit.Coefficients[0],cy=fit.Coefficients[1];
+            double rr=fit.Coefficients[2]+cx*cx+cy*cy;
+            if(!(rr>0)||double.IsInfinity(rr)||double.IsNaN(rr))
+                throw new InvalidOperationException("圆柱半径退化。");
+            double radius=Math.Sqrt(rr),sum=0,max=0;
+            for(int i=0;i<n;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                double x=design[i,0]*0.5-cx,y=design[i,1]*0.5-cy;
+                double residual=Math.Sqrt(x*x+y*y)-radius;
+                sum+=residual*residual;max=Math.Max(max,Math.Abs(residual));
+            }
+            cancellation.ThrowIfCancellationRequested();
+            return new CT3DCylinderFitResult(
+                new FVOPhysicalPoint3D(ox+cx*tx+cy*ux,oy+cx*ty+cy*uy,oz+cx*tz+cy*uz),
+                new FVOPhysicalPoint3D(ax,ay,az),radius,Math.Sqrt(sum/n),max,
+                fit.ConditionNumber,n,surface,maxConditionNumber);
+        }
+    }
+
     /// <summary>
     /// CT3D首个Headless专业纵切片：原始RAW→阈值边界点→数值球拟合。
     /// 不访问R8预览、WPF、OpenGL或私有Runtime，不自行实现第二套线性代数。
