@@ -296,3 +296,7 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 后续源码复查发现`SelectedSliceRectangle`通知会进入TestCenter的通用`RefreshSlices`，重建三张FIM图像且可能复位缩放；旧平面失效又只挂在MPW鼠标通知，直接MVI调用会漏掉。现将失效统一到当前MVI状态的ROI属性通知，选区只更新轮廓和专业结果，不重切片。MPW物理选区事件仍向外可用，但TestCenter不再重复消费同一事件。TCT与MPW收到后台模型通知时切回Dispatcher，并核对发送者仍是当前绑定，拒绝晚到旧状态通知。
 
 真实WPF新增反例：框选前后三张FIM Original对象保持相同、当前XY缩放保持不变；直接`ViewState.SelectRectangleRoi`也撤销旧Plane并禁用旧结果保存；后台`ClearRectangleRoi`在Dispatcher处理后同时清轮廓和Measurement。整条已有ROI拟合/保存竞争/多Case回归退出0；本机Release/Debug均0错误，日志`roi-no-reslice-wpf.log`、`roi-notify-release.log`和`roi-notify-debug.log`。不以此声明MVI模型所有并发写入或工业大数据均已认证；该通知收敛的新SHA CI另验。
+
+**通知收敛固定CI**：`8b5db7286c270342fb9625de7eac3df6aea023df`的[CT3D B 40926224521](https://github.com/oudream/cx-visual-x3/actions/runs/40926224521)及[Imaging 40926224525](https://github.com/oudream/cx-visual-x3/actions/runs/40926224525)已SUCCESS，job `123632330935`/`123632330990`确认完成；Studio `40926224628`、Graphics `40926224572`、Engineering `40926224627`、Command `40926224632`和Config公共底座 `40926224567`亦成功。查询时TestCenter `40926224619`与Config L1 `40926224529`仍运行，不将7成功写成全部9项通过。
+
+下一包保存交互配方必须保留原始Voxel/物理边界和Frame/来源版本，不能只序列化当前显示像素矩形。当前`CT3DAssetReference.LoadVolume`以64轴预览加载，`FVOSliceImageBuilder.GetImageWidthHeight`又考虑各向异性物理纵横比；工程重开后的显示像素网格可能不同。需以不同预览尺寸和标定方向验证同源有效顶点ROI/量值复算一致，显示投影不能回写并降低专业几何精度；旧Schema无配方时不得伪造可编辑原矩形。
