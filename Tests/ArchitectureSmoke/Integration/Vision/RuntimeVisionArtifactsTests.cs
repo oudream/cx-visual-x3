@@ -361,6 +361,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         !old.AcceptedRegionPixelArea.HasValue &&
                         !old.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Measurement),
                         "旧MOC两节点调用被强制增加测量节点");
+                    legacy.Close(true);
                 }
             }
             finally
