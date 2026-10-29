@@ -133,6 +133,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Object.ReferenceEquals(analysis.Sphere.SpatialFrame,source.SpatialFrame)&&
                 !analysis.HasEvaluatedMeasurementUncertainty,
                 "Float32原值Surface→球特征具有独立身份、毫米Frame与质量证据");
+            var measurements=analysis.GetFeatureMeasurements();
+            Check(measurements.Count==2&&measurements[0].Kind=="sphere.radius"&&
+                measurements[1].Kind=="sphere.diameter"&&
+                Math.Abs(measurements[1].ValueMm-2*measurements[0].ValueMm)<1e-12&&
+                measurements.All(m=>m.FeatureResultId==analysis.Sphere.ResultId&&
+                    m.SourceSignature==source.Signature&&m.SourceRevision==source.Revision&&
+                    !m.HasEvaluatedUncertainty),
+                "球特征测量采用毫米原值、共享Feature和完整来源签名，不冒充不确定度验收");
             string path=Path.Combine(folder,"sphere.cxproj");MRIObjectAddress address;
             using(var engineering=MEMEngineering.Create("Surface Sphere"))
             {
@@ -150,6 +158,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     restored.Sphere.SourceSurfaceResultId==restored.Surface.ResultId&&
                     Math.Abs(restored.Sphere.RmsResidualMm-analysis.Sphere.RmsResidualMm)<1e-10,
                     "Surface/球重开保留采样参数、点集、结果依赖、半径与残差");
+                var reloadedMeasurements=restored.GetFeatureMeasurements();
+                Check(reloadedMeasurements.Count==2&&
+                    reloadedMeasurements[1].FeatureResultId==restored.Sphere.ResultId&&
+                    Math.Abs(reloadedMeasurements[1].ValueMm-measurements[1].ValueMm)<1e-10&&
+                    reloadedMeasurements[1].SourceSignature==source.Signature,
+                    "MEM保存重开后从原球Feature恢复测量量值及身份");
                 var recomputed=restored.Recompute(folder,CancellationToken.None);
                 Check(recomputed.Surface.ResultId!=restored.Surface.ResultId&&recomputed.Sphere.ResultId!=restored.Sphere.ResultId&&
                     recomputed.Source.Signature==restored.Source.Signature&&
