@@ -30,7 +30,7 @@ func logProgramHeartbeat(ProgramId int64, pid int) {
 	record := ProgramEventRecord{
 		ProgramId: ProgramId,
 		PId:       pid,
-		Event:     program.EventLogin,
+		Event:     program.EventHeartbeat,
 		Time:      utilities.TimeGetCurrentMsepoch(),
 		Msg:       "",
 	}

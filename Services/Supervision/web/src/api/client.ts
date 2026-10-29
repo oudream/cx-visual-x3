@@ -1,4 +1,4 @@
-import type { Envelope, Overview, Program } from '../types/supervision'
+import type { Envelope, EventsEnvelope, Overview, Program } from '../types/supervision'
 
 // Same-origin in production; Vite proxies /api to the local Go Monitor in dev.
 // An AbortSignal guarantees that a disconnected Monitor does not hang the UI.
@@ -30,4 +30,11 @@ export function fetchPrograms(): Promise<Envelope<Program[]>> {
 
 export function fetchProgram(id: string): Promise<Envelope<Program>> {
   return request<Envelope<Program>>('/api/v1/programs/' + encodeURIComponent(id))
+}
+
+export function fetchEvents(limit = 30): Promise<EventsEnvelope> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return Promise.reject(new Error('事件查询数量必须在 1～100 之间'))
+  }
+  return request<EventsEnvelope>('/api/v1/events?limit=' + limit)
 }

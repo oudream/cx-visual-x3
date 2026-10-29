@@ -1,51 +1,51 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
+import { useThemeStore } from '../stores/theme'
 import CpuChart from '../components/CpuChart.vue'
 import { formatBytes, programName } from '../utils/format'
 
-const store = useMonitorStore()
-const { overview, programs } = storeToRefs(store)
+const monitor = useMonitorStore()
+const theme = useThemeStore()
+const { overview, programs } = storeToRefs(monitor)
 </script>
 
 <template>
   <div class="stat-grid">
-    <div class="metric-card"><div class="metric-label">程序总数</div><div class="metric-value">{{ overview?.total ?? '—' }}</div><div class="metric-note">当前状态快照</div></div>
-    <div class="metric-card"><div class="metric-label">运行中</div><div class="metric-value success">{{ overview?.running ?? '—' }}</div><div class="metric-note">守护状态报告</div></div>
-    <div class="metric-card"><div class="metric-label">未运行</div><div class="metric-value">{{ overview?.stopped ?? '—' }}</div><div class="metric-note">不等于业务故障</div></div>
-    <div class="metric-card"><div class="metric-label">已报告心跳</div><div class="metric-value">{{ overview?.heartbeatReporting ?? '—' }}</div><div class="metric-note">只表示存在心跳记录</div></div>
+    <div class="metric-card"><div class="metric-label">程序总数</div><div class="metric-value">{{ overview?.total ?? '—' }}</div><div class="metric-note">Monitor 当前快照</div></div>
+    <div class="metric-card"><div class="metric-label">运行中</div><div class="metric-value success">{{ overview?.running ?? '—' }}</div><div class="metric-note">进程运行，不代表业务就绪</div></div>
+    <div class="metric-card"><div class="metric-label">未运行</div><div class="metric-value">{{ overview?.stopped ?? '—' }}</div><div class="metric-note">需要结合守护策略判断</div></div>
+    <div class="metric-card"><div class="metric-label">监控进程 RSS</div><div class="metric-value smaller">{{ overview ? formatBytes(overview.memoryRssBytes) : '—' }}</div><div class="metric-note">程序内存统计合计</div></div>
   </div>
   <div class="content-grid">
     <section class="panel">
-      <div class="panel-heading"><div><h2>进程 CPU 使用率</h2><p>最新快照 · 最多显示 8 个程序</p></div></div>
-      <CpuChart :items="programs" />
+      <div class="panel-heading">
+        <div><h2>程序运行状态</h2><p>真实快照 · 最近五个程序</p></div>
+        <RouterLink to="/programs" class="subtle-link">查看全部</RouterLink>
+      </div>
+      <el-table :data="programs.slice(0, 5)" class="cx-table" empty-text="尚无程序记录">
+        <el-table-column label="程序" min-width="165">
+          <template #default="{ row }">{{ programName(row.path, row.id) }}</template>
+        </el-table-column>
+        <el-table-column prop="pid" label="PID" width="90" />
+        <el-table-column label="状态" width="105">
+          <template #default="{ row }"><el-tag :type="row.running ? 'success' : 'info'" effect="plain">{{ row.running ? '运行' : '停止' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="CPU" width="95">
+          <template #default="{ row }">{{ row.cpuPercent.toFixed(1) }}%</template>
+        </el-table-column>
+        <el-table-column label="内存" width="105">
+          <template #default="{ row }">{{ formatBytes(row.memoryRssBytes) }}</template>
+        </el-table-column>
+      </el-table>
     </section>
     <section class="panel">
-      <div class="panel-heading"><div><h2>资源概览</h2><p>当前受监控程序的统计值</p></div></div>
-      <div class="resource-value">{{ overview ? overview.cpuPercent.toFixed(1) + '%' : '—' }}<small>CPU 使用率合计</small></div>
-      <div class="resource-value">{{ overview ? formatBytes(overview.memoryRssBytes) : '—' }}<small>内存 RSS 合计</small></div>
-      <div class="note">CPU 数值为各程序当前采样的合计，不等于整机 CPU 使用率。</div>
+      <div class="panel-heading"><div><h2>CPU 使用率</h2><p>程序当前采样 · 最多 8 项</p></div></div>
+      <CpuChart :items="programs" :theme="theme.mode" />
+      <p class="muted chart-caption">按程序使用率排序；非整机 CPU 历史趋势。</p>
     </section>
   </div>
-  <section class="panel recent">
-    <div class="panel-heading">
-      <div><h2>程序实时状态</h2><p>来源：Monitor 程序快照</p></div>
-      <RouterLink class="subtle-link" to="/programs">查看全部程序</RouterLink>
-    </div>
-    <el-table :data="programs.slice(0, 6)" class="cx-table" empty-text="暂无程序数据">
-      <el-table-column label="程序" min-width="180">
-        <template #default="{ row }">{{ programName(row.path, row.id) }}</template>
-      </el-table-column>
-      <el-table-column prop="pid" label="PID" width="95" />
-      <el-table-column label="状态" width="112">
-        <template #default="{ row }"><el-tag :type="row.running ? 'success' : 'info'">{{ row.running ? '运行中' : '未运行' }}</el-tag></template>
-      </el-table-column>
-      <el-table-column label="CPU" width="110">
-        <template #default="{ row }">{{ row.cpuPercent.toFixed(1) }}%</template>
-      </el-table-column>
-      <el-table-column label="内存" width="110">
-        <template #default="{ row }">{{ formatBytes(row.memoryRssBytes) }}</template>
-      </el-table-column>
-    </el-table>
-  </section>
+  <div class="dashboard-actions">
+    <RouterLink to="/events" class="subtle-link">查看原始事件记录 →</RouterLink>
+  </div>
 </template>

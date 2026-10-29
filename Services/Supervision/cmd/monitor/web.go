@@ -12,5 +12,5 @@ import (
 // Debug/pprof is intentionally not exposed from production Monitor.
 func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	e.GET("/programs_status", getProgramStatusList)
-	httpapi.Register(e, apiProgramSnapshot)
+	httpapi.Register(e, apiProgramSnapshot, apiEventHistory)
 }

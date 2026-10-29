@@ -18,8 +18,11 @@ type SnapshotProvider func() []supervision.Program
 
 // Register installs the V1 read-only routes on an existing Gin engine.
 // It intentionally does not register any start/stop/restart endpoint.
-func Register(engine *gin.Engine, provider SnapshotProvider) {
+func Register(engine *gin.Engine, provider SnapshotProvider, eventProviders ...EventProvider) {
 	api := engine.Group("/api/v1", security.ReadOnlyHeaders())
+	if len(eventProviders) > 0 && eventProviders[0] != nil {
+		registerEvents(api, eventProviders[0])
+	}
 	api.GET("/health", func(c *gin.Context) {
 		// Indicates the Monitor HTTP process is responsive, not that every
 		// managed program is healthy.

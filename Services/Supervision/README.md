@@ -63,3 +63,11 @@ npm run dev
 开发期前端通过 Vite 代理 Monitor 的 `/api`；部署时复制 `web/dist/` **内的文件**到 Monitor 工作目录的 `assets/comm/`，原 `/index.html` 跳转兼容。详见 [deploy/README.md](deploy/README.md)。`npm` 不参与 Go 进程的运行。
 
 注意：V1 无用户登录/操作授权，**仅用于受控可信网络中的只读监控**。UI 显示真实查询状态；不能把 HTTP 连通或历史心跳看作业务健康。
+
+## 十二大功能域及本期 P0 实现
+
+[《12 大功能域与实施验收矩阵 V1.0》](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 统一记录完整目标、唯一 Owner、现有状态和验收边界。
+
+当前只读接口新增 `GET /api/v1/events?limit=30`，直接读取旧事件记录文件，单次读取末尾最多 2 MiB，范围 1～100；**暂仅允许来自回环地址的请求**。新增 H5「事件记录」、程序详情查看、浅色桌面风格/科技蓝深色风格切换。原 `/programs_status` 和 Monitor/Daemon 行为保留。
+
+远程日志读取、身份登录、权限、操作审计、启停/重启、告警确认、Runtime/专业状态接入仍未完成；禁止将双主题界面及查询能力称作整体工业验收完成。

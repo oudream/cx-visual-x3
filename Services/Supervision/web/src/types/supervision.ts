@@ -27,3 +27,17 @@ export interface Envelope<T> {
   data: T
   generatedAt: string
 }
+
+export interface ProgramEvent {
+  programId: string
+  pId: number
+  event: number
+  time: number
+  msg: string
+}
+
+export interface EventsEnvelope {
+  data: ProgramEvent[]
+  scope: 'local-only'
+  generatedAt: string
+}
