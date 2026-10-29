@@ -1843,6 +1843,46 @@ namespace CxVisual.TestCenter.UI
         }
 
         /// <summary>
+        /// 导出与当前MVI原图严格对应的已提交PVC Run结果。
+        /// CSV包含Run/Source/Region/Contour/Measurement元数据，
+        /// 不包含原始二进制Image/Mask；后者仍由FIM无损RAW导出负责。
+        /// </summary>
+        public void ExportCpuRunCsvFile(string path,bool overwrite=false)
+        {
+            CxVisionRunSummary run=_cpuEvidence;
+            if(run==null || _cpuSourceImage==null ||
+               !Object.ReferenceEquals(_cpuSourceImage,_viewer.Session.Original) ||
+               !string.Equals(run.SourceId,_cpuSourceId,StringComparison.Ordinal) ||
+               run.Width!=_cpuSourceImage.Width || run.Height!=_cpuSourceImage.Height)
+                throw new InvalidOperationException("当前没有匹配原图的有效CPU Run");
+            CxVisionRunCsvExporter.SaveFile(path,run,overwrite);
+        }
+
+        private void ExportCpuRunCsvWithDialog()
+        {
+            if(_cpuEvidence==null)
+            {
+                Show("请先运行专业CPU检测，再导出本Run的结构化结果");
+                return;
+            }
+            var dialog=new SaveFileDialog {
+                Filter="本次Vision Run结构化CSV|*.csv",DefaultExt=".csv",
+                Title="导出当前Run的区域、轮廓、测量和版本信息",
+                OverwritePrompt=true
+            };
+            if(dialog.ShowDialog()!=true)return;
+            try
+            {
+                ExportCpuRunCsvFile(dialog.FileName,overwrite:true);
+                Show("已导出当前Vision Run CSV："+dialog.FileName+
+                    "；Run="+_cpuEvidence.RunId.ToString("N")+
+                    "；Source="+_cpuEvidence.SourceId+
+                    "。Image/Mask像素应另用无损RAW输出。");
+            }
+            catch(Exception error){Show("Vision Run CSV导出失败："+error.Message);}
+        }
+
+        /// <summary>
         /// 嵌入式开发者API：导出当前MVI活动图像的原始FIM像素，
         /// 不包含窗宽窗位、视口图层或标注；默认紧排小端与禁止覆盖。
         /// </summary>
