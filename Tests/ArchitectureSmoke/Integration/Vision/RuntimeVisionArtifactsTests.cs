@@ -366,6 +366,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             CxVisionAcceptedRegionMeasureProvider.CapabilityId) &&
                         wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==2,
                         "Save/Open丢失测量端口连接或能力身份");
+
+                    // The saved definition can run again after explicit RAW/Provider
+                    // rebinding; it must not add a second page or mutate Revision.
+                    int savedRevision=saved.Revision;
+                    var rebinding=CxVisionRawCpuRunner.ExecuteSavedMeasuredAsync(
+                        reopened,content.Id,provider,rawPath,5,3,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(rebinding.PageId==content.ParentId &&
+                        rebinding.InspectBlockId!=Guid.Empty &&
+                        rebinding.MeasureBlockId!=Guid.Empty &&
+                        rebinding.AcceptedRegionPixelArea==3 &&
+                        rebinding.Evidence.Items.Single(x=>
+                            x.Kind==CxVisionResultKind.Measurement).IntegerValue==3 &&
+                        rebinding.Trace.Any(x=>x.BlockId==rebinding.MeasureBlockId &&
+                            x.State=="Completed") &&
+                        reopened.GetSnapshot().Revision==savedRevision && !reopened.IsDirty,
+                        "重新打开的MEM工程未能无编辑重绑RAW后执行正式MOC测量");
+                    Reject<InvalidOperationException>(()=>
+                        CxVisionRawCpuRunner.ExecuteSavedMeasuredAsync(
+                            reopened,content.Id,provider,rawPath,6,3,CancellationToken.None)
+                        .GetAwaiter().GetResult(),
+                        "重绑输入尺寸与已保存的工程参数冲突必须拒绝");
+                    Check(reopened.GetSnapshot().Revision==savedRevision,
+                        "保存工程拒绝不匹配RAW后不可偷偷更改定义");
                 }
                 using(var legacy=MEMEngineering.Create("保留两步旧调用"))
                 {
