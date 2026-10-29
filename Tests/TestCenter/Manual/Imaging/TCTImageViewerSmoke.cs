@@ -315,8 +315,11 @@ namespace CxVisual.TestCenter.UI
                 FrameworkElement viewport=frame.Viewer.FindName("ViewportRoot") as FrameworkElement;
                 MatrixTransform fitMatrix=frame.Viewer.FindName("ImageTransform") as MatrixTransform;
                 if(viewport==null || fitMatrix==null ||
-                    viewport.ActualWidth<=0 || viewport.ActualHeight<=0)
-                    throw new InvalidOperationException("大图实际WPF视口未布置");
+                    viewport.ActualWidth<=0 || viewport.ActualHeight<=0 ||
+                    viewport.ActualWidth>frame.Viewer.ActualWidth+1 ||
+                    viewport.ActualHeight>frame.Viewer.ActualHeight+1)
+                    throw new InvalidOperationException(
+                        "大图Image固有尺寸挤占/撑大了WPF实际视口布局");
                 double expectedFit=Math.Min(viewport.ActualWidth/fitProbe.Width,
                     viewport.ActualHeight/fitProbe.Height);
                 double fitScale=frame.Viewer.PrimaryViewportScale;
