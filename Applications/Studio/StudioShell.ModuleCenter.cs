@@ -39,7 +39,8 @@ namespace CxVisual.Studio
         internal sealed class StudioCpuVisionReport
         {
             public IReadOnlyList<StudioCpuTraceRecord> TraceRecords;
-            public Guid PageId,FlowId,InspectId;
+            public Guid PageId,FlowId,InspectId,MeasureId;
+            public long? AcceptedRegionPixelArea;
             public int EngineeringRevision,CompletedTraceEvents;
             public string PlanFingerprint,ConfigVersion;
             public CxVisionInspectionResult Inspection;
@@ -57,6 +58,8 @@ namespace CxVisual.Studio
                 path,width,height,cancellation).ConfigureAwait(false);
             return new StudioCpuVisionReport {
                 PageId=report.PageId,FlowId=report.FlowId,InspectId=report.InspectBlockId,
+                MeasureId=report.MeasureBlockId,
+                AcceptedRegionPixelArea=report.AcceptedRegionPixelArea,
                 EngineeringRevision=report.EngineeringRevision,
                 CompletedTraceEvents=report.CompletedTraceEvents,
                 PlanFingerprint=report.Fingerprint,ConfigVersion=report.ConfigVersion,
@@ -270,6 +273,7 @@ namespace CxVisual.Studio
                     rawStatus.Text="实际CPU检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
                         "；阈值像素="+report.Inspection.ThresholdPixelCount+
                         "，缺陷区域="+report.Inspection.Regions.Count+
+                        "，接受区域面积="+report.AcceptedRegionPixelArea+" px²"+
                         "，配置="+report.ConfigVersion+
                         "，MRK FlowId="+report.FlowId.ToString("N")+
                         "，工程Revision="+report.EngineeringRevision+
