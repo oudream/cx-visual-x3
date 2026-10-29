@@ -296,7 +296,9 @@ namespace CxVisual.Studio
             bool effectiveLoaded=false;
             Guid loadedProjectId=Guid.Empty;
             string loadedScopeKey=null;
+            Action invalidatePreview=()=>{};
             Action invalidateEffective=()=>{
+                invalidatePreview();
                 effectiveLoaded=false;loadedProjectId=Guid.Empty;loadedScopeKey=null;
                 selectedProvider=vision;
                 ProjectStudioModuleCenterCapabilities(control,vision,
@@ -335,6 +337,7 @@ namespace CxVisual.Studio
             loadEffective.Click+=(sender,args)=>{
                 try {
                     var loaded=LoadStudioEffectiveVisionProvider();
+                    invalidatePreview();
                     ProjectStudioModuleCenterCapabilities(control,loaded.Item1,
                         "MHS Effective "+loaded.Item2+"（真实配置快照，仅软件能力发现）");
                     selectedProvider=loaded.Item1;
@@ -458,6 +461,133 @@ namespace CxVisual.Studio
                 "Studio.ModuleCenter.ExecutionTrace");
             System.Windows.Automation.AutomationProperties.SetAutomationId(regionResults,
                 "Studio.ModuleCenter.ResultRegions");
+            // 已有MPW Viewer/MVI Store仅作为当前MRK Run的临时可视投影，
+            // 不持久化第二套资源，不二次读取原RAW文件。
+            var resultPreview=new MPWImageViewerControl {
+                Height=240,Visibility=Visibility.Collapsed,
+                Margin=new Thickness(4,2,4,5)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(resultPreview,
+                "Studio.ModuleCenter.ResultViewer");
+            var resultList=new ListBox {
+                Height=120,Visibility=Visibility.Collapsed,
+                Margin=new Thickness(4,3,4,5)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(resultList,
+                "Studio.ModuleCenter.ResultItems");
+            var sourceButton=new Button {
+                Content="显示本Run原图",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),IsEnabled=false
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(sourceButton,
+                "Studio.ModuleCenter.ShowRunOriginal");
+            var contourButton=new Button {
+                Content="按需生成Contour",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),IsEnabled=false
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(contourButton,
+                "Studio.ModuleCenter.GenerateRunContours");
+            var resultDetail=new TextBlock {
+                Text="本区域仅显示已完成Run的只读产物；不代表生产检测授权。",
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,2,4,4)
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(resultDetail,
+                "Studio.ModuleCenter.ResultDetails");
+            var resultControls=new WrapPanel();
+            resultControls.Children.Add(sourceButton);
+            resultControls.Children.Add(contourButton);
+            var resultStack=new StackPanel();
+            resultStack.Children.Add(resultControls);
+            resultStack.Children.Add(resultList);
+            resultStack.Children.Add(resultPreview);
+            resultStack.Children.Add(resultDetail);
+            var resultExpander=new Expander {
+                Header="本Run视觉结果 · Image / Mask / Contour / Measurement",
+                IsExpanded=false,Content=resultStack,
+                Margin=new Thickness(3,3,3,4),Visibility=Visibility.Collapsed
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(resultExpander,
+                "Studio.ModuleCenter.ResultPanel");
+            CxVisionRunSummary displayedRun=null;
+            FIMImageBuffer displayedOriginal=null;
+            Guid displayedProject=Guid.Empty;
+            CancellationTokenSource contourOperation=null;
+            invalidatePreview=()=>{
+                if(contourOperation!=null)contourOperation.Cancel();
+                displayedRun=null;displayedOriginal=null;
+                displayedProject=Guid.Empty;
+                contourButton.IsEnabled=false;sourceButton.IsEnabled=false;
+                resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
+                resultPreview.Clear();resultPreview.Visibility=Visibility.Collapsed;
+                resultExpander.Visibility=Visibility.Collapsed;
+                resultDetail.Text="旧Run已经失效；不会保留之前的图像和轮廓投影。";
+            };
+            Func<bool> hasCurrentSource=()=>displayedRun!=null &&
+                displayedOriginal!=null &&
+                displayedProject==_viewModel.ProjectSession.Project.Id &&
+                Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original);
+            sourceButton.Click+=(sender,args)=>{
+                if(!hasCurrentSource()) {resultDetail.Text="结果来源失效或当前为非可视Run。";return;}
+                resultPreview.SelectOriginal();
+                resultDetail.Text="正在查看同一Run的原始像素快照，未二次读取RAW。";
+            };
+            resultList.SelectionChanged+=(sender,args)=>{
+                var selected=resultList.SelectedItem as ListBoxItem;
+                if(selected==null)return;
+                if(!hasCurrentSource())
+                {
+                    resultDetail.Text="当前工程或图像来源已经变化，拒绝显示旧Run。";
+                    return;
+                }
+                try {
+                    resultDetail.Text=SelectStudioVisionResult(displayedRun,
+                        displayedOriginal,resultPreview,selected.Tag as CxVisionResultItem);
+                }
+                catch(Exception ex){resultDetail.Text="结果显示被拒绝："+ex.Message;}
+            };
+            contourButton.Click+=async (sender,args)=>{
+                if(!hasCurrentSource()||displayedRun.Items.Any(x=>
+                    x.Kind==CxVisionResultKind.Contour))return;
+                CxVisionRunSummary expected=displayedRun;
+                FIMImageBuffer image=displayedOriginal;
+                Guid project=displayedProject;
+                long generation=resultPreview.Session.SourceVersion;
+                var work=new CancellationTokenSource();
+                contourOperation=work;
+                contourButton.IsEnabled=false;
+                try
+                {
+                    resultDetail.Text="正在按需提取本Run真实Mask的轮廓…";
+                    var projected=await Task.Run(()=>
+                        expected.WithThresholdMaskContours(100000,work.Token),work.Token);
+                    if(work.IsCancellationRequested || !Object.ReferenceEquals(displayedRun,expected) ||
+                       !Object.ReferenceEquals(displayedOriginal,image) ||
+                       project!=_viewModel.ProjectSession.Project.Id ||
+                       generation!=resultPreview.Session.SourceVersion)return;
+                    int contourCount=projected.Items.Count(x=>x.Kind==CxVisionResultKind.Contour);
+                    if(contourCount>256)throw new InvalidOperationException(
+                        "单Run轮廓超过256项，需缩小区域");
+                    var projection=new StudioCpuVisionReport {
+                        FlowId=projected.RunId,Evidence=projected,SourceImage=image
+                    };
+                    displayedRun=null;
+                    PopulateStudioVisionResults(projection,resultPreview,resultList);
+                    displayedRun=projected;
+                    resultDetail.Text="已从本Run Mask提取"+contourCount+
+                        "条只读轮廓；点击Contour项可在原图叠加孔洞/外环。";
+                }
+                catch(OperationCanceledException){}
+                catch(Exception ex)
+                {
+                    if(Object.ReferenceEquals(displayedRun,expected))
+                        resultDetail.Text="轮廓提取失败："+ex.Message;
+                }
+                finally
+                {
+                    if(Object.ReferenceEquals(contourOperation,work))contourOperation=null;
+                    work.Dispose();
+                }
+            };
             Func<bool,Task> runSelectedRaw=async separated=>{
                 if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
                 if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
@@ -475,6 +605,7 @@ namespace CxVisual.Studio
                 if(dialog.ShowDialog(this)!=true)return;
                 int selectedRadius=medianRadius.SelectedItem is int ?
                     (int)medianRadius.SelectedItem : 0;
+                invalidatePreview();
                 activeRun=new System.Threading.CancellationTokenSource();
                 cancelRun.IsEnabled=true;runRaw.IsEnabled=false;
                 runSeparated.IsEnabled=false;_logicRunning=true;
@@ -507,6 +638,24 @@ namespace CxVisual.Studio
                         Visibility.Collapsed:Visibility.Visible;
                     executionTrace.ItemsSource=report.TraceRecords;
                     executionTrace.Visibility=Visibility.Visible;
+                    PopulateStudioVisionResults(report,resultPreview,resultList);
+                    displayedRun=report.Evidence;
+                    displayedOriginal=report.SourceImage;
+                    displayedProject=_viewModel.ProjectSession.Project.Id;
+                    resultExpander.Visibility=Visibility.Visible;
+                    resultExpander.IsExpanded=true;
+                    resultList.Visibility=Visibility.Visible;
+                    resultPreview.Visibility=report.SourceImage==null?
+                        Visibility.Collapsed:Visibility.Visible;
+                    sourceButton.IsEnabled=report.SourceImage!=null;
+                    contourButton.IsEnabled=report.SourceImage!=null &&
+                        report.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Mask &&
+                            x.OutputPort=="ThresholdMask");
+                    resultDetail.Text=report.SourceImage==null?
+                        "该Run没有原图快照；可查阅Region和Measurement，" +
+                        "只有拆分式软件Run提供本次执行图像和Mask可视化。" :
+                        "Run="+report.FlowId.ToString("N")+"；Source="+
+                        report.Evidence.SourceId+"。点击产物进行可视选择。";
                     rawStatus.Text=(separated?"独立四/五节点工程":"实际CPU检测")+
                         (report.Inspection.Passed?"通过":"发现缺陷")+
                         "；阈值像素="+report.Inspection.ThresholdPixelCount+
@@ -546,6 +695,7 @@ namespace CxVisual.Studio
             header.Children.Add(rawStatus);
             header.Children.Add(regionResults);
             header.Children.Add(executionTrace);
+            header.Children.Add(resultExpander);
             control.HeaderContent=header;
             return control;
         }
