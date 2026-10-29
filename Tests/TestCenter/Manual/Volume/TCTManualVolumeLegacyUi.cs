@@ -137,6 +137,8 @@ namespace CxVisual.TestCenter.UI
             saveView.Click+=(s,e)=>SaveSelectedViewDialog();
             viewActions.Children.Add(saveView);
             display.Children.Add(viewActions);
+            Label(display,"多对象Scene · 选择 / 显隐 / 透明度");
+            display.Children.Add(_sceneObjects);
             Label(display,"切片导航 / 三刀联动");
             AddAxis(display,"X",_sliderX,"TCT.Volume.SliceX");
             AddAxis(display,"Y",_sliderY,"TCT.Volume.SliceY");
@@ -287,6 +289,7 @@ namespace CxVisual.TestCenter.UI
                 _state.Scene3D.Changed-=OnProfessionalSceneChanged;
             }
             _state=null;
+            _sceneObjects.Bind(null);
             _workbench.Bind(null,null);
             if(_volume!=null)_volume.Dispose();
             _volume=null;
