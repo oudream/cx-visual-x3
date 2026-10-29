@@ -200,6 +200,11 @@ namespace CxVisual.Studio
                                 "Studio.ModuleCenter.GenerateRunContours"}.Contains(
                                 System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==2,
                         "Studio模块中心缺少统一MPW图窗、可视结果列表或Contour入口");
+                    Button createVisionFlow=actions.FirstOrDefault(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.CreateVisionFlow");
+                    Assert(createVisionFlow!=null,
+                        "Studio模块中心缺少已连线专业Vision流程创建入口");
                     Assert(configure!=null&&flow!=null,"模块中心缺少工程配置/流程快捷入口");
                     configure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,configure));
                     Assert(window.GetStudioContentIds().Contains("doc.config"),
@@ -3418,6 +3423,59 @@ namespace CxVisual.Studio
                         catch(InvalidOperationException){unknownDenied=true;}
                         Assert(unknownDenied && session.Revision==unchanged,
                             "未知Capability未拒绝或非法添加修改了MEM Revision");
+                        // 与模块中心按钮共用生产入口：MHS Effective创建一次性的
+                        // 可复用Mask→Region→Measure完整V2连线（非新Graph）。
+                        var authored=MainWindow.CreateStudioSeparatedVisionFlow(
+                            session,provider);
+                        var authoredPage=session.Find(authored.PageId) as MEMPage;
+                        Assert(authoredPage!=null &&
+                            authored.MaskBlockId!=authored.RegionBlockId &&
+                            authored.RegionBlockId!=authored.MeasureBlockId,
+                            "真实专业模板未创建MEM Page或三个独立块");
+                        var authoredWiring=MOLWiringCodec.Get(
+                            session.GetSnapshot().Find(authoredPage.RootContent.Id));
+                        authoredWiring.ValidateExecutable();
+                        Assert(authoredWiring.Blocks.Count==3 &&
+                            authoredWiring.Links.Count==4 &&
+                            authoredWiring.Links.Count(x=>x.Kind==MPCPortKind.Control)==2 &&
+                            authoredWiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==2 &&
+                            authoredWiring.Parameters[authored.MaskBlockId]["Threshold"]=="200" &&
+                            authoredWiring.Parameters[authored.RegionBlockId]["RuleVersion"]==
+                                controls.ReleaseVersion &&
+                            authoredWiring.FlowInputs.Count==3 &&
+                            authoredWiring.FlowInputs["RawPixels"].BlockId==
+                                authored.MaskBlockId &&
+                            authoredWiring.FlowInputs["Width"].PortMemberId=="Width" &&
+                            authoredWiring.FlowInputs["Height"].PortMemberId=="Height" &&
+                            authoredWiring.FlowOutputs.Count==3 &&
+                            authoredWiring.FlowOutputs["ThresholdMask"].BlockId==
+                                authored.MaskBlockId &&
+                            authoredWiring.FlowOutputs["Inspection"].BlockId==
+                                authored.RegionBlockId &&
+                            authoredWiring.FlowOutputs["AcceptedRegionPixelArea"].BlockId==
+                                authored.MeasureBlockId,
+                            "Studio专业模板未生成可执行Mask/Region/Measure完整拓扑与公开端口");
+                        var binary=MOLWiringCodec.Serialize(authoredWiring);
+                        var restored=MOLWiringCodec.Deserialize(binary);
+                        restored.ValidateExecutable();
+                        Assert(restored.EntryBlockId==authored.MaskBlockId &&
+                            restored.Blocks.Count==3 &&
+                            restored.Links.Count==4 &&
+                            restored.FlowInputs.Count==3 &&
+                            restored.FlowOutputs.Count==3 &&
+                            restored.Parameters[authored.RegionBlockId]["RuleVersion"]==
+                                controls.ReleaseVersion,
+                            "工程持久V2 Codec无法无损保存/还原真实视觉流程参数与连线");
+                        // 该定义可以由既有MOL编辑器继续编辑，不能是按钮里的临时Graph。
+                        MOCFlowBuilder.Edit(session,authoredPage.RootContent,b=>
+                            b.Move(authored.MaskBlockId,144,88));
+                        var moved=MOLWiringCodec.Get(
+                            session.GetSnapshot().Find(authoredPage.RootContent.Id));
+                        Assert(moved.Positions[authored.MaskBlockId].X==144 &&
+                            moved.Positions[authored.MaskBlockId].Y==88 &&
+                            moved.Links.Count==4,
+                            "新建视觉流程不能继续使用原MOL画布编辑位置和连接");
+                        unchanged=session.Revision;
                         var update=config.UpdateAsync(c=>c.GrayThreshold=201,
                             "Studio Effective变化栅栏",System.Threading.CancellationToken.None)
                             .GetAwaiter().GetResult();
@@ -3449,6 +3507,11 @@ namespace CxVisual.Studio
                         catch(InvalidOperationException){staleInsertDenied=true;}
                         Assert(staleInsertDenied && session.Revision==unchanged,
                             "配置变更后旧MHS Provider仍允许向Studio主流程添加节点");
+                        bool staleTemplateDenied=false;
+                        try { MainWindow.CreateStudioSeparatedVisionFlow(session,provider); }
+                        catch(InvalidOperationException){staleTemplateDenied=true;}
+                        Assert(staleTemplateDenied && session.Revision==unchanged,
+                            "MHS失效后专业模板仍建新工程页或污染Revision");
                     }
                     finally
                     {
