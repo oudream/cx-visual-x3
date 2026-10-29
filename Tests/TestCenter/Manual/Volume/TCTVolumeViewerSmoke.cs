@@ -1031,6 +1031,19 @@ namespace CxVisual.TestCenter.UI
                 volume.SetRawBuffer(FVORawVolumeLoader.MapRawBuffer(volume,System.Threading.CancellationToken.None));
                 volume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,20,30,40,new double[]{1,0,0,0,1,0,0,0,1},true));
                 frame.LoadVolume(volume);
+                var viewport=FindVisualByAutomationId<MPWVolumeFourViewWorkbenchControl>(
+                    frame,"MPW.Volume.FourViewWorkbench").GetViewport(FVOSlicePlane.XY);
+                FVOPhysicalSliceRectangle reported=null;
+                Action<FVOPhysicalSliceRectangle> roiListener=value=>reported=value;
+                var workbenchRoi=FindVisualByAutomationId<MPWVolumeFourViewWorkbenchControl>(
+                    frame,"MPW.Volume.FourViewWorkbench");
+                workbenchRoi.PhysicalRoiSelected+=roiListener;
+                var physicalRoi=viewport.SelectRectangleRoi(0,0,2,2);
+                workbenchRoi.PhysicalRoiSelected-=roiListener;
+                Check(Object.ReferenceEquals(reported,physicalRoi)&&
+                    Object.ReferenceEquals(physicalRoi.SpatialFrame,frame.Volume.SpatialFrame)&&
+                    physicalRoi.Plane==FVOSlicePlane.XY&&physicalRoi.Unit=="mm",
+                    "WPF二维切片选区必须经MVI/FVO真正映射成物理三维ROI并向工作台通知");
                 frame.AnalyzeCurrentVolumeMesh(1000,100);
                 frame.AnalyzeCurrentMeshPlaneTopZ();
                 Check(FindVisualByAutomationId<Button>(frame,"TCT.Volume.SaveProfessionalCase")!=null &&
