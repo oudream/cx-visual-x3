@@ -183,6 +183,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 _scene.SetGroupVisibility(_groupInput.Text,!anyVisible);
             };
             editor.Children.Add(toggle);
+            var groupOpacity=new Slider {Minimum=0,Maximum=100,Value=100,
+                Width=72,Margin=new Thickness(3,0,2,0)};
+            AutomationProperties.SetAutomationId(groupOpacity,"MPW.Scene.GroupOpacity");
+            ToolTipService.SetToolTip(groupOpacity,"整组透明度（0–100%）");
+            groupOpacity.ValueChanged+=(sender,args)=>{
+                if(_scene==null||!groupOpacity.IsMouseCaptureWithin||
+                    string.IsNullOrWhiteSpace(_groupInput.Text))return;
+                _scene.SetGroupOpacity(_groupInput.Text,groupOpacity.Value/100);
+            };
+            editor.Children.Add(groupOpacity);
             Children.Add(editor);
             Children.Add(_feedback);
             Children.Add(_rows);
