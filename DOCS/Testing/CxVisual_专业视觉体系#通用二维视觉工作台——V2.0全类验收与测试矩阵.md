@@ -456,4 +456,4 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | STD-SPLIT-05 | 真实RAW7×7 FIM中值1→独立Mask→Region→面积：噪点清除，接受5px²，RAW文件不被修改 | 已写Studio CPU-only测试，G4待跑 |
 | STD-SPLIT-06 | 半径4必须拒绝且MEM Revision不增加；MHS Effective阈值由200变201后，旧Provider捕获和创建新运行必须拒绝并且Revision不变 | 已写Studio CPU-only测试，G4待跑 |
 
-**门禁**：Windows Release/x64 编译，`CxVisual.Studio.exe --selftest-cpu`及全Studio WPF自测，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`和默认回归，必要时人工在Studio配置Scope后操作RAW与流程页。不能用此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)成功替代当前新SHA。
+**门禁**：已有`.github/workflows/module-center-cpu-windows.yml`在Studio/Vision代码变更后自动触发，包含Windows Release/x64实际构建与`--module-center-cpu-self-test`，检验`StudioShellSelfTest.txt`的真实PASS/FAIL；Windows Release/x64 编译，`CxVisual.Studio.exe --module-center-cpu-self-test`及全Studio WPF自测，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`和默认回归，必要时人工在Studio配置Scope后操作RAW与流程页。不能用此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)成功替代当前新SHA。
