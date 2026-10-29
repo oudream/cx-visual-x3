@@ -167,7 +167,8 @@ namespace CxVisual.Professional.Vision
             CxVisionInspectionResult inspection, long? graySum = null,
             bool? flowPassed = null, string planFingerprint = null,
             string capabilityVersion = null, DateTime? completedUtc = null,
-            long? acceptedRegionPixelArea = null)
+            long? acceptedRegionPixelArea = null,
+            FIMImageBuffer enhancedImage = null)
         {
             if (runId == Guid.Empty) throw new ArgumentException("必须有真实FlowId", "runId");
             if (string.IsNullOrWhiteSpace(sourceId))
@@ -209,6 +210,18 @@ namespace CxVisual.Professional.Vision
                     "AcceptedRegionPixelArea","AcceptedRegionPixelArea",
                     CxVisionResultKind.Measurement,"已接受缺陷区域总像素面积","px²",
                     number:measuredArea));
+            }
+            if (enhancedImage != null)
+            {
+                if (enhancedImage.Width != inspection.Width ||
+                    enhancedImage.Height != inspection.Height ||
+                    (enhancedImage.PixelFormat != FIMPixelFormat.Gray8 &&
+                     enhancedImage.PixelFormat != FIMPixelFormat.Gray16))
+                    throw new ArgumentException("增强图像尺寸与检测来源不匹配或格式不受支持",
+                        "enhancedImage");
+                values.Add(new CxVisionResultItem(runId,source,
+                    "EnhancedImage","EnhancedPixels",CxVisionResultKind.Image,
+                    "FIM中值滤波增强图",null,image:enhancedImage));
             }
             if (graySum.HasValue)
                 values.Add(new CxVisionResultItem(runId, source, "GraySum",
