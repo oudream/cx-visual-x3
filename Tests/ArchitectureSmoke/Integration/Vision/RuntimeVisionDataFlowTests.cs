@@ -141,6 +141,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     flows.Add(engine.StartFlow(plan, Inputs(i % 2 == 0
                         ? new byte[] { 255, 255, 0, 0, 0, 0 }
                         : new byte[] { 0, 0, 0, 0, 0, 0 }, 3, 2)));
+                // A malformed product is admitted alongside valid products.
+                // Its failure must not publish partially committed outputs or
+                // change the outcomes of the other ten flows.
+                MRKFlowHandle broken = engine.StartFlow(plan, Inputs(
+                    new byte[] { 255 }, 3, 2));
                 var seen = new HashSet<Guid>();
                 for (int i = 0; i < flows.Count; ++i)
                 {
@@ -154,6 +159,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "B4 parallel product result leaked between MDS scopes");
                 }
                 Check(seen.Count == 10, "B4 did not isolate ten product instances");
+                MRKFlowResult failed = broken.Completion.GetAwaiter().GetResult();
+                Check(failed.State == MRKFlowState.Failed &&
+                    failed.CommittedOutputs.Count == 0 &&
+                    seen.Add(failed.FlowId),
+                    "B4 invalid product published outputs or contaminated valid Flow");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }

@@ -39,6 +39,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); RuntimeVisionImageInteropTests.Run(); RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--decision") >= 0) { MDCDecisionTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--vision-results") >= 0) { RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
+                // Focused B1-B4 vertical gate: real engineering + MRK/MDS Vision.
+                // It supplements rather than replaces the complete ArchitectureSmoke suite.
+                if (Array.IndexOf(args, "--orchestration-vertical") >= 0) {
+                    OrganizationLogicIntegrationTests.Run();
+                    RuntimeVisionDataFlowTests.Run();
+                    return 0;
+                }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-uml-core") >= 0) { ModuleChannelTransportSmokeTests.RunUmlCore(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
