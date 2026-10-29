@@ -206,8 +206,10 @@ namespace CxVisual.Professional.Vision
                     throw new InvalidOperationException("vision.measure.inspection_required");
                 long area=CxVisionDataFlow.MeasureAcceptedPixelArea(
                     (CxVisionInspectionResult)value,ct);
+                context.Data.Return("Area",area);
                 return Task.FromResult((object)area);
             },new MRKExecutionOutput(typeof(long)),
+            dataOutputs:new Dictionary<string,Type>{{"Area",typeof(long)}},
             inputs:new[]{new MRKCapabilityInput("Inspection",typeof(object))});
         }
 
