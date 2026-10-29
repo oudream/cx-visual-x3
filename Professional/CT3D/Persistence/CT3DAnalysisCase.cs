@@ -73,6 +73,28 @@ namespace CxVisual.Professional.CT3D
         public string Unit {get{return "mm";}}
     }
 
+    /// <summary>专业结果的数值质量证据，不等于计量不确定度或工厂合格判定。</summary>
+    public sealed class CT3DQualityMetric
+    {
+        internal CT3DQualityMetric(string kind,double value,string unit,Guid featureId,
+            string sourceSignature,string parameterSignature)
+        {
+            if(string.IsNullOrWhiteSpace(kind)||string.IsNullOrWhiteSpace(unit)||
+                featureId==Guid.Empty||string.IsNullOrWhiteSpace(sourceSignature)||
+                string.IsNullOrWhiteSpace(parameterSignature)||double.IsNaN(value)||double.IsInfinity(value))
+                throw new ArgumentException("三维质量数值或来源无效。");
+            Kind=kind;Value=value;Unit=unit;FeatureResultId=featureId;
+            SourceSignature=sourceSignature;ParameterSignature=parameterSignature;
+        }
+        public string Kind {get;private set;}
+        public double Value {get;private set;}
+        public string Unit {get;private set;}
+        public Guid FeatureResultId {get;private set;}
+        public string SourceSignature {get;private set;}
+        public string ParameterSignature {get;private set;}
+        public bool IsIndustrialAccuracyCertified {get{return false;}}
+    }
+
     /// <summary>V03专业结果及其可复算配方；不拥有MEM树、WPF状态或原始数据副本。</summary>
     public sealed class CT3DAnalysisCase
     {
@@ -233,6 +255,39 @@ namespace CxVisual.Professional.CT3D
             return values.AsReadOnly();
         }
         public string Unit {get{return "mm";}}
+        /// <summary>统一质量证据；维度与毫米误差分离，不以无量纲条件数冒充尺寸。</summary>
+        public IReadOnlyList<CT3DQualityMetric> GetQualityEvidence()
+        {
+            var metrics=new List<CT3DQualityMetric>();
+            Guid id=Kind==CT3DAnalysisKind.MeshPlane?Plane.ResultId:
+                Kind==CT3DAnalysisKind.SurfaceSphere?Sphere.ResultId:Cylinder.ResultId;
+            if(Kind==CT3DAnalysisKind.MeshPlane)
+            {
+                metrics.Add(new CT3DQualityMetric("plane.rms-residual",Plane.RmsResidualMm,
+                    "mm",id,Source.Signature,ParameterSignature));
+                metrics.Add(new CT3DQualityMetric("plane.max-absolute-residual",Plane.MaxAbsoluteResidualMm,
+                    "mm",id,Source.Signature,ParameterSignature));
+                metrics.Add(new CT3DQualityMetric("plane.planarity-ratio",Plane.PlanarityRatio,
+                    "ratio",id,Source.Signature,ParameterSignature));
+                metrics.Add(new CT3DQualityMetric("plane.in-plane-condition",Plane.InPlaneConditionNumber,
+                    "ratio",id,Source.Signature,ParameterSignature));
+            }
+            else
+            {
+                double rms=Kind==CT3DAnalysisKind.SurfaceSphere?Sphere.RmsResidualMm:Cylinder.RmsResidualMm;
+                double maximum=Kind==CT3DAnalysisKind.SurfaceSphere?Sphere.MaxAbsoluteResidualMm:
+                    Cylinder.MaxAbsoluteResidualMm;
+                double condition=Kind==CT3DAnalysisKind.SurfaceSphere?Sphere.ConditionNumber:
+                    Cylinder.ConditionNumber;
+                metrics.Add(new CT3DQualityMetric("surface.rms-residual",rms,
+                    "mm",id,Source.Signature,ParameterSignature));
+                metrics.Add(new CT3DQualityMetric("surface.max-absolute-residual",maximum,
+                    "mm",id,Source.Signature,ParameterSignature));
+                metrics.Add(new CT3DQualityMetric("surface.fit-condition",condition,
+                    "ratio",id,Source.Signature,ParameterSignature));
+            }
+            return metrics.AsReadOnly();
+        }
         /// <summary>现有残差/拓扑证据不构成工业计量不确定度评定。</summary>
         public bool HasEvaluatedMeasurementUncertainty {get{return false;}}
 
