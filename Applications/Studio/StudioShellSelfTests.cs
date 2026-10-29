@@ -105,7 +105,9 @@ namespace CxVisual.Studio
                         cpuPorts.InputPorts.Any(x=>x.StartsWith("Width : int"))&&
                         cpuPorts.InputPorts.Any(x=>x.StartsWith("Height : int"))&&
                         cpuPorts.InputPorts.All(x=>x.Contains("(必填)"))&&
-                        cpuPorts.OutputPorts.Count==0,
+                        cpuPorts.OutputPorts.Count==1 &&
+                        cpuPorts.OutputPorts.Any(x=>x.StartsWith("Inspection : "+
+                            CxVisionAcceptedRegionMeasureProvider.InspectionTypeId)),
                         "Studio未从真正MOC能力目录展示强类型算法端口");
 
                     Assert(center.VisibleCapabilities.Any(x=>!x.Kind.HasValue&&x.Demonstration),
