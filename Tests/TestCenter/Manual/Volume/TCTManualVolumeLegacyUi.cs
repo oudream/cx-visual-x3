@@ -102,6 +102,12 @@ namespace CxVisual.TestCenter.UI
                 "体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
                 e.X,e.Y,e.Z,e.Value,e.PhysicalX,e.PhysicalY,e.PhysicalZ);
             _workbench.NavigationValidationFailed+=message=>_status.Text=message;
+            _workbench.PhysicalRoiSelected+=roi=>{
+                _status.Text=String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "{0}切片ROI · 物理左上 ({1:0.###},{2:0.###},{3:0.###}) mm · 右下 ({4:0.###},{5:0.###},{6:0.###}) mm",
+                    roi.Plane,roi.TopLeft.X,roi.TopLeft.Y,roi.TopLeft.Z,
+                    roi.BottomRight.X,roi.BottomRight.Y,roi.BottomRight.Z);
+            };
             work.Children.Add(_workbench);
 
             System.Windows.Controls.GridSplitter resizer=new System.Windows.Controls.GridSplitter {
