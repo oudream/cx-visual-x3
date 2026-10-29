@@ -134,6 +134,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(restored.Source.SpatialFrame!=frame &&
                     Math.Abs(restored.Plane.SignedDistanceMm(new FVOPhysicalPoint3D(25,35,47.5),restored.Source.SpatialFrame)-1)<1e-9,
                     "重建Frame对象后仍可在恢复的同一Frame内测量");
+                Check(Math.Abs(restored.Plane.SignedDistanceFromAssetMm(
+                    new FVOPhysicalPoint3D(25,35,47.5),source)-1)<1e-9,
+                    "跨MEM重开Frame实例不同，但来源身份和物理标定一致允许毫米测距");
+                var shiftedFrame=new FVOVolumeSpatialFrame(1,1,1,21,30,40,
+                    new double[]{1,0,0,0,1,0,0,0,1},true);
+                var shiftedSource=CT3DAssetReference.Capture(folder,"source.raw",info,
+                    shiftedFrame,7,CancellationToken.None,source.Id);
+                Reject<InvalidOperationException>(()=>restored.Plane.SignedDistanceFromAssetMm(
+                    new FVOPhysicalPoint3D(25,35,47.5),shiftedSource));
+                var unrelatedSource=CT3DAssetReference.Capture(folder,"source.raw",info,
+                    frame,7,CancellationToken.None);
+                Reject<InvalidOperationException>(()=>restored.Plane.SignedDistanceFromAssetMm(
+                    new FVOPhysicalPoint3D(25,35,47.5),unrelatedSource));
                 var reopenedMeasures=restored.GetFeatureMeasurements();
                 Check(reopenedMeasures.Count==2&&
                     reopenedMeasures.All(m=>m.FeatureResultId==restored.Plane.ResultId&&
