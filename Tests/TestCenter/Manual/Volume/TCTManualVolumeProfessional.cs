@@ -151,6 +151,50 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
+        /// <summary>与Headless相同的原RAW和FNU实现；明确由调用方指定圆柱轴向。</summary>
+        public CT3DCylinderFitResult AnalyzeCurrentVolumeCylinder(float threshold,
+            FVOPhysicalPoint3D axisDirection,int sampleStep=1,int maxPoints=8000)
+        {
+            if(_volume==null||_state==null)throw new InvalidOperationException("未加载原始CT体数据。");
+            if(!_volume.SpatialFrame.IsCalibrated)
+                throw new InvalidOperationException("未标定物理Frame，拒绝圆柱专业计算。");
+            FVOVolumeData volume=_volume;long epoch=_sphereEpoch;
+            using(FVOOriginalScalarLease lease=volume.AcquireOriginalScalarLease())
+            {
+                var surface=CT3DSurfaceSphereAnalysis.SampleBoundary(lease,
+                    SurfaceSourceRef(volume),epoch,threshold,sampleStep,maxPoints,CancellationToken.None);
+                var fit=CT3DSurfaceCylinderAnalysis.FitCylinder(surface,axisDirection);
+                PublishSurfaceCylinderAnalysis(volume,epoch,surface,fit);
+                return fit;
+            }
+        }
+
+        private void PublishSurfaceCylinderAnalysis(FVOVolumeData volume,long epoch,
+            CT3DSurfaceSamples surface,CT3DCylinderFitResult fit)
+        {
+            if(!Object.ReferenceEquals(volume,_volume)||epoch!=_sphereEpoch||_state==null||
+                !Object.ReferenceEquals(surface.SpatialFrame,volume.SpatialFrame))
+                throw new InvalidOperationException("来源或Frame已更新，拒绝发布旧圆柱分析。");
+            IReadOnlyList<Vector3> points=MPWVolumeSurfaceProjection.Project(
+                surface.Points,volume.SpatialFrame,volume.OriginalWidth,
+                volume.OriginalHeight,volume.OriginalDepth,8000);
+            if(_surfaceSceneItemId.HasValue)_state.Scene3D.Remove(_surfaceSceneItemId.Value);
+            if(_sphereSceneItemId.HasValue)_state.Scene3D.Remove(_sphereSceneItemId.Value);
+            _surfacePreviewPoints=points;
+            LastOpenedProfessionalCase=null;LastSphereFit=null;
+            LastCylinderFit=fit;LastSurfaceSamples=surface;
+            _surfaceSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Surface,
+                "ct3d:surface:"+surface.ResultId.ToString("N"),surface.SourceRevision,"volume:physical-frame");
+            _sphereSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Measurement,
+                "ct3d:cylinder:"+fit.ResultId.ToString("N"),fit.SourceRevision,"volume:physical-frame");
+            _state.Scene3D.Select(_sphereSceneItemId);
+            UpdateSurfacePresentation();
+            _status.Text=String.Format(CultureInfo.InvariantCulture,
+                "轴向约束圆柱 · 直径 {0:0.###} mm · RMS {1:0.###} mm · 显示 {2} 点（非工业验收）",
+                fit.DiameterMm,fit.RmsResidualMm,points.Count);
+            RaiseStateChanged();
+        }
+
         /// <summary>同步小数据网格入口；所有结果来自真实RAW，不能对R8预览建Mesh。</summary>
         public CT3DVoxelBoundaryMeshResult AnalyzeCurrentVolumeMesh(
             float threshold,int maxTriangles=50000)
@@ -341,6 +385,7 @@ namespace CxVisual.TestCenter.UI
             if(_sphereSceneItemId.HasValue)_state.Scene3D.Remove(_sphereSceneItemId.Value);
             _surfacePreviewPoints=points;
             LastSphereFit=fit;
+            LastCylinderFit=null;
             LastSurfaceSamples=surface;
             Guid itemId=_state.Scene3D.Add(MVI3DSceneKind.Surface,
                 "ct3d:surface:"+surface.ResultId.ToString("N"),surface.SourceRevision,
