@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Imaging;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Runtime.Execution;
@@ -26,6 +27,9 @@ namespace CxVisual.Professional.Vision
         public Guid PageId {get;internal set;}
         public Guid FlowId {get;internal set;}
         public Guid InspectBlockId {get;internal set;}
+        /// <summary>Only present for opt-in FIM median enhancement flow.</summary>
+        public Guid EnhanceBlockId {get;internal set;}
+        public FIMImageBuffer EnhancedImage {get;internal set;}
         /// <summary>Only populated for opt-in project measurement.</summary>
         public Guid MeasureBlockId {get;internal set;}
         public long? AcceptedRegionPixelArea {get;internal set;}
@@ -86,12 +90,12 @@ namespace CxVisual.Professional.Vision
                 MRKExecutionPlan plan,long revision)
             {
                 return principal==Principal && revision==1 && plan!=null &&
-                    (plan.Steps.Count==2 || plan.Steps.Count==3);
+                    (plan.Steps.Count>=2 && plan.Steps.Count<=4);
             }
             public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
             {
                 return revision==1 && plan!=null &&
-                    (plan.Steps.Count==2 || plan.Steps.Count==3);
+                    (plan.Steps.Count>=2 && plan.Steps.Count<=4);
             }
         }
         public static byte[] ReadRaw(string path,int width,int height,
@@ -144,6 +148,20 @@ namespace CxVisual.Professional.Vision
         }
 
         /// <summary>
+        /// 四节点真实工程：RAW → FIM中值增强 → CPU阈值/区域 → 已接受面积。
+        /// 半径和位深固定在Provider版本及MOL参数中；不改变已有两/三节点API。
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteEnhancedMeasuredAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider vision,
+            string path,int width,int height,int medianRadius,CancellationToken cancellation)
+        {
+            if(medianRadius<1 || medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,
+                medianRadius:medianRadius);
+        }
+
+        /// <summary>
         /// Re-execute an already saved and reopened three-node MEM/MOL definition,
         /// explicitly rebinding the RAW input and CPU Provider for this invocation.
         /// Never mutates the saved engineering tree; the new RunId is independent,
@@ -158,10 +176,22 @@ namespace CxVisual.Professional.Vision
             return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,contentId);
         }
 
+        /// <summary>重开四节点工程后显式重绑新RAW，校验半径和工程修订。</summary>
+        public static Task<CxVisionCpuRun> ExecuteSavedEnhancedMeasuredAsync(
+            MEMEngineeringSession session,Guid contentId,CxVisionThresholdProvider vision,
+            string path,int width,int height,int medianRadius,CancellationToken cancellation)
+        {
+            if(contentId==Guid.Empty)throw new ArgumentException("必须指定工程Content","contentId");
+            if(medianRadius<1 || medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,
+                contentId,medianRadius);
+        }
+
         private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation,
-            bool includeMeasurement,Guid? existingContentId=null)
+            bool includeMeasurement,Guid? existingContentId=null,int medianRadius=0)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -177,9 +207,12 @@ namespace CxVisual.Professional.Vision
                 new CxVisionAcceptedRegionMeasureProvider(vision) : null;
             IMRKVersionedCapabilityResolver resolver=includeMeasurement ?
                 (IMRKVersionedCapabilityResolver)measureProvider : vision;
+            CxVisionMedianEnhanceProvider enhancement=medianRadius>0 ?
+                new CxVisionMedianEnhanceProvider(vision.PixelDepth,medianRadius,resolver) : null;
+            if(enhancement!=null)resolver=enhancement;
             var source=new RawProvider(pixels,resolver);
             Guid pageId=Guid.Empty,entryContentId=Guid.Empty;
-            Guid inspect=Guid.Empty,measure=Guid.Empty;
+            Guid inspect=Guid.Empty,measure=Guid.Empty,enhance=Guid.Empty;
             if(existingContentId.HasValue)
             {
                 // Validate persisted definition before any MOC publication or MRK work.
@@ -191,19 +224,42 @@ namespace CxVisual.Professional.Vision
                     parent==null || parent.Kind!=MEMNodeKind.Page)
                     throw new InvalidOperationException("vision.saved.invalid_content");
                 MOLWiringDefinition wiring=MOLWiringCodec.Get(content);
-                if(wiring==null || wiring.Blocks.Count!=3 ||
-                    wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)!=2 ||
-                    !wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea"))
+                if(wiring==null || wiring.Blocks.Count!=(medianRadius>0?4:3) ||
+                    wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)!=(medianRadius>0?3:2) ||
+                    !wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea") ||
+                    (medianRadius>0 && !wiring.FlowOutputs.ContainsKey("EnhancedPixels")))
                     throw new InvalidOperationException("vision.saved.requires_three_node_wiring");
                 var rawBlocks=wiring.Blocks.Where(x=>x.CapabilityId==InputId).ToArray();
                 var inspectBlocks=wiring.Blocks.Where(x=>
                     x.CapabilityId==CxVisionThresholdProvider.CapabilityId).ToArray();
                 var measureBlocks=wiring.Blocks.Where(x=>
                     x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId).ToArray();
-                if(rawBlocks.Length!=1 || inspectBlocks.Length!=1 || measureBlocks.Length!=1)
+                var enhanceBlocks=wiring.Blocks.Where(x=>
+                    x.CapabilityId==CxVisionMedianEnhanceProvider.CapabilityId).ToArray();
+                if(rawBlocks.Length!=1 || inspectBlocks.Length!=1 || measureBlocks.Length!=1 ||
+                    enhanceBlocks.Length!=(medianRadius>0?1:0))
                     throw new InvalidOperationException("vision.saved.capability_mismatch");
                 inspect=inspectBlocks[0].Id;
                 measure=measureBlocks[0].Id;
+                if(medianRadius>0)
+                {
+                    enhance=enhanceBlocks[0].Id;
+                    IReadOnlyDictionary<string,string> enhanceParams;
+                    string savedRadius,savedWidth,savedHeight;
+                    int actualRadius,actualWidth,actualHeight;
+                    if(!wiring.Parameters.TryGetValue(enhance,out enhanceParams) ||
+                        !enhanceParams.TryGetValue("Radius",out savedRadius) ||
+                        !enhanceParams.TryGetValue("Width",out savedWidth) ||
+                        !enhanceParams.TryGetValue("Height",out savedHeight) ||
+                        !int.TryParse(savedRadius,NumberStyles.Integer,CultureInfo.InvariantCulture,
+                            out actualRadius) ||
+                        !int.TryParse(savedWidth,NumberStyles.Integer,CultureInfo.InvariantCulture,
+                            out actualWidth) ||
+                        !int.TryParse(savedHeight,NumberStyles.Integer,CultureInfo.InvariantCulture,
+                            out actualHeight) ||
+                        actualRadius!=medianRadius || actualWidth!=width || actualHeight!=height)
+                        throw new InvalidOperationException("vision.saved.enhance_parameters_changed");
+                }
                 IReadOnlyDictionary<string,string> parameters;
                 string declaredWidth,declaredHeight;
                 int expectedWidth,expectedHeight;
@@ -221,7 +277,8 @@ namespace CxVisual.Professional.Vision
             }
             else
             {
-                var page=session.AddPage((includeMeasurement ?
+                var page=session.AddPage((medianRadius>0 ?
+                    "FIM增强与CPU区域面积测量 · " : includeMeasurement ?
                     "CPU RAW检测与面积测量 · " : "CPU RAW检测 · ")+Path.GetFileName(path));
                 pageId=page.Id;
                 entryContentId=page.RootContent.Id;
@@ -230,8 +287,23 @@ namespace CxVisual.Professional.Vision
                     inspect=b.Step(vision.DescribeCapabilities().Single());
                     b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
                     b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
-                    b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
-                    b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                    if(enhancement!=null)
+                    {
+                        enhance=b.Step(enhancement.DescribeCapabilities().Single());
+                        b.SetParameter(enhance,"Width",width.ToString(CultureInfo.InvariantCulture));
+                        b.SetParameter(enhance,"Height",height.ToString(CultureInfo.InvariantCulture));
+                        b.SetParameter(enhance,"Radius",medianRadius.ToString(CultureInfo.InvariantCulture));
+                        b.Connect(raw,"Done",enhance,"Start",MPCPortKind.Control);
+                        b.Connect(raw,"Pixels",enhance,"RawPixels",MPCPortKind.Data);
+                        b.Connect(enhance,"Done",inspect,"Start",MPCPortKind.Control);
+                        b.Connect(enhance,"EnhancedPixels",inspect,"RawPixels",MPCPortKind.Data);
+                        b.ExposeOutput("EnhancedPixels",enhance,"EnhancedPixels");
+                    }
+                    else
+                    {
+                        b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
+                        b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                    }
                     if(includeMeasurement)
                     {
                         measure=b.Step(measureProvider.DescribeCapabilities().Single());
@@ -248,6 +320,8 @@ namespace CxVisual.Professional.Vision
             if(includeMeasurement)
                 versions.Add(CxVisionAcceptedRegionMeasureProvider.CapabilityId,
                     CxVisionAcceptedRegionMeasureProvider.Version);
+            if(enhancement!=null)
+                versions.Add(CxVisionMedianEnhanceProvider.CapabilityId,enhancement.ReleaseVersion);
             MEMProjectSnapshot snapshot=session.GetSnapshot();
             var candidate=MOCProjectRelease.Prepare(snapshot,entryContentId,source,versions);
             cancellation.ThrowIfCancellationRequested();
@@ -300,7 +374,22 @@ namespace CxVisual.Professional.Vision
                             inspection,cancellation))
                             throw new InvalidOperationException("工程区域面积与算法结果不一致");
                     }
+                    FIMImageBuffer enhancedImage=null;
+                    if(enhancement!=null)
+                    {
+                        byte[] imageBytes=result.GetCommittedOutput<byte[]>("EnhancedPixels");
+                        int bytesPerPixel=vision.PixelDepth==CxVisionPixelDepth.Bits8?1:2;
+                        if(imageBytes==null || imageBytes.Length!=(long)width*height*bytesPerPixel)
+                            throw new InvalidOperationException("FIM中值输出尺寸或位深与RAW输入不符");
+                        enhancedImage=new FIMImageBuffer(width,height,
+                            bytesPerPixel==1?FIMPixelFormat.Gray8:FIMPixelFormat.Gray16,
+                            imageBytes);
+                    }
                     var trace=compiled.ReadTrace(flow,0);
+                    if(enhancement!=null && !trace.Events.Any(e=>
+                        e.Origin.BlockId==enhance &&
+                        e.Transition.State==MRKStepState.Completed))
+                        throw new InvalidOperationException("工程增强节点Trace缺失");
                     if(includeMeasurement && !trace.Events.Any(e=>
                         e.Origin.BlockId==measure &&
                         e.Transition.State==MRKStepState.Completed))
@@ -311,6 +400,7 @@ namespace CxVisual.Professional.Vision
                         throw new InvalidOperationException("MRK真实完成Trace缺失");
                     return new CxVisionCpuRun {
                         PageId=pageId,FlowId=result.FlowId,InspectBlockId=inspect,
+                        EnhanceBlockId=enhance,EnhancedImage=enhancedImage,
                         MeasureBlockId=measure,AcceptedRegionPixelArea=acceptedArea,
                         EngineeringRevision=snapshot.Revision,Fingerprint=candidate.Fingerprint,
                         ConfigVersion=version,Inspection=inspection,CompletedTraceEvents=completed,
