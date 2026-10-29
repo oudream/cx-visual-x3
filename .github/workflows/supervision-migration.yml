@@ -39,21 +39,27 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $p" }
           }
   supervision-go:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    if: ${{ hashFiles('Services/Supervision/go.mod') != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version-file: Services/Supervision/go.mod
           cache: false
-      - name: Verify Go module if imported
+      - name: Build legacy Monitor and Daemon
         shell: bash
+        working-directory: Services/Supervision
         run: |
-          if [[ ! -f Services/Supervision/go.mod ]]; then
-            echo '::warning::Go module not yet imported: migration remains INCOMPLETE'
-            exit 0
-          fi
-          cd Services/Supervision
-          go build ./hy/monitor
-          go build ./hy/daemon
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/supervision-bin"
+          ext=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then ext=".exe"; fi
+          go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./hy/monitor
+          go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./hy/daemon
+          echo "Built Monitor and Daemon for $RUNNER_OS"
