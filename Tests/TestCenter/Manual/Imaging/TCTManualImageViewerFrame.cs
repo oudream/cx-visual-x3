@@ -62,6 +62,9 @@ namespace CxVisual.TestCenter.UI
         private string _cpuSourceId;
         private CxVisionRunSummary _cpuEvidence;
         private FIMImageBuffer _cpuDisplayedMask;
+        // 只记录本Run投影出的临时Contour标注，非MEM工程或第二套OverlayStore。
+        private readonly Dictionary<string,Guid> _cpuContourOverlays =
+            new Dictionary<string,Guid>(StringComparer.Ordinal);
         private readonly ListBox _cpuResultItems = new ListBox {
             Height = 145, Background = Brushes.White, Margin = new Thickness(5),
             FontSize = 12 };
@@ -183,6 +186,7 @@ namespace CxVisual.TestCenter.UI
                 {
                     CancelAnalysis();
                     CancelCpuVision();
+                    ClearCpuContourOverlays();
                     _cpuSourceImage = _viewer.Session.Original;
                     _cpuSourceId = _cpuSourceImage == null ? null :
                         "testcenter.imaging/" + Guid.NewGuid().ToString("N");
@@ -203,6 +207,7 @@ namespace CxVisual.TestCenter.UI
                          !ReferenceEquals(_viewer.Session.Result, _cpuDisplayedMask))
                 {
                     // 其他图像操作已替换结果槽：旧Mask证据不再对应当前可视图。
+                    ClearCpuContourOverlays();
                     _cpuEvidence = null;
                     _cpuDisplayedMask = null;
                     _cpuResultItems.Items.Clear();
@@ -252,6 +257,53 @@ namespace CxVisual.TestCenter.UI
                 Show("当前来源已改变，拒绝显示上一Run的视觉产物。");
                 return;
             }
+            if (item.Kind == CxVisionResultKind.Contour)
+            {
+                CxVisionContourSnapshot contour=item.Contour;
+                if(contour==null || contour.Points.Count<3 ||
+                   contour.Points.Count>100000)
+                {
+                    Show("轮廓顶点为空或超出MVI单图元限制，拒绝投影。");
+                    return;
+                }
+                Guid overlayId;
+                if(!_cpuContourOverlays.TryGetValue(item.ItemId,out overlayId) ||
+                   _viewer.Overlays.Find(overlayId)==null)
+                {
+                    IReadOnlyList<FGEPoint2D> points=contour.Points;
+                    double left=points.Min(p=>p.X),right=points.Max(p=>p.X);
+                    double top=points.Min(p=>p.Y),bottom=points.Max(p=>p.Y);
+                    var overlay=new MVIImageOverlayItem(
+                        MVIImageOverlayKind.PolygonAnnotation,
+                        MVIImageOverlayLayer.Annotation,
+                        new FGERect2D(left,top,right-left,bottom-top),
+                        points,(contour.IsHole?"Run孔洞":"Run外环")+" · "+item.ItemId,
+                        item.ItemId,
+                        unchecked((int)(contour.IsHole?0xFF00D4C7u:0xFFFFD157u)),
+                        1.5,isLocked:true);
+                    _publishingContours=true;
+                    try
+                    {
+                        _viewer.SelectOriginal();
+                        _viewer.AddOverlay(overlay);
+                        _cpuContourOverlays[item.ItemId]=overlay.Id;
+                        overlayId=overlay.Id;
+                    }
+                    finally { _publishingContours=false; }
+                }
+                _publishingContours=true;
+                try
+                {
+                    _viewer.SelectOriginal();
+                    _viewer.SelectOverlay(overlayId);
+                }
+                finally { _publishingContours=false; }
+                Show((contour.IsHole?"孔洞":"外轮廓")+
+                    "；有符号面积="+contour.SignedAreaPixels.ToString("0.###",
+                        CultureInfo.InvariantCulture)+" px²；Run="+run.RunId.ToString("N")+
+                    "；ItemId="+item.ItemId+"。当前为只读临时标注，非MEM正式ROI。");
+                return;
+            }
             if (item.Kind == CxVisionResultKind.Image ||
                 item.Kind == CxVisionResultKind.Mask)
             {
@@ -279,6 +331,108 @@ namespace CxVisual.TestCenter.UI
                 "；Run=" + run.RunId.ToString("N") + "；ItemId=" + item.ItemId);
         }
 
+        /// <summary>撤销本Run产生的临时Contour投影，不删除用户手绘ROI和其它标注。</summary>
+        private void ClearCpuContourOverlays()
+        {
+            if(_cpuContourOverlays.Count==0)return;
+            _publishingContours=true;
+            try
+            {
+                Guid? selected=_viewer.SelectedOverlayId;
+                if(selected.HasValue && _cpuContourOverlays.Values.Contains(selected.Value))
+                    _viewer.SelectOverlay(null);
+                foreach(Guid id in _cpuContourOverlays.Values.ToArray())
+                {
+                    MVIImageOverlayItem old=_viewer.Overlays.Find(id);
+                    if(old==null)continue;
+                    if(old.IsLocked)_viewer.Overlays.SetLocked(id,false);
+                    _viewer.Overlays.Remove(id);
+                }
+                _cpuContourOverlays.Clear();
+            }
+            finally { _publishingContours=false; }
+        }
+
+        private void PopulateCpuResultItems(CxVisionRunSummary run)
+        {
+            _cpuResultItems.Items.Clear();
+            foreach(CxVisionResultItem item in run.Items)
+            {
+                string number=item.Contour!=null ?
+                    item.Contour.SignedAreaPixels.ToString("0.###",CultureInfo.InvariantCulture)+
+                        " px²"+(item.Contour.IsHole?" (孔洞)":" (外环)") :
+                    item.Region!=null ?
+                    item.Region.PixelArea.ToString(CultureInfo.InvariantCulture)+" px²" :
+                    item.IntegerValue.HasValue ?
+                    item.IntegerValue.Value.ToString(CultureInfo.InvariantCulture)+
+                        (item.Unit==null?"":" "+item.Unit) :
+                    item.BooleanValue.HasValue ? item.BooleanValue.Value.ToString() :
+                    item.Image==null ? "" :
+                    item.Image.Width.ToString(CultureInfo.InvariantCulture)+"×"+
+                        item.Image.Height.ToString(CultureInfo.InvariantCulture)+" "+
+                        item.Image.PixelFormat;
+                _cpuResultItems.Items.Add(new ListBoxItem {
+                    Tag=item, Content=item.Kind+" · "+item.Name+" · "+number
+                });
+            }
+        }
+
+        /// <summary>
+        /// 从正式同Run的阈值Mask按需生成Contour结果项；保留原Image/Mask/Region
+        /// 以及MRK的RunId/SourceId，并在异步返回时验证原图及SourceVersion。
+        /// </summary>
+        private async void GenerateCpuContourResults()
+        {
+            CxVisionRunSummary run=_cpuEvidence;
+            FIMImageBuffer original=_viewer.Session.Original;
+            if(run==null || original==null || !ReferenceEquals(original,_cpuSourceImage) ||
+               run.SourceId!=_cpuSourceId || run.Width!=original.Width ||
+               run.Height!=original.Height)
+            {
+                Show("当前没有与原图绑定的正式CPU Run，无法生成轮廓结果项。");
+                return;
+            }
+            if(run.Items.Any(x=>x.Kind==CxVisionResultKind.Contour))
+            {
+                Show("本Run的轮廓结果已生成，请在结果列表中选择。");
+                return;
+            }
+            CancelAnalysis();
+            var work=new CancellationTokenSource();
+            _analysisCancellation=work;
+            long epoch=Interlocked.Read(ref _analysisEpoch);
+            long version=_viewer.Session.SourceVersion;
+            Show("正在从本Run已提交的阈值Mask提取只读Contour结果，可切图取消。");
+            try
+            {
+                CxVisionRunSummary projected=await Task.Run(()=>
+                    run.WithThresholdMaskContours(100000,work.Token),work.Token);
+                if(work.IsCancellationRequested || epoch!=Interlocked.Read(ref _analysisEpoch) ||
+                   !ReferenceEquals(_cpuEvidence,run) ||
+                   !ReferenceEquals(_viewer.Session.Original,original) ||
+                   _viewer.Session.SourceVersion!=version)return;
+                int count=projected.Items.Count(x=>x.Kind==CxVisionResultKind.Contour);
+                if(count>256)
+                    throw new InvalidOperationException("轮廓超过256个，请缩小检测范围。");
+                _cpuEvidence=projected;
+                PopulateCpuResultItems(projected);
+                Show("Run="+projected.RunId.ToString("N")+" 已生成"+count+
+                    "个只读Contour结果项；点击列表项可在原图上查看外环或孔洞。");
+            }
+            catch(OperationCanceledException) { }
+            catch(Exception e)
+            {
+                if(epoch==Interlocked.Read(ref _analysisEpoch) &&
+                   ReferenceEquals(_cpuEvidence,run))
+                    Show("Run轮廓生成失败："+e.Message);
+            }
+            finally
+            {
+                if(ReferenceEquals(_analysisCancellation,work))_analysisCancellation=null;
+                work.Dispose();
+            }
+        }
+
         /// <summary>
         /// 任一CPU参数变化即失效当前Run的投影和进行中的任务。
         /// 只清理本工作台拥有的结果槽，不影响其它算法结果或原图/ROI。
@@ -288,6 +442,7 @@ namespace CxVisual.TestCenter.UI
             if (_cpuRunCancellation == null && _cpuEvidence == null) return;
             FIMImageBuffer ownedResult = _cpuDisplayedMask;
             CancelCpuVision();
+            ClearCpuContourOverlays();
             _cpuEvidence = null;
             _cpuDisplayedMask = null;
             _cpuResultItems.Items.Clear();
@@ -339,6 +494,7 @@ namespace CxVisual.TestCenter.UI
                 // 新Run不能在运行期间继续把上一次CPU Mask显示为本次结果。
                 FIMImageBuffer previousCpuResult = _cpuDisplayedMask;
                 CancelCpuVision();
+                ClearCpuContourOverlays();
                 _cpuEvidence = null;
                 _cpuDisplayedMask = null;
                 _cpuResultItems.Items.Clear();
@@ -374,23 +530,7 @@ namespace CxVisual.TestCenter.UI
                 if(!_viewer.TryShowResult(version,mask.Image))return;
                 _cpuDisplayedMask = mask.Image;
                 _cpuEvidence = evidence;
-                _cpuResultItems.Items.Clear();
-                foreach (CxVisionResultItem item in evidence.Items)
-                {
-                    string number = item.Region != null ?
-                        item.Region.PixelArea.ToString(CultureInfo.InvariantCulture) + " px²" :
-                        item.IntegerValue.HasValue ?
-                        item.IntegerValue.Value.ToString(CultureInfo.InvariantCulture) +
-                            (item.Unit == null ? "" : " " + item.Unit) :
-                        item.BooleanValue.HasValue ? item.BooleanValue.Value.ToString() :
-                        item.Image == null ? "" :
-                        item.Image.Width.ToString(CultureInfo.InvariantCulture) + "×" +
-                            item.Image.Height.ToString(CultureInfo.InvariantCulture) +
-                            " " + item.Image.PixelFormat;
-                    _cpuResultItems.Items.Add(new ListBoxItem {
-                        Tag = item, Content = item.Kind + " · " + item.Name + " · " + number
-                    });
-                }
+                PopulateCpuResultItems(evidence);
                 var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
                 Show((separated?"拆分式MEM/MOC/MRK检测完成":"真实CPU检测完成")+
                     "：阈值命中=" +
@@ -727,6 +867,7 @@ namespace CxVisual.TestCenter.UI
             // 外部重新加载同一个FIM引用也代表新的Viewer源代次。
             // 不允许上一Run绑定相同引用而绕过新原图的证据清理。
             CancelCpuVision();
+            ClearCpuContourOverlays();
             _cpuSourceImage = null;
             _cpuEvidence = null;
             _cpuResultItems.Items.Clear();
