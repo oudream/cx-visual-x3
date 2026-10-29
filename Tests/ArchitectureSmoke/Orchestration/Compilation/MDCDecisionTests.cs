@@ -691,6 +691,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MOCCapabilityCatalog(new[] { new Provider() }),false);
             Check(offlineMissing.Verdict==MDCVerdict.Unknown,
                 "missing capability descriptor must remain Unknown");
+
+            var project = MEMEngineering.Create("decision-preflight-real-builder");
+            try
+            {
+                var page = project.AddPage("Main");
+                Guid realBlockId = Guid.Empty;
+                MOCFlowBuilder.Edit(project,page.RootContent,
+                    builder => { realBlockId = builder.Step(descriptor); });
+                var realWiring = MOLWiringCodec.Get(
+                    project.GetSnapshot().Find(page.RootContent.Id));
+                var actual = preflight.Assess(realWiring,catalog,false);
+                Check(actual.Verdict==MDCVerdict.Allowed,
+                    "real MOCFlowBuilder Start/Done controls are not extra professional data ports");
+                MOCFlowBuilder.Edit(project,page.RootContent,builder => {
+                    builder.AddPort(realBlockId,new MPCPortDescriptor("Extra",
+                        MPCPortDirection.Input,"double",MPCPortKind.Data));
+                });
+                var extended = preflight.Assess(MOLWiringCodec.Get(
+                    project.GetSnapshot().Find(page.RootContent.Id)),catalog,false);
+                Check(extended.Verdict==MDCVerdict.Unknown &&
+                    extended.ReasonCodes.Any(x=>x.StartsWith(
+                        "MDC_PREFLIGHT_EXTRA_PORT:",StringComparison.Ordinal)),
+                    "unknown professional Data port needs explicit provider schema confirmation");
+            }
+            finally { project.Close(true); }
+
         }
 
         private static void StaticBranchScenarioExploration()

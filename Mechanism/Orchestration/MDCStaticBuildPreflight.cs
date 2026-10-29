@@ -78,7 +78,10 @@ namespace CxVisual.Mechanism.Decision
                             "MOL port differs from the professional schema; explicit migration required"));
                 }
                 foreach (MPCPortDescriptor port in declared)
-                    if (!found.Definition.Ports.Any(x => x.MemberId == port.MemberId))
+                    // Start/Done and other MOL control ports belong to the
+                    // engineering workflow, not the professional data signature.
+                    if ((port.Kind == MPCPortKind.Data || port.Kind == MPCPortKind.Stream) &&
+                        !found.Definition.Ports.Any(x => x.MemberId == port.MemberId))
                         checks.Add(new MDCConstraintOutcome(
                             "MDC_PREFLIGHT_EXTRA_PORT:" + prefix + port.MemberId,
                             MDCVerdict.Unknown,

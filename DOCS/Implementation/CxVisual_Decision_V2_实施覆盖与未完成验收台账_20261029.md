@@ -70,3 +70,7 @@
 ## 08. D09静态路径推演（软件试点，并非仿真引擎）
 
 新增`MDCStaticPathExplorer.cs`，从Core权威MOLWiring定义计算可能控制路径，支持有/无`ConditionId`假设、未知与错误分支说明，不执行任何Provider、MRK、设备动作。测试采用真实`MOCFlowBuilder.Edit`生成四节点真假分支与Join；待Windows验收后可记静态路径能力Automated。真正的PSM虚拟模型、实时Clock/设备状态、安全隔离、历史Replay、HIL和专业验证仍是D09的未完成核心要求。
+
+## 09. 静态预检对MOC真实画布控制端口的兼容修复
+
+专业Capability目录通常只声明Data/Stream业务端口，MOL的`Start/Done`由原`MOCFlowBuilder.Step`附加，属于Core控制连线合同，不应被`MDCStaticBuildPreflight`误报为未声明的专业端口。保留强校验：专业必需端口缺失/类型冲突拒绝，额外业务Data端口Unknown；排除Control/其他非业务端口作为额外专业端口的误判。新增真实`MOCFlowBuilder.Edit`产生的画布节点正例及额外Data负例，结果应由Windows CI核验。完整跨Content与MRK Binder的静态拆分仍未完成。
