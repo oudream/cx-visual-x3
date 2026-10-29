@@ -1,0 +1,13 @@
+import { createRouter, createWebHashHistory } from 'vue-router'
+import DashboardView from '../views/DashboardView.vue'
+import ProgramsView from '../views/ProgramsView.vue'
+
+export const router = createRouter({
+  // Hash routing works with the legacy Gin static-file hosting arrangement.
+  history: createWebHashHistory('/assets/comm/'),
+  routes: [
+    { path: '/', name: 'dashboard', component: DashboardView },
+    { path: '/programs', name: 'programs', component: ProgramsView },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ],
+})

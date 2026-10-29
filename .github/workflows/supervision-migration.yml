@@ -69,5 +69,22 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then ext=".exe"; fi
           go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./cmd/monitor
           go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./cmd/daemon
-          go test -count=1 ./cmd/monitor ./cmd/daemon ./internal/monitorc ./internal/daemonc ./internal/program ./common/channels ./common/models ./common/utilities
+          go test -count=1 ./...
           echo "Built and smoke-tested Monitor and Daemon for $RUNNER_OS"
+
+  supervision-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and validate Vue H5
+        working-directory: Services/Supervision/web
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run test
+          npm run build
+          test -f dist/index.html

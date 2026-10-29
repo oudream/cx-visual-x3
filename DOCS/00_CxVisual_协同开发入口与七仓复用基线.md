@@ -63,8 +63,8 @@
 
 ### Supervision（Go 监控守护服务）工程规范
 
-- **[《CxVisual Supervision Go 编码与工程规范 V1.0》](Architecture/CxVisual_Supervision_Go编码与工程规范_V1.0.md)**：正式编码与工程规范，覆盖 Monitor/Daemon 职责、Go 包/命名、HTTP/H5 安全、UDP/SQLite 兼容、错误/并发/生命周期、OOP/GoF/AOP、跨平台测试与工业验收；**规范生效不代表 P0～P3 目标功能已经实现**。
-- 正式代码位于 `Services/Supervision/`，以该目录 README、Go 源码、GitHub Actions 结果为实施事实。
+- **[《CxVisual Supervision Go 编码与工程规范 V1.0》](../Services/Supervision/docs/CxVisual_Supervision_Go编码与工程规范_V1.0.md)**：正式编码与工程规范，覆盖 Monitor/Daemon 职责、Go 包/命名、HTTP/H5 安全、UDP/SQLite 兼容、错误/并发/生命周期、OOP/GoF/AOP、跨平台测试与工业验收；**规范生效不代表 P0～P3 目标功能已经实现**。
+- 正式代码和三份正式文档统一位于 `Services/Supervision/`（文档在 `docs/`）；以 README、Go/Web 源码、GitHub Actions 为实施事实。另见 [整体架构与目录设计 V1.0](../Services/Supervision/docs/CxVisual_Supervision_整体架构与目录设计_V1.0.md)、[Web 前端架构与编码规范 V1.0](../Services/Supervision/docs/CxVisual_Supervision_Web前端架构与编码规范_V1.0.md)。
 
 ### 已完成的七仓技术资产档案：01～03（源码证据及复用提案，不是正式定案）
 

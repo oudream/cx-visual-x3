@@ -1,6 +1,6 @@
 # Supervision — 原 Go Monitor / Daemon 保真迁移
 
-> **开发规范**：[《CxVisual Supervision Go 编码与工程规范 V1.0》](../../DOCS/Architecture/CxVisual_Supervision_Go编码与工程规范_V1.0.md)。新增或实质修改 Go 源码时必须遵守；已迁移旧代码按兼容性和测试证据渐进治理。
+> **开发规范**：[《CxVisual Supervision Go 编码与工程规范 V1.0》](docs/CxVisual_Supervision_Go编码与工程规范_V1.0.md)。新增或实质修改 Go 源码时必须遵守；已迁移旧代码按兼容性和测试证据渐进治理。
 
 此目录是可独立构建的 **Go 模块**，不是 `CxVisual.Mechanism.Lifecycle` 的重命名，也不包含第二套 C# Host。
 
@@ -38,3 +38,28 @@ Go 模块含 `github.com/mattn/go-sqlite3`，请在目标系统提供可用的 C
 - Service 模块 C# 基类已迁入 `Mechanism/Core/Modules/Service`，不是 Go 进程监督者。
 - CxVisual Runtime/Transport 的统一观测接入尚未实施，不得宣称已完成双向控制、鉴权、统一状态或真实设备验收。
 - GitHub Actions `.github/workflows/supervision-migration.yml` 负责 Windows C# 检查和 Windows/macOS/Linux Go 构建。自动编译结果与实机部署验收分别记录。
+
+
+## 本地架构与前端文档
+
+1. [整体架构与目录设计 V1.0](docs/CxVisual_Supervision_整体架构与目录设计_V1.0.md)
+2. [Go 编码与工程规范 V1.0](docs/CxVisual_Supervision_Go编码与工程规范_V1.0.md)
+3. [Web 前端架构与编码规范 V1.0](docs/CxVisual_Supervision_Web前端架构与编码规范_V1.0.md)
+
+## V1 实际可用的只读查询
+
+保留原 `GET /programs_status`；新增 `GET /api/v1/health`、`/api/v1/overview`、`/api/v1/programs`、`/api/v1/programs/:id`。所有新增接口从现有 Monitor 内存状态生成快照，不修改 SQLite 或监控协议；暂不提供启停、重启和配置写入。
+
+## Vue H5 前端
+
+```bash
+cd Services/Supervision/web
+npm install
+npm run test
+npm run build
+npm run dev
+```
+
+开发期前端通过 Vite 代理 Monitor 的 `/api`；部署时复制 `web/dist/` **内的文件**到 Monitor 工作目录的 `assets/comm/`，原 `/index.html` 跳转兼容。详见 [deploy/README.md](deploy/README.md)。`npm` 不参与 Go 进程的运行。
+
+注意：V1 无用户登录/操作授权，**仅用于受控可信网络中的只读监控**。UI 显示真实查询状态；不能把 HTTP 连通或历史心跳看作业务健康。

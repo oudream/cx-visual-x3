@@ -1,16 +1,16 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
-	"gogo/common/channels"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"gogo/internal/httpapi"
 )
 
-// block thread
-// --assetsPath /opt/dev/hello_iec104/assets
-func setupHttpServer(e *gin.Engine, server *http.Server) {
-	channels.GinRegister(e)
-	//
+// setupHttpServer retains the legacy endpoint and adds versioned read-only APIs.
+// Debug/pprof is intentionally not exposed from production Monitor.
+func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	e.GET("/programs_status", getProgramStatusList)
+	httpapi.Register(e, apiProgramSnapshot)
 }
