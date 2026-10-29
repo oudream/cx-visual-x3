@@ -453,3 +453,13 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **源码提交**：[TestCenter Run与Overlay](https://github.com/oudream/cx-visual-x3/commit/214f19bb04f6b0b139f53f929cf3669d87eef1fc)、[输出页按钮](https://github.com/oudream/cx-visual-x3/commit/d239d31a60caf65af708f35b31b0d1fdcfc72225)、[WPF正反测试](https://github.com/oudream/cx-visual-x3/commit/e1eabcddf7544cd314e4275b37340c269dacfe72)。
 - **验收边界**：此前固定[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994) jobs确认含Windows构建、WPF ImageViewer、`--imaging`/`--vision-results`/默认回归、3D WPF，均Success；**该Run早于本条轮廓UI改动**，不能充当本条G3/G4/G5验收。新修改有文件回读与静态检查，但仍须以对应SHA取Windows CI、真实WPF Screenshot和结果日志。
 
+## 27. V2D-18/19/23/24：Studio MHS生效配置驱动独立四五节点工程（2026-10-29）
+
+**真实代码（本轮）**：
+
+- `CxVisionThresholdProvider.CaptureInspectionOptions()`：对已固定的专业参数进行防御复制；若来自`MHS Effective`，调用既有Provider版本/授权检查，参数变更或撤销后拒绝复用旧Provider。不返回MHS内部可变对象。
+- `CxVisionRawCpuRunner.ExecuteSeparatedMeasuredProviderAsync`：用已确认的专业Provider及其快照直接执行已有MEM/MOC/MRK四/五节点链，而非用新的无MHS来源Provider替代原授权执行实例。兼容现有旧算法入口。
+- `Applications/Studio/StudioShell.ModuleCenter.cs`：在已有MHS Effective、项目Scope、RAW文件参数、取消、执行Trace、区域结果和主流程编排入口旁新增`Studio.ModuleCenter.RunSeparatedRaw`和`Studio.ModuleCenter.MedianRadius`。0=RAW→Mask→Region→Area四节点，1～3=加FIM中值的五节点。运行后仍激活本MEM工程页，显示实际Flow/SourceMap/面积/节点身份；旧`RunRaw`保持兼容。未创建新的Studio工程树、运行引擎或WPF工作台。
+- **Studio自测**：`Applications/Studio/StudioShellSelfTests.cs` 真实Gray8 5×3四节点Mask命中4、接受面积3px²、MOL 4块3数据边、Mask与Area具名输出；7×7中值5节点孤立噪点剔除，保留RAW字节；MHS配置快照不可变、变更Effective后旧Provider无法新建工程、非法半径零写入。测试与生产直接共用同一入口。
+- **提交**：[Provider快照](https://github.com/oudream/cx-visual-x3/commit/48b80816f68046f495012caa2fb4bdf79847d4e7)、[受控拆分Runner](https://github.com/oudream/cx-visual-x3/commit/4efd2873a63dde1f81827d2eebf711b071b80afa)、[Studio入口](https://github.com/oudream/cx-visual-x3/commit/ac8f8573fdb77e14ce1e5dc508b15b915363e34d)、[Studio测试](https://github.com/oudream/cx-visual-x3/commit/af1c2ab36063f609fafbea08094f1ae9568f4a39)。
+- **未宣称**：本次只完成代码与本地源码静态一致性检查（G2）。**针对这批最新提交的Windows x64/.NET48编译、Studio CPU-only和全量WPF测试日志尚未取得**；不可登记G3/G4/G5通过。设备驱动、HIL、生产发布授权与运行期恢复仍不在此交付范围。
