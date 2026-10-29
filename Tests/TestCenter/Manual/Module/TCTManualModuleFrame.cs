@@ -151,7 +151,9 @@ namespace CxVisual.TestCenter.UI
         public bool HasUnsavedDraft { get { return _draftGuard != null && _draftGuard.HasUnsavedDraft; } }
         public string ActiveModuleId { get { return _activeId; } }
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
-        public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning) || (_simulationPanel!=null&&_simulationPanel.IsBusy) || (_servicePanel!=null&&_servicePanel.IsBusy) || (_connectorPanel!=null&&_connectorPanel.IsBusy); } }
+        public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning) || (_simulationPanel!=null&&_simulationPanel.IsBusy) || (_servicePanel!=null&&(_servicePanel.IsBusy||
+                _servicePanel.State==MLCServiceModuleState.Running)) ||
+                (_connectorPanel!=null&&(_connectorPanel.IsBusy||_connectorPanel.IsStarted)); } }
         public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
         // 只读当前正式MHS编辑草稿克隆，用于统一测试平台验证真实值与保存重开。
         public MCNConnectorConfiguration ConnectorDraftSnapshot()
@@ -169,7 +171,7 @@ namespace CxVisual.TestCenter.UI
         public TCTConnectorLoopPanel ConnectorTestPanel {get{return _connectorPanel;}}
         public void SelectModuleKind(MFMModuleKind kind)
         {
-            if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
+            if (IsBusy) throw new InvalidOperationException("当前模块操作尚未结束或服务/通道仍在运行");
             if (!Enum.IsDefined(typeof(MFMModuleKind), kind))
                 throw new ArgumentOutOfRangeException("kind");
             _moduleKind.SelectedItem = kind;
@@ -178,7 +180,7 @@ namespace CxVisual.TestCenter.UI
         }
         public void SetModuleId(string id)
         {
-            if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
+            if (IsBusy) throw new InvalidOperationException("当前模块操作尚未结束或服务/通道仍在运行");
             _moduleId.Text = RequireId(id);
         }
 
