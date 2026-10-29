@@ -99,3 +99,7 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 ## 15. D05可实际交付的静态来源→原运行编译器边界（P0）
 
 新增`MOCManifestRuntimeBinding`：只在过渡Orchestration/Runtime集成边界访问MRK，要求Core/目录版本和MPC/CLR契约一致后，复用原`MOCEngineeringCompiler`生成现有Plan/SourceMap。支持编译作用域内一次Resolver身份缓存与版本接口透传，未知输入签名默认拒绝，旧版兼容须主动显式启用。新增MDC-82～88正反测试；不创建第二个Compiler，也不修改旧的`Compile`公开入口。最终物理Decision项目尚未完成Runtime类型解耦。Windows构建/回归结果须以后续固定SHA记录，不能因为源文件存在就宣称P0融合完成。
+
+## 16. D05三段式合同检查与静态预检复用
+
+`MDCStaticBuildPreflight`补充接收`MDCStaticCatalogSnapshot`的重载，和现有MOC目录共用同一`AssessCore`，不增加新规则Owner。`MOCManifestRuntimeBinding`在任何Resolver探测之前逐Content验证原MOL业务端口，与MPC静态描述不一致时拒绝；再通过已有`MOCBindingContractInspector`验证MRK CLR签名，最后用唯一原编译器绑定。增加MDC-89反例，真实提交SHA/Windows CI是通过证据；物理Logic/Orchestration合并、纯执行无关Plan尚未完成。

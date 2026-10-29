@@ -18,6 +18,24 @@ namespace CxVisual.Mechanism.Decision
         {
             if (wiring == null) throw new ArgumentNullException("wiring");
             if (catalog == null) throw new ArgumentNullException("catalog");
+            return AssessCore(wiring,id => {
+                MOCCapabilityCatalogItem item=catalog.Find(id);
+                return item == null ? null : item.Definition;
+            },requireExecutable);
+        }
+
+        /// <summary>Same assessment from the immutable static Decision catalog.</summary>
+        public MDCAssessment Assess(MOLWiringDefinition wiring,
+            MDCStaticCatalogSnapshot catalog, bool requireExecutable = true)
+        {
+            if (wiring == null) throw new ArgumentNullException("wiring");
+            if (catalog == null) throw new ArgumentNullException("catalog");
+            return AssessCore(wiring,catalog.Find,requireExecutable);
+        }
+
+        private static MDCAssessment AssessCore(MOLWiringDefinition wiring,
+            Func<string,MOCCapabilityDescriptor> find, bool requireExecutable)
+        {
             try
             {
                 if (requireExecutable) wiring.ValidateExecutable();
@@ -38,7 +56,7 @@ namespace CxVisual.Mechanism.Decision
                 if (block.CapabilityId == "moc.state-machine" ||
                     block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                     continue;
-                MOCCapabilityCatalogItem found = catalog.Find(block.CapabilityId);
+                MOCCapabilityDescriptor found = find(block.CapabilityId);
                 string prefix = block.Id.ToString("N") + ":";
                 if (found == null)
                 {
@@ -57,7 +75,7 @@ namespace CxVisual.Mechanism.Decision
                     continue;
                 }
                 var byName = declared.ToDictionary(x => x.MemberId,StringComparer.Ordinal);
-                foreach (MPCPortDescriptor port in found.Definition.Ports)
+                foreach (MPCPortDescriptor port in found.Ports)
                 {
                     MPCPortDescriptor actual;
                     if (!byName.TryGetValue(port.MemberId,out actual))

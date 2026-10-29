@@ -423,3 +423,7 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-88 | 如果原Resolver支持版本接口，Adapter保持原版本验证路径；与原编译/发布的动态Loop/SourceMap/命名数据Goldens不能退化 |
 
 CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明真实发布/资源租约/设备HIL。
+
+### D05三重合同交接补验（MDC-89）
+
+在真实MOLWiring的Core节点声明`Pixels:string`，专业静态Capability声明`Pixels:int`，即使运行Resolver声称可用，`MOCManifestRuntimeBinding`也必须在Resolver调用数仍为0时返回`moc.bind.static_wiring_rejected`。纯静态SDK和运行交接共用`MDCStaticBuildPreflight`的规则，不重复建立另一套TypeId检查实现。该断言属于Windows自动软件测试，非HIL。

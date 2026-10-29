@@ -433,3 +433,7 @@ manifest.RequireCurrent(session.GetSnapshot(),
 `allowUnverifiedLegacyContracts=true`不是自动授权或安全完成证明，仅为明确的旧Provider兼容通路；静态Hard错仍不可绕过。若实际Resolver实现`IMRKVersionedCapabilityResolver`，编译作用域缓存桥还会透传版本查询接口，不以缓存破坏现有MRK Version Gate。编译过程不得调用任何`ExecuteAsync`，未发布/运行的Plan不能获得设备资源租约。必须由Host独立执行权限、能力有效性、执行组与设备安全检查。
 
 这是未来`Runtime.LoadAndValidate`的可迁移原型，不是已经完成的`MDCDeclarativePlan`或独立Decision程序集；最终项目融合前还必须把所有MOC静态控制编译从运行委托/Context中分离。
+
+### D05运行交接增加第三层静态Core端口校验
+
+`MOCManifestRuntimeBinding.Bind`在查询任何MRK Resolver之前，针对Manifest中全部V2 Content复用现有`MDCStaticBuildPreflight.Assess(wiring, MDCStaticCatalogSnapshot)`。因此交接链现在为**Core/MOL版本与正式引用→工程节点MPC端口与专业静态Schema→专业静态Schema与MRK CLR运行签名→原MOC编译器**。静态Port硬冲突立即拒绝并附原ContentId/RuleId，不能由于后续执行签名正确就放行过时工程定义；未验证静态描述只有显式Legacy兼容开关可继续原执行约束检查。该接口不复制MOL Graph，不执行委托，不触达设备；Studio/Headless使用同一个静态预检。

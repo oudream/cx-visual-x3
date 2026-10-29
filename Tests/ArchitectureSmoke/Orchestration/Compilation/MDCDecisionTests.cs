@@ -1007,6 +1007,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(compatibility!=null && legacyOptIn.Calls==1 &&
                     legacyOptIn.Executions==0,
                     "explicit legacy compatibility must preserve original MRK compiler behavior");
+
+                // A valid CLR resolver does not override a stale V2 MOL port.
+                var wired=session.AddPage("Wired");
+                var wireAction=MOLControlBlock.Action("vision.gray16");
+                var wrongInput=Port("Pixels",MPCPortDirection.Input,"string");
+                MOLWiringCodec.Set(session,wired.RootContent,new MOLWiringDefinition(
+                    wireAction.Id,new[]{wireAction},
+                    new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
+                        {wireAction.Id,new[]{wrongInput}}
+                    },new MOLLink[0]));
+                var declaredCatalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.gray16","Vision 16","Vision",
+                        new[]{Port("Pixels",MPCPortDirection.Input,"int")})
+                });
+                var invalidWiring=new MDCStaticSourceManifestBuilder().Create(
+                    session.GetSnapshot(),wired.RootContent.Id,declaredCatalog);
+                var staticProbe=new ProbeResolver();
+                bool rejectedStatic=false;
+                try {binder.Bind(session.GetSnapshot(),invalidWiring,
+                    declaredCatalog,staticProbe);}
+                catch(InvalidOperationException ex)
+                {
+                    rejectedStatic=ex.Message.StartsWith("moc.bind.static_wiring_rejected:",
+                        StringComparison.Ordinal);
+                }
+                Check(rejectedStatic && staticProbe.Calls==0,
+                    "MOL business port mismatch must reject before MRK resolver probing");
+
             }
             finally {session.Close(true);}
         }

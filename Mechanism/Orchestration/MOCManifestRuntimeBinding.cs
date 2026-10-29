@@ -36,6 +36,27 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.bind.unknown_static_capability:"+
                     string.Join(",",manifest.UnknownCapabilityIds));
 
+            // Reuse exactly the same static wiring assessment as Studio/SDK.
+            // A correct Runtime CLR signature cannot compensate for a stale or
+            // incompatible port declaration inside the original MOL Content.
+            var preflight = new MDCStaticBuildPreflight();
+            foreach(var content in manifest.Contents)
+            {
+                MEMNodeSnapshot node = project.Find(content.ContentId);
+                MOLWiringDefinition wiring = MOLWiringCodec.Get(node);
+                if(wiring == null) continue; // V1 structural logic remains Core-owned.
+                var assessment=preflight.Assess(wiring,catalog);
+                if(assessment.Verdict == MDCVerdict.Rejected)
+                    throw new InvalidOperationException("moc.bind.static_wiring_rejected:"+
+                        content.ContentId.ToString("N")+":"+
+                        string.Join(",",assessment.ReasonCodes));
+                if(assessment.Verdict == MDCVerdict.Unknown &&
+                    !allowUnverifiedLegacyContracts)
+                    throw new InvalidOperationException("moc.bind.static_wiring_unverified:"+
+                        content.ContentId.ToString("N")+":"+
+                        string.Join(",",assessment.ReasonCodes));
+            }
+
             // A compilation-local cache closes the preflight-to-compiler resolver
             // identity gap without creating a shared registration or execution store.
             CachedResolver pinned = resolver as IMRKVersionedCapabilityResolver != null
