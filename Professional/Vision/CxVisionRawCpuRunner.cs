@@ -173,6 +173,7 @@ namespace CxVisual.Professional.Vision
                     measure=b.Step(measureProvider.DescribeCapabilities().Single());
                     b.Connect(inspect,"Done",measure,"Start",MPCPortKind.Control);
                     b.Connect(inspect,"Inspection",measure,"Inspection",MPCPortKind.Data);
+                    b.ExposeOutput("AcceptedRegionPixelArea",measure,"Area");
                 }
             });
             string rawVersion;
