@@ -395,6 +395,7 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(Row(_windowEnabled,_windowRoi));
             content.Children.Add(WindowSliderRow("窗宽",_windowWidthInput,true,out _windowWidthSlider));
             content.Children.Add(WindowSliderRow("窗位",_windowCenterInput,false,out _windowCenterSlider));
+            AutomationProperties.SetAutomationId(_windowRangeHint,"TCT.Imaging.WindowRange");
             content.Children.Add(_windowRangeHint);
             _windowEnabled.Checked+=(sender,args)=>{if(!_syncingWindowControls) ApplyWindowFromSlider();};
             _windowEnabled.Unchecked+=(sender,args)=>{if(!_syncingWindowControls) ResetWindowOnly();};
