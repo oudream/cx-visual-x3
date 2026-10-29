@@ -168,6 +168,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
             while(root!=null&&!File.Exists(Path.Combine(root.FullName,"CxVisual.Unified.sln")))root=root.Parent;
             if(root==null)throw new DirectoryNotFoundException("Cannot locate schema1 fixture repository");
             string fixture=Path.Combine(root.FullName,"AppData","Cases","CT3D","V04Schema1");
+            // 旧DLL生成的二进制fixture是外部验收资产；未入库时不能伪造或误报兼容通过。
+            string rawFixture=Path.Combine(fixture,"source.raw");
+            string projectFixture=Path.Combine(fixture,"schema1.cxproj");
+            if(!File.Exists(rawFixture)||!File.Exists(projectFixture)||
+                !Directory.Exists(Path.Combine(fixture,"artifacts","ct3d")))
+            {
+                Console.WriteLine("SKIP CT3D fixed schema1 compatibility: legacy fixture absent; external binary acceptance pending");
+                return;
+            }
             string migrated=Path.Combine(folder,"schema1-migrated");Directory.CreateDirectory(migrated);
             File.Copy(Path.Combine(fixture,"source.raw"),Path.Combine(migrated,"source.raw"));
             string output=Path.Combine(migrated,"schema2.cxproj");MRIObjectAddress address;Guid meshId,planeId;
