@@ -226,6 +226,10 @@ namespace CxVisual.Professional.Vision
                            !(measured is long))
                             throw new InvalidOperationException("工程测量节点结果缺失或类型错误");
                         acceptedArea=(long)measured;
+                        if(acceptedArea.Value!=result.GetCommittedOutput<long>(
+                                "AcceptedRegionPixelArea"))
+                            throw new InvalidOperationException(
+                                "工程具名Area出口与MOC测量节点结果不一致");
                         if(acceptedArea.Value!=CxVisionDataFlow.MeasureAcceptedPixelArea(
                             inspection,cancellation))
                             throw new InvalidOperationException("工程区域面积与算法结果不一致");
