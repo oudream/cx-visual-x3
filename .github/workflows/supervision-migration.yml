@@ -39,7 +39,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $p" }
           }
   supervision-go:
-    if: ${{ hashFiles('Services/Supervision/go.mod') != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +52,7 @@ jobs:
           go-version-file: Services/Supervision/go.mod
           cache: false
       - name: Build legacy Monitor and Daemon
+        if: ${{ hashFiles('Services/Supervision/go.mod') != '' }}
         shell: bash
         working-directory: Services/Supervision
         run: |
