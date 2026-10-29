@@ -123,9 +123,9 @@ namespace CxVisual.Mechanism.Decision
     public sealed class MDCPlanReference
     {
         internal MDCPlanReference(MRIReferenceSnapshot reference)
-        {
-            Id=reference.Id;TargetId=reference.TargetId;Kind=reference.Kind;
-        }
+            : this(reference.Id,reference.TargetId,reference.Kind) { }
+        internal MDCPlanReference(Guid id,Guid target,MRIReferenceKind kind)
+        { Id=id;TargetId=target;Kind=kind; }
         public Guid Id {get;private set;}
         public Guid TargetId {get;private set;}
         public MRIReferenceKind Kind {get;private set;}
@@ -134,18 +134,19 @@ namespace CxVisual.Mechanism.Decision
     public sealed class MDCPlanContent
     {
         private readonly byte[] _source;
-        internal MDCPlanContent(MEMNodeSnapshot origin,bool required,
-            Guid contentId,int schemaVersion,bool isWiring,Guid entry,IEnumerable<MDCPlanBlock> blocks,IEnumerable<MDCPlanLink> links,
+        internal MDCPlanContent(Guid contentId,Guid storageRootId,
+            IEnumerable<MDCPlanReference> references,bool required,
+            int schemaVersion,bool isWiring,Guid entry,
+            IEnumerable<MDCPlanBlock> blocks,IEnumerable<MDCPlanLink> links,
             IEnumerable<MDCPlanPort> ports,IEnumerable<MDCPlanNamedPort> inputs,
             IEnumerable<MDCPlanNamedPort> outputs,IEnumerable<MDCPlanLiteral> literals,
             IEnumerable<MDCPlanPolicy> policies,MDCPlanSemanticIndex semantics,byte[] source)
         {
-            if(origin==null || origin.Id!=contentId)
-                throw new ArgumentException("decision.plan.content_identity");
+            if(contentId==Guid.Empty || storageRootId==Guid.Empty || references==null ||
+                source==null)throw new ArgumentException("decision.plan.content_identity");
             ContentId=contentId;SchemaVersion=schemaVersion;IsWiring=isWiring;
-            StorageRootId=origin.StorageRootId;LogicRequired=required;
-            References=new ReadOnlyCollection<MDCPlanReference>(
-                origin.References.Select(x=>new MDCPlanReference(x)).ToArray());
+            StorageRootId=storageRootId;LogicRequired=required;
+            References=new ReadOnlyCollection<MDCPlanReference>(references.ToArray());
             EntryBlockId=entry;
             Blocks=new ReadOnlyCollection<MDCPlanBlock>(blocks.ToArray());
             Links=new ReadOnlyCollection<MDCPlanLink>(links.ToArray());
@@ -227,9 +228,49 @@ namespace CxVisual.Mechanism.Decision
                 var links=new HashSet<Guid>(content.References
                     .Where(x=>x.Kind==MRIReferenceKind.Content)
                     .Select(x=>x.TargetId));
+                var invoked=content.Blocks.Where(x=>x.TargetContentId!=Guid.Empty)
+                    .Select(x=>x.TargetContentId).Distinct().OrderBy(x=>x).ToArray();
                 if(source.ReferencedContentIds.Any(x=>!links.Contains(x)) ||
+                   !invoked.SequenceEqual(source.ReferencedContentIds.OrderBy(x=>x)) ||
                    content.References.Any(x=>x.Id==Guid.Empty || x.TargetId==Guid.Empty))
                     throw new InvalidOperationException("decision.plan.content_references_invalid");
+
+                // The declaration used for Host version pinning must be exactly
+                // what the real canonical logic can execute. No extra hidden
+                // capability is permitted outside the signed source closure.
+                var uses=new List<MDCStaticCapabilityUse>();
+                foreach(MDCPlanBlock block in content.Blocks)
+                {
+                    if(content.IsWiring)
+                    {
+                        if(block.TargetContentId==Guid.Empty &&
+                            block.CapabilityId!="moc.state-machine")
+                            uses.Add(new MDCStaticCapabilityUse(content.ContentId,
+                                block.BlockId,block.CapabilityId));
+                    }
+                    else if(block.Kind==MOLControlKind.Action)
+                        uses.Add(new MDCStaticCapabilityUse(content.ContentId,
+                            block.BlockId,block.CapabilityId));
+                }
+                if(content.IsWiring)
+                    foreach(var state in content.Semantics.States)
+                    {
+                        if(state.EntryCapabilityId.Length>0)
+                            uses.Add(new MDCStaticCapabilityUse(content.ContentId,
+                                state.MachineBlockId,state.EntryCapabilityId));
+                        if(state.ExitCapabilityId.Length>0)
+                            uses.Add(new MDCStaticCapabilityUse(content.ContentId,
+                                state.MachineBlockId,state.ExitCapabilityId));
+                    }
+                var actual=uses.OrderBy(x=>x.BlockId)
+                    .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal).ToArray();
+                var declared=source.CapabilityUses.OrderBy(x=>x.BlockId)
+                    .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal).ToArray();
+                if(actual.Length!=declared.Length ||
+                    actual.Where((x,i)=>x.ContentId!=declared[i].ContentId ||
+                        x.BlockId!=declared[i].BlockId ||
+                        !StringComparer.Ordinal.Equals(x.CapabilityId,declared[i].CapabilityId)).Any())
+                    throw new InvalidOperationException("decision.plan.capability_closure_invalid");
             }
         }
         /// <summary>Current compatibility bridge can use the underlying source
@@ -264,50 +305,56 @@ namespace CxVisual.Mechanism.Decision
             var plan=new List<MDCPlanContent>();
             foreach(var description in manifest.Contents)
             {
-                var node=project.Find(description.ContentId);
-                var logic=node.Aspects.Single(x=>x.Kind==MPMAspectKind.Logic &&
+                MEMNodeSnapshot node=project.Find(description.ContentId);
+                MPMAspect logic=node.Aspects.Single(x=>x.Kind==MPMAspectKind.Logic &&
                     x.ProviderId==MOLLogicCodec.ProviderId);
-                var wiring=MOLWiringCodec.Get(node);
-                if(wiring!=null)
-                {
-                    wiring.ValidateExecutable();
-                    var blocks=wiring.Blocks.Select(x=>new MDCPlanBlock(
-                        x.Id,x.Kind,x.CapabilityId,
-                        GetInvoke(x.CapabilityId),Guid.Empty,"Wiring",0,0,""))
-                        .OrderBy(x=>x.BlockId).ToArray();
-                    var links=wiring.Links.Select(x=>new MDCPlanLink(x))
-                        .OrderBy(x=>x.LinkId).ToArray();
-                    var ports=wiring.Ports.SelectMany(x=>x.Value.Select(
-                        p=>new MDCPlanPort(x.Key,p)))
-                        .OrderBy(x=>x.BlockId).ThenBy(x=>x.MemberId,StringComparer.Ordinal);
-                    var literals=wiring.Parameters.SelectMany(x=>x.Value.Select(
-                        p=>new MDCPlanLiteral(x.Key,p.Key,p.Value)))
-                        .OrderBy(x=>x.BlockId).ThenBy(x=>x.PortMemberId,StringComparer.Ordinal);
-                    var policies=wiring.Policies.Select(x=>new MDCPlanPolicy(x.Key,x.Value))
-                        .OrderBy(x=>x.BlockId);
-                    plan.Add(new MDCPlanContent(node,logic.Required,node.Id,logic.SchemaVersion,true,
-                        wiring.EntryBlockId,blocks,links,ports,
-                        wiring.FlowInputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
-                            .OrderBy(x=>x.Name,StringComparer.Ordinal),
-                        wiring.FlowOutputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
-                            .OrderBy(x=>x.Name,StringComparer.Ordinal),
-                        literals,policies,MDCPlanSemanticCompiler.FromWiring(wiring),logic.Payload));
-                }
-                else
-                {
-                    var structured=MOLLogicCodec.Get(node);
-                    if(structured==null)
-                        throw new InvalidOperationException("decision.plan.unknown_logic_schema");
-                    var blocks=FlattenStructured(structured.Root).ToArray();
-                    plan.Add(new MDCPlanContent(node,logic.Required,node.Id,logic.SchemaVersion,false,
-                        structured.Root.Id,blocks,new MDCPlanLink[0],
-                        new MDCPlanPort[0],new MDCPlanNamedPort[0],
-                        new MDCPlanNamedPort[0],new MDCPlanLiteral[0],
-                        new MDCPlanPolicy[0],MDCPlanSemanticCompiler.FromStructured(structured),
-                        logic.Payload));
-                }
+                plan.Add(CreateFromCanonical(node.Id,node.StorageRootId,
+                    node.References.Select(x=>new MDCPlanReference(x)),logic.Required,
+                    logic.SchemaVersion,logic.Payload));
             }
             return new MDCDeclarativePlan(manifest,plan.OrderBy(x=>x.ContentId));
+        }
+
+        /// <summary>Single source of index and semantic reconstruction for
+        /// both live MEM snapshots and serialized immutable Plan packages.</summary>
+        internal static MDCPlanContent CreateFromCanonical(Guid contentId,Guid storageRootId,
+            IEnumerable<MDCPlanReference> references,bool required,int schema,byte[] payload)
+        {
+            if(payload==null)throw new ArgumentNullException("payload");
+            bool isWiring=schema==MOLWiringCodec.SchemaVersion ||
+                schema==MOLWiringCodec.ExtendedSchemaVersion ||
+                schema==MOLWiringCodec.CompoundSchemaVersion;
+            if(isWiring)
+            {
+                MOLWiringDefinition wiring=MOLWiringCodec.Deserialize(payload,schema);
+                wiring.ValidateExecutable();
+                var blocks=wiring.Blocks.Select(x=>new MDCPlanBlock(
+                    x.Id,x.Kind,x.CapabilityId,GetInvoke(x.CapabilityId),
+                    Guid.Empty,"Wiring",0,0,"")).OrderBy(x=>x.BlockId).ToArray();
+                var links=wiring.Links.Select(x=>new MDCPlanLink(x))
+                    .OrderBy(x=>x.LinkId).ToArray();
+                var ports=wiring.Ports.SelectMany(x=>x.Value.Select(
+                    p=>new MDCPlanPort(x.Key,p)))
+                    .OrderBy(x=>x.BlockId).ThenBy(x=>x.MemberId,StringComparer.Ordinal);
+                var literals=wiring.Parameters.SelectMany(x=>x.Value.Select(
+                    p=>new MDCPlanLiteral(x.Key,p.Key,p.Value)))
+                    .OrderBy(x=>x.BlockId).ThenBy(x=>x.PortMemberId,StringComparer.Ordinal);
+                var policies=wiring.Policies.Select(x=>new MDCPlanPolicy(x.Key,x.Value))
+                    .OrderBy(x=>x.BlockId);
+                return new MDCPlanContent(contentId,storageRootId,references,required,schema,true,
+                    wiring.EntryBlockId,blocks,links,ports,
+                    wiring.FlowInputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
+                        .OrderBy(x=>x.Name,StringComparer.Ordinal),
+                    wiring.FlowOutputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
+                        .OrderBy(x=>x.Name,StringComparer.Ordinal),
+                    literals,policies,MDCPlanSemanticCompiler.FromWiring(wiring),payload);
+            }
+            MOLLogicDefinition structured=MOLLogicCodec.Deserialize(payload,schema);
+            return new MDCPlanContent(contentId,storageRootId,references,required,schema,false,
+                structured.Root.Id,FlattenStructured(structured.Root).ToArray(),
+                new MDCPlanLink[0],new MDCPlanPort[0],new MDCPlanNamedPort[0],
+                new MDCPlanNamedPort[0],new MDCPlanLiteral[0],new MDCPlanPolicy[0],
+                MDCPlanSemanticCompiler.FromStructured(structured),payload);
         }
 
         private static Guid GetInvoke(string capability)

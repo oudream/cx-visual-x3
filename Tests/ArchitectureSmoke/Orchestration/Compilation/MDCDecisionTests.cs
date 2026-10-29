@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Core;
@@ -1361,6 +1362,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     parent.RootContent.Id,new ProbeResolver());
             }
             finally {session.Close(true);}
+
+            // Persistent archive is the exact input for the detached Runtime
+            // binder after MEM has been closed; never reopen the Core project.
+            byte[] v1Bytes=MDCPlanArchiveCodec.Serialize(v1Plan);
+            byte[] v2Bytes=MDCPlanArchiveCodec.Serialize(v2Plan);
+            Check(v1Bytes.SequenceEqual(MDCPlanArchiveCodec.Serialize(v1Plan)) &&
+                v2Bytes.SequenceEqual(MDCPlanArchiveCodec.Serialize(v2Plan)),
+                "the canonical Plan archive must be bytewise deterministic");
+            v1Plan=MDCPlanArchiveCodec.Deserialize(v1Bytes);
+            v2Plan=MDCPlanArchiveCodec.Deserialize(v2Bytes);
+            Check(v1Plan.Contents.Single().Semantics.Loops.Any(x=>x.MaxIterations==7) &&
+                v2Plan.Contents.Count==2 &&
+                v1Plan.Fingerprint.Length==64 && v2Plan.Fingerprint.Length==64,
+                "reloaded V1 dynamic Loop and V2 nested Content semantic indexes must survive disk transport");
+            var corrupted=(byte[])v2Bytes.Clone();
+            corrupted[corrupted.Length-40]=(byte)(corrupted[corrupted.Length-40]^1);
+            bool corruptedRejected=false;
+            try {MDCPlanArchiveCodec.Deserialize(corrupted);}
+            catch(InvalidDataException ex)
+            {corruptedRejected=ex.Message=="decision.archive.digest_mismatch";}
+            Check(corruptedRejected,
+                "corrupted versioned archive must fail before Runtime resolver access");
+            bool truncatedRejected=false;
+            try {MDCPlanArchiveCodec.Deserialize(new byte[]{1,2,3,4});}
+            catch(InvalidDataException) {truncatedRejected=true;}
+            Check(truncatedRejected,"truncated archive must be fail-closed");
 
             var binder=new MOCManifestRuntimeBinding();
             var versions=new Dictionary<string,string>(StringComparer.Ordinal) {

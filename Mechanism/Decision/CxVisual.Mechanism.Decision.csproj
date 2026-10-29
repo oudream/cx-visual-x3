@@ -36,7 +36,7 @@
     <Compile Include="MDCStaticPathExplorer.cs"/>
     <Compile Include="MDCLogicTraversal.cs"/>
     <Compile Include="MDCStaticSourceManifest.cs"/>
-    <Compile Include="MDCDeclarativePlan.cs"/>
+    <Compile Include="MDCDeclarativePlan.cs"/><Compile Include="MDCPlanArchiveCodec.cs"/>
     <Compile Include="MDCPlanSemantics.cs"/></ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>

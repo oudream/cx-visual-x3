@@ -192,11 +192,23 @@ namespace CxVisual.Mechanism.Decision
             };
             visit(rootContentId,0);
             var contents=items.Values.OrderBy(x=>x.ContentId).ToArray();
-            string fingerprint=Hash(writer=>{
-                writer.Write(project.ProjectId.ToByteArray());
-                writer.Write(project.Revision);
-                writer.Write(rootContentId.ToByteArray());
-                Write(writer,catalog.Fingerprint);
+            string fingerprint=ComputeFingerprint(project.ProjectId,project.Revision,
+                rootContentId,catalog.Fingerprint,contents);
+            return new MDCStaticSourceManifest(project.ProjectId,project.Revision,rootContentId,
+                catalog.Fingerprint,fingerprint,contents,unknown);
+        }
+
+        /// <summary>Pure, deterministic fingerprint of the immutable source
+        /// manifest, also used to reject altered persisted Plan packages.</summary>
+        internal static string ComputeFingerprint(Guid projectId,int revision,Guid root,
+            string catalogFingerprint,IEnumerable<MDCStaticContentSource> sources)
+        {
+            var contents=sources.OrderBy(x=>x.ContentId).ToArray();
+            return Hash(writer=>{
+                writer.Write(projectId.ToByteArray());
+                writer.Write(revision);
+                writer.Write(root.ToByteArray());
+                Write(writer,catalogFingerprint);
                 writer.Write(contents.Length);
                 foreach(var content in contents)
                 {
@@ -208,8 +220,6 @@ namespace CxVisual.Mechanism.Decision
                         writer.Write(child.ToByteArray());
                 }
             });
-            return new MDCStaticSourceManifest(project.ProjectId,project.Revision,rootContentId,
-                catalog.Fingerprint,fingerprint,contents,unknown);
         }
 
         private static string HashAspect(MPMAspect aspect)

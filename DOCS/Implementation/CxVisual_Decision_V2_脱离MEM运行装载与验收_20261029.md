@@ -15,3 +15,10 @@
 ## 剩余工业级门禁
 - 纯 Plan 的 **可持久化有版本发布包**及签名/防回滚、离线跨进程加载、MRK Host 权限与设备资源租约、故障恢复、HIL 安全验收仍未完成，不得用此一次编译通过来取代上述工作。
 - SourceMap 仍沿用原 MRIObjectAddress 的项目/资源身份合同；Detached 是脱离 MEM 实时快照，不是跨项目对象身份重写。
+
+## 版本化 Plan 归档（后续实装）
+- `MDCPlanArchiveCodec.Serialize/Deserialize` 提供固定格式 v1 的有界二进制载荷，内容包括 Core/Decision 来源 Manifest、完整 V1/V2 MOL 规范逻辑、Content 资源地址、引用身份与专业能力使用声明。
+- Import 后重建同一个 `MDCDeclarativePlan`，由 Runtime 的独立 Binder 接收，关闭 MEM Session 后仍能得到实际 MRK Plan/SourceMap。
+- 归档采用 SHA-256 检测意外损坏，并重新计算来源 Manifest 指纹，逐 Content 核验 Logic 字节、引用及能力声明闭包；对截断、版本错误、格式越界和来源不匹配拒绝加载。
+- **SHA-256 不是发布者签名。** 工业生产发布必须由 Host 附加可信签名、反回滚、权限、设备互锁与 Stage/Activate 授权；当前不宣称这部分已完成。
+- ArchitectureSmoke 在关闭工程会话之后执行确定性归档、加载、V1 Loop/V2 共享 Content 语义与 SourceMap 验证，以及损坏/截断载荷负例。
