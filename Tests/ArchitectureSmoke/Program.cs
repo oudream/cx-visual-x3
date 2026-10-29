@@ -46,6 +46,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     RuntimeVisionDataFlowTests.Run();
                     return 0;
                 }
+                // B4/B6 focused industrial gate: actual MRK cancellation, timeout,
+                // breakpoints, resource leases, journal recovery and real MDS Vision.
+                // These are the authoritative existing suites, not mock assertions.
+                if (Array.IndexOf(args, "--orchestration-industrial") >= 0) {
+                    ExecutionControlTests.Run();
+                    ExecutionGroupTests.Run();
+                    ExecutionPolicyTests.Run();
+                    ExecutionJournalTests.Run();
+                    RuntimeVisionDataFlowTests.Run();
+                    return 0;
+                }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-uml-core") >= 0) { ModuleChannelTransportSmokeTests.RunUmlCore(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--channel-transport") >= 0) { ModuleChannelTransportSmokeTests.Run(); FTRWebSocketAtomicTests.Run(); FTRMultiClientBudgetTests.Run(); FTRSharedMemoryCrashTests.Run(); return 0; }
