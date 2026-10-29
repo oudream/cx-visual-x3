@@ -601,6 +601,12 @@ namespace CxVisual.Studio
             };
             System.Windows.Automation.AutomationProperties.SetAutomationId(contourButton,
                 "Studio.ModuleCenter.GenerateRunContours");
+            var runExportButton=new Button {
+                Content="导出Run CSV",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),IsEnabled=false
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(runExportButton,
+                "Studio.ModuleCenter.ExportRunCsv");
             var resultDetail=new TextBlock {
                 Text="本区域仅显示已完成Run的只读产物；不代表生产检测授权。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,2,4,4)
@@ -610,6 +616,7 @@ namespace CxVisual.Studio
             var resultControls=new WrapPanel();
             resultControls.Children.Add(sourceButton);
             resultControls.Children.Add(contourButton);
+            resultControls.Children.Add(runExportButton);
             var resultStack=new StackPanel();
             resultStack.Children.Add(resultControls);
             resultStack.Children.Add(resultList);
@@ -631,6 +638,7 @@ namespace CxVisual.Studio
                 displayedRun=null;displayedOriginal=null;
                 displayedProject=Guid.Empty;
                 contourButton.IsEnabled=false;sourceButton.IsEnabled=false;
+                runExportButton.IsEnabled=false;
                 resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
                 resultPreview.Clear();resultPreview.Visibility=Visibility.Collapsed;
                 resultExpander.Visibility=Visibility.Collapsed;
@@ -640,6 +648,30 @@ namespace CxVisual.Studio
                 displayedOriginal!=null &&
                 displayedProject==_viewModel.ProjectSession.Project.Id &&
                 Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original);
+            runExportButton.Click+=(sender,args)=>{
+                if(displayedRun==null ||
+                   displayedProject!=_viewModel.ProjectSession.Project.Id ||
+                   (displayedOriginal!=null &&
+                    !Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original)))
+                {
+                    resultDetail.Text="本Run已失效，禁止将旧结果导出为当前工程证据。";
+                    return;
+                }
+                var dialog=new Microsoft.Win32.SaveFileDialog {
+                    Filter="Vision Run结构化CSV|*.csv",DefaultExt=".csv",
+                    Title="导出本次视觉Run（不包含Image/Mask二进制）",
+                    OverwritePrompt=true
+                };
+                if(dialog.ShowDialog()!=true)return;
+                try
+                {
+                    CxVisionRunCsvExporter.SaveFile(dialog.FileName,displayedRun,
+                        overwrite:true);
+                    resultDetail.Text="已导出Run="+displayedRun.RunId.ToString("N")+
+                        " 的结构化CSV；图像原像素另用FIM/RAW导出。";
+                }
+                catch(Exception ex){resultDetail.Text="Run CSV导出失败："+ex.Message;}
+            };
             sourceButton.Click+=(sender,args)=>{
                 if(!hasCurrentSource()) {resultDetail.Text="结果来源失效或当前为非可视Run。";return;}
                 resultPreview.SelectOriginal();
@@ -766,6 +798,7 @@ namespace CxVisual.Studio
                     resultPreview.Visibility=report.SourceImage==null?
                         Visibility.Collapsed:Visibility.Visible;
                     sourceButton.IsEnabled=report.SourceImage!=null;
+                    runExportButton.IsEnabled=true;
                     contourButton.IsEnabled=report.SourceImage!=null &&
                         report.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Mask &&
                             x.OutputPort=="ThresholdMask");
