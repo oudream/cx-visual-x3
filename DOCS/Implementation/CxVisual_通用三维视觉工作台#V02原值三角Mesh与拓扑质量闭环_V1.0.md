@@ -268,3 +268,5 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - Studio默认现有Vision、CT3D与MDS生命周期三项配置，测试另注册Automation后应为四卡。修正旧`Children.Count==3`为四卡，并额外确认真实MDS Editor存在，仍要求1～3列响应式容器，不降低为任意数量。完整本机`--shell-self-test`退出0，**61 PASS、0 FAIL**，`studio-self-test.log`已记录；生产配置注册行为未变。
 - 本机三维PNG曾在ApplicationIdle延后执行后一次通过，整窗178931字节、四视图135806字节，已查看实际切片/十字线/设置内容；但**重复验证仍出现全黑**，显式等待ContentRendered也未解决。不能据这一次通过宣称根因已定位或稳定修复；所有临时App启动/首帧等待代码均已撤回，保留原像素门禁。本机渲染/会话因素仍待诊断，与上列固定SHA CI真实G3成功分别记录，亦不替代独立GL framebuffer门禁。
 - 本轮正式修改只修正Studio已有配置贡献的测试预期，新提交Windows CI另按SHA查询。R5全部26能力/90需求、工业精度、完整ROI/Studio/CAD/动画仍需后续真实交付，不能据收敛修复标记平台完成。
+
+**固定修复CI已核实**：并行master合入新增可视树遍历/真实二维流程测试后，最终修复源码为`28e1576f6b6160ec540c73d1124a932fde50ff0b`。[Studio S1 40886708549](https://github.com/oudream/cx-visual-x3/actions/runs/40886708549) SUCCESS，job `123492262961`日志含61条真实STA PASS、无FAIL，外加26清单与27项目DAG两条PASS；编译及上传视觉证据步骤成功。相同SHA的Graphics `40886708492`、Module CPU `40886708737`、Engineering `40886708483`亦成功。此结果关闭先前旧三卡断言的CI阻点，不关闭本机三维PNG不稳定或工业G5缺口。
