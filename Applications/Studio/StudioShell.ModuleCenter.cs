@@ -18,6 +18,9 @@ using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
+using CxVisual.Mechanism.Presentation.Wpf.Imaging;
+using CxVisual.Mechanism.Visual;
 using CxVisual.Professional.Vision;
 
 namespace CxVisual.Studio
@@ -47,6 +50,7 @@ namespace CxVisual.Studio
             public string PlanFingerprint,ConfigVersion;
             public CxVisionInspectionResult Inspection;
             public CxVisionRunSummary Evidence;
+            public FIMImageBuffer SourceImage;
         }
         /// <summary>
         /// Studio delegates the real CPU operation to the same professional runner used by
@@ -85,6 +89,7 @@ namespace CxVisual.Studio
                 CompletedTraceEvents=report.CompletedTraceEvents,
                 PlanFingerprint=report.Fingerprint,ConfigVersion=report.ConfigVersion,
                 Inspection=report.Inspection,Evidence=report.Evidence,
+                SourceImage=report.SourceImage,
                 TraceRecords=report.Trace.Select(x=>new StudioCpuTraceRecord {
                     Sequence=x.Sequence,StepId=x.StepId,BlockId=x.BlockId,
                     State=x.State,TimestampUtc=x.TimestampUtc
