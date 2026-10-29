@@ -55,6 +55,26 @@ namespace CxVisual.Professional.CT3D
                 throw new OverflowException("点到平面毫米偏差发生数值溢出。");
             return result;
         }
+        /// <summary>跨工程重开的同资产物理测距：核对资产Id、Revision及Frame稳定签名。
+        /// 不允许与不同资产/标定混用；本API不取代Open对RAW Hash的验证。</summary>
+        public double SignedDistanceFromAssetMm(FVOPhysicalPoint3D pointMm,CT3DAssetReference source)
+        {
+            if(source==null)throw new ArgumentNullException("source");
+            if(source.SourceRef!=SourceRef||source.Revision!=SourceRevision||
+                !source.MatchesSpatialFrame(SpatialFrame))
+                throw new InvalidOperationException("来源、Revision或物理Frame不一致，拒绝跨资产测距。");
+            double result=(pointMm.X-PointMm.X)*Normal.X+
+                (pointMm.Y-PointMm.Y)*Normal.Y+
+                (pointMm.Z-PointMm.Z)*Normal.Z;
+            if(double.IsNaN(result)||double.IsInfinity(result))
+                throw new OverflowException("点到平面毫米偏差发生数值溢出。");
+            return result;
+        }
+        public double AbsoluteDistanceFromAssetMm(FVOPhysicalPoint3D pointMm,CT3DAssetReference source)
+        {
+            return Math.Abs(SignedDistanceFromAssetMm(pointMm,source));
+        }
+
         public double AbsoluteDistanceMm(FVOPhysicalPoint3D pointMm,
             FVOVolumeSpatialFrame pointFrame)
         {
