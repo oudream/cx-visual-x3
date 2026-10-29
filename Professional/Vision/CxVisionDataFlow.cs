@@ -15,6 +15,31 @@ namespace CxVisual.Professional.Vision
     /// </summary>
     public static class CxVisionDataFlow
     {
+        /// <summary>
+        /// 统一的CPU已接受区域面积算法，供直接MRK Plan与MOC可编排
+        /// Measurement能力共享；不计算筛选前Mask面积，也不推断物理mm²。
+        /// </summary>
+        internal static long MeasureAcceptedPixelArea(
+            CxVisionInspectionResult result, CancellationToken cancellation)
+        {
+            if (result == null || result.Regions == null || result.Width <= 0 ||
+                result.Height <= 0 || result.ThresholdPixelCount < 0 ||
+                result.ThresholdPixelCount > (long)result.Width * result.Height)
+                throw new ArgumentException("无效的专业区域检测结果", "result");
+            long area = 0;
+            foreach (CxVisionDefectRegion region in result.Regions)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (region == null || region.PixelArea <= 0)
+                    throw new InvalidOperationException("有效缺陷区域面积不合法");
+                area = checked(area + region.PixelArea);
+            }
+            if (area > result.ThresholdPixelCount ||
+                area > (long)result.Width * result.Height)
+                throw new InvalidOperationException("筛选后面积大于阈值命中像素数");
+            return area;
+        }
+
         private static CxVisionInspectionResult CopyResult(CxVisionInspectionResult result)
         {
             List<CxVisionDefectRegion> regions = new List<CxVisionDefectRegion>();
@@ -268,17 +293,7 @@ namespace CxVisual.Professional.Vision
                         ct.ThrowIfCancellationRequested();
                         CxVisionInspectionResult result =
                             ctx.Data.Get<CxVisionInspectionResult>("AcceptedRegions");
-                        long acceptedArea = 0;
-                        foreach (CxVisionDefectRegion region in result.Regions)
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            if (region == null || region.PixelArea <= 0)
-                                throw new InvalidOperationException("有效缺陷区域面积不合法");
-                            acceptedArea = checked(acceptedArea + region.PixelArea);
-                        }
-                        if (acceptedArea > result.ThresholdPixelCount ||
-                            acceptedArea > (long)result.Width * result.Height)
-                            throw new InvalidOperationException("筛选后面积大于阈值命中像素数");
+                        long acceptedArea = MeasureAcceptedPixelArea(result, ct);
                         ctx.Data.Return("Area", acceptedArea);
                         return Task.FromResult((object)acceptedArea);
                     }, inputs: new[] {
