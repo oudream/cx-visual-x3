@@ -315,3 +315,12 @@ else ShowSelectionAndPareto(comparison.Selected,comparison.Pareto);
 ~~~
 
 缺指标、单位冲突、仅估计/虚拟证据和Hard Unknown会进入Unknown而不自动选；违反Hard的候选即使更快也Rejected。首批比较使用有界256候选、16目标，无硬件设备查询，未来提供可信模型估计的咨询式排序须另订独立证据级别/授权，不能悄当实测。
+
+
+## 12. 静态MPC↔MRK运行签名差异检查（接口实装阶段）
+
+在现有 Orchestration 过渡项目新增 `MOCBindingContractInspector.Assess(MOCCapabilityDescriptor, MRKResolvedCapability, domainTypes?)`，仅用于 **Host/Resolver已提供运行签名时**检查类型/端口是否可信。该适配器属于运行边界，不得迁入最终纯Decision核心，更不能令最终Decision反向引用MRK。
+
+检查覆盖：MPC必填声明与MRK输入必填、一方缺少或多余的输入、输入CLR类型、MPC具名输出与MRK Data.Return类型、具名输出缺失、专业语义TypeId与Host明确映射。标准原语按严格已知映射；专业TypeId须由Owner明确提供CLR Type，**不做任意反射Type.GetType或隐式转换**。Legacy Provider未声明输入合同/用`object`接受专业输入时返回`Unknown`或对应Reject原因；不能用运行可解析代替兼容性证明。
+
+该检查与纯`MDCDecisionService`是两个关注点：前者在MRK绑定边界，后者在不接触Runtime的编排阶段。现阶段仍在Orchestration.dll中共同编译以便迁移保真，并不意味着物理Decison工程已完成。当前Windows验证结果以新提交的Decision CI为准。

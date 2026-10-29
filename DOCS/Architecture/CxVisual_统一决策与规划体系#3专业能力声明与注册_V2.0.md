@@ -184,3 +184,8 @@ sequenceDiagram
 **源码实装**：保留原`MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider>, IMRKCapabilityResolver)`，增加只接收providers的重载；同一个原有`MOCCapabilityDescriptor`可以在**无Resolver实例**的编辑/SDK阶段被枚举和搜索。目录Item新加`AvailabilityKnown`，明确区分“没有检查”与“检查过且不可解析”；不以`RuntimeAvailable`冒充设备Ready/Authorized。新增`MDCDecisionService`消费原目录/原MPCPortDescriptor，未建第二Registry。
 
 **仍未完成**：Attribute/Fluent自动发布、FCM Schema自动归一、MPC TypeId↔MRK CLR精确映射/SchemaFingerprint、完整专业资源/安全/仿真模型、Runtime纯绑定接口、六专业实际接入；这些继续标为设计/待开发。首批过渡代码位于Orchestration程序集，不代表最终项目已迁移。具体API见[#1 §10](CxVisual_统一决策与规划体系%231对象合同与开发者API_V2.0.md)。
+
+
+## 12. 一次声明的签名一致性安全门禁（阶段性实现）
+
+为已存在的`MOCCapabilityDescriptor`与`MRKResolvedCapability`添加`MOCBindingContractInspector`显式一致性检查：静态MPC端口标识、必填与CLR类型不一致时报告结构化错误，不再只能依靠执行时抛类型错误；专业语义TypeId的映射由Host/专业Owner显式提供，并拒绝通过宽泛`object`输入伪称已验证。这是**运行绑定侧的检查器**，不是新的属性注册器，也不是统一配置Schema。对现有Vision测量Provider，`Inspection`输入的MPC语义类型与MRK宽泛`object`目前只能被标为`Unknown`，须在后续Provider兼容迁移中按实际调用方收敛。离线发现与Runtime解析依然分层，真正Attribute/Fluent统一注册仍未完成。

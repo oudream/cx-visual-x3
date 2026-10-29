@@ -57,3 +57,8 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 | 多目标Pareto与反例 | [57d99a3](https://github.com/oudream/cx-visual-x3/commit/57d99a3ad6414ab95136550470698803b802e8fd) / [Run 40813828127](https://github.com/oudream/cx-visual-x3/actions/runs/40813828127) | **Success**：全解决方案.NET48 x64 Build、--decision、默认ArchitectureSmoke；专项现含HardFail、估计证据、单位、Pareto、稳定平局 |
 
 **证据边界**：以上证明代码在上述SHA的Windows构建、Smoke用例通过；没有提供真实CPU/GPU的策略优化效果、六专业全链闭环、Studio实时交互、跨进程Plan安全发布、PLC运动/CT设备HIL或生产可靠性。因此只能记为相应软件能力 \`Automated\`，不能记为 \`Integrated/Field\`。早前本文“提交前Linux无MSBuild/CI待验”的描述属于编写阶段历史，现在以本节固定SHA的实际证据为准。
+
+
+## 七、MPC静态描述与MRK绑定签名验证（实施中）
+
+新增`Mechanism/Orchestration/MOCBindingContractInspector.cs`：不调用`ExecuteAsync`，对正式MPC端口与MRK输入/具名输出进行差异检查，包括缺少/多余端口、Required与CLR类型冲突、未映射专业TypeId、宽泛object Legacy契约、具名输出与StepResult不同语义。这是确保新Decision未来可纯静态运行的**迁移边界适配器**；最终应留在Runtime/Host侧，不得制造`Decision → Runtime`依赖。新增`MDCDecisionTests.RuntimeBindingContractConsistency`（含真实`CxVisionAcceptedRegionMeasureProvider`）检验正常与错误组合，具体软件验证以本批实际Windows提交和Run为准。旧MOC构建未被悄悄加上强制阻断，避免Legacy Provider未经迁移即破坏产线。

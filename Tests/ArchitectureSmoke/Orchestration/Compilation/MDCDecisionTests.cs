@@ -7,6 +7,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Professional.Vision;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -50,6 +51,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CandidateGroupsAndNoExecution();
             HardConstraintAggregation();
             MultiObjectiveSelection();
+            RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
         private static void OfflineCatalogAndLegacyResolver()
@@ -199,5 +201,75 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(tie.Pareto.Count == 2 && tie.Selected.Option.Id == "a",
                 "equal metrics need deterministic capability id tie break");
         }
+        private static void RuntimeBindingContractConsistency()
+        {
+            var inspector = new MOCBindingContractInspector();
+            var staticPorts = new MOCCapabilityDescriptor("compute.sample", "Sample", "Compute",
+                new[] {
+                    Port("Value", MPCPortDirection.Input, "int"),
+                    Port("Result", MPCPortDirection.Output, "long")
+                });
+            int executed = 0;
+            var match = new MRKResolvedCapability((ctx,ct) => {
+                executed++;
+                return Task.FromResult((object)5L);
+            }, new MRKExecutionOutput(typeof(long)),
+                dataOutputs: new Dictionary<string,Type> { { "Result", typeof(long) } },
+                inputs: new [] { new MRKCapabilityInput("Value", typeof(int)) });
+            // The default static port is optional; the runtime contract is required:
+            // this is a real contract mismatch rather than a silent success.
+            var requiredMismatch = inspector.Assess(staticPorts, match);
+            Check(requiredMismatch.Verdict == MDCVerdict.Rejected &&
+                requiredMismatch.ReasonCodes.Contains("MDC_BIND_REQUIRED_MISMATCH:Value"),
+                "runtime-only required input should fail closed");
+            var declaredRequired = new MOCCapabilityDescriptor("compute.required", "Sample", "Compute",
+                new [] {
+                    new MPCPortDescriptor("Value", MPCPortDirection.Input, "int",
+                        MPCPortKind.Data, required:true),
+                    Port("Result", MPCPortDirection.Output, "long")
+                });
+            Check(inspector.Assess(declaredRequired, match).Verdict == MDCVerdict.Allowed,
+                "typed input/output contract should validate without execution");
+            var bad = new MRKResolvedCapability((ctx,ct)=>Task.FromResult((object)5L),
+                new MRKExecutionOutput(typeof(long)),
+                dataOutputs:new Dictionary<string,Type>{{"Result",typeof(int)}},
+                inputs:new[]{new MRKCapabilityInput("Value",typeof(double))});
+            var mismatch=inspector.Assess(declaredRequired,bad);
+            Check(mismatch.Verdict==MDCVerdict.Rejected &&
+                mismatch.ReasonCodes.Contains("MDC_BIND_TYPE_MISMATCH:INPUT:Value") &&
+                mismatch.ReasonCodes.Contains("MDC_BIND_TYPE_MISMATCH:OUTPUT:Result"),
+                "static TypeId / runtime CLR divergence must be reported");
+            var outputOnly=new MRKResolvedCapability((ctx,ct)=>Task.FromResult((object)5L),
+                new MRKExecutionOutput(typeof(long)),
+                inputs:new[]{new MRKCapabilityInput("Value",typeof(int))});
+            Check(inspector.Assess(declaredRequired,outputOnly).Verdict==MDCVerdict.Unknown,
+                "StepResult does not prove a named Data.Return contract");
+            var extra=new MRKResolvedCapability((ctx,ct)=>Task.FromResult((object)5L),
+                new MRKExecutionOutput(typeof(long)),
+                dataOutputs:new Dictionary<string,Type>{{"Result",typeof(long)}},
+                inputs:new[]{new MRKCapabilityInput("Value",typeof(int)),
+                    new MRKCapabilityInput("Undeclared",typeof(bool))});
+            Check(inspector.Assess(declaredRequired,extra).ReasonCodes.Contains(
+                "MDC_BIND_UNDECLARED_INPUT:Undeclared"),"unpublished runtime input must fail");
+            var vision = new CxVisionAcceptedRegionMeasureProvider();
+            var descriptor = vision.DescribeCapabilities().Single();
+            MRKResolvedCapability resolved;
+            Check(vision.TryResolve(CxVisionAcceptedRegionMeasureProvider.CapabilityId,out resolved),
+                "real Vision provider missing");
+            var unmapped=inspector.Assess(descriptor,resolved);
+            Check(unmapped.Verdict==MDCVerdict.Unknown &&
+                unmapped.ReasonCodes.Contains("MDC_BIND_TYPE_UNKNOWN:INPUT:Inspection"),
+                "unregistered professional semantic TypeId must remain Unknown");
+            var mapped=inspector.Assess(descriptor,resolved,
+                new Dictionary<string,Type> {
+                    { CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        typeof(CxVisionInspectionResult) }
+                });
+            Check(mapped.Verdict==MDCVerdict.Unknown &&
+                mapped.ReasonCodes.Contains("MDC_BIND_OBJECT_UNVERIFIED:INPUT:Inspection"),
+                "existing broad object contract needs explicit adapter evidence");
+            Check(executed==0,"static contract checks must not execute professional code");
+        }
+
     }
 }

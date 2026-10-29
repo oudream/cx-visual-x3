@@ -245,3 +245,17 @@ flowchart LR
 - **多目标P0（MDC-11～15）**：\`master@57d99a3ad6414ab95136550470698803b802e8fd\`，Windows [Run 40813828127](https://github.com/oudream/cx-visual-x3/actions/runs/40813828127) = Success；上述三步全部成功。
 - MDC-16输入上限的构造规则存在于真实代码（256候选、16目标），**未有显式自动测试证明极限输入负例**，不得将它合并标为MDC-11～15已覆盖。
 - **证据等级：Automated（单独的软件SDK/约束/比较逻辑）**。WPF候选面板、真实第三方专业Provider映射、运行加载、资源优化实测、HIL及跨进程仍是目标，不得从本CI成功推断已验证。
+
+
+### MPC↔MRK绑定一致性专项（阶段性）
+
+| Case | 期望 |
+|---|---|
+| MDC-17 | 完整已知原语输入/具名输出，静态绑定匹配但ExecuteAsync调用次数仍为0 |
+| MDC-18 | 运行端Required而MPC声明Optional → Rejected |
+| MDC-19 | CLR输入/具名输出与MPC TypeId冲突 → Rejected，精确到端口 |
+| MDC-20 | MRK额外输入不存在于静态端口 → Rejected |
+| MDC-21 | 只有StepResult没有相应具名Data.Return → Unknown，而非编造输出 |
+| MDC-22 | 真实Vision领域TypeId缺明确映射 → Unknown；即使显式映射了语义类型，Legacy `object`输入仍 Unknown |
+
+本检查由Host在MRK边界消费，非纯Decision自创第二套Runtime；当前CI和软件测试只能证明签名差异诊断，不能证明设备副作用/授权安全。下一阶段须让专业端收敛宽泛`object`签名并建立全局版本指纹。
