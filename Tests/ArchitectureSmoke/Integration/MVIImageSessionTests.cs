@@ -46,7 +46,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 session.ActiveSlot == MVIImageSlot.Original &&
                 session.ActiveImage == first && session.SourceVersion == resultVersion + 1,
                 "原图激活时清理结果槽保持原图及代次语义");
+            // ARCH-D03：晚到的派生图不得跨原图版本/清理/新加载回写。
+            long pendingResult = session.SourceVersion;
+            long beforeReject = session.SourceVersion;
+            int eventsBeforeReject = changes;
+            session.BeginOriginalLoad();
+            Check(!session.TrySetResult(pendingResult, second) &&
+                session.Result == null && session.Original == first &&
+                changes == eventsBeforeReject,
+                "开始新原图加载后旧Result不得回写或发通知");
+            long loadToken = session.SourceVersion;
+            Check(session.TryCompleteOriginalLoad(loadToken, second),
+                "新原图须能成功提交");
+            Check(!session.TrySetResult(beforeReject, first) &&
+                session.Result == null, "旧源版本不能覆盖新原图");
+            long currentResultVersion = session.SourceVersion;
+            int beforeCurrentCommit = changes;
+            Check(session.TrySetResult(currentResultVersion, first) &&
+                session.Result == first &&
+                session.SourceVersion == currentResultVersion + 1 &&
+                changes == beforeCurrentCommit + 1,
+                "当前计算结果必须原子提交且只发一次通知");
+            Check(!session.TrySetResult(currentResultVersion, second) &&
+                session.Result == first &&
+                session.SourceVersion == currentResultVersion + 1 &&
+                changes == beforeCurrentCommit + 1,
+                "同版本晚到第二份结果不得覆盖先提交结果");
+            long versionBeforeClear = session.SourceVersion;
             session.Clear();
+            Check(!session.TrySetResult(versionBeforeClear, first) &&
+                session.Original == null && session.Result == null,
+                "清空会话后旧Result不得重新出现");
+            Check(!session.TrySetResult(session.SourceVersion, first),
+                "无原图时不能提交孤立的结果");
+            bool nullRejected = false;
+            try { session.TrySetResult(session.SourceVersion, null); }
+            catch (ArgumentNullException) { nullRejected = true; }
+            Check(nullRejected, "异步结果不允许null");
             Check(session.ActiveImage == null && !session.HasResult &&
                 session.ActiveSlot == MVIImageSlot.Original, "清理会话");
             bool failed = false;
