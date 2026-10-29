@@ -309,3 +309,8 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 **首批真实CI失败必须保留**：[Imaging #40809026028](https://github.com/oudream/cx-visual-x3/actions/runs/40809026028)、[Engineering #40809025895](https://github.com/oudream/cx-visual-x3/actions/runs/40809025895)、[Runtime #40809025929](https://github.com/oudream/cx-visual-x3/actions/runs/40809025929) 失败堆栈`Unsaved changes; save or explicitly discard`（新增旧2节点工程用例的清理问题）；[Studio S1 #40808893404](https://github.com/oudream/cx-visual-x3/actions/runs/40808893404)旧能力目录断言0个输出已过时。修复已提交，但不能以修复提交替代最新固定SHA的成功日志。
 
 本阶段没有完成泛化MPM算法Schema、ImageSet/FrameLease、ROI工程资源提交、ArtifactRef/Review、完整四算子与设备/GPU/AI，也没有实物现场证据。
+
+### 19.1 固定SHA首批结果与后续补丁范围
+
+`13f5b42c2949dd24e518e2f3fc4e52ada13dac60`： [Engineering Organization #40809379292](https://github.com/oudream/cx-visual-x3/actions/runs/40809379292) success，[Module Center CPU RAW #40809379183](https://github.com/oudream/cx-visual-x3/actions/runs/40809379183) success；本次工程定义、编译、保存重开、Area计算与旧API兼容正反用例完成实跑。后续具名MDS `Area` 的`CommittedOutput`一致性是再增加的代码，不以此固定SHA宣称成功。
+同固定SHA [Studio S1 #40809379277](https://github.com/oudream/cx-visual-x3/actions/runs/40809379277) failure，日志为配置布局列容器要求，非CPU专业合同。其Owner需独立跟进；保持失败记录，不关闭总体G5门禁。
