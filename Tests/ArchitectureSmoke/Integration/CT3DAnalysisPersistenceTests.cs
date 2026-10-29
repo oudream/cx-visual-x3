@@ -115,6 +115,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(restored.ParameterSignature==analysis.ParameterSignature&&
                     restored.ParameterSignature.Length==64,
                     "Mesh/Plane工程重开保留稳定算法参数签名");
+                var originalVertices=analysis.GetSelectedVertexReferences();
+                var reopenedVertices=restored.GetSelectedVertexReferences();
+                Check(originalVertices.Count==9&&reopenedVertices.Count==originalVertices.Count&&
+                    originalVertices.Select(v=>v.StableId).SequenceEqual(
+                        reopenedVertices.Select(v=>v.StableId))&&
+                    reopenedVertices.All(v=>v.SourceSignature==source.Signature&&
+                        v.RoiSignature==restored.RoiSignature&&v.Unit=="mm"),
+                    "ROI每个物理顶点在MEM重开后仍具有确定性稳定引用");
                 Check(restored.RoiSignature==analysis.RoiSignature&&
                     restored.RoiSignature!=null&&restored.RoiSignature.Length==64,
                     "原RAW和选中毫米ROI在MEM重开后保持稳定身份");
@@ -141,6 +149,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(editedRoi.Plane.ResultId!=restored.Plane.ResultId&&
                     editedRoi.Source.Signature==restored.Source.Signature&&
                     editedRoi.RoiSignature!=restored.RoiSignature&&
+                    !editedRoi.GetSelectedVertexReferences().First().StableId.Equals(
+                        restored.GetSelectedVertexReferences().First().StableId)&&
                     editedRoi.ParameterSignature!=restored.ParameterSignature,
                     "ROI编辑生成新Feature及新配方指纹，旧测量不可冒充当前结果");
                 Reject<InvalidOperationException>(()=>restored.RecomputeWithCylinderAxis(
