@@ -14,10 +14,12 @@ namespace CxVisual.Mechanism.Visual
     public sealed class MVI3DSceneItem
     {
         internal MVI3DSceneItem(Guid id,MVI3DSceneKind kind,string sourceRef,
-            long sourceRevision,string frameRef,bool visible,double opacity)
+            long sourceRevision,string frameRef,bool visible,double opacity,
+            string layerKey="default",string groupKey=null)
         {
             Id=id;Kind=kind;SourceRef=sourceRef;SourceRevision=sourceRevision;
             SpatialFrameRef=frameRef;Visible=visible;Opacity=opacity;
+            LayerKey=layerKey;GroupKey=groupKey;
         }
         public Guid Id {get;private set;}
         public MVI3DSceneKind Kind {get;private set;}
@@ -26,11 +28,18 @@ namespace CxVisual.Mechanism.Visual
         public string SpatialFrameRef {get;private set;}
         public bool Visible {get;private set;}
         public double Opacity {get;private set;}
+        public string LayerKey {get;private set;}
+        public string GroupKey {get;private set;}
 
         internal MVI3DSceneItem WithStyle(bool visible,double opacity)
         {
             return new MVI3DSceneItem(Id,Kind,SourceRef,SourceRevision,
-                SpatialFrameRef,visible,opacity);
+                SpatialFrameRef,visible,opacity,LayerKey,GroupKey);
+        }
+        internal MVI3DSceneItem WithOrganization(string layerKey,string groupKey)
+        {
+            return new MVI3DSceneItem(Id,Kind,SourceRef,SourceRevision,
+                SpatialFrameRef,Visible,Opacity,layerKey,groupKey);
         }
     }
 
@@ -94,6 +103,47 @@ namespace CxVisual.Mechanism.Visual
             if(item.Opacity==opacity)return;
             _items[index]=item.WithStyle(item.Visible,opacity);
             ChangedNow();
+        }
+
+        /// <summary>可视分层/分组只组织已有引用，不复制专业资源或修改MEM。</summary>
+        public void SetOrganization(Guid id,string layerKey,string groupKey=null)
+        {
+            CheckOrganization(layerKey,groupKey);
+            int index=FindIndex(id);
+            MVI3DSceneItem item=_items[index];
+            if(string.Equals(item.LayerKey,layerKey,StringComparison.Ordinal)&&
+               string.Equals(item.GroupKey,groupKey,StringComparison.Ordinal))return;
+            _items[index]=item.WithOrganization(layerKey,groupKey);
+            ChangedNow();
+        }
+
+        public ReadOnlyCollection<MVI3DSceneItem> SnapshotLayer(string layerKey)
+        {
+            if(string.IsNullOrWhiteSpace(layerKey))throw new ArgumentException("图层名称不能为空。","layerKey");
+            return _items.FindAll(x=>string.Equals(x.LayerKey,layerKey,StringComparison.Ordinal))
+                .AsReadOnly();
+        }
+
+        public void SetGroupVisibility(string groupKey,bool visible)
+        {
+            if(string.IsNullOrWhiteSpace(groupKey))throw new ArgumentException("组标识不能为空。","groupKey");
+            bool changed=false;
+            for(int i=0;i<_items.Count;i++)
+            {
+                MVI3DSceneItem item=_items[i];
+                if(item.GroupKey!=groupKey||item.Visible==visible)continue;
+                _items[i]=item.WithStyle(visible,item.Opacity);
+                if(!visible&&_selected==item.Id)_selected=null;
+                changed=true;
+            }
+            if(changed)ChangedNow();
+        }
+
+        private static void CheckOrganization(string layerKey,string groupKey)
+        {
+            if(string.IsNullOrWhiteSpace(layerKey)||layerKey.Length>128||
+                (groupKey!=null&&(string.IsNullOrWhiteSpace(groupKey)||groupKey.Length>128)))
+                throw new ArgumentException("场景图层或组身份无效。");
         }
 
         public void Select(Guid? id)
