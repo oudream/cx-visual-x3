@@ -24,18 +24,7 @@ namespace CxVisual.Professional.CT3D
                 throw new InvalidDataException("RAW长度与元数据不一致。");
             Id=id;Revision=revision;RelativePath=path;ContentHash=hash;ByteLength=length;
             Width=width;Height=height;Depth=depth;Format=format;SpatialFrame=frame;
-            using(var frameData=new MemoryStream())
-            {
-                using(var w=new BinaryWriter(frameData,Encoding.UTF8,true))
-                {
-                    w.Write(Id.ToByteArray());
-                    w.Write(frame.SpacingX);w.Write(frame.SpacingY);w.Write(frame.SpacingZ);
-                    w.Write(frame.OriginX);w.Write(frame.OriginY);w.Write(frame.OriginZ);
-                    foreach(double value in frame.CopyDirectionRowMajor())w.Write(value);
-                    w.Write(frame.IsCalibrated);
-                }
-                FrameSignature=CT3DArtifactFiles.HashBytes(frameData.ToArray());
-            }
+            FrameSignature=CalculateFrameSignature(id,frame);
             using(var memory=new MemoryStream())
             {
                 using(var writer=new BinaryWriter(memory,Encoding.UTF8,true))Write(writer);
@@ -59,6 +48,31 @@ namespace CxVisual.Professional.CT3D
         /// <summary>包括资产身份/数据版本/内容/空间映射的固定签名，不以对象引用判等。</summary>
         public string Signature {get;private set;}
         public string SourceRef {get{return "ct3d:asset:"+Id.ToString("N");}}
+
+        /// <summary>同一资产的Frame按物理值判等；不采用可失效的内存对象地址。</summary>
+        public bool MatchesSpatialFrame(FVOVolumeSpatialFrame frame)
+        {
+            return frame!=null&&string.Equals(FrameSignature,CalculateFrameSignature(Id,frame),
+                StringComparison.Ordinal);
+        }
+
+        internal static string CalculateFrameSignature(Guid id,FVOVolumeSpatialFrame frame)
+        {
+            if(id==Guid.Empty)throw new ArgumentException("assetId");
+            if(frame==null)throw new ArgumentNullException("frame");
+            using(var frameData=new MemoryStream())
+            {
+                using(var w=new BinaryWriter(frameData,Encoding.UTF8,true))
+                {
+                    w.Write(id.ToByteArray());
+                    w.Write(frame.SpacingX);w.Write(frame.SpacingY);w.Write(frame.SpacingZ);
+                    w.Write(frame.OriginX);w.Write(frame.OriginY);w.Write(frame.OriginZ);
+                    foreach(double value in frame.CopyDirectionRowMajor())w.Write(value);
+                    w.Write(frame.IsCalibrated);
+                }
+                return CT3DArtifactFiles.HashBytes(frameData.ToArray());
+            }
+        }
 
         /// <summary>按保存的显式元信息校验/加载原值及显示预览，返回值由调用方Dispose。</summary>
         public FVOVolumeData LoadVolume(string root,CancellationToken cancellation)
