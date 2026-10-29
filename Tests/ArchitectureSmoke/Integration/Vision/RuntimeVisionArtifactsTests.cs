@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Orchestration;
 using System.Linq;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
@@ -49,6 +53,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConcurrentFlowOwnership();
             MeasuredArtifactsRemainSourceCorrect();
             SharedHeadlessPreviewApi();
+            ProjectBackedMeasuredInspection();
             MviImageMaskProjection();
         }
 
@@ -282,6 +287,86 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     CxVisionDataFlow.RunCpuInspectionPreviewAsync(
                         source,options,"cancel",cts.Token).GetAwaiter().GetResult(),
                     "已取消请求不得发布结果");
+            }
+        }
+
+        /// <summary>
+        /// 真正MEM/MOL持久定义→MOC编译→授权MRK计划→独立测量节点→
+        /// SourceMap事件映射。关闭工程重新打开验证原来的三块定义仍存在，
+        /// 不伪称已具备脱离RAW来源的生产重放与Artifact持久化。
+        /// </summary>
+        private static void ProjectBackedMeasuredInspection()
+        {
+            string name="vision-moc-"+Guid.NewGuid().ToString("N");
+            string rawPath=Path.Combine(Path.GetTempPath(),name+".raw");
+            string projectPath=Path.Combine(Path.GetTempPath(),name+".cxproj");
+            File.WriteAllBytes(rawPath,new byte[] {
+                210,210,0,0,0, 210,0,0,0,0, 0,0,0,0,250 });
+            try
+            {
+                var provider=new CxVisionThresholdProvider(
+                    Options(CxVisionPixelDepth.Bits8,200),17);
+                var measure=new CxVisionAcceptedRegionMeasureProvider(provider);
+                var declaration=measure.DescribeCapabilities().Single();
+                Check(declaration.Id==CxVisionAcceptedRegionMeasureProvider.CapabilityId &&
+                    declaration.Ports.Single(x=>x.MemberId=="Inspection").TypeId==
+                        CxVisionAcceptedRegionMeasureProvider.InspectionTypeId &&
+                    declaration.Ports.Single(x=>x.MemberId=="Area").TypeId=="long",
+                    "测量MOC能力未声明专业输入及强类型面积输出");
+                using(var project=MEMEngineering.Create("Vision工程测量"))
+                {
+                    CxVisionCpuRun result=CxVisionRawCpuRunner.ExecuteMeasuredAsync(
+                        project,provider,rawPath,5,3,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(result.FlowId!=Guid.Empty && result.InspectBlockId!=Guid.Empty &&
+                        result.MeasureBlockId!=Guid.Empty &&
+                        result.MeasureBlockId!=result.InspectBlockId &&
+                        result.AcceptedRegionPixelArea==3 &&
+                        result.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                            .IntegerValue==3 &&
+                        result.Evidence.RunId==result.FlowId &&
+                        result.Trace.Any(t=>t.BlockId==result.MeasureBlockId &&
+                            t.State=="Completed") &&
+                        !string.IsNullOrWhiteSpace(result.Fingerprint),
+                        "MOC三节点工程运行/Trace/面积证据不一致");
+                    var snapshot=project.GetSnapshot();
+                    var content=snapshot.Nodes.Single(n=>n.ParentId==result.PageId &&
+                        n.Kind==MEMNodeKind.Content);
+                    MOLWiringDefinition wiring=MOLWiringCodec.Get(content);
+                    Check(wiring!=null && wiring.Blocks.Count==3 &&
+                        wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==2 &&
+                        wiring.Blocks.Any(x=>x.Id==result.MeasureBlockId &&
+                            x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId),
+                        "正式三节点并未持久编入唯一MEM/MOL工程内容");
+                    project.SaveAs(projectPath);
+                }
+                using(var reopened=MEMEngineering.Open(projectPath))
+                {
+                    var saved=reopened.GetSnapshot();
+                    var content=saved.Nodes.Single(n=>n.Kind==MEMNodeKind.Content &&
+                        MOLWiringCodec.Get(n)!=null);
+                    var wiring=MOLWiringCodec.Get(content);
+                    Check(wiring.Blocks.Count==3 &&
+                        wiring.Blocks.Any(x=>x.CapabilityId==
+                            CxVisionAcceptedRegionMeasureProvider.CapabilityId) &&
+                        wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==2,
+                        "Save/Open丢失测量端口连接或能力身份");
+                }
+                using(var legacy=MEMEngineering.Create("保留两步旧调用"))
+                {
+                    var old=CxVisionRawCpuRunner.ExecuteAsync(
+                        legacy,provider,rawPath,5,3,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(old.MeasureBlockId==Guid.Empty &&
+                        !old.AcceptedRegionPixelArea.HasValue &&
+                        !old.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Measurement),
+                        "旧MOC两节点调用被强制增加测量节点");
+                }
+            }
+            finally
+            {
+                if(File.Exists(rawPath))File.Delete(rawPath);
+                if(File.Exists(projectPath))File.Delete(projectPath);
             }
         }
 
