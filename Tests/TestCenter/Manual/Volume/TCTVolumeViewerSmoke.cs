@@ -826,6 +826,16 @@ namespace CxVisual.TestCenter.UI
                     frame.ViewState.Scene3D.SetVisibility(selectedSurface,true);
                     Check(frame.SurfaceDisplayedPointCount>100,
                         "恢复显示不能从R8预览重新生成计量Surface");
+                    // 圆柱同样走正式CT3D原值拟合与MVI/MPW可视链，不在WPF实现第二套计算。
+                    var cylinderFit=frame.AnalyzeCurrentVolumeCylinder(1000f,
+                        new FVOPhysicalPoint3D(0,0,1),1,4000);
+                    Check(cylinderFit.ResultId!=Guid.Empty&&cylinderFit.RadiusMm>0&&
+                        frame.LastCylinderFit!=null&&frame.LastSphereFit==null&&
+                        frame.SurfaceDisplayedPointCount>100&&frame.ViewState.Scene3D.Count==3,
+                        "真实WPF工作台接受约束圆柱的Headless结果并注销旧球Feature");
+                    frame.AnalyzeCurrentVolumeSphere(1000f,1,4000);
+                    Check(frame.LastCylinderFit==null&&frame.LastSphereFit!=null,
+                        "回到球分析时必须清除旧圆柱测量，防止过期专业Feature共存");
                     // 实际三角面（不是点云伪装）：CT3D UInt16原值网格→FGE拓扑→MPW双渲染。
                     CT3DVoxelBoundaryMeshResult meshResult=frame.AnalyzeCurrentVolumeMesh(
                         1000f,10000);
