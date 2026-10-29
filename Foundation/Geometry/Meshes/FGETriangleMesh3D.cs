@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading;
 
 namespace CxVisual.Foundation.Geometry
 {
@@ -28,6 +29,70 @@ namespace CxVisual.Foundation.Geometry
         public double Y {get;private set;}
         public double Z {get;private set;}
         public double Length {get{return Math.Sqrt(X*X+Y*Y+Z*Z);}}
+    }
+
+    /// <summary>双精度三角Mesh命中：射线参数已按物理方向长度规范化。</summary>
+    public sealed class FGEMeshRayHit
+    {
+        internal FGEMeshRayHit(int triangleIndex,double distance,FGEPoint3D point,
+            double barycentricU,double barycentricV)
+        {
+            TriangleIndex=triangleIndex;Distance=distance;Point=point;
+            BarycentricU=barycentricU;BarycentricV=barycentricV;
+        }
+        public int TriangleIndex {get;private set;}
+        public double Distance {get;private set;}
+        public FGEPoint3D Point {get;private set;}
+        public double BarycentricU {get;private set;}
+        public double BarycentricV {get;private set;}
+        public double BarycentricW {get{return 1-BarycentricU-BarycentricV;}}
+    }
+
+    /// <summary>真实Mesh三角求交，返回最近正向命中；不把显示像素当作计量几何。</summary>
+    public static class FGEMeshRayIntersector
+    {
+        public static bool TryIntersect(FGETriangleMesh3D mesh,FGEPoint3D origin,
+            FGEVector3D direction,out FGEMeshRayHit hit,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(mesh==null)throw new ArgumentNullException("mesh");
+            double len=direction.Length;
+            if(!(len>1e-12)||double.IsNaN(len)||double.IsInfinity(len))
+                throw new ArgumentOutOfRangeException("direction");
+            double dx=direction.X/len,dy=direction.Y/len,dz=direction.Z/len;
+            const double epsilon=1e-12;
+            double nearest=double.PositiveInfinity,bestU=0,bestV=0;
+            int best=-1;
+            for(int face=0;face<mesh.TriangleCount;face++)
+            {
+                if((face&255)==0)cancellation.ThrowIfCancellationRequested();
+                int a=mesh.TriangleIndices[face*3],
+                    b=mesh.TriangleIndices[face*3+1],
+                    c=mesh.TriangleIndices[face*3+2];
+                FGEPoint3D p=mesh.Vertices[a],q=mesh.Vertices[b],r=mesh.Vertices[c];
+                double e1x=q.X-p.X,e1y=q.Y-p.Y,e1z=q.Z-p.Z;
+                double e2x=r.X-p.X,e2y=r.Y-p.Y,e2z=r.Z-p.Z;
+                double hx=dy*e2z-dz*e2y,hy=dz*e2x-dx*e2z,hz=dx*e2y-dy*e2x;
+                double det=e1x*hx+e1y*hy+e1z*hz;
+                if(Math.Abs(det)<=epsilon)continue;
+                double inverse=1/det;
+                double sx=origin.X-p.X,sy=origin.Y-p.Y,sz=origin.Z-p.Z;
+                double u=(sx*hx+sy*hy+sz*hz)*inverse;
+                if(u < -epsilon || u>1+epsilon)continue;
+                double qx=sy*e1z-sz*e1y,qy=sz*e1x-sx*e1z,qz=sx*e1y-sy*e1x;
+                double v=(dx*qx+dy*qy+dz*qz)*inverse;
+                if(v < -epsilon || u+v>1+epsilon)continue;
+                double distance=(e2x*qx+e2y*qy+e2z*qz)*inverse;
+                if(distance<=epsilon||distance>=nearest)continue;
+                nearest=distance;best=face;bestU=u;bestV=v;
+            }
+            cancellation.ThrowIfCancellationRequested();
+            if(best<0){hit=null;return false;}
+            hit=new FGEMeshRayHit(best,nearest,new FGEPoint3D(
+                origin.X+dx*nearest,origin.Y+dy*nearest,origin.Z+dz*nearest),
+                bestU,bestV);
+            return true;
+        }
     }
 
     /// <summary>
