@@ -445,3 +445,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **G5门禁**：匹配新SHA的`CxVisual.TestCenter.exe --imaging-viewer-smoke`；`ArchitectureSmoke --vision-results`、`--imaging`以及默认全回归应先完成。此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)已核实成功，但不覆盖当前新UI提交。
 
+## 26. Studio拆分式MHS生效配置／工程运行与反证（2026-10-29）
+
+| 测试ID | 自动执行断言 | 当前证据 |
+|---|---|---|
+| STD-SPLIT-01 | Studio模块中心旧CPU RAW入口不变，并出现新的拆分执行按钮`Studio.ModuleCenter.RunSeparatedRaw`及中值半径下拉选择 | 已写StudioShell WPF测试，Windows G5待跑 |
+| STD-SPLIT-02 | MHS Effective固定Gray8阈值200/面积2～100；Provider返回防御副本，更改调用者副本不影响固定Provider | 已写Studio CPU-only测试，G4待跑 |
+| STD-SPLIT-03 | 真实RAW 5×3拆分四节点：Mask命中4、接受Region3px²、Measurement3、Run/Segment/Trace匹配 | 已写Studio CPU-only测试，G4待跑 |
+| STD-SPLIT-04 | 正式MEM/MOL4块、3条Data连接，具名`ThresholdMask`与`AcceptedRegionPixelArea`输出 | 已写Studio CPU-only测试，G4待跑 |
+| STD-SPLIT-05 | 真实RAW7×7 FIM中值1→独立Mask→Region→面积：噪点清除，接受5px²，RAW文件不被修改 | 已写Studio CPU-only测试，G4待跑 |
+| STD-SPLIT-06 | 半径4必须拒绝且MEM Revision不增加；MHS Effective阈值由200变201后，旧Provider捕获和创建新运行必须拒绝并且Revision不变 | 已写Studio CPU-only测试，G4待跑 |
+
+**门禁**：Windows Release/x64 编译，`CxVisual.Studio.exe --selftest-cpu`及全Studio WPF自测，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`和默认回归，必要时人工在Studio配置Scope后操作RAW与流程页。不能用此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)成功替代当前新SHA。
