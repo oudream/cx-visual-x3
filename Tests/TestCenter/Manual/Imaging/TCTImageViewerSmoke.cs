@@ -726,10 +726,16 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("重新打开原图后旧Vision Run、Mask或浏览项没有清除");
                 cpuCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 // 拆分式按钮必须经过FIM内存图→MEM/MOC工程→MRK提交，且原始Gray16不变。
+                // 前面的RAW/结果输出验收切到了“输出”页；先按用户路径回到变换页，
+                // 再查找真实可见按钮，不能把未激活Tab的视觉树误报为功能缺失。
+                cpuTabs.SelectedItem=cpuTabs.Items.OfType<TabItem>().Single(t=>(string)t.Header=="变换");
+                window.UpdateLayout();
                 Button splitCpu=FindControl<Button>(frame,"TCT.Imaging.CpuVisionSplitRun");
                 ComboBox splitRadius=FindControl<ComboBox>(frame,"TCT.Imaging.CpuMedianRadius");
-                if(splitCpu==null || splitRadius==null)
-                    throw new InvalidOperationException("独立Mask/Region的真实WPF操作入口缺失");
+                if(splitCpu==null || splitRadius==null || !splitCpu.IsVisible || !splitRadius.IsVisible)
+                    throw new InvalidOperationException("独立Mask/Region的真实WPF操作入口缺失：button="+(splitCpu!=null)+
+                        ", radius="+(splitRadius!=null)+", buttonVisible="+(splitCpu!=null&&splitCpu.IsVisible)+
+                        ", radiusVisible="+(splitRadius!=null&&splitRadius.IsVisible)+", tab="+((TabItem)cpuTabs.SelectedItem).Header);
                 cpuThreshold.Text="10";
                 cpuArea.Text="2";
                 splitRadius.SelectedItem=0;

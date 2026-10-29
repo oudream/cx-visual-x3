@@ -18,6 +18,8 @@
 
 > **V04固定Windows证据**：`b71827db`的Imaging、TestCenter、Graphics已成功，包含保存重开/复算及三维WPF；Studio S1仍在配置组合布局断言失败，不标全绿。之后的异步保存Frame/ROI一致性修复须按新SHA另验，详细记录见同一台账第10.5节。
 
+> **2026-10-30 B包实装更新**：`6f7a9b5c`已将切片框选连接到MVI物理选区、MPW轮廓、CT3D原值Mesh顶点选择及毫米平面拟合，复用现有Case的ROI/参数/质量与MEM保存重开。固定Windows CT3D B G1～G3 `40892609609`成功；并非完整三维ROI编辑器，矩形/棱柱交互配方持久化和通用工具Undo仍待补。源码、正反例及其它失败CI归因见同一台账10.18；不由旧段落推断当前功能仍缺失或全部已完成。
+
 ## 0. 读者导览：5 分钟理解全局
 
 **一句话定位：** 以高精度三维数据为真源，让工业工程师在一个统一工作空间中完成**导入→空间标定→观察→重建/表面确定→拟合/配准→测量/GD&T→CAD 对比→缺陷与材料分析→判定/报告→重放与自动化**，同时支持独立应用、Studio 嵌入和 Headless SDK。
@@ -744,7 +746,7 @@ sequenceDiagram
 | **C01 原始精度** | 原始体素/SourceRevision→无损标量或`PrecisionUnavailable` | FVO：`FVOVolumeData`【E/R】 | 只有R8预览不得作计量；UInt16/Float32数值、同句柄及错误ByteLength反例 |
 | **C02 空间与单位** | Voxel/Spacing/Origin/Direction→Physical→Part/CAD Frame | FVO来源Frame【E】；通用Frame身份/链【N】；FGE/FNU数学、CT3D基准 | 手系、单位、方向、体素中心、奇异变换拒绝；往返残差有阈值 |
 | **C03 身份/结果** | MEM资源Ref+SourceRevision+算法上下文→ResultRef/有效性 | MEM真源【E】；V04 RAW资产/Frame签名、Mesh/平面身份与重开【E局部】；通用Session【N】 | 旧输入变化/缺失拒绝，通用Stale图传播待补；不建第二Project/Undo |
-| **C04 Scene/交互** | SourceRef+Frame+MVI状态→可视Scene/选择/相机 | SceneState/SceneItem/Camera/VolumeView【E】；完整工具/ViewSession【N】 | 多视图一致、坐标回环与Undo；不得持有专业数值真值 |
+| **C04 Scene/交互** | SourceRef+Frame+MVI状态→可视Scene/选择/相机 | SceneState/Camera/VolumeView【E】；切片矩形会话/轮廓→原值Mesh局部分析【E局部】；完整工具/ViewSession【N】 | 多视图一致、坐标回环与Undo；不得持有专业数值真值 |
 | **C05 GPU资源** | 预览+设置+ViewSnapshot→GL帧/显式Fallback错误 | `MPWVolumeOpenGlControl/MPWVolumeRenderHost`【E/R】 | Context线程、半初始化/重复关闭/失败恢复；WPF切面不算Raymarch |
 | **C06 参数变化** | `CT3DRenderingParameterValues`→LUT/Uniform/Scene Flags+Revision | Settings/ChangeSet与MPWVolumeRenderScheduler【E/R】；完整版本向量【N】 | 校验失败整体拒绝；Uniform-only不上传LUT；已提交/已应用/已呈现版本分开 |
 | **C07 专业算法** | 输入Ref+Frame+Params+取消→Surface/Fit/Measure等Result+Quality | 离散边界/Mesh/球/局部平面【E】；完整算法族见E.5【N/P】 | 退化、不收敛、精度缺失和取消不得成功提交；Headless正反例 |
@@ -890,7 +892,7 @@ sequenceDiagram
 | 05 | 可视化/渲染 | R24 | MPW/CT3D | MPW/Volume/Rendering/OpenGl/MPWVolumeOpenGlControl.cs、MPWVolumeSurfaceProjection.cs | Raymarch/Host E；Surface点/索引Mesh双渲染E，硬件H待实测 | Mesh与Volume遮挡/透明混合、CAD与GPU像素对照 |
 | 06 | MPR与任意切 | R25 | FVO/MVI | FVO/Slicing/FVOSliceImageBuilder.cs | 正交/任意切E+T | 曲面重切、厚层投影与真实RAW |
 | 07 | 四视图联动 | R26、R57 | MVI/MPW | MVI/Volume/MVIVolumeViewState.cs | 四视图/十字线E+T；统一Camera E | 鼠标/DPI/窗口变化与视角保真 |
-| 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVI/Volume/MVI3DSceneState.cs | 场景对象引用/选择E；3D ROI编辑P | 专业ROI编辑/持久化/Undo/物理坐标回环 |
+| 08 | 3D ROI/标注 | R27、R58 | MVI/MEM/CT3D | MVIVolumeViewState；MPWVolumeSliceViewportControl；CT3DMeshPlaneAnalysis | 切片矩形→物理棱柱选Mesh顶点→平面/MEM闭环E+T局部；场景选择E | 完整3D形状编辑/交互配方持久化/Undo/跨资产变换 |
 | 09 | 动画/时序 | R28、R54–56 | MVI/MPW/MEM | MPW/Volume/Views/MPWVolumeSliceSceneControl.cs | 相机E；完整动画P | 关键帧/时间轴/装配动画/视频与重开 |
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
 | 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、CT3DVoxelBoundaryMeshExtractor.cs | 原值离散点及体素外露面E；早期UInt16 Mesh --volume T | 亚体素等值面、材料边界与工业真值 |
@@ -1630,7 +1632,7 @@ sequenceDiagram
 
 上述次序允许独立的数值和GPU专项交错推进，不要求等全部LOD完成才验证专业计算。每包在既有项目内按需要实现必要类型，配套正反例、固定SHA Windows证据与适用的G1～G5；本附录不构成一次性迁移全部候选类的代码授权。
 
-**V04推进状态**：R5-A已有RAW/Mesh/平面局部闭环实装，复用现有MEMContent/Aspect/事务/StoreToken，未新增Core公共资源协议或FGE Frame Owner。来源/标定数值签名、取消、Hash/缺源和MEM保存冲突已写入自动化；通用Result、Surface/球持久化、交互ROI、跨工程重映射、Studio装配仍保留后续目标，不能将R5-A整包标为完成。
+**V04推进状态**：R5-A已有RAW/Mesh/平面、离散Surface/球/固定轴圆柱及多Case持久化/复算局部实装，复用MEMContent/Aspect/事务/StoreToken，未新增Core公共资源协议或FGE Frame Owner。B包切片框选→物理棱柱→Mesh局部平面及有效顶点ROI保存重开已落地；来源/标定、取消、Hash/缺源、ROI编辑和保存竞争有自动化。通用Result/Artifact、完整交互ROI配方、跨工程重映射及Studio装配仍待补，不能将R5-A/B整包标为完成。
 
 
 ---

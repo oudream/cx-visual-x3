@@ -144,6 +144,8 @@ namespace CxVisual.TestCenter.UI
             display.Children.Add(new TextBlock {Text="以所选切片为零点，沿切片索引增加方向偏移(mm)。范围覆盖目标面，不能混入多个侧面。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)});
             var roiRange=new StackPanel {Orientation=Orientation.Horizontal};
+            AutomationProperties.SetAutomationId(_sliceRoiMinimumMm,"TCT.Volume.RoiMinimumMm");
+            AutomationProperties.SetAutomationId(_sliceRoiMaximumMm,"TCT.Volume.RoiMaximumMm");
             roiRange.Children.Add(new TextBlock {Text="下限",VerticalAlignment=VerticalAlignment.Center});
             roiRange.Children.Add(_sliceRoiMinimumMm);
             roiRange.Children.Add(new TextBlock {Text="上限",VerticalAlignment=VerticalAlignment.Center});

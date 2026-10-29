@@ -1064,6 +1064,12 @@ namespace CxVisual.TestCenter.UI
                     FindVisualByAutomationId<Button>(frame,"TCT.Volume.FitSliceRoiPlane")!=null&&
                     frame.Commands.Single(c=>c.Id=="ct3d.mesh.plane-slice-roi").CanExecute(),
                     "可见切片矩形/MVI选区须真正驱动原值Mesh平面拟合并具有按钮和统一命令");
+                FindVisualByAutomationId<TextBox>(frame,"TCT.Volume.RoiMinimumMm").Text="0.49";
+                FindVisualByAutomationId<TextBox>(frame,"TCT.Volume.RoiMaximumMm").Text="0.51";
+                FindVisualByAutomationId<Button>(frame,"TCT.Volume.FitSliceRoiPlane").RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+                Check(frame.LastMeshPlaneFit.ResultId!=roiPlane.ResultId&&frame.LastMeshPlaneFit.SampleCount==9,
+                    "真实毫米输入和拟合按钮须执行专业路径并形成新的九点平面，不能只测试SDK入口");
                 VerifySliceRoiScreenshot(frame);
                 frame.MoveSlices(6,6,5);
                 Check(!viewport.Overlay.HasRectangleRoi&&frame.ViewState.SelectedSliceRectangle!=null,

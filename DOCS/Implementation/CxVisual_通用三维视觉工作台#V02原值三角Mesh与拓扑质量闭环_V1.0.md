@@ -270,3 +270,21 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - 本轮正式修改只修正Studio已有配置贡献的测试预期，新提交Windows CI另按SHA查询。R5全部26能力/90需求、工业精度、完整ROI/Studio/CAD/动画仍需后续真实交付，不能据收敛修复标记平台完成。
 
 **固定修复CI已核实**：并行master合入新增可视树遍历/真实二维流程测试后，最终修复源码为`28e1576f6b6160ec540c73d1124a932fde50ff0b`。[Studio S1 40886708549](https://github.com/oudream/cx-visual-x3/actions/runs/40886708549) SUCCESS，job `123492262961`日志含61条真实STA PASS、无FAIL，外加26清单与27项目DAG两条PASS；编译及上传视觉证据步骤成功。相同SHA的Graphics `40886708492`、Module CPU `40886708737`、Engineering `40886708483`亦成功。此结果关闭先前旧三卡断言的CI阻点，不关闭本机三维PNG不稳定或工业G5缺口。
+
+### 10.18 B包首条真实交互ROI→原值Mesh→毫米平面→MEM交付（2026-10-30）
+
+源码已由提交`6f7a9b5cea79d686b8709d2f22b008ecc18e5581`纳入master；中断恢复后核对并同步至`9a05144c`，承接并行FIM RAW导出及MPW悬停原点/方向修正，没有重写旧架构或重复提交已有代码。
+
+- **MVI真源**：`MVIVolumeViewState.SelectedSliceRectangle/SelectRectangleRoi/ClearRectangleRoi`记录唯一会话选区，非法框选不替换有效选区；FVO仍负责像素采样到物理四角。不是第二Case/工程或数据副本。
+- **真实可操作MPW**：Shift拖动在既有二维Viewer上预览和提交金色矩形；缩放/平移消费同一图像变换；离开所选切片隐藏轮廓，返回后恢复静态物理位置；解绑取消交互并解除旧状态订阅。未标定等交互错误经既有工作区反馈，SDK入口保留异常。
+- **专业选择与拟合**：`CT3DMeshPlaneAnalysis.SelectSlicePrismVertices`以矩形所在切片为零点，按切片索引增加方向给定毫米偏移范围。原始Frame逆变换支持旋转、镜像及各向异性；横向使用采样角点范围并扩半个原始体素，法向在体素坐标下比较容差，不使用固定毫米误差吞掉微小Spacing。明确拒绝不同Frame、退化矩形、非法/溢出毫米范围、不足3点、取消及超过30000顶点；后续仍由原`FitSelectedVertices`/FNU判定平面秩、残差和条件数。
+- **工作台及保存闭环**：真实毫米上下限输入、按钮与`ct3d.mesh.plane-slice-roi`命令共用正式算法。新选区立即清除旧Plane/Measurement，不能继续保存旧平面；有效索引ROI、来源、参数、毫米量值和质量继续进入原CT3D Case/MEM Artifact。保存期间再次框选时保留新ROI和失效状态，磁盘保存启动时快照；同工程其它Case隔离保持。
+- **测试覆盖**：三正交切片在旋转/镜像/各向异性/大原点Frame下均选出9点端面；空区/退化/错Frame/非法范围/预取消；真实80³实心块的闭合Mesh超过30000顶点时明确失败，不能截断。Headless完整Save/Open/Recompute用切片ROI选择器作为实际入口；WPF验证轮廓、切层、真实输入及按钮生成新结果、ROI失效、保存竞争、多Case、重开与继续使用。`slice-roi-plane.png`增加真实金色像素断言，不以布尔状态代替可见轮廓。
+
+**固定Windows证据**：`6f7a9b5c`的[CT3D B G1～G3 40892609609](https://github.com/oudream/cx-visual-x3/actions/runs/40892609609)，job `123513142718`全部步骤SUCCESS，包含Release、Headless、WPF/PNG（执行ROI金色像素门禁）、Debug。相同SHA的Runtime `40892609143`、Decision `40892609459`、Graphics `40892609730`、Engineering `40892609521`、Command `40892609177`、Studio `40892609052`成功。12个工作流中另两项失败：Imaging `40892609085`的二维WPF缺拆分式入口（同Run的Headless/default与三维WPF成功）；TestCenter `40892608935`的通用UIA超时于`InteractModuleKind / Connector`，后续步骤跳过。不能标全部通过。
+
+**恢复后本机证据**：最新源码Release/Debug均0错误；原32位MSBuild曾JIT/访问冲突退出，切换实际存在的同安装`Bin/amd64/MSBuild.exe`后构建成功，未改语言/依赖绕过。默认ArchitectureSmoke、严格`--volume`、三维无PNG行为回归及真实输入按钮均退出0；本机带PNG仍在早期四视图导出全黑检查失败，未假报G3。日志为`Output/CT3D-Handoff/roi-resume-*`、`roi-button-*`。
+
+**二维门禁收敛修正**：独立Mask/Region控件确实存在于“变换”页，旧自测先切到“输出”验收RAW后未切回，再按视觉树查找控件而失败。现按真实用户路径切回“变换”，仍要求按钮/半径输入可见，补充失败诊断，不改算法或用逻辑树访问隐藏控件冒充操作；完整本机`--imaging-viewer-smoke`退出0。新增毫米输入/真实按钮及此导航修正的新SHA CI须另核。
+
+**尚未交付**：矩形和法向偏移交互配方未独立持久化，重开保留的是有效Mesh顶点ROI/量值而非原矩形草稿；通用3D ROI形状/控制柄、正式Studio装配、跨资产ROI与Frame图、工业亚体素面/不确定度仍缺。继续扩展该业务链，不将此首条闭环当作完整B包或26能力验收。
