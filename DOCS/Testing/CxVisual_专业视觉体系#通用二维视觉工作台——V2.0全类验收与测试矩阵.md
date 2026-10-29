@@ -418,3 +418,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | SPLIT-07 | Gray16 2×2小端真实RAW (500/500/0/0) → Gray8 Mask → 2px²；已取消与坏RAW须在工程改变前拒绝 | G2已编码，G3/G4待执行 |
 
 门禁：Windows MSBuild Release/x64 + Owner DAG + `--vision-results` + `--imaging` + 默认ArchitectureSmoke；WPF TestCenter独立交互和6144×3072大图工业耗时仍必须额外取证。注意本功能采用现有专业CPU算法及模拟RAW文件，不是设备HIL；无真实测试记录时不得登记成功。
+
+## 24. FIM内存直通拆分式工程／WPF操作专项（2026-10-29）
+
+| ID | 真实程序与预期反证 | 当前状态 |
+|---|---|---|
+| INLINE-01 | Gray16 2×2带Stride填充，用`ToPackedRawPixels`去Padding后仍为小端500/500/0/0，FIM输入不变 | G2 已提交测试，G4待跑 |
+| INLINE-02 | 同图拆分MEM→MOC→MRK与原MRK Preview独立RunId、相同Mask/面积2px²、真实SourceId | G2 已提交测试，G4待跑 |
+| INLINE-03 | 错误位深、空SourceId、半径4、预取消，不能发布拆分式Run | G2 已提交测试，G4待跑 |
+| INLINE-04 | WPF真实按钮`CpuVisionSplitRun`完成4节点并显示Gray8 Mask/7px²，Gray16原图未修改 | G2 已提交WPF Smoke，G5待跑 |
+| INLINE-05 | WPF切半径1触发旧Run失效，之后新5节点出现中值处理图与Mask，不复用旧RunId | G2 已提交WPF Smoke，G5待跑 |
+
+**Windows验收命令**：`CxVisual.Unified.sln` Release/x64、Owner结构脚本、`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`、默认ArchitectureSmoke、`CxVisual.TestCenter.exe --imaging-viewer-smoke`。现有`.github/workflows/imaging-foundation-windows.yml`监听专业Vision、ArchitectureSmoke及TestCenter Imaging路径；未取到工作流日志之前保持全部G3～G5待验。
