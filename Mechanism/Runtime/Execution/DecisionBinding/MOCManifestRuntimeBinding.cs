@@ -21,16 +21,23 @@ namespace CxVisual.Mechanism.Orchestration
         /// overload consumes a versioned Plan but does NOT translate its block
         /// index into a second MRK scheduler or claim Plan/Runtime decoupling.
         /// </summary>
+        /// <summary>
+        /// Optional expectedCapabilityVersions pins every used professional capability
+        /// to a Host-declared version and requires an IMRKVersionedCapabilityResolver.
+        /// Version drift during compilation fails closed before returning a bound Plan.
+        /// This is a compile-time fence, not a substitute for publish-time authorization.
+        /// </summary>
         public MOCCompiledPlan Bind(MEMProjectSnapshot project,
             MDCDeclarativePlan plan, MDCStaticCatalogSnapshot catalog,
             IMRKCapabilityResolver resolver,
             IReadOnlyDictionary<string,Type> professionalTypes = null,
-            bool allowUnverifiedLegacyContracts = false)
+            bool allowUnverifiedLegacyContracts = false,
+            IReadOnlyDictionary<string,string> expectedCapabilityVersions = null)
         {
             if(plan==null)throw new ArgumentNullException("plan");
             plan.RequireCurrent(project,catalog);
             return Bind(project,plan.SourceManifest,catalog,resolver,
-                professionalTypes,allowUnverifiedLegacyContracts);
+                professionalTypes,allowUnverifiedLegacyContracts,expectedCapabilityVersions);
         }
 
         /// <summary>
@@ -42,7 +49,8 @@ namespace CxVisual.Mechanism.Orchestration
             MDCStaticSourceManifest manifest, MDCStaticCatalogSnapshot catalog,
             IMRKCapabilityResolver resolver,
             IReadOnlyDictionary<string,Type> professionalTypes = null,
-            bool allowUnverifiedLegacyContracts = false)
+            bool allowUnverifiedLegacyContracts = false,
+            IReadOnlyDictionary<string,string> expectedCapabilityVersions = null)
         {
             if(project == null) throw new ArgumentNullException("project");
             if(manifest == null) throw new ArgumentNullException("manifest");
@@ -75,6 +83,48 @@ namespace CxVisual.Mechanism.Orchestration
                         string.Join(",",assessment.ReasonCodes));
             }
 
+            // A Host-supplied pin must cover the entire static capability closure.
+            // Reject missing, extra or invalid versions BEFORE TryResolve is called.
+            // It is not authorization: Stage/Activate still require live Host checks.
+            var capabilityIds=manifest.Contents.SelectMany(x=>x.CapabilityUses)
+                .Select(x=>x.CapabilityId).Distinct(StringComparer.Ordinal)
+                .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+            IMRKVersionedCapabilityResolver versioned =
+                resolver as IMRKVersionedCapabilityResolver;
+            if(expectedCapabilityVersions!=null)
+            {
+                if(versioned==null)
+                    throw new InvalidOperationException("moc.bind.versioned_resolver_required");
+                if(expectedCapabilityVersions.Count!=capabilityIds.Length ||
+                    capabilityIds.Any(id=>!expectedCapabilityVersions.ContainsKey(id)) ||
+                    expectedCapabilityVersions.Any(x=>x.Key==null ||
+                        string.IsNullOrWhiteSpace(x.Value) || x.Value.Length>128 ||
+                        x.Value.Any(char.IsControl)))
+                    throw new InvalidOperationException("moc.bind.version_pin_incomplete");
+            }
+            var pinnedVersions=new Dictionary<string,string>(StringComparer.Ordinal);
+            foreach(string capabilityId in capabilityIds)
+            {
+                if(versioned==null)continue;
+                string actualVersion;
+                bool known=versioned.TryGetCapabilityVersion(capabilityId,out actualVersion);
+                if(!known || string.IsNullOrWhiteSpace(actualVersion) ||
+                    actualVersion.Length>128 || actualVersion.Any(char.IsControl))
+                {
+                    if(expectedCapabilityVersions!=null)
+                        throw new InvalidOperationException(
+                            "moc.bind.provider_version_unavailable:"+capabilityId);
+                    continue; // Legacy versionless providers keep the old behavior.
+                }
+                string required;
+                if(expectedCapabilityVersions!=null &&
+                    (!expectedCapabilityVersions.TryGetValue(capabilityId,out required) ||
+                     !StringComparer.Ordinal.Equals(actualVersion,required)))
+                    throw new InvalidOperationException(
+                        "moc.bind.provider_version_mismatch:"+capabilityId);
+                pinnedVersions.Add(capabilityId,actualVersion);
+            }
+
             // A compilation-local cache closes the preflight-to-compiler resolver
             // identity gap without creating a shared registration or execution store.
             CachedResolver pinned = resolver as IMRKVersionedCapabilityResolver != null
@@ -82,11 +132,7 @@ namespace CxVisual.Mechanism.Orchestration
                     (IMRKVersionedCapabilityResolver)resolver)
                 : new CachedResolver(resolver);
             var inspector = new MOCBindingContractInspector();
-            foreach(var capabilityId in manifest.Contents
-                .SelectMany(x => x.CapabilityUses)
-                .Select(x => x.CapabilityId)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(x => x,StringComparer.Ordinal))
+            foreach(string capabilityId in capabilityIds)
             {
                 MOCCapabilityDescriptor definition = catalog.Find(capabilityId);
                 if(definition == null)
@@ -112,6 +158,16 @@ namespace CxVisual.Mechanism.Orchestration
             if(compiled.ProjectId != manifest.ProjectId ||
                 compiled.EngineeringRevision != manifest.EngineeringRevision)
                 throw new InvalidOperationException("moc.bind.compiled_source_version_changed");
+            // A provider may swap an algorithm/configuration between initial
+            // resolution and compiler lowering. Never return a mixed-version Plan.
+            foreach(var pinnedVersion in pinnedVersions)
+            {
+                string observed;
+                if(!versioned.TryGetCapabilityVersion(pinnedVersion.Key,out observed) ||
+                    !StringComparer.Ordinal.Equals(observed,pinnedVersion.Value))
+                    throw new InvalidOperationException(
+                        "moc.bind.provider_version_changed:"+pinnedVersion.Key);
+            }
             return compiled;
         }
 

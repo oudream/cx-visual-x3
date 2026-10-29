@@ -61,6 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticBranchScenarioExploration();
             StaticSourceManifestPreservesCoreRevisionAndClosure();
             ManifestRuntimeBindingHandoffAndSafety();
+            VersionPinnedRuntimeHandoffRejectsDrift();
             DeclarativePlanPreservesV1V2Semantics();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
@@ -960,6 +961,106 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     : null);
                 return true;
             }
+        }
+
+        private sealed class VersionedProbeResolver : IMRKVersionedCapabilityResolver
+        {
+            internal readonly ProbeResolver Binding=new ProbeResolver();
+            internal string Version="vision.gray16/algorithm:1";
+            internal bool ChangeDuringResolve;
+            internal bool MissingVersion;
+            internal int VersionChecks;
+
+            public bool TryGetCapabilityVersion(string id,out string version)
+            {
+                VersionChecks++;
+                version=!MissingVersion && id=="vision.gray16" ? Version : null;
+                return version!=null;
+            }
+
+            public bool TryResolve(string id,out MRKResolvedCapability binding)
+            {
+                bool success=Binding.TryResolve(id,out binding);
+                if(ChangeDuringResolve) Version="vision.gray16/algorithm:2";
+                return success;
+            }
+        }
+
+        private static void VersionPinnedRuntimeHandoffRejectsDrift()
+        {
+            var session=MEMEngineering.Create("decision-version-fenced-handoff");
+            try
+            {
+                var content=session.AddPage("Main").RootContent;
+                var action=MOLControlBlock.Action("vision.gray16");
+                MOLLogicCodec.Set(session,content,new MOLLogicDefinition(action));
+                var snapshot=session.GetSnapshot();
+                var catalog=new MDCStaticCatalogSnapshot(new[] {
+                    new MOCCapabilityDescriptor("vision.gray16","Gray16","Vision")
+                });
+                var plan=new MDCDeclarativePlanCompiler().Compile(
+                    snapshot,content.Id,catalog);
+                var binder=new MOCManifestRuntimeBinding();
+                var expected=new Dictionary<string,string>(StringComparer.Ordinal) {
+                    {"vision.gray16","vision.gray16/algorithm:1"}
+                };
+                var stable=new VersionedProbeResolver();
+                var compiled=binder.Bind(snapshot,plan,catalog,stable,
+                    expectedCapabilityVersions:expected);
+                Check(compiled!=null && compiled.SourceMap.Find(action.Id).Count==1 &&
+                    stable.Binding.Calls==1 && stable.Binding.Executions==0 &&
+                    stable.VersionChecks>=2,
+                    "versioned handoff must pin the same capability across validation and lowering");
+
+                var missingPin=new VersionedProbeResolver();
+                bool incomplete=false;
+                try {binder.Bind(snapshot,plan,catalog,missingPin,
+                    expectedCapabilityVersions:new Dictionary<string,string>());}
+                catch(InvalidOperationException ex)
+                {incomplete=ex.Message=="moc.bind.version_pin_incomplete";}
+                Check(incomplete && missingPin.Binding.Calls==0,
+                    "incomplete Host version closure must fail before resolving a provider");
+
+                var staleVersion=new VersionedProbeResolver();
+                bool mismatch=false;
+                try {binder.Bind(snapshot,plan,catalog,staleVersion,
+                    expectedCapabilityVersions:new Dictionary<string,string> {
+                        {"vision.gray16","vision.gray16/algorithm:old"}
+                    });}
+                catch(InvalidOperationException ex)
+                {mismatch=ex.Message.StartsWith("moc.bind.provider_version_mismatch:",StringComparison.Ordinal);}
+                Check(mismatch && staleVersion.Binding.Calls==0,
+                    "stale professional algorithm version must fail before TryResolve");
+
+                var unknownVersion=new VersionedProbeResolver{MissingVersion=true};
+                bool unknown=false;
+                try {binder.Bind(snapshot,plan,catalog,unknownVersion,
+                    expectedCapabilityVersions:expected);}
+                catch(InvalidOperationException ex)
+                {unknown=ex.Message.StartsWith("moc.bind.provider_version_unavailable:",StringComparison.Ordinal);}
+                Check(unknown && unknownVersion.Binding.Calls==0,
+                    "unverifiable Host-pinned version cannot be treated as valid");
+
+                var unversioned=new ProbeResolver();
+                bool required=false;
+                try {binder.Bind(snapshot,plan,catalog,unversioned,
+                    expectedCapabilityVersions:expected);}
+                catch(InvalidOperationException ex)
+                {required=ex.Message=="moc.bind.versioned_resolver_required";}
+                Check(required && unversioned.Calls==0,
+                    "Host strict pin must reject a versionless Resolver without execution");
+
+                var swapped=new VersionedProbeResolver{ChangeDuringResolve=true};
+                bool changed=false;
+                try {binder.Bind(snapshot,plan,catalog,swapped,
+                    expectedCapabilityVersions:expected);}
+                catch(InvalidOperationException ex)
+                {changed=ex.Message.StartsWith("moc.bind.provider_version_changed:",StringComparison.Ordinal);}
+                Check(changed && swapped.Binding.Calls==1 &&
+                    swapped.Binding.Executions==0 && swapped.VersionChecks>=2,
+                    "algorithm hot-swap while compiling must not return an inconsistent bound Plan");
+            }
+            finally {session.Close(true);}
         }
 
         private static void ManifestRuntimeBindingHandoffAndSafety()

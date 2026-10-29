@@ -38,3 +38,12 @@
 - P1：统一静态 MDCDeclarativePlan、版本、SourceMap、动态控制结构与 Runtime.Loader 的不可变交接；减少 Runtime 编译器对工程快照的直接依赖。
 - P1：能力注册单一声明与 MPC/MRK 双签名一致性、Studio Context 选型和约束提示。
 - P1/P2：发布授权、Unknown/重试安全、专业 HIL 与长期稳定性。
+
+## 6. P1 版本锁定的 Runtime Binder 补强（本轮实现，CI 待验收）
+
+- 扩展已有 `MOCManifestRuntimeBinding.Bind(...)` 的两个入口，增加可选 `expectedCapabilityVersions`（由 Host 提供，覆盖所有实际使用的能力 ID）。
+- 严格模式要求 `IMRKVersionedCapabilityResolver`：缺项、额外项、空/非法版本、不支持版本查询和实际版本不一致均在调用 `TryResolve` **前拒绝**；不会执行专业委托。
+- 编译结束再次核对每个已知能力版本，拒绝 Resolver 在编译过程中热切换配置/算法造成的版本漂移。未提供版本锁定时保留原来对老 Provider 的支持，但对能够报告稳定版本的 Provider 仍复核其前后版本。
+- ArchitectureSmoke `--decision` 增加：版本一致成功、缺项、过期、Provider 无法证明版本、版本能力不具备、解析期间变更等正反例。
+- 该约束是**编译阶段版本栅栏**，绝不是设备执行授权、发布事务或真实安全点。发布 Stage / Activate 仍须再次验证环境版本、权限和专业设备状态。
+- 固定代码提交及 Windows 验收证据在 CI 完成后更新，不把尚未验证的状态写成 PASS。
