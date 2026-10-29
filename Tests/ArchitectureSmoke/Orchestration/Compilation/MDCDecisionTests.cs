@@ -1021,6 +1021,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(incomplete && missingPin.Binding.Calls==0,
                     "incomplete Host version closure must fail before resolving a provider");
 
+                // Capability IDs are ordinal. A case-insensitive Host dictionary
+                // must not alias a different professional capability identity.
+                var aliasProbe=new VersionedProbeResolver();
+                var alias=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase) {
+                    {"VISION.GRAY16","vision.gray16/algorithm:1"}
+                };
+                bool aliasRejected=false;
+                try {binder.Bind(snapshot,plan,catalog,aliasProbe,
+                    expectedCapabilityVersions:alias);}
+                catch(InvalidOperationException ex)
+                {aliasRejected=ex.Message=="moc.bind.version_pin_incomplete";}
+                Check(aliasRejected && aliasProbe.Binding.Calls==0 &&
+                    aliasProbe.VersionChecks==0,
+                    "case-insensitive Host pin must not bypass ordinal capability identity");
+
                 var staleVersion=new VersionedProbeResolver();
                 bool mismatch=false;
                 try {binder.Bind(snapshot,plan,catalog,staleVersion,
