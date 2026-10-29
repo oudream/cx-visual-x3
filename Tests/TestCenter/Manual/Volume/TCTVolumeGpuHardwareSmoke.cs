@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Numerics;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -63,6 +64,12 @@ namespace CxVisual.TestCenter.UI
                     frame.GpuControlForHardwareTest;
                 if(gl==null||gl.NativeHandleForHardwareTest==IntPtr.Zero)
                     throw new InvalidOperationException("GPU子窗口未实际创建。");
+                Vector3 rayStart,rayDirection;
+                if(!gl.TryGetNormalizedPickRay(250,200,out rayStart,out rayDirection)||
+                    Math.Abs(rayDirection.Length()-1)>1e-4||
+                    gl.TryGetNormalizedPickRay(-1,200,out rayStart,out rayDirection))
+                    throw new InvalidOperationException(
+                        "真实GPU窗口像素到体空间拾取射线反投影或越界验证失败。");
                 float yaw=gl.CameraYaw,distance=gl.CameraDistance;
                 SendMessage(gl.NativeHandleForHardwareTest,0x0201,new UIntPtr(1),CursorPoint(60,60));
                 SendMessage(gl.NativeHandleForHardwareTest,0x0200,new UIntPtr(1),CursorPoint(110,85));
