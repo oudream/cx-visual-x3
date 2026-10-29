@@ -427,3 +427,10 @@ CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明
 ### D05三重合同交接补验（MDC-89）
 
 在真实MOLWiring的Core节点声明`Pixels:string`，专业静态Capability声明`Pixels:int`，即使运行Resolver声称可用，`MOCManifestRuntimeBinding`也必须在Resolver调用数仍为0时返回`moc.bind.static_wiring_rejected`。纯静态SDK和运行交接共用`MDCStaticBuildPreflight`的规则，不重复建立另一套TypeId检查实现。该断言属于Windows自动软件测试，非HIL。
+
+### D05 P0最终本批固定回归证据
+
+- `master@5451819a` → [Decision Run 40831471885](https://github.com/oudream/cx-visual-x3/actions/runs/40831471885) = Success，MDC-82～87首批软件检查成功；V1来源/Resolver身份/原SourceMap与Legacy兼容已验证。
+- `master@59d95b0a` → [Decision Run 40831977051](https://github.com/oudream/cx-visual-x3/actions/runs/40831977051) = Failure；`MDCStaticBuildPreflight`共用描述合同后残留错误的`found.Definition`属性，已在后续代码修复，不能计入成功。
+- `master@efecd87c` → [Decision Run 40832214673](https://github.com/oudream/cx-visual-x3/actions/runs/40832214673) = Success；统一.NET48构建、`--decision`及默认ArchitectureSmoke成功，包含MDC-89与原MOCFlowBuilder V2正例。[ModuleCenter Run 40832214907](https://github.com/oudream/cx-visual-x3/actions/runs/40832214907) = Success。
+- 当前仅证明严格静态/运行交接适配和旧编译行为未回退；**不是**D05完整纯Plan/27项目迁移验收，涉及真实设备/多进程场景仍需专项证据。

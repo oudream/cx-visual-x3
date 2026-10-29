@@ -103,3 +103,13 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 ## 16. D05三段式合同检查与静态预检复用
 
 `MDCStaticBuildPreflight`补充接收`MDCStaticCatalogSnapshot`的重载，和现有MOC目录共用同一`AssessCore`，不增加新规则Owner。`MOCManifestRuntimeBinding`在任何Resolver探测之前逐Content验证原MOL业务端口，与MPC静态描述不一致时拒绝；再通过已有`MOCBindingContractInspector`验证MRK CLR签名，最后用唯一原编译器绑定。增加MDC-89反例，真实提交SHA/Windows CI是通过证据；物理Logic/Orchestration合并、纯执行无关Plan尚未完成。
+
+## 17. D05受控来源到原MOC/MRK编译器：实际Windows固定证据（2026-10-29）
+
+| 提交 | 变更与Windows结果 | 等级 |
+|---|---|---|
+| [5451819a](https://github.com/oudream/cx-visual-x3/commit/5451819a80b077e26d29a1d061115b7bca30c8be) | 增加`MOCManifestRuntimeBinding`，版本/合同核对、编译作用域内Resolver固定、原MOC编译与SourceMap复用；[Decision Run 40831471885](https://github.com/oudream/cx-visual-x3/actions/runs/40831471885) **Success** | Automated |
+| [59d95b0a](https://github.com/oudream/cx-visual-x3/commit/59d95b0a0125104d4b0777fa7bbae508bc5669fc) | 复用静态V2端口预检；[Decision Run 40831977051](https://github.com/oudream/cx-visual-x3/actions/runs/40831977051) **Failure**：`MDCStaticBuildPreflight.cs`残留`found.Definition.Ports`，对`MOCCapabilityDescriptor`访问错误CS1061 | 构建失败，已修 |
+| [efecd87c](https://github.com/oudream/cx-visual-x3/commit/efecd87cc99aab6a19bbf59845dc032aafc4c013) | 修正为`found.Ports`；新增原`MOCFlowBuilder`真实V2 Action→Manifest→绑定→SourceMap正例。[Decision Run 40832214673](https://github.com/oudream/cx-visual-x3/actions/runs/40832214673) **Success**；[ModuleCenter CPU RAW Run 40832214907](https://github.com/oudream/cx-visual-x3/actions/runs/40832214907) **Success** | Automated（软件） |
+
+**未完成**：唯一`Mechanism.Decision`物理工程、Orchestration→Runtime的项目依赖解除、独立可序列化纯Plan及MRK Loader、六专业完整资源/仿真/现场HIL。软件CI不证明外部设备安全或发布授权。
