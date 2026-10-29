@@ -40,7 +40,7 @@ namespace CxVisual.Studio
         internal sealed class StudioCpuVisionReport
         {
             public IReadOnlyList<StudioCpuTraceRecord> TraceRecords;
-            public Guid PageId,FlowId,InspectId,MeasureId;
+            public Guid PageId,FlowId,InspectId,MeasureId,SegmentId,EnhanceId;
             public long? AcceptedRegionPixelArea;
             public int EngineeringRevision,CompletedTraceEvents;
             public string PlanFingerprint,ConfigVersion;
@@ -57,9 +57,28 @@ namespace CxVisual.Studio
         {
             CxVisionCpuRun report=await CxVisionRawCpuRunner.ExecuteMeasuredAsync(session,provider,
                 path,width,height,cancellation).ConfigureAwait(false);
+            return ToStudioCpuVisionReport(report);
+        }
+
+        /// <summary>使用同一MHS Effective Provider实际创建可保存的四/五节点工程。</summary>
+        internal static async Task<StudioCpuVisionReport> ExecuteStudioSeparatedCpuVisionFileAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider provider,
+            string path,int width,int height,int medianRadius,CancellationToken cancellation)
+        {
+            CxVisionCpuRun report=await CxVisionRawCpuRunner
+                .ExecuteSeparatedMeasuredProviderAsync(session,provider,path,width,height,
+                    medianRadius,cancellation).ConfigureAwait(false);
+            // 本次算法完成后仍要求MHS Effective有效，撤销/变更不能发布成功证据。
+            provider.CaptureInspectionOptions();
+            return ToStudioCpuVisionReport(report);
+        }
+
+        private static StudioCpuVisionReport ToStudioCpuVisionReport(CxVisionCpuRun report)
+        {
             return new StudioCpuVisionReport {
                 PageId=report.PageId,FlowId=report.FlowId,InspectId=report.InspectBlockId,
-                MeasureId=report.MeasureBlockId,
+                MeasureId=report.MeasureBlockId,SegmentId=report.SegmentBlockId,
+                EnhanceId=report.EnhanceBlockId,
                 AcceptedRegionPixelArea=report.AcceptedRegionPixelArea,
                 EngineeringRevision=report.EngineeringRevision,
                 CompletedTraceEvents=report.CompletedTraceEvents,
@@ -228,6 +247,21 @@ namespace CxVisual.Studio
             System.Windows.Automation.AutomationProperties.SetAutomationId(runRaw,
                 "Studio.ModuleCenter.RunRaw");
             rawRow.Children.Add(runRaw);
+            var medianRadius=new ComboBox {Width=66,Margin=new Thickness(7,0,3,0)};
+            for(int radius=0;radius<=3;++radius)medianRadius.Items.Add(radius);
+            medianRadius.SelectedItem=0;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(medianRadius,
+                "Studio.ModuleCenter.MedianRadius");
+            rawRow.Children.Add(new TextBlock {
+                Text="拆分增强半径",VerticalAlignment=VerticalAlignment.Center});
+            rawRow.Children.Add(medianRadius);
+            var runSeparated=new Button {
+                Content="执行拆分式四/五节点",Padding=new Thickness(10,5,10,5),
+                Margin=new Thickness(4,0,0,0),
+                ToolTip="MHS Effective → RAW → [FIM中值] → Mask → Region → Area；正式MEM/MOC/MRK软件工程，无设备授权"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(runSeparated,
+                "Studio.ModuleCenter.RunSeparatedRaw");
+            rawRow.Children.Add(runSeparated);
             System.Threading.CancellationTokenSource activeRun=null;
             var cancelRun=new Button {Content="取消检测",Padding=new Thickness(8,5,8,5),
                 Margin=new Thickness(5,0,0,0),IsEnabled=false};
@@ -249,7 +283,7 @@ namespace CxVisual.Studio
                 "Studio.ModuleCenter.ExecutionTrace");
             System.Windows.Automation.AutomationProperties.SetAutomationId(regionResults,
                 "Studio.ModuleCenter.ResultRegions");
-            runRaw.Click+=async (sender,args)=>{
+            Func<bool,Task> runSelectedRaw=async separated=>{
                 if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
                 if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
                 if(loadedProjectId!=_viewModel.ProjectSession.Project.Id||
@@ -264,14 +298,26 @@ namespace CxVisual.Studio
                     Title="选择真实RAW灰度图像",Filter="RAW images (*.raw)|*.raw|全部文件 (*.*)|*.*",
                     CheckFileExists=true};
                 if(dialog.ShowDialog(this)!=true)return;
+                int selectedRadius=medianRadius.SelectedItem is int ?
+                    (int)medianRadius.SelectedItem : 0;
                 activeRun=new System.Threading.CancellationTokenSource();
-                cancelRun.IsEnabled=true;runRaw.IsEnabled=false;_logicRunning=true;
+                cancelRun.IsEnabled=true;runRaw.IsEnabled=false;
+                runSeparated.IsEnabled=false;_logicRunning=true;
                 try
                 {
-                    rawStatus.Text="真实RAW数据检查 / MEM-MOC-MRK CPU执行中…";
-                    var report=await ExecuteStudioCpuVisionFileAsync(
-                        _viewModel.ProjectSession,selectedProvider,dialog.FileName,w,h,
-                        activeRun.Token);
+                    rawStatus.Text=separated ?
+                        "真实RAW → 独立分割/Region/面积工程执行中…" :
+                        "真实RAW数据检查 / MEM-MOC-MRK CPU执行中…";
+                    var report=separated ?
+                        await ExecuteStudioSeparatedCpuVisionFileAsync(
+                            _viewModel.ProjectSession,selectedProvider,dialog.FileName,w,h,
+                            selectedRadius,activeRun.Token) :
+                        await ExecuteStudioCpuVisionFileAsync(
+                            _viewModel.ProjectSession,selectedProvider,dialog.FileName,w,h,
+                            activeRun.Token);
+                    if(loadedProjectId!=_viewModel.ProjectSession.Project.Id ||
+                       loadedScopeKey!=CurrentStudioVisionScopeKey())
+                        throw new InvalidOperationException("检测期间工程或配置Scope改变，拒绝显示旧Run");
                     var page=_viewModel.ProjectSession.Find(report.PageId) as MEMPage;
                     if(page!=null)_viewModel.ActivePage=page;
                     RefreshScene();
@@ -286,11 +332,16 @@ namespace CxVisual.Studio
                         Visibility.Collapsed:Visibility.Visible;
                     executionTrace.ItemsSource=report.TraceRecords;
                     executionTrace.Visibility=Visibility.Visible;
-                    rawStatus.Text="实际CPU检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
+                    rawStatus.Text=(separated?"独立四/五节点工程":"实际CPU检测")+
+                        (report.Inspection.Passed?"通过":"发现缺陷")+
                         "；阈值像素="+report.Inspection.ThresholdPixelCount+
                         "，缺陷区域="+report.Inspection.Regions.Count+
                         "，接受区域面积="+report.AcceptedRegionPixelArea+" px²"+
                         "，配置="+report.ConfigVersion+
+                        (separated?", Mask/Region/Measurement同Run；分割节点="+
+                            report.SegmentId.ToString("N")+
+                            (report.EnhanceId==Guid.Empty?"":", 增强节点="+
+                                report.EnhanceId.ToString("N")):"")+
                         "，MRK FlowId="+report.FlowId.ToString("N")+
                         "，工程Revision="+report.EngineeringRevision+
                         "，Trace完成事件="+report.CompletedTraceEvents+
@@ -300,10 +351,13 @@ namespace CxVisual.Studio
                 catch(OperationCanceledException){rawStatus.Text="用户取消，未报告执行成功";}
                 catch(Exception ex){rawStatus.Text="真实CPU检测失败："+ex.Message;}
                 finally{
-                    _logicRunning=false;runRaw.IsEnabled=true;cancelRun.IsEnabled=false;
+                    _logicRunning=false;runRaw.IsEnabled=true;
+                    runSeparated.IsEnabled=true;cancelRun.IsEnabled=false;
                     activeRun.Dispose();activeRun=null;
                 }
             };
+            runRaw.Click+=async (sender,args)=>await runSelectedRaw(false);
+            runSeparated.Click+=async (sender,args)=>await runSelectedRaw(true);
             var flow=new Button {Content="打开主流程编排",Padding=new Thickness(12,5,12,5),
                 Margin=new Thickness(3,1,6,1),
                 ToolTip="打开原MOL流程编辑器；不会跳过MOC构建、MRK执行和授权"};
