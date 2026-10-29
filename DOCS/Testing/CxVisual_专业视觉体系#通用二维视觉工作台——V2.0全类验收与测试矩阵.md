@@ -482,3 +482,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | STD-VIEW-06 | 新运行/配置变更/项目失效取消轮廓后台任务并清除旧列表；大轮廓/超过256项不能发布，禁止伪造生产Artifact或工程ROI | 生产守卫已编码，异步竞态专项待深化 |
 
 **门禁**：`.github/workflows/module-center-cpu-windows.yml` 对`Applications/Studio/**`和`Professional/Vision/**`变更触发，Windows `CxVisual.Studio.exe --module-center-cpu-self-test`验证测试报告；`.github/workflows/studio-shell-windows.yml`执行真实`--shell-self-test`，还需Imaging Windows和默认ArchitectureSmoke回归。以上均为源码测试，并**未拿到匹配最新SHA的CI执行结果**。旧Imaging成功记录不能代替此批。
+
+## 29. Studio MHS驱动已连线可编辑专业流程与MOC/MRK运行专项（2026-10-29）
+
+| ID | 具体生产/测试代码核验 | 证据 |
+|---|---|---|
+| STD-FLOW-01 | Studio模块中心真实`Studio.ModuleCenter.CreateVisionFlow`按钮；创建新MEM Page并转到既有`doc.flow`，不新造画布 | G2源码/WPF自测已提交，G5待跑 |
+| STD-FLOW-02 | 三个独立Compute节点，Mask→Region→Measurement 2条Control+2条Data边；Threshold=200、RuleVersion按MHS生效Revision固定 | G2真实MOL正反测试已提交，G4待跑 |
+| STD-FLOW-03 | 正式Content暴露RawPixels/Width/Height和Mask/Inspection/Area六个可寻址端口；`ValidateExecutable`通过 | G2测试已提交，G4待跑 |
+| STD-FLOW-04 | MOL V2 Codec序列化→反序列化保持3块4边、端口与规则；原MOCFlowBuilder能移动节点且连接不变 | G2测试已提交，G4待跑 |
+| STD-FLOW-05 | 真工程`SaveAs→Close→Open`保留MEM Page/Content、可执行Logic、阈值与规则、非Dirty | G2测试已提交，G4待跑 |
+| STD-FLOW-06 | 原`MOCProjectRelease.Prepare`对该MEM内容实际编译并形成来源指纹，再`MRKExecutionEngine`绑定5×3 RAW、宽/高三个外部输入，`MDS`返回Mask像素与接受面积3px² | G2真实执行测试已提交，G4待跑 |
+| STD-FLOW-07 | 旧MHS Effective变更或撤权时模板在创建工程页前拒绝，`MEMRevision`不增加 | G2反证已提交，G4待跑 |
+
+**真实门禁**：`studio-shell-windows.yml`中`--shell-self-test`覆盖模块中心WPF；`module-center-cpu-windows.yml`中`--module-center-cpu-self-test`运行上述真实MRK、保存重开与配置失效测试，另须全工程Windows Release/x64编译及ArchitectureSmoke相关回归。没有对应最新SHA运行日志之前，不得宣称G3/G4/G5成功。
