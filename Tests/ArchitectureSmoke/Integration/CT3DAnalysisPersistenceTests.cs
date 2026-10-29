@@ -406,6 +406,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<OperationCanceledException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(
                     samples,axis,10000000,new CancellationToken(true)));
             }
+            string cylinderProject=Path.Combine(folder,"cylinder.cxproj");
+            string cylinderRaw=Path.Combine(folder,"cylinder.raw");
+            byte[] altered=(byte[])raw.Clone();altered[0]=1;
+            File.WriteAllBytes(cylinderRaw,altered);
+            using(var engineering=MEMEngineering.Open(cylinderProject))
+            {
+                Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.OpenAll(
+                    engineering,folder,CancellationToken.None));
+                var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                    .Single(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId));
+                int revision=engineering.Revision;
+                Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.RecomputeAllAndCommit(
+                    engineering,new[]{owner},revision,folder,CancellationToken.None));
+                Check(engineering.Revision==revision,"圆柱RAW被改动时必须拒绝整体复算且不改变MEM工程");
+            }
+            File.WriteAllBytes(cylinderRaw,raw);
             Console.WriteLine("PASS CT3D constrained-axis UInt16 cylinder fit and provenance");
         }
 
