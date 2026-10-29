@@ -3287,7 +3287,8 @@ namespace CxVisual.Studio
                         try
                         {
                             MainWindow.SelectStudioVisionResult(split.Evidence,null,
-                                legacyViewer,imageResult);
+                                legacyViewer,split.Evidence.Items.Single(x=>
+                                    x.Kind==CxVisionResultKind.Mask));
                         }
                         catch(InvalidOperationException){mixedSourceDenied=true;}
                         Assert(mixedSourceDenied,"没有同源原图时不得显示旧Run的Mask");
