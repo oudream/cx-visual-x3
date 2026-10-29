@@ -469,3 +469,16 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | STD-CAT-05 | 对专业自定义CLR object输入保留MOC Unknown并只批准现有PVC运行时具体类型保护的两个白名单端口；其它静态签名异常不得降级放行 | 生产门禁已写，专项负例仍待深化 |
 
 **现有门禁**：`.github/workflows/module-center-cpu-windows.yml`（真实`--module-center-cpu-self-test`与测试文本）、Imaging Windows、Studio Shell WPF自测，以及ArchitectureSmoke默认回归。当前未取得新SHA的Windows成功记录，所有G3-G5保持待证；不能用此前历史成功任务代替最新提交。
+
+## 28. Studio本Run可视化与执行原图精确关联专项（2026-10-29）
+
+| ID | 可执行源码验收或反证 | 当前证据 |
+|---|---|---|
+| STD-VIEW-01 | 真实Studio模块中心存在原`MPWImageViewerControl`实例、可折叠结果面板、`ResultItems`、显示原图及按需生成Contour操作，未新增项目或第二图窗Owner | S1 WPF测试已编码，最新SHA G5待跑 |
+| STD-VIEW-02 | 真实Studio 5×3 RAW四节点：Run的执行原图快照仍为Gray8 210/210/0…250，点击Mask在原MPW Session显示真实0/255像素 | CPU-only WPF STA测试已编码，G4/G5待跑 |
+| STD-VIEW-03 | 从该Run真实Mask生成两个只读Contour；同一外环选择两次，仅有一个`ExternalId=ResultItemId`的MVI Overlay，图窗切回原图 | CPU-only WPF STA测试已编码，G4/G5待跑 |
+| STD-VIEW-04 | 混入其它Run的Contour、已清空的Viewer或没有原图的Mask需拒绝；旧一体化Run无源图快照但Measurement仍可点选查看 | 正反测试已编码，G4/G5待跑 |
+| STD-VIEW-05 | 运行后把用户RAW文件替换为另一张7×7输入，先前5×3 SourceImage仍保持当次MRK原始字节数值，绝不从磁盘再读冒充来源 | CPU-only真实文件回归已编码，G4待跑 |
+| STD-VIEW-06 | 新运行/配置变更/项目失效取消轮廓后台任务并清除旧列表；大轮廓/超过256项不能发布，禁止伪造生产Artifact或工程ROI | 生产守卫已编码，异步竞态专项待深化 |
+
+**门禁**：`.github/workflows/module-center-cpu-windows.yml` 对`Applications/Studio/**`和`Professional/Vision/**`变更触发，Windows `CxVisual.Studio.exe --module-center-cpu-self-test`验证测试报告；`.github/workflows/studio-shell-windows.yml`执行真实`--shell-self-test`，还需Imaging Windows和默认ArchitectureSmoke回归。以上均为源码测试，并**未拿到匹配最新SHA的CI执行结果**。旧Imaging成功记录不能代替此批。
