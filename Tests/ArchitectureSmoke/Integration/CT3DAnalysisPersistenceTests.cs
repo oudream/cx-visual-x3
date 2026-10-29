@@ -48,7 +48,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Math.Abs(planeMeasures[0].ValueMm-analysis.Plane.RmsResidualMm)<1e-12&&
                 Math.Abs(planeMeasures[1].ValueMm-analysis.Plane.MaxAbsoluteResidualMm)<1e-12&&
                 planeMeasures.All(m=>m.FeatureResultId==analysis.Plane.ResultId&&
-                    m.SourceSignature==source.Signature&&!m.HasEvaluatedUncertainty),
+                    m.SourceSignature==source.Signature&&
+                    m.ParameterSignature==analysis.ParameterSignature&&
+                    m.RoiSignature==analysis.RoiSignature&&
+                    m.AlgorithmVersion==analysis.AlgorithmVersion&&
+                    Object.ReferenceEquals(m.SpatialFrame,source.SpatialFrame)&&
+                    !m.HasEvaluatedUncertainty),
                 "平面RMS与最大偏差必须属于质量证据而非虚构Datum尺寸");
             var copy=CT3DAssetReference.Import(folder,raw,info,frame,7,CancellationToken.None,source.Id);
             Check(copy.ContentHash==source.ContentHash && File.ReadAllBytes(raw).SequenceEqual(bytes),
@@ -194,6 +199,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Math.Abs(measurements[1].ValueMm-2*measurements[0].ValueMm)<1e-12&&
                 measurements.All(m=>m.FeatureResultId==analysis.Sphere.ResultId&&
                     m.SourceSignature==source.Signature&&m.SourceRevision==source.Revision&&
+                    m.ParameterSignature==analysis.ParameterSignature&&
+                    m.AlgorithmVersion==analysis.AlgorithmVersion&&m.RoiSignature==null&&
+                    Object.ReferenceEquals(m.SpatialFrame,source.SpatialFrame)&&
                     !m.HasEvaluatedUncertainty),
                 "球特征测量采用毫米原值、共享Feature和完整来源签名，不冒充不确定度验收");
             string path=Path.Combine(folder,"sphere.cxproj");MRIObjectAddress address;
@@ -307,7 +315,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         restored.Surface.ResultId==caseValue.Surface.ResultId&&
                         restored.Cylinder.SourceSurfaceResultId==restored.Surface.ResultId&&
                         Math.Abs(restored.Cylinder.RadiusMm-caseValue.Cylinder.RadiusMm)<1e-10&&
-                        restored.GetFeatureMeasurements().All(m=>m.SourceSignature==source.Signature),
+                        restored.GetFeatureMeasurements().All(m=>
+                            m.SourceSignature==source.Signature&&
+                            m.ParameterSignature==restored.ParameterSignature&&
+                            Object.ReferenceEquals(m.SpatialFrame,restored.Source.SpatialFrame)),
                         "MEM重开圆柱保留Feature、Surface、来源签名及毫米量值");
                     var changedAxis=restored.RecomputeWithCylinderAxis(folder,
                         new FVOPhysicalPoint3D(0,0,-1),CancellationToken.None);
