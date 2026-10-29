@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Mechanism.Presentation.Wpf.Volume;
 using CxVisual.Professional.CT3D;
@@ -891,8 +892,20 @@ namespace CxVisual.TestCenter.UI
                         Check(frame.GpuControlForHardwareTest.SurfaceMeshTriangleCount==
                               meshResult.Mesh.TriangleCount,
                             "真实GPU必须上传三角面VBO，不能用Surface点冒充Mesh");
+                    FGEMeshRayHit picked;
+                    var bounds=meshResult.Mesh;
+                    double rayX=(bounds.BoundsMin.X+bounds.BoundsMax.X)*.5;
+                    double rayY=(bounds.BoundsMin.Y+bounds.BoundsMax.Y)*.5;
+                    var physicalRayOrigin=new FGEPoint3D(rayX,rayY,bounds.BoundsMax.Z+10);
+                    var physicalRayDirection=new FGEVector3D(0,0,-1);
+                    Check(frame.TryPickCurrentMeshRay(physicalRayOrigin,physicalRayDirection,
+                        out picked)&&picked!=null&&picked.Distance>0&&
+                        frame.ViewState.Scene3D.SelectedId.HasValue,
+                        "真实WPF工作台须使用物理毫米Mesh射线命中并选择MVI对象");
                     Guid meshId=frame.ViewState.Scene3D.SelectedId.Value;
                     frame.ViewState.Scene3D.SetVisibility(meshId,false);
+                    Check(!frame.TryPickCurrentMeshRay(physicalRayOrigin,physicalRayDirection,out picked),
+                        "隐藏的Mesh必须拒绝场景射线拾取");
                     Check(frame.MeshDisplayedTriangleCount==0 &&
                         (!frame.IsGpuVolumeRendering ||
                          frame.GpuControlForHardwareTest.SurfaceMeshTriangleCount==0),
