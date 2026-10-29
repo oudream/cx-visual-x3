@@ -181,3 +181,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - 提交 [`1d773c6`](https://github.com/oudream/cx-visual-x3/commit/1d773c6275c4d29e8cc0a69d6f32cd873613370b) 在现有 `CT3DAnalysisCase` 上增加只读 `CT3DFeatureMeasurement` 与 `GetFeatureMeasurements()`：从已拟合Sphere的真实毫米半径派生Radius/Diameter，保留Feature ResultId、SourceRef/Revision/Signature及球拟合RMS；结果不复制原始RAW，也不建立第二套持久化。MeshPlane目前不虚构Datum距离，仅通过原Plane API提供真实点面偏差。
 - 提交 [`29bcb6a`](https://github.com/oudream/cx-visual-x3/commit/29bcb6afd5e6d91ce27e5615b7da750f9d604656) 增加球Feature测量原值、结果身份、来源、无工业不确定度认证与MEM保存重开数值一致性断言；数值仍为离散体素边界球拟合，不宣称亚体素/GD&T或实机精度通过。
 - 固定SHA Windows CI：本轮查询 `29bcb6a` 的多个工作流为 `queued`，**尚无本轮编译或运行通过证据**；须在实际完成后复核。多对象MVI/MPW正式交互、柱面与完整测量持久合同仍未完成。
+
+
+### 10.7 A工作包持续实装：平面质量测量归一（2026-10-29）
+
+- [`77a997d`](https://github.com/oudream/cx-visual-x3/commit/77a997d3bf5dd1023aa2702ebb46254df29a327f)：沿用现有 `CT3DAnalysisCase.GetFeatureMeasurements()` 输出，在 `MeshPlane` 路径公开 `plane.rms-residual` 与 `plane.max-absolute-residual`，单位毫米，依托已有FNU PCA平面拟合；共享ResultId/来源签名/Revision/拟合质量合同，不伪造Datum尺寸或GD&T。
+- [`5a75154`](https://github.com/oudream/cx-visual-x3/commit/5a75154d436c59c4dc171b02ac5246c4a4ddbfba)：增加平面正向值、Feature身份、来源一致性及MEM工程保存重开的回归断言，与原Surface/Sphere测试共用正式CT3D API。
+- **A工作包未完成**：圆柱拟合、可组合多专业结果Case、稳定独立ROI/Frame子元素身份、完整的对象级改写/失效/重算与并发版本兼容，以及最新Windows固定SHA测试证据仍缺失；不把上述两个增量等同A包整体验收。
