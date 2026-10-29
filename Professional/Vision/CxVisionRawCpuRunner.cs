@@ -107,7 +107,12 @@ namespace CxVisual.Professional.Vision
             token.ThrowIfCancellationRequested();
             using(var file=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
             {
-                if(file.Length!=len)throw new InvalidDataException("RAW字节数与宽高/Effective位深不符");
+                if(file.Length!=len)
+                    throw new InvalidDataException("RAW字节数与宽高/Effective位深不符："+
+                        "fileBytes="+file.Length+
+                        " expectedBytes="+len+
+                        " width="+width+" height="+height+
+                        " pixelDepth="+(int)depth);
                 byte[] data=new byte[len];int n=0;
                 while(n<len)
                 {
