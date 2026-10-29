@@ -1842,6 +1842,40 @@ namespace CxVisual.TestCenter.UI
             Show("已导出原图坐标、测量数值、物理标定与稳定ID：" + dialog.FileName);
         }
 
+        /// <summary>
+        /// 嵌入式开发者API：导出当前MVI活动图像的原始FIM像素，
+        /// 不包含窗宽窗位、视口图层或标注；默认紧排小端与禁止覆盖。
+        /// </summary>
+        public void ExportActiveRawFile(string path,bool bigEndian=false,
+            bool preserveStride=false,bool overwrite=false)
+        {
+            FIMImageBuffer image=_viewer.ActiveImage;
+            if(image==null)throw new InvalidOperationException("未加载可导出的原始像素图像");
+            FIMRawImageWriter.SaveFile(path,image,bigEndian,preserveStride,overwrite);
+        }
+
+        private void ExportActiveRawWithDialog()
+        {
+            FIMImageBuffer image=_viewer.ActiveImage;
+            if(image==null){Show("请先加载原图或生成结果图，再导出RAW");return;}
+            var dialog=new SaveFileDialog {
+                Filter="无损RAW原像素|*.raw",DefaultExt=".raw",
+                Title="保存当前活动图像原像素RAW（无窗位/标注；紧排小端）",
+                OverwritePrompt=true
+            };
+            if(dialog.ShowDialog()!=true)return;
+            try
+            {
+                ExportActiveRawFile(dialog.FileName,overwrite:true);
+                Show("已无损导出RAW："+dialog.FileName+
+                    "；宽="+image.Width+"，高="+image.Height+
+                    "，格式="+image.PixelFormat+"，Stride="+
+                    checked(image.Width*image.BytesPerPixel)+
+                    "（紧排），小端；文件不包含尺寸或标定元数据。");
+            }
+            catch(Exception error){Show("RAW导出失败："+error.Message);}
+        }
+
         private void Save()
         {
             SaveFileDialog dialog = new SaveFileDialog {
