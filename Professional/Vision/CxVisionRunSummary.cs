@@ -166,7 +166,8 @@ namespace CxVisual.Professional.Vision
         public static CxVisionRunSummary FromInspection(Guid runId, string sourceId,
             CxVisionInspectionResult inspection, long? graySum = null,
             bool? flowPassed = null, string planFingerprint = null,
-            string capabilityVersion = null, DateTime? completedUtc = null)
+            string capabilityVersion = null, DateTime? completedUtc = null,
+            long? acceptedRegionPixelArea = null)
         {
             if (runId == Guid.Empty) throw new ArgumentException("必须有真实FlowId", "runId");
             if (string.IsNullOrWhiteSpace(sourceId))
@@ -193,6 +194,22 @@ namespace CxVisual.Professional.Vision
                     "Inspection", CxVisionResultKind.Region, "检测候选区域", "px",
                     region: new CxVisionRegionSnapshot(inspection.Regions[i],
                         inspection.Width, inspection.Height)));
+            if (acceptedRegionPixelArea.HasValue)
+            {
+                long measuredArea=acceptedRegionPixelArea.Value,regionSum=0;
+                foreach (CxVisionResultItem item in values)
+                    if (item.Kind==CxVisionResultKind.Region)
+                        regionSum=checked(regionSum+item.Region.PixelArea);
+                if (measuredArea<0 || measuredArea!=regionSum ||
+                    measuredArea>inspection.ThresholdPixelCount ||
+                    measuredArea>(long)inspection.Width*inspection.Height)
+                    throw new ArgumentException("测量面积与已接受区域及阈值命中数不一致",
+                        "acceptedRegionPixelArea");
+                values.Add(new CxVisionResultItem(runId,source,
+                    "AcceptedRegionPixelArea","AcceptedRegionPixelArea",
+                    CxVisionResultKind.Measurement,"已接受缺陷区域总像素面积","px²",
+                    number:measuredArea));
+            }
             if (graySum.HasValue)
                 values.Add(new CxVisionResultItem(runId, source, "GraySum",
                     "GraySum", CxVisionResultKind.Statistic, "灰度累加", "gray-sum",
