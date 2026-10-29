@@ -286,7 +286,8 @@ namespace CxVisual.TestCenter.UI
                 // 统计页切入时自动计算当前原始灰度，不需手动点击按钮。
                 TabControl autoStatsTabs=FindControl<TabControl>(frame,
                     "TCT.Imaging.SecondaryTabs");
-                autoStatsTabs.SelectedIndex=1;
+                if(autoStatsTabs.SelectedIndex!=0)
+                    throw new InvalidOperationException("初始统计页状态不正确");
                 window.UpdateLayout();
                 System.Diagnostics.Stopwatch autoHistogramWait=
                     System.Diagnostics.Stopwatch.StartNew();
@@ -301,6 +302,7 @@ namespace CxVisual.TestCenter.UI
                     System.Threading.Thread.Sleep(5);
                 }
                 if(frame.HistogramPlot.PointCount!=256 ||
+                    autoStatsTabs.SelectedIndex!=0 ||
                     frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
                     throw new InvalidOperationException(
                         "统计页未自动生成256档直方图或改写了源像素");
