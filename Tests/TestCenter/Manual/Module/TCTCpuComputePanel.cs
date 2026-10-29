@@ -245,7 +245,7 @@ namespace CxVisual.TestCenter.UI
                 _running.CancelAfter(compute.TimeoutMs);
                 _run.IsEnabled=false;_save.IsEnabled=false;_load.IsEnabled=false;
                 _cancel.IsEnabled=true;_status.Text="实际CPU算法/原MOC-MRK执行中…";
-                var report=await Task.Run(()=>CxVisionRawCpuRunner.ExecuteAsync(
+                var report=await Task.Run(()=>CxVisionRawCpuRunner.ExecuteMeasuredAsync(
                     _session,_provider,filename,w,h,_running.Token),_running.Token);
                 LastReport=report;
                 _regions.ItemsSource=report.Inspection.Regions.Select((x,i)=>new {
@@ -259,6 +259,7 @@ namespace CxVisual.TestCenter.UI
                 _status.Text="实际检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
                     "；阈值像素="+report.Inspection.ThresholdPixelCount+
                     "；缺陷区域="+report.Inspection.Regions.Count+
+                    "；已接受面积="+report.AcceptedRegionPixelArea+" px²"+
                     "；FlowId="+report.FlowId.ToString("N")+
                     "；MOC指纹="+report.Fingerprint+
                     "；配置="+report.ConfigVersion+
