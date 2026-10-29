@@ -31,6 +31,90 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _surfaceVao,_surfaceVbo;
         private uint _meshVao,_meshVbo;
         private float[] _meshTriangles=new float[0];
+        private sealed class CachedSceneMesh
+        {
+            internal float[] Vertices;
+            internal uint VertexArray,Buffer;
+            internal double Opacity;
+        }
+        private readonly Dictionary<Guid,CachedSceneMesh> _sceneMeshes=
+            new Dictionary<Guid,CachedSceneMesh>();
+        public int SceneMeshCount {get{return _sceneMeshes.Count;}}
+        public int SceneMeshTriangleCount
+        {
+            get
+            {
+                int count=0;
+                foreach(CachedSceneMesh entry in _sceneMeshes.Values)
+                    count=checked(count+entry.Vertices.Length/9);
+                return count;
+            }
+        }
+
+        /// <summary>独立Scene实例的有界GL VBO缓存；专业FGE Mesh由原Owner管理。</summary>
+        public void SetSceneMesh(Guid id,MPWVolumeDisplayMesh mesh,double opacity=1)
+        {
+            if(id==Guid.Empty)throw new ArgumentException("Scene实例Id无效。","id");
+            if(mesh==null)throw new ArgumentNullException("mesh");
+            if(double.IsNaN(opacity)||double.IsInfinity(opacity)||opacity<0||opacity>1)
+                throw new ArgumentOutOfRangeException("opacity");
+            CachedSceneMesh existing;
+            _sceneMeshes.TryGetValue(id,out existing);
+            int previous=existing==null?0:existing.Vertices.Length/9;
+            if(mesh.TriangleCount+SceneMeshTriangleCount-previous+SurfaceMeshTriangleCount>50000)
+                throw new ArgumentOutOfRangeException("mesh","GPU多对象三角面总预算超限。");
+            float[] vertices=new float[checked(mesh.TriangleCount*9)];
+            int k=0;
+            foreach(int index in mesh.TriangleIndices)
+            {
+                Vector3 p=mesh.Vertices[index];
+                if(float.IsNaN(p.X)||float.IsNaN(p.Y)||float.IsNaN(p.Z)||
+                    float.IsInfinity(p.X)||float.IsInfinity(p.Y)||float.IsInfinity(p.Z)||
+                    Math.Abs(p.X)>.50001||Math.Abs(p.Y)>.50001||Math.Abs(p.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("mesh","Scene Mesh坐标越出标准化体空间。");
+                vertices[k++]=p.X;vertices[k++]=p.Y;vertices[k++]=p.Z;
+            }
+            CachedSceneMesh target=existing??new CachedSceneMesh();
+            target.Vertices=vertices;target.Opacity=opacity;
+            _sceneMeshes[id]=target;
+            if(IsAvailable){MakeCurrent();UploadSceneMesh(target);RequestRender();}
+        }
+        public void RemoveSceneMesh(Guid id)
+        {
+            CachedSceneMesh item;
+            if(!_sceneMeshes.TryGetValue(id,out item))return;
+            if(IsAvailable)
+            {
+                MakeCurrent();
+                ReleaseSceneMesh(item);
+            }
+            _sceneMeshes.Remove(id);
+            RequestRender();
+        }
+        public void ClearSceneMeshes()
+        {
+            foreach(Guid id in new List<Guid>(_sceneMeshes.Keys))RemoveSceneMesh(id);
+        }
+        private void UploadSceneMesh(CachedSceneMesh item)
+        {
+            if(_gl==null)return;
+            if(item.VertexArray==0)_gl.GenVertexArrays(1,out item.VertexArray);
+            if(item.Buffer==0)_gl.GenBuffers(1,out item.Buffer);
+            _gl.BindVertexArray(item.VertexArray);
+            _gl.BindBuffer(0x8892,item.Buffer);
+            UploadFloats(item.Vertices);
+            _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
+            _gl.EnableVertexAttribArray(0);
+        }
+        private void ReleaseSceneMesh(CachedSceneMesh item)
+        {
+            if(_gl!=null)
+            {
+                if(item.Buffer!=0)_gl.DeleteBuffers(1,ref item.Buffer);
+                if(item.VertexArray!=0)_gl.DeleteVertexArrays(1,ref item.VertexArray);
+            }
+            item.Buffer=0;item.VertexArray=0;
+        }
         public int SurfaceMeshTriangleCount {get{return _meshTriangles.Length/9;}}
 
         /// <summary>把受预算约束的索引Mesh展开上传到独立GL VBO，数值Mesh仍由FGE/CT3D持有。</summary>
@@ -458,6 +542,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UploadSurfaceMesh();
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
+                foreach(CachedSceneMesh item in _sceneMeshes.Values)UploadSceneMesh(item);
                 // 旧版右下方的XYZ方向标：绘制在同一个真实GL framebuffer内。
                 // HwndHost存在Airspace限制，不能用WPF覆盖子窗口来冒充方向标。
                 _gl.GenVertexArrays(1,out _orientationVao);
@@ -529,6 +614,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_orientationVbo != 0) _gl.DeleteBuffers(1,ref _orientationVbo);
                 if (_surfaceVbo != 0) _gl.DeleteBuffers(1,ref _surfaceVbo);
                 if (_meshVbo != 0) _gl.DeleteBuffers(1,ref _meshVbo);
+                foreach(CachedSceneMesh item in _sceneMeshes.Values)ReleaseSceneMesh(item);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
                 if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
                 if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
@@ -767,13 +853,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UseShaderProgram(_lineShader);
                 Matrix("mvp",mvp);
                 Vec3("lineColor",.82f,.88f,.95f);
+                UniformF("overlayOpacity",.86f);
                 _gl.BindVertexArray(_lineVao);
                 _gl.DrawArrays(0x0001,0,MPWVolumeGeometry.CubeLines.Length/3);
             }
             // 同一GL framebuffer中的专业Mesh先进行真实深度测试，Surface点后绘制；
             // Raymarch合成体未提供逐像素深度，本阶段只保证几何叠加自身前后遮挡。
             if((_meshTriangles.Length!=0&&_meshVao!=0)||
-               (_surfaceVertices.Length!=0&&_surfaceVao!=0))
+               (_surfaceVertices.Length!=0&&_surfaceVao!=0)||
+               _sceneMeshes.Count!=0)
             {
                 glEnable(0x0B71); // GL_DEPTH_TEST
                 try
@@ -783,6 +871,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                         UseShaderProgram(_lineShader);
                         Matrix("mvp",mvp);
                         Vec3("lineColor",.3f,.85f,.94f);
+                        UniformF("overlayOpacity",.86f);
                         _gl.BindVertexArray(_meshVao);
                         _gl.DrawArrays(0x0004,0,_meshTriangles.Length/3); // GL_TRIANGLES
                     }
@@ -791,9 +880,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                         UseShaderProgram(_lineShader);
                         Matrix("mvp",mvp);
                         Vec3("lineColor",1f,.78f,.2f);
+                        UniformF("overlayOpacity",.86f);
                         _gl.BindVertexArray(_surfaceVao);
                         glPointSize(4f);
                         _gl.DrawArrays(0x0000,0,_surfaceVertices.Length/3); // GL_POINTS
+                    }
+                    if(_sceneMeshes.Count!=0)
+                    {
+                        UseShaderProgram(_lineShader);
+                        Matrix("mvp",mvp);
+                        Vec3("lineColor",.65f,.86f,.96f);
+                        foreach(CachedSceneMesh item in _sceneMeshes.Values)
+                        {
+                            if(item.VertexArray==0||item.Vertices.Length==0)continue;
+                            UniformF("overlayOpacity",(float)(item.Opacity*.86));
+                            _gl.BindVertexArray(item.VertexArray);
+                            _gl.DrawArrays(0x0004,0,item.Vertices.Length/3);
+                        }
                     }
                 }
                 finally {glDisable(0x0B71);}
@@ -819,6 +922,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UseShaderProgram(_lineShader);
                 Matrix("mvp",view*projection);
                 _gl.BindVertexArray(_orientationVao);
+                UniformF("overlayOpacity",1f);
                 Vec3("lineColor",1f,.24f,.24f);
                 _gl.DrawArrays(0x0001,0,2);
                 Vec3("lineColor",.22f,.95f,.35f);
