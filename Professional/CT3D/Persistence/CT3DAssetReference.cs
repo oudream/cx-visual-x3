@@ -24,6 +24,18 @@ namespace CxVisual.Professional.CT3D
                 throw new InvalidDataException("RAW长度与元数据不一致。");
             Id=id;Revision=revision;RelativePath=path;ContentHash=hash;ByteLength=length;
             Width=width;Height=height;Depth=depth;Format=format;SpatialFrame=frame;
+            using(var frameData=new MemoryStream())
+            {
+                using(var w=new BinaryWriter(frameData,Encoding.UTF8,true))
+                {
+                    w.Write(Id.ToByteArray());
+                    w.Write(frame.SpacingX);w.Write(frame.SpacingY);w.Write(frame.SpacingZ);
+                    w.Write(frame.OriginX);w.Write(frame.OriginY);w.Write(frame.OriginZ);
+                    foreach(double value in frame.CopyDirectionRowMajor())w.Write(value);
+                    w.Write(frame.IsCalibrated);
+                }
+                FrameSignature=CT3DArtifactFiles.HashBytes(frameData.ToArray());
+            }
             using(var memory=new MemoryStream())
             {
                 using(var writer=new BinaryWriter(memory,Encoding.UTF8,true))Write(writer);
@@ -40,6 +52,10 @@ namespace CxVisual.Professional.CT3D
         public int Depth {get;private set;}
         public FVORawVoxelFormat Format {get;private set;}
         public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+        /// <summary>空间身份独立于RAW内容修订，但绑定资产身份及完整物理标定。</summary>
+        public string FrameSignature {get;private set;}
+        public string SpatialFrameRef {get{return "ct3d:frame:"+FrameSignature;}}
+
         /// <summary>包括资产身份/数据版本/内容/空间映射的固定签名，不以对象引用判等。</summary>
         public string Signature {get;private set;}
         public string SourceRef {get{return "ct3d:asset:"+Id.ToString("N");}}
