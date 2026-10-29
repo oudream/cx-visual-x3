@@ -184,6 +184,104 @@ namespace CxVisual.Studio
             return created;
         }
 
+        /// <summary>
+        /// Studio与自测共用同一MPW真实图窗和PVC只读Run产物。
+        /// 不通过显示文件二次读取RAW：原图必须来自同一次MRK执行字节快照。
+        /// </summary>
+        internal static void PopulateStudioVisionResults(
+            StudioCpuVisionReport report,MPWImageViewerControl viewer,ListBox list)
+        {
+            if(report==null)throw new ArgumentNullException("report");
+            if(viewer==null)throw new ArgumentNullException("viewer");
+            if(list==null)throw new ArgumentNullException("list");
+            if(report.Evidence==null || report.FlowId!=report.Evidence.RunId)
+                throw new InvalidOperationException("studio.vision.run_identity_mismatch");
+            viewer.Clear();
+            list.Items.Clear();
+            if(report.SourceImage!=null)
+            {
+                if(report.Evidence.Width!=report.SourceImage.Width ||
+                   report.Evidence.Height!=report.SourceImage.Height)
+                    throw new InvalidOperationException("studio.vision.source_dimensions_changed");
+                viewer.ShowOriginal(report.SourceImage);
+            }
+            foreach(CxVisionResultItem item in report.Evidence.Items)
+            {
+                string value=item.Contour!=null ?
+                    item.Contour.SignedAreaPixels.ToString("0.###",CultureInfo.InvariantCulture)+
+                        " px²"+(item.Contour.IsHole?" (孔洞)":" (外环)") :
+                    item.Region!=null ? item.Region.PixelArea.ToString(
+                        CultureInfo.InvariantCulture)+" px²" :
+                    item.IntegerValue.HasValue ? item.IntegerValue.Value.ToString(
+                        CultureInfo.InvariantCulture)+(item.Unit==null?"":" "+item.Unit) :
+                    item.BooleanValue.HasValue ? item.BooleanValue.Value.ToString() :
+                    item.Image!=null ?
+                        item.Image.Width.ToString(CultureInfo.InvariantCulture)+"×"+
+                        item.Image.Height.ToString(CultureInfo.InvariantCulture)+" "+
+                        item.Image.PixelFormat : "";
+                list.Items.Add(new ListBoxItem {
+                    Tag=item,Content=item.Kind+" · "+item.Name+" · "+value
+                });
+            }
+        }
+
+        /// <summary>
+        /// 单个ResultItem的显示操作始终验证Run、Source及图窗原图会话，
+        /// 临时轮廓借用唯一MVI Store，不把Contour误作为工程ROI持久化。
+        /// </summary>
+        internal static string SelectStudioVisionResult(
+            CxVisionRunSummary run,FIMImageBuffer source,
+            MPWImageViewerControl viewer,CxVisionResultItem item)
+        {
+            if(run==null||source==null||viewer==null||item==null ||
+               run.RunId!=item.RunId || run.SourceId!=item.SourceId ||
+               !run.Items.Any(x=>Object.ReferenceEquals(x,item)) ||
+               !Object.ReferenceEquals(source,viewer.Session.Original))
+                throw new InvalidOperationException("studio.vision.stale_result");
+            if(item.Kind==CxVisionResultKind.Image || item.Kind==CxVisionResultKind.Mask)
+            {
+                if(item.Image==null || item.Image.Width!=source.Width ||
+                   item.Image.Height!=source.Height)
+                    throw new InvalidOperationException("studio.vision.invalid_image");
+                viewer.ShowResult(item.Image);
+                return item.Kind+"；Item="+item.ItemId+"；Run="+run.RunId.ToString("N");
+            }
+            if(item.Kind==CxVisionResultKind.Contour)
+            {
+                CxVisionContourSnapshot contour=item.Contour;
+                if(contour==null || contour.Points.Count<3 ||
+                   contour.Points.Count>100000)
+                    throw new InvalidOperationException("studio.vision.contour_limit");
+                MVIImageOverlayItem overlay=viewer.Overlays.Items.FirstOrDefault(x=>
+                    x.ExternalId==item.ItemId &&
+                    x.Kind==MVIImageOverlayKind.PolygonAnnotation && x.IsLocked);
+                viewer.SelectOriginal();
+                if(overlay==null)
+                {
+                    var points=contour.Points;
+                    double x0=points.Min(p=>p.X),x1=points.Max(p=>p.X);
+                    double y0=points.Min(p=>p.Y),y1=points.Max(p=>p.Y);
+                    overlay=viewer.AddOverlay(new MVIImageOverlayItem(
+                        MVIImageOverlayKind.PolygonAnnotation,
+                        MVIImageOverlayLayer.Annotation,
+                        new FGERect2D(x0,y0,x1-x0,y1-y0),
+                        points,(contour.IsHole?"Run孔洞":"Run外环")+" · "+item.ItemId,
+                        item.ItemId,
+                        unchecked((int)(contour.IsHole?0xFF00D4C7u:0xFFFFD157u)),
+                        1.5,isLocked:true));
+                }
+                viewer.SelectOverlay(overlay.Id);
+                return (contour.IsHole?"孔洞":"外轮廓")+" · "+
+                    contour.SignedAreaPixels.ToString("0.###",CultureInfo.InvariantCulture)+
+                    " px²；Run="+run.RunId.ToString("N");
+            }
+            viewer.SelectOriginal();
+            return item.Kind+" · "+item.Name+"；Item="+item.ItemId+
+                (item.IntegerValue.HasValue?"；值="+
+                    item.IntegerValue.Value.ToString(CultureInfo.InvariantCulture)+
+                    (item.Unit==null?"":" "+item.Unit):"");
+        }
+
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
         { SafeStudioAction(()=>OpenStudioDocument("doc.modules")); }
 
