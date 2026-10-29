@@ -289,3 +289,18 @@ flowchart LR
 | MDC-36 | 重复CapabilityId拒绝，不创建第二模块目录 |
 
 测试入口：`ArchitectureSmoke.exe --decision`及默认回归。未在Studio端到端实现前，此组只能认定SDK版本/内容一致性，不代表全部Studio画布编辑已防止并发变化。
+
+### D02/D03/D04/D07轻量推荐门面测试（新增）
+
+| Case | 验收断言 |
+|---|---|
+| MDC-37 | 一个调用返回端口候选、Hard原因、Pareto和确定的首选 |
+| MDC-38 | GPU资源已证实超限、速度更快仍Rejected，不能Selected |
+| MDC-39 | 输入TypeId冲突即Rejected，不可由性能指标覆盖 |
+| MDC-40 | 未提供专业资源/性能/规则Record的候选为Unknown，不可自动推荐 |
+| MDC-41 | 多次传入相同版本及完整输入得到同一指纹与选择 |
+| MDC-42 | 工程Revision或Host资源容量/占用变化后旧推荐RequireCurrent失败 |
+| MDC-43 | 实测性能数值、目标或证据Id变化后旧推荐失效 |
+| MDC-44 | 同一能力重复专业记录或传入不存在的能力Id被拒绝 |
+
+全部属于静态软件验证，不能据此宣称专业实机HIL/安全授权通过。明确`MDCRecommendationResult.RequireCurrent(stamp,inputHash)`在正式Core编辑前由Host/Studio调用，环境变更不能由Decision自行嗅探。

@@ -184,3 +184,9 @@ var allowed = decision.Assess(
 **真实状态细化**：Vision有实际CPU预览与Threshold Provider；CT3D/Automation/Simulation部分功能需要按真实类、设备/算法后端进一步确认；Inspection/HMI当前主要是工程骨架，本轮只能定义测试夹具与拟议能力。与其他专业共用的实际接口由#1/#3归一，不能在每一专业自建一套Decision SDK。
 
 **反证实验**：同一5节点任务分别使用普通专业API/MRK手工组合与Decision辅助，以相同业务结果记录代码行数、手工端口规则、配置步骤、错误出现时机、定位耗时、P95、内存/资源误差与人机操作；仅有数据之后才能声称“更轻量、更好”。
+
+## K. 约束/目标/资源一体推荐——Vision与CT3D软件验证切片
+
+同一`MDCRecommendationService.Recommend`可处理代表性CPU/GPU候选，不需要为Vision或CT3D再写一套选择引擎。专业Host负责提供语义端口、可信资源上下界与各目标的Measured证据；Decision负责：匹配、硬约束排除、Unknown保留、Pareto与明确首选，随后生成结构化原因。模拟负例：GPU方案延迟1ms但最小显存需要大于剩余容量，必须Rejected；缺专业证据的候选必须Unknown；静态端口类型错误不能因性能快而获选；证据或Host预算版本变化后旧推荐不能直接提交Core Edit。
+
+这只证明专业软件合同组合能力，**没有验证真实CT设备、GPU的性能或X-Ray工业产线节拍**。真实生产优化收益需要专业基准、现场证据及相同硬件环境实测。

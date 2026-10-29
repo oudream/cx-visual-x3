@@ -84,3 +84,7 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 十一、能力目录内容指纹、版本封印与变更影响集合
 
 新增`MDCStaticCatalogSnapshot`、`MDCDecisionVersionStamp`、`MDCStampedCandidates`、`MDCCatalogImpactAnalyzer`及`FindCandidatesStamped`入口。消费原`MOCCapabilityCatalog`的MPC端口，只读计算稳定SHA-256；现有Source/Runtime/Config Owner不变。旧候选只能在Project Revision、Catalog Fingerprint、PolicyRevision、EnvironmentEpoch全部一致时由使用方显式应用，避免因WPF异步刷新造成过期决策结果变更Core。新增MDC-29～36测试覆盖乱序稳定、类型单位变化、增删改、版本过期和重复Id。完整WPF端事务集成仍待下一工程切片；本批软件编译结果必须引用实际Windows Actions SHA，不得提前标成通过。
+
+## 十二、专业开发者轻量一调用推荐门面
+
+新增`MDCRecommendationService.cs`；将同一`MOCCapabilityCatalog`的MPC候选、已实现`MDCResourceBudgetPlanner`硬预算及`MDCChoiceService` Pareto组合，返回统一`MDCRecommendationResult`，无需创建新的执行引擎/模块注册表。完整输入指纹进一步纳入专业指标和资源证据，使工程版本不变时改变资源预算或实测结果也能拒绝旧推荐。`MDCDecisionTests.EndToEndStaticRecommendation`检验端口错、显存超限、缺证据、前沿首选、版本/指标变化。此阶段还未让六专业Studio全部自动使用门面，仍待专门WPF/生产用例。

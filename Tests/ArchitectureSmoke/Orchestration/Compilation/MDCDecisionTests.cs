@@ -53,6 +53,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MultiObjectiveSelection();
             ResourcePlanningFeedsSelection();
             CatalogFingerprintVersionAndImpact();
+            EndToEndStaticRecommendation();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -442,6 +443,103 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (InvalidOperationException) { prevented = true; }
             Check(prevented, "candidate query must reject catalog snapshot mismatch");
 
+        }
+
+        private static void EndToEndStaticRecommendation()
+        {
+            var provider = new Provider(
+                new MOCCapabilityDescriptor("cpu", "CPU", "Compute", new[] {
+                    Port("Pixels", MPCPortDirection.Input,"byte[]","px") }),
+                new MOCCapabilityDescriptor("gpu", "GPU", "Compute", new[] {
+                    Port("Pixels", MPCPortDirection.Input,"byte[]","px") }),
+                new MOCCapabilityDescriptor("gpu.too.large", "GPU large", "Compute",new[] {
+                    Port("Pixels", MPCPortDirection.Input,"byte[]","px") }),
+                new MOCCapabilityDescriptor("no.evidence", "Unknown", "Compute",new[] {
+                    Port("Pixels", MPCPortDirection.Input,"byte[]","px") }),
+                new MOCCapabilityDescriptor("wrong.type", "Bad type", "Compute",new[] {
+                    Port("Pixels", MPCPortDirection.Input,"string","px") }));
+            var catalog = new MOCCapabilityCatalog(new[] { provider });
+            var stamp = new MDCDecisionVersionStamp(Guid.NewGuid(), 11,
+                new MDCStaticCatalogSnapshot(catalog).Fingerprint,
+                "policy-3", "host-snapshot-v1");
+            var profiles = new[] {
+                new MDCProfessionalCandidateEvidence("cpu",
+                    new MDCResourceRequirement[0],new[] { Measure("latency",70,"ms") },
+                    new MDCConstraintOutcome[0]),
+                new MDCProfessionalCandidateEvidence("gpu",new[] {
+                    new MDCResourceRequirement("GPU_MEMORY","MiB",1024m,2048m,"gpu-proof") },
+                    new[] { Measure("latency",20,"ms") },
+                    new MDCConstraintOutcome[0]),
+                new MDCProfessionalCandidateEvidence("gpu.too.large",new[] {
+                    new MDCResourceRequirement("GPU_MEMORY","MiB",4000m,4600m,"gpu-proof") },
+                    new[] { Measure("latency",1,"ms") },
+                    new MDCConstraintOutcome[0]),
+                new MDCProfessionalCandidateEvidence("wrong.type",
+                    new MDCResourceRequirement[0],new[] { Measure("latency",0.1,"ms") },
+                    new MDCConstraintOutcome[0])
+            };
+            var result = new MDCRecommendationService().Recommend(
+                Port("out", MPCPortDirection.Output, "byte[]","px"),
+                catalog, stamp,
+                new[] { new MDCObjective("latency","ms",MDCObjectiveDirection.Minimize) },
+                new[] { new MDCResourceBudget("GPU_MEMORY","MiB",4096m,1024m,"capacity") },
+                profiles);
+            Check(result.Candidates.Candidates.Count==5 &&
+                result.Comparison.Selected != null &&
+                result.Comparison.Selected.Option.Id=="gpu",
+                "static facade must recommend feasible fastest capability");
+            Check(result.Comparison.Candidates.Single(x =>
+                x.Option.Id=="gpu.too.large").Verdict==MDCVerdict.Rejected,
+                "hard GPU capacity cannot be overridden by latency ranking");
+            Check(result.Comparison.Candidates.Single(x =>
+                x.Option.Id=="wrong.type").Verdict==MDCVerdict.Rejected,
+                "static TypeId mismatch cannot be overridden");
+            Check(result.Comparison.Candidates.Single(x =>
+                x.Option.Id=="no.evidence").Verdict==MDCVerdict.Unknown,
+                "missing professional evidence cannot produce an automatic recommendation");
+            var source = Port("out", MPCPortDirection.Output, "byte[]","px");
+            var objectives = new[] {
+                new MDCObjective("latency","ms",MDCObjectiveDirection.Minimize) };
+            var budgets = new[] {
+                new MDCResourceBudget("GPU_MEMORY","MiB",4096m,1024m,"capacity") };
+            var fingerprint = MDCRecommendationService.ComputeInputsFingerprint(
+                source, objectives, budgets, profiles);
+            Check(result.InputsFingerprint == fingerprint,
+                "recommendation must include objective/resource/evidence fingerprint");
+            result.RequireCurrent(stamp, fingerprint);
+            bool stale=false;
+            try { result.RequireCurrent(new MDCDecisionVersionStamp(stamp.ProjectId,12,
+                stamp.CatalogFingerprint,stamp.PolicyRevision,stamp.EnvironmentEpoch),
+                fingerprint); }
+            catch(InvalidOperationException) { stale=true; }
+            Check(stale,"a previously selected option cannot apply to a new project revision");
+            stale=false;
+            var changedBudget = MDCRecommendationService.ComputeInputsFingerprint(source,
+                objectives,new[] { new MDCResourceBudget("GPU_MEMORY","MiB",4096m,
+                    3500m,"capacity") },profiles);
+            try { result.RequireCurrent(stamp,changedBudget); }
+            catch(InvalidOperationException) { stale=true; }
+            Check(stale,"new resource reservation must invalidate previous recommendation");
+            stale=false;
+            var changedEvidence = new [] {
+                profiles[0],
+                new MDCProfessionalCandidateEvidence("gpu",new[] {
+                    new MDCResourceRequirement("GPU_MEMORY","MiB",1024m,2048m,"gpu-proof") },
+                    new[] { Measure("latency",99,"ms") },new MDCConstraintOutcome[0]),
+                profiles[2], profiles[3]
+            };
+            try { result.RequireCurrent(stamp,
+                MDCRecommendationService.ComputeInputsFingerprint(
+                    source,objectives,budgets,changedEvidence)); }
+            catch(InvalidOperationException) { stale=true; }
+            Check(stale,"changed measured evidence must invalidate previous recommendation");
+            bool duplicate=false;
+            try { new MDCRecommendationService().Recommend(
+                Port("out", MPCPortDirection.Output, "byte[]","px"),catalog,stamp,
+                new[] { new MDCObjective("latency","ms",MDCObjectiveDirection.Minimize) },
+                new MDCResourceBudget[0],new[] {profiles[0],profiles[0]}); }
+            catch(ArgumentException) { duplicate=true; }
+            Check(duplicate,"duplicate professional evidence must be rejected");
         }
 
     }

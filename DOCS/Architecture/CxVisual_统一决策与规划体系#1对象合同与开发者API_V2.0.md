@@ -366,3 +366,28 @@ batch.RequireCurrent(currentStamp);
 ~~~
 
 **重要限制**：Stamp携带的是调用方实际提供的版本，Decision不凭空感知工程/策略/环境变化；Studio应在真正提交Core编辑事务前重新获取当前Stamp并调用RequireCurrent。此功能不能替代Host在生产发布时复核权限、资源和专业Provider的Effective版次。
+
+## 15. 开发者一调用完成静态能力推荐（已编写源码，Windows CI待本提交验证）
+
+`MDCRecommendationService.Recommend(source,catalog,stamp,objectives,budgets,professionalEvidence)` 是**组合门面（Facade）**而非第二套求解器：内部复用现有端口判断、资源上下界计算和多目标 Pareto 选择；返回`MDCRecommendationResult.Candidates`（各候选三态与原因）、`Comparison`（Feasible/Pareto/Selected）以及`InputsFingerprint`（本次完整输入指纹）。无MEM工程也能调用，无Provider执行、设备操作或MRK线程副作用。
+
+`MDCProfessionalCandidateEvidence`由专业Owner提交**明确**的能力Id、资源需求区间、实测指标和外部硬规则。没有这个专业记录的能力返回Unknown，不会自动推荐；ResourceHardFail和PortHardFail不能因低延迟而被选中。此门面不自动验证EvidenceId的可信签名，工业发布必须由Host再确认配置、权限与真实资源。
+
+~~~csharp
+// 真实新增API形状；参数须来自已认可的专业/Host证据。
+var catalog = new MOCCapabilityCatalog(providers);
+var snap = new MDCStaticCatalogSnapshot(catalog);
+var stamp = new MDCDecisionVersionStamp(projectId, revision,
+    snap.Fingerprint, policyRevision, environmentEpoch);
+var recommendation = new MDCRecommendationService().Recommend(
+    sourcePort, catalog, stamp, goals, hostBudgets, professionalEvidence);
+if (recommendation.Comparison.Selected != null) {
+    // 真正调用Core Edit之前，重新读取全部版本及专业证据：
+    string currentInputHash = MDCRecommendationService.ComputeInputsFingerprint(
+        currentSourcePort, currentGoals, currentBudgets, currentEvidence);
+    recommendation.RequireCurrent(currentStamp, currentInputHash);
+    // 用户确认，才经原Core事务修改工程；不触发任何真实设备。
+}
+~~~
+
+**版本门禁**包含完整Source Port、Goals、Budget、每个专业资源需求/指标/硬规则及其证据Id，调用方必须在应用前重新计算InputsFingerprint；即使工程Revision不变，资源预留量或测量数据变化也拒绝旧推荐。所有排序只是给定目标及证据下的非支配集/词典序首选，不能声称现场最优。

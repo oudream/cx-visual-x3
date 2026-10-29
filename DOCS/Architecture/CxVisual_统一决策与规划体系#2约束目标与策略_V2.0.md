@@ -186,3 +186,9 @@ flowchart TB
 `MDCResourceBudgetPlanner.Assess(budgets,requirements)` 是纯静态资源判断：Host提供`MDCResourceBudget(Id,Unit,Capacity,Reserved,SnapshotId)`，专业模型提供`MDCResourceRequirement(Id,Unit,LowerBound,UpperBound,EvidenceId)`。若**可用容量 = Capacity - Reserved**，已证明的需求上界不超过容量 → Allowed；已证明的需求下界超过容量 → Rejected；两区间重叠 → Unknown。未提供Host预算、单位不一致、缺Snapshot或需求证据 → Unknown。严格限制128条预算/需求及唯一Id。
 
 本判断**不持有GPU显存、PLC或F19资源租约**；所有容量快照仍需Runtime在实际执行前重新验证。EvidenceId是调用方提供的索引，不等于证据已被平台签署或算法预测可靠。可将该Assessment作为原`MDCChoiceService`的HardConstraints，先判断资源可行域再进行质量/速度Pareto比较；静态超限方案不得被速度权重“救回”。
+
+## 15. 约束与目标的组合门面（初步实装）
+
+`MDCRecommendationService`将D02（端口硬判断）、D03/D04（目标和Pareto）、D07（资源需求上下界）组合成单次纯调用。执行顺序：静态目录Stamp校验 → 已知端口Hard结果 → 专业自有Hard条件和资源区间评估 → 未知条件保留 → 只对完全可比较且具有实测证据的Feasible候选排序。无专业Profile时返回Unknown；不存在`目标重要所以突破安全硬约束`的特殊分支。即使选出首选，Host/MRK仍拥有生产可执行性最终检查。
+
+门面的完整输入指纹覆盖端口、方案证据、目标与资源快照；Core、Policy、Catalog、Environment版本另由MDCDecisionVersionStamp追踪。SDK需在执行Core编辑或发布操作前重新校验；只比较ProjectRevision是不够的。
