@@ -132,6 +132,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 var listener=PhysicalRoiSelected;
                 if(listener!=null)listener(roi);
             };
+            slice.ValidationFailed+=message=>{
+                var listener=NavigationValidationFailed;
+                if(listener!=null)listener(message);
+            };
             slice.VoxelInspected+=(s,e)=>{
                 var listener=VoxelInspected;
                 if(listener!=null)listener(this,e);

@@ -88,6 +88,72 @@ namespace CxVisual.Professional.CT3D
     /// </summary>
     public static class CT3DMeshPlaneAnalysis
     {
+        /// <summary>
+        /// 二维切片矩形沿其索引增加方向拉伸为毫米区间，选择原值Mesh顶点。
+        /// 四角是采样体素中心，横向范围扩展半个原始体素以包含这些体素的边界面。
+        /// 法向偏移以选区所在切片为零点；不会重新采样或使用显示预览顶点。
+        /// </summary>
+        public static IReadOnlyList<int> SelectSlicePrismVertices(CT3DVoxelBoundaryMeshResult source,
+            FVOPhysicalSliceRectangle rectangle,double minimumOffsetMm,double maximumOffsetMm,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(source==null)throw new ArgumentNullException("source");
+            if(rectangle==null)throw new ArgumentNullException("rectangle");
+            if(!Object.ReferenceEquals(source.SpatialFrame,rectangle.SpatialFrame))
+                throw new InvalidOperationException("ROI与Mesh不属于同一来源Frame，请重新选区。");
+            if(!source.HasCalibratedClosedGeometry)
+                throw new InvalidOperationException("切片ROI拟合要求已标定、非截断的单连通闭合Mesh。");
+            if(double.IsNaN(minimumOffsetMm)||double.IsInfinity(minimumOffsetMm)||
+                double.IsNaN(maximumOffsetMm)||double.IsInfinity(maximumOffsetMm)||minimumOffsetMm>maximumOffsetMm)
+                throw new ArgumentOutOfRangeException("minimumOffsetMm","毫米范围必须有限且下限不大于上限。");
+            if(rectangle.Left==rectangle.Right||rectangle.Top==rectangle.Bottom)
+                throw new ArgumentException("请选择具有面积的矩形ROI。","rectangle");
+            cancellation.ThrowIfCancellationRequested();
+            var frame=source.SpatialFrame;
+            var a=frame.PhysicalToVoxel(rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z);
+            var b=frame.PhysicalToVoxel(rectangle.BottomRight.X,rectangle.BottomRight.Y,rectangle.BottomRight.Z);
+            double au,av,aw,bu,bv,bw;
+            SliceCoordinates(rectangle.Plane,a,out au,out av,out aw);
+            SliceCoordinates(rectangle.Plane,b,out bu,out bv,out bw);
+            double spacing=rectangle.Plane==FVOSlicePlane.XY?frame.SpacingZ:
+                rectangle.Plane==FVOSlicePlane.XZ?frame.SpacingY:frame.SpacingX;
+            double minimumNormal=aw+minimumOffsetMm/spacing,maximumNormal=aw+maximumOffsetMm/spacing;
+            if(double.IsNaN(minimumNormal)||double.IsInfinity(minimumNormal)||
+                double.IsNaN(maximumNormal)||double.IsInfinity(maximumNormal))
+                throw new ArgumentOutOfRangeException("minimumOffsetMm","毫米范围超出来源Frame可表示范围。");
+            double left=Math.Min(au,bu)-.5,right=Math.Max(au,bu)+.5;
+            double top=Math.Min(av,bv)-.5,bottom=Math.Max(av,bv)+.5;
+            var selected=new List<int>();
+            for(int i=0;i<source.Mesh.VertexCount;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                var p=source.Mesh.Vertices[i];
+                var voxel=frame.PhysicalToVoxel(p.X,p.Y,p.Z);
+                double u,v,w;SliceCoordinates(rectangle.Plane,voxel,out u,out v,out w);
+                // 容差在原始体素坐标下比较，不能用固定毫米容差吞掉微小Spacing的整个物体。
+                const double epsilon=1e-7;
+                if(u<left-epsilon||u>right+epsilon||v<top-epsilon||v>bottom+epsilon||
+                    w<minimumNormal-epsilon||w>maximumNormal+epsilon)continue;
+                if(selected.Count==30000)throw new InvalidOperationException("ROI超过30000个顶点预算，请缩小范围。");
+                selected.Add(i);
+            }
+            if(selected.Count<3)throw new InvalidOperationException("ROI内有效Mesh顶点不足3个，请调整选区和法向范围。");
+            cancellation.ThrowIfCancellationRequested();
+            return selected.AsReadOnly();
+        }
+
+        private static void SliceCoordinates(FVOSlicePlane plane,FVOVoxelCoordinate3D p,
+            out double u,out double v,out double w)
+        {
+            switch(plane)
+            {
+                case FVOSlicePlane.XY:u=p.X;v=p.Y;w=p.Z;return;
+                case FVOSlicePlane.XZ:u=p.X;v=p.Z;w=p.Y;return;
+                case FVOSlicePlane.YZ:u=p.Y;v=p.Z;w=p.X;return;
+                default:throw new ArgumentOutOfRangeException("plane");
+            }
+        }
+
         public static CT3DPlaneFitResult FitSelectedVertices(
             CT3DVoxelBoundaryMeshResult source,IReadOnlyList<int> selectedVertexIndices,
             double maxPlanarityRatio=0.08,double maxInPlaneCondition=1000000,

@@ -321,6 +321,68 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             Console.WriteLine("PASS CT3D UInt16 physical voxel mesh, topology, mirrored normals and negative cases");
+            VerifySlicePrism(raw);
+        }
+
+        private static void VerifySlicePrism(byte[] raw)
+        {
+            // 旋转+镜像+各向异性：框选与毫米法向范围不能按世界XYZ直接比较。
+            var anisotropic=new FVORawVolumeInfo(12,12,12,.5f,2,3,FVORawVoxelFormat.UInt16,"roi-anisotropic");
+            using(var volume=FVORawVolumeLoader.LoadFromMemory(raw,anisotropic,64,CancellationToken.None))
+            {
+                volume.SetSpatialFrame(new FVOVolumeSpatialFrame(.5,2,3,1000000,200,300,
+                    new double[]{0,-1,0,1,0,0,0,0,-1},true));
+                using(var lease=volume.AcquireOriginalScalarLease())
+                {
+                    var mesh=CT3DVoxelBoundaryMeshExtractor.Extract(lease,"fixture:roi",1,1000,100,CancellationToken.None);
+                    foreach(var axis in new[]{FVOSlicePlane.XY,FVOSlicePlane.XZ,FVOSlicePlane.YZ})
+                    {
+                        var roi=FVOSliceImageBuilder.RectangleToPhysical(volume,6,6,6,axis,0,0,
+                            FVOSliceImageBuilder.GetImageWidth(volume,axis)-1,FVOSliceImageBuilder.GetImageHeight(volume,axis)-1);
+                        double spacing=axis==FVOSlicePlane.XY?3:axis==FVOSlicePlane.XZ?2:.5;
+                        var indices=CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,roi,.49*spacing,.51*spacing);
+                        var fitted=CT3DMeshPlaneAnalysis.FitSelectedVertices(mesh,indices,.01,1000);
+                        var center=mesh.SpatialFrame.PhysicalToVoxel(fitted.PointMm.X,fitted.PointMm.Y,fitted.PointMm.Z);
+                        double normal=axis==FVOSlicePlane.XY?center.Z:axis==FVOSlicePlane.XZ?center.Y:center.X;
+                        Check(indices.Count==9&&fitted.SampleCount==9&&Math.Abs(normal-6.5)<1e-7&&fitted.RmsResidualMm<1e-7,
+                            "三正交切片ROI须按原值Frame选中九个端面顶点并拟合毫米平面");
+                        bool invalid=false,empty=false,cancelled=false;
+                        try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,roi,2,1);}catch(ArgumentOutOfRangeException){invalid=true;}
+                        try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,roi,100,101);}catch(InvalidOperationException){empty=true;}
+                        try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,roi,0,1,new CancellationToken(true));}
+                        catch(OperationCanceledException){cancelled=true;}
+                        Check(invalid&&empty&&cancelled,"错误毫米范围、空ROI和取消不能制造拟合输入");
+                    }
+                    var degenerate=FVOSliceImageBuilder.RectangleToPhysical(volume,6,6,6,FVOSlicePlane.XY,0,0,0,2);
+                    bool line=false;
+                    try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,degenerate,0,1);}catch(ArgumentException){line=true;}
+                    Check(line,"退化线选区不冒充有面积的矩形ROI");
+                    var previous=FVOSliceImageBuilder.RectangleToPhysical(volume,6,6,6,FVOSlicePlane.XY,0,0,2,6);
+                    volume.SetSpatialFrame(new FVOVolumeSpatialFrame(.5,2,3,0,0,0,new double[]{1,0,0,0,1,0,0,0,1},true));
+                    var foreign=FVOSliceImageBuilder.RectangleToPhysical(volume,6,6,6,FVOSlicePlane.XY,0,0,2,6);
+                    bool frameRejected=false;
+                    try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,foreign,0,1);}catch(InvalidOperationException){frameRejected=true;}
+                    Check(frameRejected&&Object.ReferenceEquals(previous.SpatialFrame,mesh.SpatialFrame),"标定改变后拒绝把新Frame选区用到旧Mesh");
+                }
+            }
+            Console.WriteLine("PASS CT3D physical slice ROI prism to original mesh plane across rotated anisotropic frames");
+            const int n=84;var large=new byte[n*n*n*2];
+            for(int z=2;z<82;z++)for(int y=2;y<82;y++)for(int x=2;x<82;x++)SetUInt16(large,n,x,y,z,1700);
+            using(var volume=FVORawVolumeLoader.LoadFromMemory(large,
+                new FVORawVolumeInfo(n,n,n,1,1,1,FVORawVoxelFormat.UInt16,"roi-budget"),64,CancellationToken.None))
+            {
+                volume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,0,0,0,new double[]{1,0,0,0,1,0,0,0,1},true));
+                using(var lease=volume.AcquireOriginalScalarLease())
+                {
+                    var mesh=CT3DVoxelBoundaryMeshExtractor.Extract(lease,"fixture:roi-budget",1,1000,100000,CancellationToken.None);
+                    var roi=FVOSliceImageBuilder.RectangleToPhysical(volume,42,42,42,FVOSlicePlane.XY,
+                        0,0,FVOSliceImageBuilder.GetImageWidth(volume,FVOSlicePlane.XY)-1,
+                        FVOSliceImageBuilder.GetImageHeight(volume,FVOSlicePlane.XY)-1);
+                    bool budget=false;
+                    try{CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,roi,-100,100);}catch(InvalidOperationException){budget=true;}
+                    Check(mesh.Mesh.VertexCount>30000&&budget,"真实闭合大Mesh选区超过30000顶点时明确失败，不能静默截断");
+                }
+            }
         }
 
         private static void SetUInt16(byte[] data,int width,int x,int y,int z,ushort value)

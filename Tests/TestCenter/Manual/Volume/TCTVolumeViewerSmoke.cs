@@ -1047,7 +1047,27 @@ namespace CxVisual.TestCenter.UI
                     physicalRoi.Plane==FVOSlicePlane.XY&&physicalRoi.Unit=="mm",
                     "WPF二维切片选区必须经MVI/FVO真正映射成物理三维ROI并向工作台通知");
                 frame.AnalyzeCurrentVolumeMesh(1000,100);
-                frame.AnalyzeCurrentMeshPlaneTopZ();
+                viewport.SelectRectangleRoi(5,5,6,6);
+                var roiPlane=frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
+                Check(roiPlane.SampleCount==9&&Math.Abs(roiPlane.PointMm.Z-46.5)<1e-9&&
+                    viewport.Overlay.HasRectangleRoi&&Object.ReferenceEquals(frame.ViewState.SelectedSliceRectangle.SpatialFrame,frame.Volume.SpatialFrame)&&
+                    FindVisualByAutomationId<Button>(frame,"TCT.Volume.FitSliceRoiPlane")!=null&&
+                    frame.Commands.Single(c=>c.Id=="ct3d.mesh.plane-slice-roi").CanExecute(),
+                    "可见切片矩形/MVI选区须真正驱动原值Mesh平面拟合并具有按钮和统一命令");
+                VerifySliceRoiScreenshot(frame);
+                frame.MoveSlices(6,6,5);
+                Check(!viewport.Overlay.HasRectangleRoi&&frame.ViewState.SelectedSliceRectangle!=null,
+                    "切换离开选区切片时隐藏轮廓而不把静态物理ROI移动到新切片");
+                frame.MoveSlices(6,6,6);
+                Check(viewport.Overlay.HasRectangleRoi,"回到选区切片后恢复同一物理ROI轮廓");
+                viewport.SelectRectangleRoi(0,0,2,2);
+                Check(frame.LastMeshPlaneFit==null&&!frame.Commands.Single(c=>c.Id=="ct3d.case.save").CanExecute(),
+                    "编辑ROI立即使旧平面失效，不得继续保存旧选区Measurement");
+                bool emptyPrism=false;
+                try{frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);}catch(InvalidOperationException){emptyPrism=true;}
+                Check(emptyPrism&&frame.LastMeshPlaneFit==null,"无Mesh顶点的选区失败不回填旧平面");
+                viewport.SelectRectangleRoi(5,5,6,6);
+                frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
                 Check(FindVisualByAutomationId<Button>(frame,"TCT.Volume.SaveProfessionalCase")!=null &&
                     FindVisualByAutomationId<Button>(frame,"TCT.Volume.OpenProfessionalCase")!=null,
                     "真实工作台具有专业案例保存/重开按钮");
@@ -1081,6 +1101,23 @@ namespace CxVisual.TestCenter.UI
                 frame.AnalyzeCurrentMeshPlaneTopZ();
                 Check(frame.LastMeshPlaneFit.SourceMeshResultId==restored.Mesh.ResultId,
                     "重开结果能继续作为专业工具输入");
+                viewport.SelectRectangleRoi(5,5,6,6);
+                frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
+                var pendingSliceSave=frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None);
+                viewport.SelectRectangleRoi(0,0,2,2);
+                AwaitProfessional(pendingSliceSave);
+                Check(frame.LastMeshPlaneFit==null&&frame.ViewState.SelectedSliceRectangle.Left==0,
+                    "保存期间新切片选区必须保留，旧平面快照不可覆盖当前ROI或重新变成可保存结果");
+                using(var snapshot=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
+                {
+                    var written=CT3DAnalysisPersistence.OpenAll(snapshot,root,System.Threading.CancellationToken.None)[0];
+                    Check(written.SelectedVertexIndices.Count==9&&written.RoiSignature==restored.RoiSignature&&
+                        written.Plane.ResultId!=planeId,"磁盘应保存启动时九点ROI的新结果，后续选区编辑不改变已提交快照");
+                    // 本轮显式再次保存已合法更新第一个Case；后续多Case隔离反例以此为基准。
+                    planeId=written.Plane.ResultId;
+                }
+                viewport.SelectRectangleRoi(5,5,6,6);
+                frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
                 var oldFrame=frame.Volume.SpatialFrame;
                 frame.Volume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,21,30,40,
                     new double[]{1,0,0,0,1,0,0,0,1},true));
@@ -1221,6 +1258,24 @@ namespace CxVisual.TestCenter.UI
                 AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
             }
             finally{frame.LoadDemo();Directory.Delete(root,true);}
+        }
+
+        private static void VerifySliceRoiScreenshot(TCTManualVolumeViewerFrame frame)
+        {
+            string output=Environment.GetEnvironmentVariable("CXVISUAL_VOLUME_UI_SCREENSHOT");
+            if(String.IsNullOrWhiteSpace(output))return;
+            string path=Path.Combine(Path.GetDirectoryName(output),"slice-roi-plane.png");
+            frame.UpdateLayout();frame.SaveFourViewScreenshot(path);
+            using(var input=File.OpenRead(path))
+            {
+                var decoder=new PngBitmapDecoder(input,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad);
+                var bitmap=new FormatConvertedBitmap(decoder.Frames[0],PixelFormats.Bgra32,null,0);
+                int stride=bitmap.PixelWidth*4;var pixels=new byte[stride*bitmap.PixelHeight];
+                bitmap.CopyPixels(pixels,stride,0);int gold=0;
+                for(int i=0;i<pixels.Length;i+=4)
+                    if(pixels[i]<100&&pixels[i+1]>150&&pixels[i+2]>200)gold++;
+                Check(gold>20,"真实四视图PNG中必须出现切片ROI的金色选区轮廓，不能只登记布尔状态");
+            }
         }
 
         private static void AwaitProfessional(System.Threading.Tasks.Task task)

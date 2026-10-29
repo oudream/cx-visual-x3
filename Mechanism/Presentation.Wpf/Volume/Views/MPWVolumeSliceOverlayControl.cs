@@ -20,6 +20,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private readonly Line _first;
         private readonly Line _second;
         private readonly Border _legend;
+        private readonly Rectangle _rectangle=new Rectangle {
+            Stroke=Brushes.Gold,StrokeThickness=2,Fill=new SolidColorBrush(Color.FromArgb(28,255,215,0)),
+            IsHitTestVisible=false,Visibility=Visibility.Collapsed
+        };
 
         public MPWVolumeSliceOverlayControl(FVOSlicePlane plane)
         {
@@ -53,6 +57,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             }
             _crosshair.Children.Add(_first);
             _crosshair.Children.Add(_second);
+            _crosshair.Children.Add(_rectangle);
 
             _legend = new Border {
                 Background = new SolidColorBrush(Color.FromArgb(190, 7, 15, 26)),
@@ -75,6 +80,21 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             }
         }
         public bool HasLegend { get { return _legend.Child != null; } }
+        public bool HasRectangleRoi {get{return _rectangle.Visibility==Visibility.Visible;}}
+
+        public void ClearRectangleRoi(){_rectangle.Visibility=Visibility.Collapsed;}
+
+        /// <summary>按同一Viewer的实际像素变换画ROI，缩放/平移不另存几何真值。</summary>
+        public void UpdateRectangleRoi(MPWImageViewerControl viewer,int left,int top,int right,int bottom)
+        {
+            var image=viewer.FindName("PixelImage") as Image;
+            if(image==null||image.Source==null){ClearRectangleRoi();return;}
+            Point a=image.TranslatePoint(new Point(Math.Min(left,right),Math.Min(top,bottom)),_crosshair);
+            Point b=image.TranslatePoint(new Point(Math.Max(left,right)+1,Math.Max(top,bottom)+1),_crosshair);
+            Canvas.SetLeft(_rectangle,Math.Min(a.X,b.X));Canvas.SetTop(_rectangle,Math.Min(a.Y,b.Y));
+            _rectangle.Width=Math.Abs(b.X-a.X);_rectangle.Height=Math.Abs(b.Y-a.Y);
+            _rectangle.Visibility=Visibility.Visible;
+        }
 
         /// <summary>按实际WPF图像变换绘制十字线，保留缩放/平移与非等距Spacing。</summary>
         public void UpdateCrosshair(MPWImageViewerControl viewer, FVOVolumeData volume,

@@ -102,12 +102,7 @@ namespace CxVisual.TestCenter.UI
                 "体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
                 e.X,e.Y,e.Z,e.Value,e.PhysicalX,e.PhysicalY,e.PhysicalZ);
             _workbench.NavigationValidationFailed+=message=>_status.Text=message;
-            _workbench.PhysicalRoiSelected+=roi=>{
-                _status.Text=String.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "{0}切片ROI · 物理左上 ({1:0.###},{2:0.###},{3:0.###}) mm · 右下 ({4:0.###},{5:0.###},{6:0.###}) mm",
-                    roi.Plane,roi.TopLeft.X,roi.TopLeft.Y,roi.TopLeft.Z,
-                    roi.BottomRight.X,roi.BottomRight.Y,roi.BottomRight.Z);
-            };
+            _workbench.PhysicalRoiSelected+=OnSliceRectangleSelected;
             work.Children.Add(_workbench);
 
             System.Windows.Controls.GridSplitter resizer=new System.Windows.Controls.GridSplitter {
@@ -145,6 +140,16 @@ namespace CxVisual.TestCenter.UI
             display.Children.Add(viewActions);
             Label(display,"多对象Scene · 选择 / 显隐 / 透明度");
             display.Children.Add(_sceneObjects);
+            Label(display,"局部平面：Shift+左键拖动切片框选");
+            display.Children.Add(new TextBlock {Text="以所选切片为零点，沿切片索引增加方向偏移(mm)。范围覆盖目标面，不能混入多个侧面。",
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)});
+            var roiRange=new StackPanel {Orientation=Orientation.Horizontal};
+            roiRange.Children.Add(new TextBlock {Text="下限",VerticalAlignment=VerticalAlignment.Center});
+            roiRange.Children.Add(_sliceRoiMinimumMm);
+            roiRange.Children.Add(new TextBlock {Text="上限",VerticalAlignment=VerticalAlignment.Center});
+            roiRange.Children.Add(_sliceRoiMaximumMm);
+            AddButton(roiRange,"框选ROI拟合平面","TCT.Volume.FitSliceRoiPlane",StartSliceRoiPlaneFromUi);
+            display.Children.Add(roiRange);
             Label(display,"切片导航 / 三刀联动");
             AddAxis(display,"X",_sliderX,"TCT.Volume.SliceX");
             AddAxis(display,"Y",_sliderY,"TCT.Volume.SliceY");
@@ -164,7 +169,7 @@ namespace CxVisual.TestCenter.UI
             AddAxis(display,"切片窗下限",_windowMin,"TCT.Volume.WindowMin");
             AddAxis(display,"切片窗上限",_windowMax,"TCT.Volume.WindowMax");
             display.Children.Add(new TextBlock {
-                Text="2D：左键三刀/滚轮换层/Ctrl+滚轮缩放；3D：左键旋转/右键平移/滚轮缩放。",
+                Text="2D：左键三刀/Shift拖动框选/滚轮换层/Ctrl+滚轮缩放；3D：左键旋转/右键平移/滚轮缩放。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,8,4,5) });
             Label(gray,"渲染预设与灰阶范围");
             BuildGpuPanel(render); // 将成熟渲染控件直接归类，不复制字段或事件。

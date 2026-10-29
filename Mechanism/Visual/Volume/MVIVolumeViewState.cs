@@ -46,6 +46,25 @@ namespace CxVisual.Mechanism.Visual
 
         public event PropertyChangedEventHandler PropertyChanged;
 
+        /// <summary>当前会话选中的切片物理矩形；专业结果及持久化仍归CT3D/MEM。</summary>
+        public FVOPhysicalSliceRectangle SelectedSliceRectangle {get;private set;}
+
+        public FVOPhysicalSliceRectangle SelectRectangleRoi(FVOSlicePlane plane,
+            int left,int top,int right,int bottom,FVOVolumeData volume)
+        {
+            var selected=MapRectangleRoi(plane,left,top,right,bottom,volume);
+            SelectedSliceRectangle=selected;
+            OnPropertyChanged("SelectedSliceRectangle");
+            return selected;
+        }
+
+        public void ClearRectangleRoi()
+        {
+            if(SelectedSliceRectangle==null)return;
+            SelectedSliceRectangle=null;
+            OnPropertyChanged("SelectedSliceRectangle");
+        }
+
         public int SliceX
         {
             get { return _sliceX; }

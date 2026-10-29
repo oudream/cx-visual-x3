@@ -68,6 +68,8 @@ namespace CxVisual.TestCenter.UI
                     WorkspaceAction("ct3d.mesh.plane-top-z","Mesh +Z端面拟合示例",
                         StartMeshPlaneTopZFromUi,()=>LastVoxelMesh!=null &&
                         _volume!=null && _volume.SpatialFrame.IsCalibrated),
+                    WorkspaceAction("ct3d.mesh.plane-slice-roi","切片框选ROI拟合平面",
+                        StartSliceRoiPlaneFromUi,()=>CanFitSelectedSliceRoi),
                     WorkspaceAction("ct3d.camera","3D相机复位",Reset3DCamera,loaded),
                     WorkspaceAction("ct3d.window","应用窗宽窗位",ApplyWindowCenterWidth,loaded),
                     WorkspaceAction("ct3d.gray","应用灰阶映射",UpdateLegacyGrayMapping,loaded),

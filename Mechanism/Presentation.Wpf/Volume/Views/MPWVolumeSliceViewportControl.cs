@@ -40,6 +40,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private bool _selectingRoi;
         private int _roiStartX,_roiStartY;
         public event Action<FVOPhysicalSliceRectangle> PhysicalRoiSelected;
+        public event Action<string> ValidationFailed;
         public event EventHandler<MPWVolumeVoxelInspectedEventArgs> VoxelInspected;
 
         public MPWVolumeSliceViewportControl(FVOSlicePlane plane,MPWImageViewerControl viewer)
@@ -57,7 +58,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 (s,e)=>SyncVisibleViewport()),true);
             PreviewMouseLeftButtonDown+=OnPointerDown;
             PreviewMouseLeftButtonUp+=OnPointerUp;
-            LostMouseCapture+=(s,e)=>_positioning=false;
+            LostMouseCapture+=(s,e)=>{_positioning=false;_selectingRoi=false;RefreshOverlay();};
             PreviewMouseMove+=OnPointerMove;
             PreviewMouseWheel+=(s,e)=>{
                 if(HandleWheel(e.Delta,Keyboard.Modifiers))e.Handled=true;
@@ -78,13 +79,37 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             if(IsMouseCaptured)ReleaseMouseCapture();
             _positioning=false;
             _selectingRoi=false;
+            if(_state!=null)_state.PropertyChanged-=OnStateChanged;
             _volume=volume;
             _state=state;
+            if(_state!=null)_state.PropertyChanged+=OnStateChanged;
             RefreshOverlay();
+        }
+
+        private void OnStateChanged(object sender,System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if(e.PropertyName=="SelectedSliceRectangle"||e.PropertyName=="All"||
+                e.PropertyName=="SliceX"||e.PropertyName=="SliceY"||e.PropertyName=="SliceZ")RefreshOverlay();
         }
 
         public void RefreshOverlay()
         {
+            if(!_selectingRoi)
+            {
+                var rectangle=_state==null?null:_state.SelectedSliceRectangle;
+                bool visible=rectangle!=null&&_volume!=null&&rectangle.Plane==Plane&&
+                    Object.ReferenceEquals(rectangle.SpatialFrame,_volume.SpatialFrame);
+                if(visible)
+                {
+                    var voxel=rectangle.SpatialFrame.PhysicalToVoxel(rectangle.TopLeft.X,
+                        rectangle.TopLeft.Y,rectangle.TopLeft.Z);
+                    double layer=Plane==FVOSlicePlane.XY?voxel.Z:Plane==FVOSlicePlane.XZ?voxel.Y:voxel.X;
+                    int current=Plane==FVOSlicePlane.XY?_state.SliceZ:Plane==FVOSlicePlane.XZ?_state.SliceY:_state.SliceX;
+                    visible=Math.Abs(layer-current)<1e-7;
+                }
+                if(visible)Overlay.UpdateRectangleRoi(Viewer,rectangle.Left,rectangle.Top,rectangle.Right,rectangle.Bottom);
+                else Overlay.ClearRectangleRoi();
+            }
             if(_volume==null||_state==null||!_state.ShowCrosshair)
             {
                 Overlay.ClearCrosshairs();
@@ -114,7 +139,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             if(_volume==null||_state==null||Viewer.ActiveImage==null)
                 throw new InvalidOperationException("尚未绑定有效三维切片。");
-            var value=_state.MapRectangleRoi(Plane,Math.Min(left,right),Math.Min(top,bottom),
+            var value=_state.SelectRectangleRoi(Plane,Math.Min(left,right),Math.Min(top,bottom),
                 Math.Max(left,right),Math.Max(top,bottom),_volume);
             var handler=PhysicalRoiSelected;
             if(handler!=null)handler(value);
@@ -146,6 +171,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 if(!TryPixel(e,image,out x,out y))return;
                 _roiStartX=x;_roiStartY=y;
                 _selectingRoi=true;
+                Overlay.UpdateRectangleRoi(Viewer,x,y,x,y);
                 CaptureMouse();e.Handled=true;return;
             }
             if(!TryPosition(e,image))return;
@@ -161,8 +187,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 _selectingRoi=false;
                 Image image=GetPixelImage();
                 int x,y;
-                if(image!=null&&TryPixel(e,image,out x,out y))
-                    SelectRectangleRoi(_roiStartX,_roiStartY,x,y);
+                try
+                {
+                    if(image!=null&&TryPixel(e,image,out x,out y))SelectRectangleRoi(_roiStartX,_roiStartY,x,y);
+                }
+                catch(ArgumentException error){if(ValidationFailed!=null)ValidationFailed(error.Message);}
+                catch(InvalidOperationException error){if(ValidationFailed!=null)ValidationFailed(error.Message);}
+                RefreshOverlay();
                 if(IsMouseCaptured)ReleaseMouseCapture();
                 e.Handled=true;return;
             }
@@ -180,6 +211,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             {
                 _selectingRoi=false;
                 if(IsMouseCaptured)ReleaseMouseCapture();
+            }
+            if(_selectingRoi&&image!=null)
+            {
+                int rx,ry;
+                if(TryPixel(e,image,out rx,out ry))Overlay.UpdateRectangleRoi(Viewer,_roiStartX,_roiStartY,rx,ry);
+                e.Handled=true;
             }
             if(_positioning)
             {

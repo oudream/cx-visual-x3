@@ -28,14 +28,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var info=new FVORawVolumeInfo(n,n,n,1,1,1,FVORawVoxelFormat.UInt16,"source.raw");
             var frame=new FVOVolumeSpatialFrame(1,1,1,20,30,40,new double[]{1,0,0,0,1,0,0,0,1},true);
             var source=CT3DAssetReference.Capture(folder,"source.raw",info,frame,7,CancellationToken.None);
+            FVOPhysicalSliceRectangle sliceRoi;
             using(var mapped=source.LoadVolume(folder,CancellationToken.None))
             {
                 Reject<IOException>(()=>File.WriteAllBytes(raw,bytes));
                 using(var lease=mapped.AcquireOriginalScalarLease())
                     Check(lease.ReadScalar(5,5,5)==1700,"校验读锁与只读映射共存且禁止并发改写");
+                sliceRoi=FVOSliceImageBuilder.RectangleToPhysical(mapped,6,6,6,FVOSlicePlane.XY,5,5,6,6);
             }
             var analysis=CT3DAnalysisCase.Analyze(folder,source,1000,100,
-                CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None,0.01,1000);
+                mesh=>CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,sliceRoi,.49,.51),CancellationToken.None,0.01,1000);
             Reject<ArgumentOutOfRangeException>(()=>CT3DAnalysisCase.Analyze(folder,source,
                 1000,100,mesh=>new int[30001],CancellationToken.None));
             Check(analysis.Mesh.Mesh.VertexCount==26 && analysis.Plane.SampleCount==9 &&

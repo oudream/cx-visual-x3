@@ -21,6 +21,8 @@ namespace CxVisual.TestCenter.UI
     {
         private readonly TextBox _sphereThresholdText=new TextBox{Width=66,Text="1000",
             Margin=new System.Windows.Thickness(3)};
+        private readonly TextBox _sliceRoiMinimumMm=new TextBox{Width=62,Text="0",Margin=new System.Windows.Thickness(3)};
+        private readonly TextBox _sliceRoiMaximumMm=new TextBox{Width=62,Text="1",Margin=new System.Windows.Thickness(3)};
         private IReadOnlyList<Vector3> _surfacePreviewPoints;
         private Guid? _surfaceSceneItemId;
         private Guid? _sphereSceneItemId;
@@ -318,6 +320,47 @@ namespace CxVisual.TestCenter.UI
                 result.RmsResidualMm,result.MaxAbsoluteResidualMm,result.SampleCount);
             RaiseStateChanged();
             return result;
+        }
+
+        private bool CanFitSelectedSliceRoi {get{return LastVoxelMesh!=null&&_volume!=null&&_state!=null&&
+            _state.SelectedSliceRectangle!=null&&
+            Object.ReferenceEquals(LastVoxelMesh.SpatialFrame,_volume.SpatialFrame)&&
+            Object.ReferenceEquals(_state.SelectedSliceRectangle.SpatialFrame,_volume.SpatialFrame);}}
+
+        /// <summary>正式切片框选消费入口：MVI物理ROI→原值Mesh索引→同一CT3D拟合/Measurement。</summary>
+        public CT3DPlaneFitResult AnalyzeCurrentMeshPlaneFromSliceRoi(double minimumOffsetMm,
+            double maximumOffsetMm,double maxPlanarityRatio=0.08)
+        {
+            Dispatcher.VerifyAccess();
+            if(!CanFitSelectedSliceRoi)throw new InvalidOperationException("请在当前体数据切片上Shift拖动框选，并生成原值Mesh。");
+            var indices=CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(LastVoxelMesh,
+                _state.SelectedSliceRectangle,minimumOffsetMm,maximumOffsetMm);
+            return AnalyzeCurrentMeshPlane(indices,maxPlanarityRatio);
+        }
+
+        private void OnSliceRectangleSelected(FVOPhysicalSliceRectangle rectangle)
+        {
+            // 新的交互选区使当前平面作废；原Case只保留来源身份供后续保存/重新分析。
+            if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
+            _planeSceneItemId=null;LastMeshPlaneFit=null;_planeRoi=null;
+            _status.Text=String.Format(CultureInfo.InvariantCulture,
+                "{0} ROI已选；设置沿切片索引增加方向的偏移(mm)，再拟合局部平面。四角 ({1:0.###},{2:0.###},{3:0.###}) → ({4:0.###},{5:0.###},{6:0.###})",
+                rectangle.Plane,rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z,
+                rectangle.BottomRight.X,rectangle.BottomRight.Y,rectangle.BottomRight.Z);
+            RaiseStateChanged();
+        }
+
+        private void StartSliceRoiPlaneFromUi()
+        {
+            try
+            {
+                double min,max;
+                if(!double.TryParse(_sliceRoiMinimumMm.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out min)||
+                    !double.TryParse(_sliceRoiMaximumMm.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out max))
+                    throw new ArgumentException("请输入有效毫米偏移上下限。");
+                AnalyzeCurrentMeshPlaneFromSliceRoi(min,max);
+            }
+            catch(Exception error){_status.Text="切片ROI拟合失败："+error.Message;}
         }
 
         /// <summary>

@@ -32,6 +32,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(state.ObliqueSlice.AngleZDegrees == 45, "独立复制斜切定义");
                 Check(state.GetSliceViewport(FVOSlicePlane.XZ).MinA == 0, "视口互不污染");
                 Check(state.ShowCrosshair, "默认可见十字线");
+                data.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,0,0,0,new double[]{1,0,0,0,1,0,0,0,1},true));
+                var selectedRoi=state.SelectRectangleRoi(FVOSlicePlane.XY,1,1,3,4,data);
+                Check(Object.ReferenceEquals(state.SelectedSliceRectangle,selectedRoi),"MVI保存唯一切片物理选区供控件与专业工具共享");
+                bool invalidRoi=false;
+                try{state.SelectRectangleRoi(FVOSlicePlane.XY,-1,1,3,4,data);}catch(ArgumentOutOfRangeException){invalidRoi=true;}
+                Check(invalidRoi&&Object.ReferenceEquals(state.SelectedSliceRectangle,selectedRoi),"非法框选不得替换上一有效MVI选区");
+                state.ClearRectangleRoi();
+                Check(state.SelectedSliceRectangle==null,"清除会话ROI不创建第二结果库");
                 // 统一三维Scene是资产/专业结果的只读投影，不是MEM工程资源的副本。
                 MVI3DSceneState scene3d=state.Scene3D;
                 int sceneEvents=0;
