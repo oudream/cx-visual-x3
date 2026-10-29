@@ -25,6 +25,12 @@ namespace CxVisual.Runtime.Host
                     return MRHUnifiedRuntimeHost.Recover(args[1]);
                 if (verb == "runtime-serve" && args.Length == 2)
                     return MRHUnifiedRuntimeHost.Serve(args[1]);
+                if (verb == "release-ledger-smoke" && args.Length == 2)
+                    return ReleaseLedgerSmoke(args[1],"commission");
+                if (verb == "release-ledger-resume" && args.Length == 2)
+                    return ReleaseLedgerSmoke(args[1],"resume");
+                if (verb == "release-ledger-corrupt-check" && args.Length == 2)
+                    return ReleaseLedgerSmoke(args[1],"corrupt");
                 if (verb == "save" && args.Length == 2)
                 {
                     MEMEngineeringSession document = CreateSample();
@@ -63,7 +69,7 @@ namespace CxVisual.Runtime.Host
                     Show(MVISceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
                 return 2;
             }
             catch (Exception ex)
@@ -71,6 +77,49 @@ namespace CxVisual.Runtime.Host
                 Console.Error.WriteLine("ERROR: " + ex.Message);
                 return 1;
             }
+        }
+
+
+        /// <summary>Local CI-only Host ledger test. No production key or
+        /// authorization credential is used or created by this command.</summary>
+        private static int ReleaseLedgerSmoke(string path,string phase)
+        {
+            const string scope="ci-station-42";
+            Func<string,bool> authorize=principal=>principal=="ci-release-officer";
+            if(phase=="commission")
+                MRHFileTrustedReleaseAdmission.CommissionNew(path,scope,1);
+            if(phase=="corrupt")
+            {
+                bool denied=false;
+                try {new MRHFileTrustedReleaseAdmission(path,scope,authorize);}
+                catch(InvalidDataException) {denied=true;}
+                if(!denied)throw new InvalidOperationException(
+                    "Corrupted trusted release journal was accepted");
+                Console.WriteLine("PASS release ledger rejects torn record");
+                return 0;
+            }
+            var ledger=new MRHFileTrustedReleaseAdmission(path,scope,authorize);
+            byte[] digest=new byte[32];
+            digest[0]=42;
+            if(ledger.TryAuthorizeAndReserve("observer",scope,2,digest) ||
+                ledger.TryAuthorizeAndReserve("ci-release-officer","other",2,digest))
+                throw new InvalidOperationException("Unauthorized release was reserved");
+            if(phase=="commission")
+            {
+                if(!ledger.TryAuthorizeAndReserve("ci-release-officer",scope,2,digest)||
+                    ledger.TryAuthorizeAndReserve("ci-release-officer",scope,2,digest))
+                    throw new InvalidOperationException("First release watermark invalid");
+            }
+            else if(phase=="resume")
+            {
+                if(ledger.TryAuthorizeAndReserve("ci-release-officer",scope,2,digest)||
+                    !ledger.TryAuthorizeAndReserve("ci-release-officer",scope,3,digest)||
+                    ledger.TryAuthorizeAndReserve("ci-release-officer",scope,3,digest))
+                    throw new InvalidOperationException("Restarted Host did not preserve watermark");
+            }
+            else throw new ArgumentException("Unknown ledger smoke phase");
+            Console.WriteLine("PASS Host release ledger " + phase);
+            return 0;
         }
 
         /// <summary>开发者无需机台/SDK的一键Vision闭环；使用真实像素算法及持久化参数。</summary>

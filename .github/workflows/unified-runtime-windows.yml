@@ -71,3 +71,16 @@ jobs:
           & $exe runtime-recover $journal
           if ($LASTEXITCODE -ne 0) { throw "Runtime safe post-stop recovery scan failed" }
           Write-Host "PASS Runtime: compile, publish, flow, journal, restart, observe and drain"
+      - name: Verify Host trusted release ledger across process restarts and torn writes
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Runtime.Host.exe'
+          $ledger = Join-Path $env:RUNNER_TEMP ("CxDecisionRelease-" + [guid]::NewGuid().ToString("N") + ".ledger")
+          & $exe release-ledger-smoke $ledger
+          if ($LASTEXITCODE -ne 0) { throw 'Host release ledger first commission failed' }
+          & $exe release-ledger-resume $ledger
+          if ($LASTEXITCODE -ne 0) { throw 'Host release ledger cross-process antirollback failed' }
+          [System.IO.File]::AppendAllText($ledger, 'X')
+          & $exe release-ledger-corrupt-check $ledger
+          if ($LASTEXITCODE -ne 0) { throw 'Host release ledger accepted torn journal' }
+          Write-Host 'PASS Host signed release: exclusive append journal, antirollback after restart, torn record fail-closed'
