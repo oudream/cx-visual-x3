@@ -386,3 +386,7 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 ### 21.2 WPF实际验证进展
 
 固定`49b40da48099219a8114b2ddd3b671981aa9e57a` 的 [TestCenter Compute CPU UIA #40820622091](https://github.com/oudream/cx-visual-x3/actions/runs/40820622091) 和 [Four G1 #40820622056](https://github.com/oudream/cx-visual-x3/actions/runs/40820622056) 均**success**：证明可选FIM中值参数的真实WPF操作、5px²测量及SourceMap。随后补原MPW图窗显示，固定`2847c2c7af10e02c8fab197cc9a712f36fc509fc` 的 [Compute UIA #40821068464](https://github.com/oudream/cx-visual-x3/actions/runs/40821068464) **success**：证明增强图窗加入后原WPF操作仍可执行。最后`382a8f7`另加控件ActiveImage像素级验证，当前[Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787)首次登记仍in_progress；不可用之前success代替这一新增断言。相同SHA [Module Center RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) **success**。
+
+### 21.3 最新MPW增强图像像素级UIA完成
+
+固定`a6f43b8d0016c4ca08e6aa95e7a6c1428d74fcec` 的[TestCenter Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787) **success**，包括`PreviewImage`从原`MPWImageViewerControl`实际读取像素(0,0)=0、(3,3)=210，对应同一MRK四节点增强结果；[Module Center CPU RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) **success**。此固定SHA只是追加Studio Decision文档及代码的并行提交，不扩大本轮Vision业务Owner。TestCenter全项目其他工作流仍独立验收。
