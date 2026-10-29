@@ -1,0 +1,55 @@
+name: TestCenter Driver Readiness Fail-Closed Windows UI Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Module/TCTDriverReadinessPanel.cs'
+      - 'Tests/TestCenter/Verification/TCTDriverReadinessUiSmoke.cs'
+      - 'Tests/TestCenter/Manual/Module/TCTManualModuleFrame.cs'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - '.github/workflows/testcenter-driver-readiness-windows.yml'
+jobs:
+  driver-readiness-uia:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore and build Windows .NET48 TestCenter
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter Restore failed' }
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Build /m:1 /nr:false /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Driver readiness TestCenter build failed' }
+      - name: Actual WPF UIA missing hardware rejection (NOT HIL)
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $report=Join-Path (Split-Path $exe) 'TestCenter-Driver-UIA-Report.txt'
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--module-driver-readiness-ui-automation' -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch {}
+            throw 'Driver readiness WPF UIA timed out'
+          }
+          $p.Refresh()
+          if (Test-Path $report) { Get-Content $report }
+          if ($p.ExitCode -ne 0) { throw "Driver UIA exit code $($p.ExitCode)" }
+          if (-not (Test-Path $report)) { throw 'Missing Driver UIA report' }
+          $lines=Get-Content $report
+          if (@($lines | Where-Object { $_ -like 'PASS Driver.G1.UIA*' }).Count -ne 1 -or
+              @($lines | Where-Object { $_ -eq 'DeviceReady=False' }).Count -ne 1 -or
+              @($lines | Where-Object { $_ -eq 'PhysicalActionVerified=False' }).Count -ne 1 -or
+              @($lines | Where-Object { $_ -eq 'HIL=NOT_RUN' }).Count -ne 1) {
+            throw 'Driver evidence gate was not fail closed'
+          }
+      - name: Archive G1 evidence only (NOT hardware verification)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-readiness-g1-not-hil
+          path: Output/Debug/x64/TestCenter-Driver-UIA-Report.txt
+          if-no-files-found: warn
