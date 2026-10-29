@@ -264,12 +264,12 @@ namespace CxVisual.Mechanism.Decision
                     }
                 var actual=uses.OrderBy(x=>x.BlockId)
                     .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal).ToArray();
-                var declared=source.CapabilityUses.OrderBy(x=>x.BlockId)
+                var declaredUses=source.CapabilityUses.OrderBy(x=>x.BlockId)
                     .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal).ToArray();
-                if(actual.Length!=declared.Length ||
-                    actual.Where((x,i)=>x.ContentId!=declared[i].ContentId ||
-                        x.BlockId!=declared[i].BlockId ||
-                        !StringComparer.Ordinal.Equals(x.CapabilityId,declared[i].CapabilityId)).Any())
+                if(actual.Length!=declaredUses.Length ||
+                    actual.Where((x,i)=>x.ContentId!=declaredUses[i].ContentId ||
+                        x.BlockId!=declaredUses[i].BlockId ||
+                        !StringComparer.Ordinal.Equals(x.CapabilityId,declaredUses[i].CapabilityId)).Any())
                     throw new InvalidOperationException("decision.plan.capability_closure_invalid");
             }
         }
