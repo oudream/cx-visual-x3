@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Core;
@@ -64,6 +65,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ManifestRuntimeBindingHandoffAndSafety();
             ImmutablePlanExecutionLoweringParity();
             DetachedPlanRuntimeLowering();
+            SignedPlanReleaseVerifiesAndStagesThroughMRK();
             VersionPinnedRuntimeHandoffRejectsDrift();
             DeclarativePlanPreservesV1V2Semantics();
             RuntimeBindingContractConsistency();
@@ -1444,6 +1446,152 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {wrongVersion=ex.Message.StartsWith("moc.bind.provider_version_mismatch:",StringComparison.Ordinal);}
             Check(wrongVersion && stale.Binding.Calls==0,
                 "detached loader must reject provider version drift before execution binding");
+        }
+
+        private sealed class SignedReleasePolicy : IMRKPlanPublicationPolicy
+        {
+            internal bool Safe;
+            public bool Authorize(string principal,MRKPlanPublishAction action,
+                MRKExecutionPlan plan,long revision)
+            {return principal=="release-officer";}
+            public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
+            {return Safe;}
+        }
+        private sealed class TestDurableReleaseAdmission : IMOCTrustedReleaseAdmission
+        {
+            // Test-only simulation; a real Host must persist this high watermark
+            // atomically across all processes and restarts.
+            private long _highest=1;
+            internal int Reservations;
+            public bool TryAuthorizeAndReserve(string principal,string scope,
+                long revision,byte[] digest)
+            {
+                if(principal!="release-officer"||scope!="station-42" ||
+                    digest==null||digest.Length!=32||revision<=_highest)
+                    return false;
+                _highest=revision;Reservations++;return true;
+            }
+        }
+
+        private static void SignedPlanReleaseVerifiesAndStagesThroughMRK()
+        {
+            MDCDeclarativePlan plan;
+            var catalog=new MDCStaticCatalogSnapshot(new[]{
+                new MOCCapabilityDescriptor("vision.gray16","Gray16","Vision")
+            });
+            var session=MEMEngineering.Create("decision-signed-release");
+            try
+            {
+                var page=session.AddPage("Inspect");
+                MOCFlowBuilder.Edit(session,page.RootContent,flow=>{
+                    flow.Step("vision.gray16");
+                });
+                plan=new MDCDeclarativePlanCompiler().Compile(
+                    session.GetSnapshot(),page.RootContent.Id,catalog);
+            }
+            finally {session.Close(true);}
+
+            byte[] archive=MDCPlanArchiveCodec.Serialize(plan);
+            var versions=new Dictionary<string,string>(StringComparer.Ordinal){
+                {"vision.gray16","vision.gray16/algorithm:1"}
+            };
+            var initial=new MRKExecutionPlan("initial-plan",new[]{
+                new MRKExecutionStep("baseline",new string[0],
+                    (ctx,token)=>Task.FromResult((object)0))
+            });
+            var slot=new MRKExecutionPlanSlot(initial,1,true);
+            var policy=new SignedReleasePolicy();
+            var publisher=new MRKExecutionPlanPublisher(slot,initial,1,policy);
+            var admission=new TestDurableReleaseAdmission();
+            using(RSA signer=RSA.Create())
+            {
+                signer.KeySize=2048;
+                var verifier=new MOCPinnedRsaReleaseVerifier(
+                    new Dictionary<string,RSAParameters>{
+                        {"factory-key",signer.ExportParameters(false)}
+                    });
+                var trusted=new MOCTrustedPlanPublisher(
+                    "station-42",verifier,admission,publisher);
+                byte[] toSign=MOCSignedPlanRelease.BuildSigningPayload(
+                    "station-42","factory-key",2,archive,versions);
+                byte[] signature=signer.SignData(toSign,HashAlgorithmName.SHA256,
+                    RSASignaturePadding.Pkcs1);
+                var release=new MOCSignedPlanRelease(
+                    "station-42","factory-key",2,archive,versions,signature);
+                byte[] exported=release.Export();
+                var imported=MOCSignedPlanRelease.Import(exported);
+                Check(imported.SigningPayload().SequenceEqual(toSign) &&
+                    imported.CopySignature().SequenceEqual(signature),
+                    "signed release must survive cross-process binary transfer unchanged");
+                var corrupted=(byte[])exported.Clone();
+                corrupted[corrupted.Length-1]^=1;
+                var forged=MOCSignedPlanRelease.Import(corrupted);
+                var signatureProbe=new VersionedProbeResolver();
+                bool denied=false;
+                try {trusted.VerifyAndStage("release-officer",forged,catalog,signatureProbe);}
+                catch(UnauthorizedAccessException e)
+                {denied=e.Message=="moc.release.signature_invalid";}
+                Check(denied && signatureProbe.Binding.Calls==0 &&
+                    admission.Reservations==0 && !publisher.PendingRevision.HasValue,
+                    "invalid signature may not resolve a capability, reserve a revision or stage a Plan");
+                var otherScope=new MOCTrustedPlanPublisher(
+                    "station-other",verifier,admission,publisher);
+                denied=false;
+                try {otherScope.VerifyAndStage("release-officer",imported,
+                    catalog,new VersionedProbeResolver());}
+                catch(UnauthorizedAccessException e)
+                {denied=e.Message=="moc.release.scope_denied";}
+                Check(denied && admission.Reservations==0,
+                    "cross-station signed release must be rejected");
+
+                var probe=new VersionedProbeResolver();
+                MRKPlanPublicationReceipt receipt=trusted.VerifyAndStage(
+                    "release-officer",imported,catalog,probe);
+                Check(receipt.Accepted && receipt.Revision==2 &&
+                    publisher.PendingRevision==2 && admission.Reservations==1 &&
+                    probe.Binding.Calls==1 && probe.Binding.Executions==0,
+                    "trusted signature and versioned Plan must stage via the existing MRK Publisher");
+                denied=false;
+                try {trusted.VerifyAndStage("release-officer",imported,catalog,
+                    new VersionedProbeResolver());}
+                catch(UnauthorizedAccessException e)
+                {denied=e.Message=="moc.release.admission_denied";}
+                Check(denied && admission.Reservations==1 &&
+                    publisher.PendingRevision==2,
+                    "durable Host watermark must reject replay without changing MRK PlanSlot");
+                Check(!publisher.TryActivate("release-officer") &&
+                    publisher.ActiveRevision==1,
+                    "signature alone must not bypass MRK Host safe-activation check");
+                policy.Safe=true;
+                Check(publisher.TryActivate("release-officer") &&
+                    publisher.ActiveRevision==2,
+                    "signed release must activate only through MRK Host safe point");
+                using(MRKExecutionPlanLease active=slot.Capture())
+                {
+                    Check(active.Revision==2 && active.Plan.Id!="initial-plan",
+                        "PlanSlot must hold the genuinely compiled signed Plan at revision 2");
+                }
+
+                // A genuinely signed but stale professional version must be
+                // refused before the Host's durable admission transaction.
+                byte[] wrong=MOCSignedPlanRelease.BuildSigningPayload(
+                    "station-42","factory-key",3,archive,
+                    new Dictionary<string,string>{{"vision.gray16","wrong"}});
+                var badVersions=new MOCSignedPlanRelease(
+                    "station-42","factory-key",3,archive,
+                    new Dictionary<string,string>{{"vision.gray16","wrong"}},
+                    signer.SignData(wrong,HashAlgorithmName.SHA256,
+                        RSASignaturePadding.Pkcs1));
+                var mismatchProbe=new VersionedProbeResolver();
+                bool mismatch=false;
+                try {trusted.VerifyAndStage("release-officer",badVersions,
+                    catalog,mismatchProbe);}
+                catch(InvalidOperationException e)
+                {mismatch=e.Message.StartsWith("moc.bind.provider_version_mismatch:",StringComparison.Ordinal);}
+                Check(mismatch && mismatchProbe.Binding.Calls==0 &&
+                    admission.Reservations==1 && publisher.ActiveRevision==2,
+                    "valid signature cannot authorize mismatched professional algorithm version");
+            }
         }
 
         private static void DeclarativePlanPreservesV1V2Semantics()

@@ -29,3 +29,12 @@
 - 持久化归档：[337c41ae9ca4](https://github.com/oudream/cx-visual-x3/commit/337c41ae9ca40ade256bd4b89eb3131abb05ae88)，编译期局部重名修复：[80b27ff27868](https://github.com/oudream/cx-visual-x3/commit/80b27ff278683bd6bae1c26847c0eded526befa1)。[Decision Windows 40888831599](https://github.com/oudream/cx-visual-x3/actions/runs/40888831599) **Success**：静态边界检查、.NET Framework 4.8 x64 全量 Build、`ArchitectureSmoke --decision`、默认 ArchitectureSmoke 均成功。
 - 对应 ArchitectureSmoke 已真实执行版本化二进制确定性、关闭工程后归档重载、V1 Loop / V2 Shared Content 编译 SourceMap 对齐、载荷损坏与截断拒绝测试。
 - 以上证据不等于 Host 可信发布签名、跨进程独立服务部署、设备 HIL 或生产安全互锁验收；这些仍为后续必须交付的独立门禁。
+
+## 可信签名发布门禁（2026-10-30 实装）
+
+- 新增 `MOCSignedPlanRelease` 版本化、固定顺序、领域分隔的待签名字节及签名信封 `Export/Import`；签名覆盖部署 `Scope`、受信 `KeyId`、发布修订号、完整能力版本锁、Decision 不可变 Plan 二进制归档。私钥仅由 Host/签名基础设施持有。
+- `MOCPinnedRsaReleaseVerifier` 实施受信公钥环 RSA-2048+ SHA-256 签名验证；**不信任归档内自带的公钥**；未知 KeyId、跨部署 Scope、签名错误必须在专业 Resolver 调用前拒绝。
+- `MOCTrustedPlanPublisher` 统一验证签名、重载 Plan、校验静态目录及 Host 版本锁、复核编译期间算法版本，并调用现有 `MRKExecutionPlanPublisher.StagePrecompiled`。MRK 原有权限策略、安全点、运行租约和修订号继续作为唯一运行切换所有者。
+- `IMOCTrustedReleaseAdmission` 由可信 Host 注入，负责**主体授权及持久化递增修订号的原子预留**，拒绝跨进程重放；不提供默认放行或内存版生产实现。预留早于 Stage 以保证故障后不倒退，Stage 失败会消耗当前修订号，需要 Host 重新签发更高修订号。
+- 测试只使用临时生成的非生产 RSA 密钥及测试型防重放存根；包含签名被修改、跨部署、重复发布、Host 安全点禁止激活、可信签名却版本过期等拒绝场景。
+- **仍未宣称完成**：生产 Host 可靠持久账本/密钥管理、独立进程部署、实际设备安全连锁和 HIL 长期试验；只有这些独立门禁满足后，才是工业生产完整发布闭环。
