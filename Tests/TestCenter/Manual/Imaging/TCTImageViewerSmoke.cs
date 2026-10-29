@@ -633,6 +633,64 @@ namespace CxVisual.TestCenter.UI
                     cpuResults.Items.Count!=0)
                     throw new InvalidOperationException("重新打开原图后旧Vision Run、Mask或浏览项没有清除");
                 cpuCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                // 拆分式按钮必须经过FIM内存图→MEM/MOC工程→MRK提交，且原始Gray16不变。
+                Button splitCpu=FindControl<Button>(frame,"TCT.Imaging.CpuVisionSplitRun");
+                ComboBox splitRadius=FindControl<ComboBox>(frame,"TCT.Imaging.CpuMedianRadius");
+                if(splitCpu==null || splitRadius==null)
+                    throw new InvalidOperationException("独立Mask/Region的真实WPF操作入口缺失");
+                cpuThreshold.Text="10";
+                cpuArea.Text="2";
+                splitRadius.SelectedItem=0;
+                splitCpu.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var splitWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && splitWait.ElapsedMilliseconds<20000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var splitEvidence=frame.CpuEvidence;
+                if(splitEvidence==null || splitEvidence.RunId==Guid.Empty ||
+                    splitEvidence.Items.Count(x=>x.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Mask)!=1 ||
+                    splitEvidence.Items.Single(x=>x.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Measurement).IntegerValue!=7 ||
+                    frame.Viewer.Session.Result==null ||
+                    frame.Viewer.Session.Result.GetGrayValue(1,2)!=255 ||
+                    frame.Viewer.Session.Original.PixelFormat!=FIMPixelFormat.Gray16 ||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0)!=1)
+                    throw new InvalidOperationException(
+                        "WPF拆分式MEM/MOC/MRK执行未生成真实7px²检测与原图Mask");
+                // 变更增强半径须使旧Run立即失效，下一Run才可发布增强图。
+                splitRadius.SelectedItem=1;
+                if(frame.CpuEvidence!=null || frame.Viewer.Session.Result!=null)
+                    throw new InvalidOperationException("修改中值半径后未撤销旧拆分式Run");
+                splitCpu.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var enhancedWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && enhancedWait.ElapsedMilliseconds<20000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var enhancedRun=frame.CpuEvidence;
+                if(enhancedRun==null || enhancedRun.RunId==splitEvidence.RunId ||
+                    !enhancedRun.Items.Any(x=>x.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Image) ||
+                    !enhancedRun.Items.Any(x=>x.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Mask) ||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0)!=1)
+                    throw new InvalidOperationException(
+                        "WPF五节点增强→独立Mask→Region→面积未真实执行或污染原图");
+                cpuCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                frame.SetOriginal(image);
+                splitRadius.SelectedItem=0;
                 // 真实变换页：矩形ROI中心种子 -> 后台生长 -> Gray8结果掩码和原像素反证。
                 frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
                 TabControl growthTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
