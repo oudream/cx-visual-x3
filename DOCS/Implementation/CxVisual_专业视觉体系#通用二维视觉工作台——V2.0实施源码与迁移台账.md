@@ -331,3 +331,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **现实边界**：`vision.cpu.inspection.result`属于现有MOC专业端口TypeId，在当前MOC编译器对非基础CLR类型采用`object`承载，Provider运行时对实际`CxVisionInspectionResult`做强类型拒绝；尚不等于跨所有Professional CLR类型的静态编译类型注册。RAW内容现由一次调用的Provider克隆持有：MEM Save/Open只证明流程定义持久化，不代表重新打开后无需重新绑定RAW就能执行、生产发布或长时复现。下一阶段需通过正式工程输入ResourceRef/Frame/Artifact/Calibration与版本管理解决，不允许第二套缓存或推断设备已验收。
 
 **Windows状态**：初次CI在[Imaging #40809026028](https://github.com/oudream/cx-visual-x3/actions/runs/40809026028) / [Engineering #40809025895](https://github.com/oudream/cx-visual-x3/actions/runs/40809025895) 因新增回归对脏工程`Dispose`触发`Unsaved changes`失败；[Studio S1 #40808893404](https://github.com/oudream/cx-visual-x3/actions/runs/40808893404) 因旧测试误设专业输出端口数为0失败。已在[be62449](https://github.com/oudream/cx-visual-x3/commit/be624496c2360f37485d61455402c986040303b0)及[13f5b42](https://github.com/oudream/cx-visual-x3/commit/13f5b42c2949dd24e518e2f3fc4e52ada13dac60)修正，保留正确强类型输出断言。后续MDS正式具名输出与运行提交一致性补充见最新代码。**新固定SHA必须重新跑CI，不能从先前的Windows成功推断全部通过。**
+
+### 20.1 工程节点首轮Windows结果（固定SHA）
+
+`13f5b42c2949dd24e518e2f3fc4e52ada13dac60` 的 [Engineering Organization Windows #40809379292](https://github.com/oudream/cx-visual-x3/actions/runs/40809379292) **success**，以及 [Module Center CPU RAW E2E #40809379183](https://github.com/oudream/cx-visual-x3/actions/runs/40809379183) **success**：修正测试脏工程释放后，正式MEM/MOC测量工程与旧2节点回归已在Windows执行，现有CPU工作流基本兼容。请勿把这两个成功扩大解释为随后`Area`具名MDS导出补丁、完整Studio/TestCenter UIA也已通过。
+
+同SHA [Studio S1 #40809379277](https://github.com/oudream/cx-visual-x3/actions/runs/40809379277) **failure**，实际日志停在“配置组合未使用可响应布局的统一1/2/3列容器”，属于并行配置呈现Owner/UI断言，与本次CPU输出类型断言并非同一失败点。本阶段不跨Owner擅改它。更新后的MOC具名Area输出（`6df4f808`～`5ec2ef62`）须以其独立固定SHA的Imaging/Runtime工作流重新验收。
