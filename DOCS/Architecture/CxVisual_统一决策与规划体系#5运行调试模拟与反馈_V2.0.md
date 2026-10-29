@@ -185,3 +185,9 @@ flowchart LR
 ## 14. 工业外部副作用与重试静态判断（D06部分实现）
 
 在真实Run出现PLC ACK未知、运动设备超时或结果可能已提交时，Runtime保留`Unknown/RequiresReconciliation`事实，不得将“超时”自动翻译成“ConfirmedFailed”。Decision的`MDCRecoverySafetyAssessor`基于专业Effect与Host提供的事实，返回是否静态具备重试资格，以及对账/权限/幂等证明缺口；**不会主动触达设备、发送命令或改变原MRK执行策略**。Studio/运营人员后续可据ReasonCode明确看到为什么不能直接重试。静态Allowed不是现场许可，工业HIL和授权Owner签署仍为独立门禁。
+
+## 15. D09：MOL原始控制流的可能路径与假设分支推演（静态软件切片）
+
+`MDCStaticPathExplorer.Explore(MOLWiringDefinition, assumedGuards?)`只读取Core权威V2连线定义；以EntryBlockId为起点沿Control边计算可能到达的原始BlockId。没有分支假设时保守展开所有可行控制出口，并返回`UndecidedBranchBlockIds`；有假设（如`bool:true`/`bool:false`）时仅按与ConditionId精确一致的边继续，错误/不可达的假设进入`InvalidAssumptionBlockIds`，`HasCompleteAssumptions`仅说明所有已访问分支有输入，并**不证明真实设备将这样运行**。
+
+这是路径图静态分析，绝非PSM设备模型/仿真引擎或MRK Replay。实际数据条件、并发Join、时间、故障、数据内容、PLC动作必须由专业Simulator与受控MRK/Host验证；静态“可达”不能作为设备安全/发布许可。该切片复用Core Validate与现有MOLLink，不建第二套FlowGraph、第二套执行引擎，也不自动保存假设。

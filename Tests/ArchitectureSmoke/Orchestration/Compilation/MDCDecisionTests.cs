@@ -57,6 +57,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ProjectCapabilityImpactUsesCoreSnapshot();
             RetrySafetyRequiresRealAcknowledgment();
             StaticWiringPreflightWithoutRuntime();
+            StaticBranchScenarioExploration();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -690,6 +691,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MOCCapabilityCatalog(new[] { new Provider() }),false);
             Check(offlineMissing.Verdict==MDCVerdict.Unknown,
                 "missing capability descriptor must remain Unknown");
+        }
+
+        private static void StaticBranchScenarioExploration()
+        {
+            var session = MEMEngineering.Create("decision-static-path");
+            try
+            {
+                var page = session.AddPage("Main");
+                Guid decide = Guid.Empty, yes = Guid.Empty, no = Guid.Empty, join = Guid.Empty;
+                MOCFlowBuilder.Edit(session, page.RootContent, builder => {
+                    decide = builder.Step("decide");
+                    yes = builder.Step("yes");
+                    no = builder.Step("no");
+                    join = builder.Step("join");
+                    builder.ConnectConditional(decide,"Done",yes,"Start","bool:true");
+                    builder.ConnectConditional(decide,"Done",no,"Start","bool:false");
+                    builder.Connect(yes,"Done",join,"Start");
+                    builder.Connect(no,"Done",join,"Start");
+                });
+                MOLWiringDefinition wiring = MOLWiringCodec.Get(
+                    session.GetSnapshot().Find(page.RootContent.Id));
+                var explorer = new MDCStaticPathExplorer();
+                var unknown = explorer.Explore(wiring);
+                Check(unknown.PossibleBlockIds.Count == 4 &&
+                    unknown.UndecidedBranchBlockIds.Count == 1 &&
+                    unknown.UndecidedBranchBlockIds[0] == decide &&
+                    !unknown.HasCompleteAssumptions,
+                    "no scenario guard should expand all possible branches without claiming certainty");
+                var chosen = explorer.Explore(wiring,
+                    new Dictionary<Guid,string> { {decide,"bool:true"} });
+                Check(chosen.HasCompleteAssumptions &&
+                    chosen.PossibleBlockIds.Count == 3 &&
+                    chosen.PossibleBlockIds.Contains(yes) &&
+                    chosen.PossibleBlockIds.Contains(join) &&
+                    !chosen.PossibleBlockIds.Contains(no),
+                    "true guard assumption should narrow possible route while retaining join");
+                var alternative = explorer.Explore(wiring,
+                    new Dictionary<Guid,string> { {decide,"bool:false"} });
+                Check(alternative.HasCompleteAssumptions &&
+                    alternative.PossibleBlockIds.Contains(no) &&
+                    !alternative.PossibleBlockIds.Contains(yes),
+                    "false guard assumption must be distinct");
+                var invalid = explorer.Explore(wiring,
+                    new Dictionary<Guid,string> { {decide,"case:UNKNOWN"} });
+                Check(!invalid.HasCompleteAssumptions &&
+                    invalid.InvalidAssumptionBlockIds.Contains(decide),
+                    "unknown branch label cannot be treated as valid simulation");
+                var unreachable = explorer.Explore(wiring,
+                    new Dictionary<Guid,string> { {no,"bool:true"} });
+                Check(!unreachable.HasCompleteAssumptions &&
+                    unreachable.InvalidAssumptionBlockIds.Contains(no),
+                    "assumptions on unconditional blocks cannot be accepted");
+            }
+            finally { session.Close(true); }
         }
 
     }

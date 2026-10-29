@@ -207,3 +207,7 @@ sequenceDiagram
 ## 14. 现有MOL工程静态预检的开发者使用节点
 
 在Studio/SDK选择构建当前Content时，先从唯一Core工程真源获取`MOLWiringCodec.Get(snapshot.Find(contentId))`，再由`MDCStaticBuildPreflight`消费原`MOCCapabilityCatalog`。只读返回Fail/Unknown/Allowed与精确BlockId、MemberId；用户确认后仍由唯一Core Edit事务维护节点/Undo。该切片是增量构建前诊断，**不是第二套Flow编译器**，也不能代替已有MOCBuildService与MRK Loader的全程验证。
+
+## 15. 约束引导后的静态路径可达性提示
+
+Studio可以消费`MDCStaticPathExplorer`的PossibleBlockIds、UndecidedBranchBlockIds与InvalidAssumptionBlockIds，高亮当前输入假设下**可能**经过的Block，并指明哪些分支条件未提供。Headless SDK和WPF画布应共用同一静态分析结果；这一接口不读取真实输入像素/设备，不执行任何专业算法，也不修改工程。完整UI高亮/条件表单仍待独立集成；不要把静态结果命名成“设备仿真已通过”。

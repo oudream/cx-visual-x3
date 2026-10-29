@@ -66,3 +66,7 @@
 ## 07. P0静态MOLWiring与专业Schema预检的工程切片
 
 新增`Mechanism/Orchestration/MDCStaticBuildPreflight.cs`，不需要MRK Resolver，对既有`MOLWiringDefinition`和`MOCCapabilityCatalog`进行单一Content端口预检并返回可精确定位的RuleId。复用Core原来的草稿/正式Build校验，不另建工程Graph、第二种Compiler或MRK流程执行器。新增MDC-56～60正反测试。此次只是迈向纯Decision Plan的静态前置检查，`MOCBuildService.Build`与`MOCEngineeringCompiler`仍存在对Runtime的依赖，物理融合P0未解除。
+
+## 08. D09静态路径推演（软件试点，并非仿真引擎）
+
+新增`MDCStaticPathExplorer.cs`，从Core权威MOLWiring定义计算可能控制路径，支持有/无`ConditionId`假设、未知与错误分支说明，不执行任何Provider、MRK、设备动作。测试采用真实`MOCFlowBuilder.Edit`生成四节点真假分支与Join；待Windows验收后可记静态路径能力Automated。真正的PSM虚拟模型、实时Clock/设备状态、安全隔离、历史Replay、HIL和专业验证仍是D09的未完成核心要求。

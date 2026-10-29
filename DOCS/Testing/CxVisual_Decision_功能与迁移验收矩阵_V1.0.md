@@ -353,3 +353,15 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-60 | 若要求Executable而MOL仍是不完整草稿 → 由原Core校验拒绝，不生成MRK Plan |
 
 该结果无任何设备/Provider执行，也不宣称跨子流程/真实权限完整通过。源代码阶段新增`MDCStaticBuildPreflight`，其专项和默认ArchitectureSmoke实际结果以提交SHA的Windows Run为准。
+
+### D09静态路径场景（不等同Virtual/HIL）
+
+| Case | 软件测试断言 |
+|---|---|
+| MDC-61 | 无分支假设时保留所有可能分支，标出未决定BranchId |
+| MDC-62 | 显式bool:true/false分别缩小候选路径，Join原始BlockId准确 |
+| MDC-63 | 不存在的分支标签标Invalid，不冒充成功推演 |
+| MDC-64 | 无条件节点设置分支假设应判Invalid；不可达节点不能据此被认为已执行 |
+| MDC-65 | 静态探索没有任何专业Provider、MRK调用或设备命令 |
+
+`HasCompleteAssumptions`仅表示此静态探索的已访问条件都有假设，不能提高Virtual/Replay/HIL的证据等级。物理仿真/场景模型/真实设备安全依然未验收。
