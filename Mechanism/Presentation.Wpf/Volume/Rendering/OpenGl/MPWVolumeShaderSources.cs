@@ -166,7 +166,8 @@ void main() { gl_Position = vec4(aPosition, 1.0) * mvp; }";
         internal const string LineFragment = @"
 #version 330 core
 uniform vec3 lineColor;
+uniform float overlayOpacity;
 out vec4 FragColor;
-void main() { FragColor = vec4(lineColor, 0.86); }";
+void main() { FragColor = vec4(lineColor, overlayOpacity); }";
     }
 }
