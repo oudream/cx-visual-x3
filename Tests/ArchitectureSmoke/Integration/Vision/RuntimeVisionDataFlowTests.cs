@@ -131,21 +131,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ConcurrentFlowOwnershipIsolation()
         {
             MRKExecutionPlan plan = CxVisionDataFlow.CreateCpuInspectionPlan(Options(200));
-            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 16));
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 64));
             try
             {
-                var a = engine.StartFlow(plan, Inputs(
-                    new byte[] { 255, 255, 0, 0, 0, 0 }, 3, 2));
-                var b = engine.StartFlow(plan, Inputs(
-                    new byte[] { 0, 0, 0, 0, 0, 0 }, 3, 2));
-                var ra = a.Completion.GetAwaiter().GetResult();
-                var rb = b.Completion.GetAwaiter().GetResult();
-                Check(ra.State == MRKFlowState.Completed &&
-                    rb.State == MRKFlowState.Completed &&
-                    ra.FlowId != rb.FlowId &&
-                    ra.GetCommittedOutput<CxVisionInspectionResult>("Inspection").Regions.Count == 1 &&
-                    rb.GetCommittedOutput<CxVisionInspectionResult>("Inspection").Regions.Count == 0,
-                    "并行真实图像Flow发生跨Run数据污染");
+                // B4: ten independently admitted product instances share one immutable
+                // plan, but must never share their per-Flow MDS inputs or outputs.
+                var flows = new List<MRKFlowHandle>();
+                for (int i = 0; i < 10; ++i)
+                    flows.Add(engine.StartFlow(plan, Inputs(i % 2 == 0
+                        ? new byte[] { 255, 255, 0, 0, 0, 0 }
+                        : new byte[] { 0, 0, 0, 0, 0, 0 }, 3, 2)));
+                var seen = new HashSet<Guid>();
+                for (int i = 0; i < flows.Count; ++i)
+                {
+                    MRKFlowResult result = flows[i].Completion.GetAwaiter().GetResult();
+                    Check(result.State == MRKFlowState.Completed &&
+                        seen.Add(result.FlowId), "B4 duplicated or failed product Flow");
+                    CxVisionInspectionResult inspected =
+                        result.GetCommittedOutput<CxVisionInspectionResult>("Inspection");
+                    Check(inspected.Regions.Count == (i % 2 == 0 ? 1 : 0) &&
+                        result.GetCommittedOutput<bool>("Passed") == (i % 2 != 0),
+                        "B4 parallel product result leaked between MDS scopes");
+                }
+                Check(seen.Count == 10, "B4 did not isolate ten product instances");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
