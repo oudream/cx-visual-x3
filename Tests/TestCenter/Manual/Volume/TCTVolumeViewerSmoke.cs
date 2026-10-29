@@ -11,6 +11,7 @@ using CxVisual.Foundation.Volume;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Mechanism.Presentation.Wpf.Volume;
+using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Professional.CT3D;
 
 namespace CxVisual.TestCenter.UI
@@ -892,6 +893,29 @@ namespace CxVisual.TestCenter.UI
                         Check(frame.GpuControlForHardwareTest.SurfaceMeshTriangleCount==
                               meshResult.Mesh.TriangleCount,
                             "真实GPU必须上传三角面VBO，不能用Surface点冒充Mesh");
+                    // B包真正的WPF多Mesh：不同专业/装配对象独立管理显示几何，
+                    // 不覆盖已有CT3D Mesh显示且全部共享现有三维视口。
+                    MPWVolumeDisplayMesh previewMesh=MPWVolumeSurfaceProjection.ProjectMesh(
+                        meshResult.Mesh,frame.Volume.SpatialFrame,
+                        frame.Volume.OriginalWidth,frame.Volume.OriginalHeight,
+                        frame.Volume.OriginalDepth);
+                    Guid additionalCad=Guid.NewGuid(),additionalMesh=Guid.NewGuid();
+                    frame.Scene.SetAdditionalMesh(additionalCad,previewMesh,.35);
+                    frame.Scene.SetAdditionalMesh(additionalMesh,previewMesh,.85);
+                    Check(frame.Scene.AdditionalMeshCount==2&&
+                        frame.Scene.AdditionalMeshTriangleCount==2*previewMesh.TriangleCount&&
+                        frame.Scene.SurfaceMeshTriangleCount==meshResult.Mesh.TriangleCount,
+                        "同一WPF 3D视口可独立组合两个Mesh/CAD实例与原专业Mesh");
+                    frame.Scene.SetAdditionalMesh(additionalCad,previewMesh,.6);
+                    Check(frame.Scene.AdditionalMeshCount==2,
+                        "相同实例调整透明度必须更新而非复制三维对象");
+                    frame.Scene.RemoveAdditionalMesh(additionalCad);
+                    Check(frame.Scene.AdditionalMeshCount==1,
+                        "删除一个显示实例不得破坏其它专业几何");
+                    frame.Scene.ClearAdditionalMeshes();
+                    Check(frame.Scene.AdditionalMeshCount==0&&
+                        frame.Scene.AdditionalMeshTriangleCount==0,
+                        "多对象显示资源清理必须完整释放全部附加几何");
                     FGEMeshRayHit picked;
                     var bounds=meshResult.Mesh;
                     double rayX=(bounds.BoundsMin.X+bounds.BoundsMax.X)*.5;
