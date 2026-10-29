@@ -64,6 +64,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(ArgumentOutOfRangeException){invalidOpacity=true;}
                 Check(invalidOpacity && scene3d.Revision==5,
                     "非法透明度必须整体拒绝而不改变状态");
+                Guid cadRef=scene3d.Add(MVI3DSceneKind.Cad,"cad:assembly:fixture",1,
+                    "volume:physical-frame",.4);
+                Guid maskRef=scene3d.Add(MVI3DSceneKind.Mask,"ct3d:mask:region",1,
+                    "volume:physical-frame");
+                scene3d.SetOrganization(cadRef,"reference","inspection");
+                scene3d.SetOrganization(maskRef,"analysis","inspection");
+                Check(scene3d.SnapshotLayer("reference").Count==1&&
+                    scene3d.SnapshotLayer("analysis").Count==1&&
+                    scene3d.SnapshotLayer("default").Count==2,
+                    "CAD、Mask与Volume及Surface可按不同可视图层组织，共享已有来源引用");
+                scene3d.Select(cadRef);
+                long beforeGroup=scene3d.Revision;
+                scene3d.SetGroupVisibility("inspection",false);
+                Check(scene3d.Revision==beforeGroup+1&&scene3d.SelectedId==null&&
+                    scene3d.SnapshotLayer("reference")[0].Opacity==.4&&
+                    !scene3d.SnapshotLayer("analysis")[0].Visible,
+                    "整组显隐单次通知且清理被隐藏的专业选择，保留透明度");
+                scene3d.SetGroupVisibility("inspection",false);
+                Check(scene3d.Revision==beforeGroup+1,"幂等整组显隐不能虚增场景Revision");
+                scene3d.SetGroupVisibility("inspection",true);
+                bool invalidLayer=false;
+                try{scene3d.SetOrganization(cadRef,"  ");}catch(ArgumentException){invalidLayer=true;}
+                Check(invalidLayer&&scene3d.SnapshotLayer("reference").Count==1,
+                    "非法图层更新不能损坏现有场景引用");
+                scene3d.Remove(cadRef);
+                scene3d.Remove(maskRef);
                 scene3d.Remove(resultRef);
                 Check(scene3d.Count==1,"移除专业结果仅解除Scene引用，不销毁资源");
                 scene3d.Clear();
