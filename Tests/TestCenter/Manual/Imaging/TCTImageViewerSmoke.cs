@@ -343,13 +343,17 @@ namespace CxVisual.TestCenter.UI
                 Slider widthSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowWidthSlider");
                 Slider centerSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowCenterSlider");
                 TextBlock windowRange=FindControl<TextBlock>(frame,"TCT.Imaging.WindowRange");
+                TextBlock windowWidthMax=FindControl<TextBlock>(frame,"TCT.Imaging.WindowWidthMax");
+                TextBlock windowCenterMax=FindControl<TextBlock>(frame,"TCT.Imaging.WindowCenterMax");
                 CheckBox roiWindow=FindControl<CheckBox>(frame,"TCT.Imaging.WindowRoi");
                 CheckBox windowEnabled=FindControl<CheckBox>(frame,"TCT.Imaging.WindowEnabled");
                 Button windowApply=FindControl<Button>(frame,"TCT.Imaging.Window");
                 Button autoWindow=FindControl<Button>(frame,"TCT.Imaging.AutoWindow");
                 if(windowWidth==null||windowCenter==null||windowApply==null||autoWindow==null||
                    widthSlider==null||centerSlider==null||roiWindow==null||windowEnabled==null||
-                   windowRange==null||!windowRange.Text.Contains("65535"))
+                   windowRange==null||!windowRange.Text.Contains("65535")||
+                   windowWidthMax==null||windowWidthMax.Text!="65535" ||
+                   windowCenterMax==null||windowCenterMax.Text!="65535")
                     throw new InvalidOperationException("窗宽/窗位缺少数字与真实WPF滑条");
                 windowWidth.Text="15";
                 windowCenter.Text="8.5";
@@ -451,7 +455,8 @@ namespace CxVisual.TestCenter.UI
                 frame.SetOriginal(gray8WindowProbe);
                 if(windowWidth.Text!="255" || windowCenter.Text!="127.5" ||
                    widthSlider.Maximum!=255 || centerSlider.Maximum!=255 ||
-                   !windowRange.Text.Contains("0～255"))
+                   !windowRange.Text.Contains("0～255") ||
+                   windowWidthMax.Text!="255" || windowCenterMax.Text!="255")
                     throw new InvalidOperationException("Gray8载入后仍沿用Gray16默认窗范围");
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 frame.Viewer.SavePng(file);
