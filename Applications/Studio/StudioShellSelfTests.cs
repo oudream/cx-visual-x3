@@ -3475,6 +3475,44 @@ namespace CxVisual.Studio
                             restored.Parameters[authored.RegionBlockId]["RuleVersion"]==
                                 controls.ReleaseVersion,
                             "工程持久V2 Codec无法无损保存/还原真实视觉流程参数与连线");
+                        // 真正SaveAs → Close → Open，验证V2连线、输入出口和锁定参数。
+                        string templateFile=Path.Combine(folder,"VisionTemplate.cxproj");
+                        Guid persistedPage=Guid.Empty;
+                        Guid persistedMask=Guid.Empty;
+                        var localOptions=provider.CaptureInspectionOptions();
+                        using(var authoredProject=MEMEngineering.Create("Vision可复用节点工程"))
+                        {
+                            try
+                            {
+                                var localProvider=new CxVisionThresholdProvider(
+                                    localOptions,provider.ConfigurationRevision);
+                                var template=MainWindow.CreateStudioSeparatedVisionFlow(
+                                    authoredProject,localProvider);
+                                persistedPage=template.PageId;
+                                persistedMask=template.MaskBlockId;
+                                authoredProject.SaveAs(templateFile);
+                            }
+                            finally { authoredProject.Close(true); }
+                        }
+                        using(var reopenedProject=MEMEngineering.Open(templateFile))
+                        {
+                            try
+                            {
+                                var pageFromDisk=reopenedProject.GetSnapshot().Find(persistedPage);
+                                Assert(pageFromDisk!=null && pageFromDisk.Kind==MEMNodeKind.Page,
+                                    "视觉专业流程SaveAs/Close/Open后Page身份丢失");
+                                var pageContent=reopenedProject.GetSnapshot().Nodes.Single(n=>
+                                    n.Kind==MEMNodeKind.Content && n.ParentId==persistedPage);
+                                var persisted=MOLWiringCodec.Get(pageContent);
+                                persisted.ValidateExecutable();
+                                Assert(persisted.Blocks.Count==3 && persisted.Links.Count==4 &&
+                                    persisted.FlowInputs.Count==3 && persisted.FlowOutputs.Count==3 &&
+                                    persisted.Parameters[persistedMask]["Threshold"]=="200" &&
+                                    !reopenedProject.IsDirty,
+                                    "正式MEM工程磁盘重开丢失视觉专业拓扑/阈值或误标脏工程");
+                            }
+                            finally { reopenedProject.Close(true); }
+                        }
                         // 该定义可以由既有MOL编辑器继续编辑，不能是按钮里的临时Graph。
                         MOCFlowBuilder.Edit(session,authoredPage.RootContent,b=>
                             b.Move(authored.MaskBlockId,144,88));
