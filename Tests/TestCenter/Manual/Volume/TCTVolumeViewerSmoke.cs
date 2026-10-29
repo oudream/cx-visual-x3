@@ -823,6 +823,30 @@ namespace CxVisual.TestCenter.UI
                         frame,"MPW.Volume.SceneObjects");
                     Check(objectPanel!=null&&objectPanel.DisplayedObjectCount==3,
                         "正式MPW多对象面板须实时列出Volume、Surface、Measurement");
+                    TextBox sceneLayer=FindVisualByAutomationId<TextBox>(
+                        frame,"MPW.Scene.Layer");
+                    TextBox sceneGroup=FindVisualByAutomationId<TextBox>(
+                        frame,"MPW.Scene.Group");
+                    Button applyGroup=FindVisualByAutomationId<Button>(
+                        frame,"MPW.Scene.ApplyGroup");
+                    Button toggleGroup=FindVisualByAutomationId<Button>(
+                        frame,"MPW.Scene.ToggleGroup");
+                    Check(sceneLayer!=null&&sceneGroup!=null&&applyGroup!=null&&toggleGroup!=null,
+                        "正式MPW须具有实际可操作的图层分组与整组显隐控件");
+                    sceneLayer.Text="surface";
+                    sceneGroup.Text="wpf-group";
+                    applyGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,applyGroup));
+                    MVI3DSceneItem groupedItem;
+                    Check(frame.ViewState.Scene3D.TryGet(frame.ViewState.Scene3D.SelectedId.Value,
+                        out groupedItem)&&groupedItem.LayerKey=="surface"&&
+                        groupedItem.GroupKey=="wpf-group",
+                        "WPF图层分组编辑必须写入唯一MVI Scene状态");
+                    toggleGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,toggleGroup));
+                    Check(frame.SurfaceDisplayedPointCount==0,
+                        "通过真实WPF按钮整组隐藏应清理Surface显示");
+                    toggleGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,toggleGroup));
+                    Check(frame.SurfaceDisplayedPointCount>100,
+                        "通过真实WPF按钮恢复整组应重用已计算原值Surface");
                     Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
                     var scene=frame.ViewState.Scene3D;
                     Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
