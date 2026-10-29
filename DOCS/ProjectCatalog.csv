@@ -7,14 +7,13 @@ Foundation,CxVisual.Foundation.Volume,F12,Assembly-only skeleton,
 Foundation,CxVisual.Foundation.Data,F14 F15 F18 F21,Assembly-only skeleton,
 Foundation,CxVisual.Foundation.Infrastructure,F16 F19 F20,Implemented sample,
 Foundation,CxVisual.Foundation.Transport,F17,Channel runtime and FCM configuration implemented,CxVisual.Foundation.Data
-Mechanism,CxVisual.Mechanism.Core,M01-M08 M38,Implemented sample,CxVisual.Foundation.Core
+Mechanism,CxVisual.Mechanism.Core,M01-M08 M38 M39-Service,Implemented sample and Service module lifecycle,CxVisual.Foundation.Core
 Mechanism,CxVisual.Mechanism.Data,M09 M10 M35 M36,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Logic,M11 M12,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Connectivity,M13-M15,Connector Protocol PointTable DataMapping implemented,"CxVisual.Mechanism.Core, CxVisual.Foundation.Data, CxVisual.Foundation.Transport"
 Mechanism,CxVisual.Mechanism.Visual,M16 M17 M37,Implemented sample,"CxVisual.Foundation.Geometry, CxVisual.Mechanism.Core"
 Mechanism,CxVisual.Mechanism.Orchestration,M18-M25,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Runtime,M26-M34,Assembly-only skeleton,
-Mechanism,CxVisual.Mechanism.Lifecycle,M39 M40,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Presentation.Wpf,WPF technology adapter (no M-ID),Implemented sample,"CxVisual.Mechanism.Visual, CxVisual.Foundation.Geometry"
 Professional,CxVisual.Professional.Automation,P01-P18,Assembly-only skeleton,
 Professional,CxVisual.Professional.HMI,P19-P29,Assembly-only skeleton,
