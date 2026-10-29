@@ -67,7 +67,7 @@ namespace CxVisual.TestCenter.UI
             Window window=null;
             try
             {
-                var frame=new TCTManualModuleFrame(configRoot);
+                TCTManualModuleFrame frame=new TCTManualModuleFrame(configRoot);
                 window=new Window {Title="CxVisual Driver Evidence UIA",Width=1200,Height=850,
                     Content=frame,WindowStartupLocation=WindowStartupLocation.CenterScreen};
                 window.Show();window.UpdateLayout();
@@ -86,7 +86,7 @@ namespace CxVisual.TestCenter.UI
                     selected.Select();
                 });
                 window.UpdateLayout();
-                var panel=frame.DriverTestPanel;
+                TCTDriverReadinessPanel panel=frame.DriverTestPanel;
                 Check(panel!=null,"Driver预检页没有实际嵌入共享中心");
                 await Click(hwnd,"TCT.Driver.Probe");
                 await Until(()=>panel.StatusMessage.StartsWith("Driver预检拒绝"),
@@ -106,6 +106,33 @@ namespace CxVisual.TestCenter.UI
                 Check(committed.Success,"Driver真实MHS保存失败："+committed.ErrorCode);
                 if(section.HasPendingApply)
                     Check(section.ApplyPendingAtTaskBoundary(),"Driver Effective生效失败");
+                // The original Frame legitimately caches its MHS ConfigSection.
+                // Reopen the WPF workspace to read the now-persisted Effective
+                // from a new authoritative service, rather than altering a
+                // cached section in place or faking a UI refresh.
+                window.Close();
+                frame=new TCTManualModuleFrame(configRoot);
+                window=new Window {Title="CxVisual Driver Reopened Effective UIA",
+                    Width=1200,Height=850,Content=frame,
+                    WindowStartupLocation=WindowStartupLocation.CenterScreen};
+                window.Show();window.UpdateLayout();
+                frame.SelectModuleKind(MFMModuleKind.Driver);
+                frame.SetModuleId(id);
+                hwnd=new WindowInteropHelper(window).Handle;
+                Check(hwnd!=IntPtr.Zero,"重开Driver窗口未创建HWND");
+                await Click(hwnd,"TCT.Module.Open");
+                await Until(()=>frame.HasOpenedConfiguration&&!frame.IsBusy,
+                    "重开已保存Driver Effective配置");
+                await Task.Run(()=>{
+                    var page=Find(hwnd,"TCT.Module.Page.driver-probe");
+                    var selected=page.GetCurrentPattern(SelectionItemPattern.Pattern)
+                        as SelectionItemPattern;
+                    if(selected==null)throw new InvalidOperationException(
+                        "重开Driver预检Tab不可选择");
+                    selected.Select();
+                });
+                window.UpdateLayout();
+                panel=frame.DriverTestPanel;
                 await Set(hwnd,"TCT.Driver.SdkFile",sdk);
                 await Click(hwnd,"TCT.Driver.Probe");
                 await Until(()=>panel.LastProbe!=null,"真实Windows/FCM环境证据");
