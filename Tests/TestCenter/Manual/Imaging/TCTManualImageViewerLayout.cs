@@ -31,8 +31,14 @@ namespace CxVisual.TestCenter.UI
         private readonly System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>
             _layerColorButtons=new System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>();
         private Slider _windowWidthSlider,_windowCenterSlider;
-        private readonly TextBox _windowWidthInput=new TextBox { Width=72,Text="65535",Margin=new Thickness(2) };
-        private readonly TextBox _windowCenterInput=new TextBox { Width=72,Text="32767.5",Margin=new Thickness(2) };
+        private readonly TextBlock _windowRangeHint=new TextBlock {
+            Text="窗宽范围：1～65535；窗位范围：0～65535",
+            FontSize=12, Foreground=Brushes.SteelBlue,
+            TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,2,4,5) };
+        private readonly TextBox _windowWidthInput=new TextBox { MinWidth=85,Width=90,
+            Text="65535",Margin=new Thickness(2),HorizontalContentAlignment=HorizontalAlignment.Right };
+        private readonly TextBox _windowCenterInput=new TextBox { MinWidth=85,Width=90,
+            Text="32767.5",Margin=new Thickness(2),HorizontalContentAlignment=HorizontalAlignment.Right };
         private readonly CheckBox _windowEnabled=new CheckBox { Content="应用窗宽窗位",IsChecked=false,Margin=new Thickness(4) };
         private readonly CheckBox _windowRoi=new CheckBox { Content="框选自动取窗",IsChecked=false,Margin=new Thickness(4) };
         private bool _syncingWindowControls;
@@ -389,6 +395,7 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(Row(_windowEnabled,_windowRoi));
             content.Children.Add(WindowSliderRow("窗宽",_windowWidthInput,true,out _windowWidthSlider));
             content.Children.Add(WindowSliderRow("窗位",_windowCenterInput,false,out _windowCenterSlider));
+            content.Children.Add(_windowRangeHint);
             _windowEnabled.Checked+=(sender,args)=>{if(!_syncingWindowControls) ApplyWindowFromSlider();};
             _windowEnabled.Unchecked+=(sender,args)=>{if(!_syncingWindowControls) ResetWindowOnly();};
             WrapPanel actions=Row();
@@ -415,9 +422,10 @@ namespace CxVisual.TestCenter.UI
         private UIElement WindowSliderRow(string label,TextBox field,bool isWidth,out Slider slider)
         {
             Grid row=new Grid { Margin=new Thickness(2,9,2,9) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(43) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(80) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(37) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(94) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star),
+                MinWidth=50 });
             row.Children.Add(Label(label));
             slider=new Slider {
                 Minimum=isWidth?1:0, Maximum=_windowLimit,
