@@ -145,10 +145,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
     {
         private MVI3DSceneState _scene;
         private readonly StackPanel _rows=new StackPanel();
+        private readonly TextBox _layerInput=new TextBox {Text="default",Width=92,
+            Margin=new Thickness(1)};
+        private readonly TextBox _groupInput=new TextBox {Text="inspection",Width=92,
+            Margin=new Thickness(1)};
+        private readonly TextBlock _feedback=new TextBlock {TextWrapping=TextWrapping.Wrap};
         public int DisplayedObjectCount {get;private set;}
         public MPWVolumeSceneObjectListControl()
         {
             AutomationProperties.SetAutomationId(this,"MPW.Volume.SceneObjects");
+            var editor=new StackPanel {Orientation=Orientation.Horizontal};
+            AutomationProperties.SetAutomationId(_layerInput,"MPW.Scene.Layer");
+            AutomationProperties.SetAutomationId(_groupInput,"MPW.Scene.Group");
+            editor.Children.Add(_layerInput);editor.Children.Add(_groupInput);
+            var apply=new Button {Content="分组",Margin=new Thickness(2)};
+            AutomationProperties.SetAutomationId(apply,"MPW.Scene.ApplyGroup");
+            apply.Click+=(sender,args)=>{
+                if(_scene==null||!_scene.SelectedId.HasValue)
+                {_feedback.Text="请选择一个可见对象。";return;}
+                try
+                {
+                    _scene.SetOrganization(_scene.SelectedId.Value,
+                        _layerInput.Text,_groupInput.Text.Length==0?null:_groupInput.Text);
+                    _feedback.Text="";
+                }
+                catch(ArgumentException ex){_feedback.Text=ex.Message;}
+            };
+            editor.Children.Add(apply);
+            var toggle=new Button {Content="整组显隐",Margin=new Thickness(2)};
+            AutomationProperties.SetAutomationId(toggle,"MPW.Scene.ToggleGroup");
+            toggle.Click+=(sender,args)=>{
+                if(_scene==null||string.IsNullOrWhiteSpace(_groupInput.Text))
+                {_feedback.Text="请填写组标识。";return;}
+                bool anyVisible=false;
+                foreach(MVI3DSceneItem item in _scene.Snapshot())
+                    if(item.GroupKey==_groupInput.Text&&item.Visible)anyVisible=true;
+                _scene.SetGroupVisibility(_groupInput.Text,!anyVisible);
+            };
+            editor.Children.Add(toggle);
+            Children.Add(editor);
+            Children.Add(_feedback);
             Children.Add(_rows);
         }
         public void Bind(MVI3DSceneState scene)
