@@ -34,7 +34,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Core", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Data", "Mechanism\Data\CxVisual.Mechanism.Data.csproj", "{6857DA00-7E17-5593-B8DC-C85EEA772140}"
 EndProject
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Connectivity", "Mechanism\Connectivity\CxVisual.Mechanism.Connectivity.csproj", "{C7214F9E-1205-5F24-AA31-39FD49CD7EE1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CxVisual.Mechanism.Visual", "Mechanism\Visual\CxVisual.Mechanism.Visual.csproj", "{A6C1F1D1-2E3F-54AF-8E35-1A1EBA6B9CB3}"
