@@ -294,3 +294,18 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - [Imaging Windows #40693675846](https://github.com/oudream/cx-visual-x3/actions/runs/40693675846) **success**：Windows x64全Solution构建、Owner DAG、真实WPF Viewer/PNG、ArchitectureSmoke `--imaging`和默认回归、3D切片/截图上传均成功。新MRK测量步骤和无界面API正反数值用例实际随`--imaging`执行；本项可标G3/G4（该固定SHA及具体用例）。
 - [Unified Runtime Windows #40693675869](https://github.com/oudream/cx-visual-x3/actions/runs/40693675869) **success**：相同SHA，Windows全构建与Runtime专项。
 - TestCenter完整工作流是独立G4/G5验证门禁；[TestCenter #40693629251](https://github.com/oudream/cx-visual-x3/actions/runs/40693629251)属稍早`c25e50d`固定提交，首次登记in_progress；完成后需核查实际WPF UIA结果。人工颜色对话框、工业Frame/Artifact/四节点工程发布与HIL不得借此视为已过。
+
+## 19. CASE-ARCH-01 第二阶段MEM/MOC测量节点正式工程验收（2026-10-29）
+
+| ID | 可执行正反场景 | 验收状态 |
+|---|---|---|
+| ARCH-O01 | 真实MEM工程按RAW→Inspect→Measure产生三个MOL块、两条Data边及MPC专业类型端口；测量Capability可被MOC描述与MRK解析；不创建新的工程树/执行器 | 源码与回归已提交，最新CI待验证 |
+| ARCH-O02 | `MOCProjectRelease.Prepare/Stage`核对RAW SHA/阈值Provider配置版本/测量算法版本，受限PlanSlot激活；MRK真实完成两个专业步骤，SourceMap包含Measure BlockId | 已编码，待固定SHA Windows |
+| ARCH-O03 | 5×3 Gray8 RAW中4个阈值命中、3个被面积规则接收；工程正式`AcceptedRegionPixelArea`的MDS CommittedOutput必须为3px²，与Measure StepResult/Region合计和同Run证据一致；无毫米标定不发布mm² | 已编码，待固定SHA Windows |
+| ARCH-O04 | 工程`SaveAs`/重新`Open`后MOL3节点、Data边和公开Area输出保持；**仅验证定义保存**，不冒充RAW文件/Provider绑定自动持久化或生产恢复 | 已编码，待固定SHA Windows |
+| ARCH-O05 | 原`ExecuteAsync`仍为2节点且无`Measurement`；编辑脏工程显式`Close(true)`不触发不必要的存储阻断 | CI首版暴露清理缺陷，已修正，待复跑 |
+| UI-COMP-01 | Studio共享CPU执行入口、TestCenter Compute真实按钮使用同一Professional`ExecuteMeasuredAsync`；TestCenter UIA必须看到MeasureBlockId、3px²与对应完成Trace | 已编码，待新版UIA |
+
+**首批真实CI失败必须保留**：[Imaging #40809026028](https://github.com/oudream/cx-visual-x3/actions/runs/40809026028)、[Engineering #40809025895](https://github.com/oudream/cx-visual-x3/actions/runs/40809025895)、[Runtime #40809025929](https://github.com/oudream/cx-visual-x3/actions/runs/40809025929) 失败堆栈`Unsaved changes; save or explicitly discard`（新增旧2节点工程用例的清理问题）；[Studio S1 #40808893404](https://github.com/oudream/cx-visual-x3/actions/runs/40808893404)旧能力目录断言0个输出已过时。修复已提交，但不能以修复提交替代最新固定SHA的成功日志。
+
+本阶段没有完成泛化MPM算法Schema、ImageSet/FrameLease、ROI工程资源提交、ArtifactRef/Review、完整四算子与设备/GPU/AI，也没有实物现场证据。
