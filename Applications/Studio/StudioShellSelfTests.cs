@@ -3291,7 +3291,7 @@ namespace CxVisual.Studio
                             session,currentPage.RootContent,provider,
                             CxVisionAcceptedRegionMeasureProvider.CapabilityId);
                         currentPage=session.Find(compositionPage.Id) as MEMPage;
-                        var composed=MOLWiringCodec.Get(currentPage.RootContent);
+                        var composed=MOLWiringCodec.Get(session.GetSnapshot().Find(currentPage.RootContent.Id));
                         var controls=new CxVisionMaskRegionsProvider(
                             provider.CaptureInspectionOptions(),provider.ConfigurationRevision);
                         Assert(composed.Blocks.Count==3 &&
