@@ -110,17 +110,31 @@ namespace CxVisual.Professional.CT3D
         {
             get
             {
-                if(Kind!=CT3DAnalysisKind.MeshPlane)return null;
+                if(Kind==CT3DAnalysisKind.SurfaceSphere)return null;
+                if(Kind==CT3DAnalysisKind.SurfaceCylinder&&
+                    Cylinder.SelectedPointIndices.Count==0)return null;
                 using(var stream=new MemoryStream())
                 {
                     using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
                     {
                         writer.Write(Source.Signature);
-                        writer.Write(SelectedVertexIndices.Count);
-                        foreach(int index in SelectedVertexIndices)
+                        if(Kind==CT3DAnalysisKind.MeshPlane)
                         {
-                            var point=Mesh.Mesh.Vertices[index];
-                            writer.Write(index);writer.Write(point.X);writer.Write(point.Y);writer.Write(point.Z);
+                            writer.Write(SelectedVertexIndices.Count);
+                            foreach(int index in SelectedVertexIndices)
+                            {
+                                var point=Mesh.Mesh.Vertices[index];
+                                writer.Write(index);writer.Write(point.X);writer.Write(point.Y);writer.Write(point.Z);
+                            }
+                        }
+                        else
+                        {
+                            writer.Write(Cylinder.SelectedPointIndices.Count);
+                            foreach(int index in Cylinder.SelectedPointIndices)
+                            {
+                                var point=Surface.Points[index];
+                                writer.Write(index);writer.Write(point.X);writer.Write(point.Y);writer.Write(point.Z);
+                            }
                         }
                     }
                     return CT3DArtifactFiles.HashBytes(stream.ToArray());
