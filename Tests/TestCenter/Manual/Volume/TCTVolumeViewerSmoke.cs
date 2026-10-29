@@ -820,8 +820,9 @@ namespace CxVisual.TestCenter.UI
                     Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
                     var scene=frame.ViewState.Scene3D;
                     Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
+                    Guid sphereMeasurement=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Measurement).Id;
                     scene.SetOrganization(sphereSurface,"surface","measurement-session");
-                    scene.SetOrganization(selectedSurface,"analysis","measurement-session");
+                    scene.SetOrganization(sphereMeasurement,"analysis","measurement-session");
                     long groupedRevision=scene.Revision;
                     scene.SetGroupVisibility("measurement-session",false);
                     Check(scene.Revision==groupedRevision+1&&scene.SelectedId==null&&
