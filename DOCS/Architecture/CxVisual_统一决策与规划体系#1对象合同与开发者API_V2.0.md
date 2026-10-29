@@ -425,3 +425,11 @@ manifest.RequireCurrent(session.GetSnapshot(),
 `MDCStaticSourceManifestBuilder`不仅确认Invoke目标Content存在，还复用原MOC Compiler已执行的Core真源规则：**父Content必须有对应`MRIReferenceKind.Content`且TargetId完全匹配**。未声明引用时返回`decision.source_manifest.missing_content_reference`；目标不存在时返回`decision.source_manifest.missing_content`。因此不得凭一个`moc.invoke:GUID`字符串或`MOLControlBlock.InvokeContent`就声称静态来源可被合法调用。
 
 这仍只是源身份和引用前置条件，不能替代原MOC的子流程PublicPorts、跨层依赖、MRK真实能力绑定、发布权限校验。
+
+## 18. Manifest到原MRK编译器的严格交接适配（D05 P0增量）
+
+新增`Mechanism/Orchestration/MOCManifestRuntimeBinding.cs`（**运行集成侧，不得迁入未来无MRK引用的Decision.dll**）。`Bind(MEMProjectSnapshot,MDCStaticSourceManifest,MDCStaticCatalogSnapshot,IMRKCapabilityResolver,professionalTypes?,allowUnverifiedLegacyContracts=false)`按以下顺序完成：先重算并验证Core来源/目录版本 → Reject未知静态Capability → 使用单次编译作用域内的Resolver缓存固定同一CapabilityId的真实委托身份 → 对每项已使用能力进行MPC/CLR输入与具名输出合同检查 → 严格拒绝Rejected和Unknown（除非调用方显式选用遗留兼容开关）→ **调用原`MOCEngineeringCompiler.Compile`生成唯一MRK Plan及原SourceMap** → 校验编译结果ProjectId/Revision。
+
+`allowUnverifiedLegacyContracts=true`不是自动授权或安全完成证明，仅为明确的旧Provider兼容通路；静态Hard错仍不可绕过。若实际Resolver实现`IMRKVersionedCapabilityResolver`，编译作用域缓存桥还会透传版本查询接口，不以缓存破坏现有MRK Version Gate。编译过程不得调用任何`ExecuteAsync`，未发布/运行的Plan不能获得设备资源租约。必须由Host独立执行权限、能力有效性、执行组与设备安全检查。
+
+这是未来`Runtime.LoadAndValidate`的可迁移原型，不是已经完成的`MDCDeclarativePlan`或独立Decision程序集；最终项目融合前还必须把所有MOC静态控制编译从运行委托/Context中分离。

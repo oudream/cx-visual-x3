@@ -59,6 +59,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticWiringPreflightWithoutRuntime();
             StaticBranchScenarioExploration();
             StaticSourceManifestPreservesCoreRevisionAndClosure();
+            ManifestRuntimeBindingHandoffAndSafety();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -909,6 +910,103 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException) {cycle=true;}
                 Check(cycle,
                     "Core reference validator or static traversal must reject cyclic subflow references");
+            }
+            finally {session.Close(true);}
+        }
+
+        private sealed class ProbeResolver : IMRKCapabilityResolver
+        {
+            internal int Calls;
+            internal int Executions;
+            internal bool IncludeSignature = true;
+            internal bool MismatchedInput;
+            public bool TryResolve(string id,out MRKResolvedCapability binding)
+            {
+                Calls++;
+                if (id!="vision.gray16") { binding=null; return false; }
+                binding=new MRKResolvedCapability((ctx,ct)=>{
+                    Executions++;
+                    return Task.FromResult((object)42);
+                }, inputs: IncludeSignature
+                    ? (MismatchedInput
+                        ? new[]{new MRKCapabilityInput("unexpected",typeof(int))}
+                        : new MRKCapabilityInput[0])
+                    : null);
+                return true;
+            }
+        }
+
+        private static void ManifestRuntimeBindingHandoffAndSafety()
+        {
+            var session=MEMEngineering.Create("decision-binding-handoff");
+            try
+            {
+                var content=session.AddPage("Main").RootContent;
+                var action=MOLControlBlock.Action("vision.gray16");
+                MOLLogicCodec.Set(session,content,new MOLLogicDefinition(action));
+                var catalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.gray16","Vision 16","Vision")
+                });
+                var snapshot=session.GetSnapshot();
+                var staticManifest=new MDCStaticSourceManifestBuilder().Create(
+                    snapshot,content.Id,catalog);
+                var resolver=new ProbeResolver();
+                var binder=new MOCManifestRuntimeBinding();
+                var compiled=binder.Bind(snapshot,staticManifest,catalog,resolver);
+                Check(compiled!=null && compiled.Plan!=null &&
+                    compiled.ProjectId==snapshot.ProjectId &&
+                    compiled.EngineeringRevision==snapshot.Revision &&
+                    compiled.SourceMap.Find(action.Id).Count>0,
+                    "static handoff must retain the original MOC execution compiler and SourceMap");
+                Check(resolver.Calls==1 && resolver.Executions==0,
+                    "compile-local resolver cache must pin one delegate without running it");
+                var oldManifest=staticManifest;
+                var changed=MOLControlBlock.Action("vision.gray16");
+                MOLLogicCodec.Set(session,content,new MOLLogicDefinition(changed));
+                var staleProbe=new ProbeResolver();
+                bool stale=false;
+                try {binder.Bind(session.GetSnapshot(),oldManifest,catalog,staleProbe);}
+                catch(InvalidOperationException ex)
+                { stale=ex.Message.StartsWith("decision.source_manifest.stale",StringComparison.Ordinal); }
+                Check(stale && staleProbe.Calls==0,
+                    "stale Core source must be rejected before any runtime resolver access");
+
+                var incompleteCatalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("other","Other","Vision")
+                });
+                var incomplete=new MDCStaticSourceManifestBuilder().Create(
+                    session.GetSnapshot(),content.Id,incompleteCatalog);
+                var incompleteProbe=new ProbeResolver();
+                bool missing=false;
+                try {binder.Bind(session.GetSnapshot(),incomplete,incompleteCatalog,incompleteProbe);}
+                catch(InvalidOperationException ex)
+                { missing=ex.Message.StartsWith("moc.bind.unknown_static_capability:",StringComparison.Ordinal); }
+                Check(missing && incompleteProbe.Calls==0,
+                    "unknown static capability cannot start runtime resolution");
+
+                var current=new MDCStaticSourceManifestBuilder().Create(
+                    session.GetSnapshot(),content.Id,catalog);
+                var mismatchProbe=new ProbeResolver{MismatchedInput=true};
+                bool mismatch=false;
+                try {binder.Bind(session.GetSnapshot(),current,catalog,mismatchProbe);}
+                catch(InvalidOperationException ex)
+                { mismatch=ex.Message.StartsWith("moc.bind.contract_rejected:",StringComparison.Ordinal); }
+                Check(mismatch && mismatchProbe.Calls==1 && mismatchProbe.Executions==0,
+                    "unpublished MRK input signature must reject before compiling or executing");
+
+                var legacyProbe=new ProbeResolver{IncludeSignature=false};
+                bool unknown=false;
+                try {binder.Bind(session.GetSnapshot(),current,catalog,legacyProbe);}
+                catch(InvalidOperationException ex)
+                { unknown=ex.Message.StartsWith("moc.bind.contract_unverified:",StringComparison.Ordinal); }
+                Check(unknown && legacyProbe.Calls==1,
+                    "legacy input contract without proof must fail closed by default");
+                var legacyOptIn=new ProbeResolver{IncludeSignature=false};
+                var compatibility=binder.Bind(session.GetSnapshot(),current,catalog,
+                    legacyOptIn,allowUnverifiedLegacyContracts:true);
+                Check(compatibility!=null && legacyOptIn.Calls==1 &&
+                    legacyOptIn.Executions==0,
+                    "explicit legacy compatibility must preserve original MRK compiler behavior");
             }
             finally {session.Close(true);}
         }

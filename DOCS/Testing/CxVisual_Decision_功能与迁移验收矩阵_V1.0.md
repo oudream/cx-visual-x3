@@ -409,3 +409,17 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 ### V2真实MOCFlowBuilder子流程引用闭包（MDC-81）
 
 通过原`MEMEngineeringSession.Edit(...Reference(parent,child))`登记正式Core ContentReference，并使用`MOCFlowBuilder.Edit(...InvokeContent(child))`生成V2连线父流程；`MDCStaticSourceManifestBuilder`应识别`moc.invoke:<ContentGuid>`，只读收敛为父、子两个原始Content，不把Invoke虚构成专业Provider、执行Step或设备回执。这是对MDC-66（V1→V2）在V2→V2方向的真实工程补充。复用原MOL/Codec和MOCFlowBuilder，专项CI状态以对应SHA记录。
+
+### D05 Manifest与MRK原编译器交接（MDC-82～88）
+
+| 编号 | 软件验收 |
+|---|---|
+| MDC-82 | 同一真实Core V1 Action的Manifest→运行边界严格绑定，返回原MOC Plan和可定位SourceMap |
+| MDC-83 | 编译作用域同一CapabilityId最多向原Resolver调用一次，`ExecuteAsync`次数仍为0 |
+| MDC-84 | 更改Core Revision/子流程逻辑导致Manifest过期，进入Resolver前失败 |
+| MDC-85 | 静态Capability目录缺失能力，进入Resolver前失败 |
+| MDC-86 | CLR运行签名额外参数/类型不匹配，编译前Hard拒绝 |
+| MDC-87 | MRK Legacy未声明输入签名，默认Unknown拒绝；显式兼容开关可走原MOC编译器而不代表安全授权 |
+| MDC-88 | 如果原Resolver支持版本接口，Adapter保持原版本验证路径；与原编译/发布的动态Loop/SourceMap/命名数据Goldens不能退化 |
+
+CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明真实发布/资源租约/设备HIL。

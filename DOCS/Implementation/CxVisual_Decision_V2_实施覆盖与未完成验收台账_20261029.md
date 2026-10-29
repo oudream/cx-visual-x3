@@ -95,3 +95,7 @@ Decision Windows CI新增`Verify static Decision source files are Runtime-free`�
 ## 14. 补齐V2 Invoke的真实Core引用正例
 
 ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeContent`生成V2父调用V2子，正式登记`MRIReferenceKind.Content`，验证来源Manifest只列原父、子Content和引用目标，不复制子流程、不将Invoke伪装成专业Provider。没有MRK执行或模拟HIL；完整V2跨层参数、具名数据、循环和真实Plan Loader仍未完成。具体Windows记录以该提交的Run为准。
+
+## 15. D05可实际交付的静态来源→原运行编译器边界（P0）
+
+新增`MOCManifestRuntimeBinding`：只在过渡Orchestration/Runtime集成边界访问MRK，要求Core/目录版本和MPC/CLR契约一致后，复用原`MOCEngineeringCompiler`生成现有Plan/SourceMap。支持编译作用域内一次Resolver身份缓存与版本接口透传，未知输入签名默认拒绝，旧版兼容须主动显式启用。新增MDC-82～88正反测试；不创建第二个Compiler，也不修改旧的`Compile`公开入口。最终物理Decision项目尚未完成Runtime类型解耦。Windows构建/回归结果须以后续固定SHA记录，不能因为源文件存在就宣称P0融合完成。

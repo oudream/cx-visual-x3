@@ -274,3 +274,9 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 原`MOCCapabilityCatalog.cs`同时声明静态专业`MOCCapabilityDescriptor`、只读目录及`IMRKCapabilityResolver`运行探测构造。现在采用**GoF Adapter/兼容外观 + C# partial 保留二进制类型身份**：`MOCCapabilityCatalog.cs`移除`using CxVisual.Mechanism.Runtime.Execution`，保留纯离线Provider描述、目录索引、Search/Find/Module投影；新增`MOCCapabilityCatalog.Runtime.cs`容纳原`MOCCapabilityCatalog(providers,IMRKCapabilityResolver)`与`GetAvailability`。方法签名与`AvailabilityKnown/RuntimeAvailable`既有语义不变，目录仍不是第二套MFM注册中心，也不代表现场授权。
 
 **这是源码依赖拆离而非程序集依赖解除**：两个partial目前仍编译在原Orchestration.dll中；`.csproj`仍引用Runtime，MOCCompiler/Build/Release/Trace与MRK的其他依赖没有动。后续独立Decision工程前，必须改由Host持有运行探测桥接器，并对`new MOCCapabilityCatalog(providers,resolver)`消费者逐一兼容迁移；不能只移动静态半文件并误称依赖环消失。Windows`--decision`原有`OfflineCatalogAndLegacyResolver`会同时证明离线无探测和旧构造调用次数/值不退化。
+
+## D05 P0真实运行交接的非破坏性第一步：Manifest Runtime Adapter
+
+新增过渡`MOCManifestRuntimeBinding`实现GoF Adapter，把前期纯`MDCStaticSourceManifest`与既有`MOCEngineeringCompiler`衔接，而非开发一套新的编译器/执行器。严格顺序：Static Manifest重验与元数据完整性 → 运行边界Resolve与`MOCBindingContractInspector`合同检查 → 原MOC/MRK编译/SourceMap。一个Binding调用内缓存能力Id和委托，避免预检和真正编译时重复Resolver产生不一致的已绑定实现；仅在原Resolver确实支持版本接口时透传`IMRKVersionedCapabilityResolver`。
+
+**源码归属**：`MOCManifestRuntimeBinding.cs`及`MOCBindingContractInspector.cs`未来应留Host/Runtime，不能因为文件现处Orchestration就一起进入Decision。严格未知合同默认拒绝；旧Provider显式兼容仍交由原MRK二次运行约束。保持`MOCEngineeringCompiler.Compile`旧入口不变，便于对照SourceMap、动态Loop/子流程/原发布回归。P0尚未完成纯Plan分离、工程Reference DAG断环及27项目物理融合。

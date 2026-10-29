@@ -28,6 +28,7 @@
     <Compile Include="MDCDecisionService.cs"/>
     <Compile Include="MDCObjectiveSelection.cs"/>
     <Compile Include="MOCBindingContractInspector.cs"/>
+    <Compile Include="MOCManifestRuntimeBinding.cs"/>
     <Compile Include="MDCResourceBudgetPlanner.cs"/>
     <Compile Include="MDCStaticCatalogSnapshot.cs"/>
     <Compile Include="MDCRecommendationService.cs"/>
