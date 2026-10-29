@@ -250,6 +250,27 @@ namespace CxVisual.TestCenter.UI
         /// 用户/算法已选局部Mesh顶点ROI的真正平面拟合入口。
         /// MVI仅注册Measurement引用；专业毫米结果由CT3D保存，绝不重新拟合R8预览。
         /// </summary>
+        /// <summary>毫米物理Ray命中真实FGE Mesh；成功选择既有MVI Scene实例。</summary>
+        public bool TryPickCurrentMeshRay(FGEPoint3D origin,FGEVector3D direction,
+            out FGEMeshRayHit hit,CancellationToken cancellation=default(CancellationToken))
+        {
+            hit=null;
+            if(_volume==null||_state==null||LastVoxelMesh==null||!_meshSceneItemId.HasValue)
+                return false;
+            if(LastVoxelMesh.SourceRevision!=(LastOpenedProfessionalCase!=null&&
+                Object.ReferenceEquals(LastVoxelMesh,LastOpenedProfessionalCase.Mesh)
+                ?LastOpenedProfessionalCase.Source.Revision:_sphereEpoch)||
+               !Object.ReferenceEquals(LastVoxelMesh.SpatialFrame,_volume.SpatialFrame))
+                throw new InvalidOperationException("Mesh来源Revision或物理Frame已变化，禁止拾取旧结果。");
+            MVI3DSceneItem sceneItem;
+            if(!_state.Scene3D.TryGet(_meshSceneItemId.Value,out sceneItem)||!sceneItem.Visible)
+                return false;
+            if(!FGEMeshRayIntersector.TryIntersect(LastVoxelMesh.Mesh,origin,direction,
+                out hit,cancellation))return false;
+            _state.Scene3D.Select(sceneItem.Id);
+            return true;
+        }
+
         public CT3DPlaneFitResult AnalyzeCurrentMeshPlane(IReadOnlyList<int> selectedVertexIndices,
             double maxPlanarityRatio=0.08)
         {
