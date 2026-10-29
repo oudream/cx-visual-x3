@@ -148,6 +148,32 @@ namespace CxVisual.Professional.CT3D
             }
         }
 
+        /// <summary>同一工程多个Feature由已保存配方按原值整体复算，
+        /// 全部成功后一次MEM事务替换；任何一项异常/取消均不改变工程修订。</summary>
+        public static IReadOnlyList<MRIObjectAddress> RecomputeAllAndCommit(
+            MEMEngineeringSession engineering,IReadOnlyList<MEMContent> owners,
+            int expectedRevision,string root,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(owners==null)throw new ArgumentNullException("owners");
+            if(owners.Count==0||owners.Count>128)
+                throw new ArgumentOutOfRangeException("owners");
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
+            var analyses=new List<CT3DAnalysisCase>(owners.Count);
+            var ids=new HashSet<Guid>();
+            foreach(MEMContent owner in owners)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if(owner==null||engineering.Find(owner.Id)!=owner||!ids.Add(owner.Id))
+                    throw new ArgumentException("批量复算目标无效或重复。","owners");
+                CT3DAnalysisCase old=Open(engineering,engineering.GetAddress(owner),root,cancellation);
+                analyses.Add(old.Recompute(root,cancellation));
+            }
+            cancellation.ThrowIfCancellationRequested();
+            return CommitAll(engineering,owners,expectedRevision,root,analyses,cancellation);
+        }
+
         /// <summary>校验旧结果及工程修订后原值复算，使用既有MEM事务替换同一Content的结果。
         /// 同一工程提交前旧Revision冲突会拒绝，不创建平行Undo或制品仓库。</summary>
         public static MRIObjectAddress RecomputeAndCommit(MEMEngineeringSession engineering,
