@@ -1501,12 +1501,23 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 FIMImageAnalysisResult result = await Task.Run(() =>
-                    selectedRoi!=null ?
-                        FIMImageAnalyzer.AnalyzeMasked(image,256,region.Value,
-                            (x,y)=>selectedRoi.ContainsRoiPixelCenter(x,y),cancellation.Token) :
-                        FIMImageAnalyzer.Analyze(image,256,region,cancellation.Token),
-                    cancellation.Token);
-                if (cancellation.IsCancellationRequested ||
+                {
+                    try
+                    {
+                        return selectedRoi!=null ?
+                            FIMImageAnalyzer.AnalyzeMasked(image,256,region.Value,
+                                (x,y)=>selectedRoi.ContainsRoiPixelCenter(x,y),
+                                cancellation.Token) :
+                            FIMImageAnalyzer.Analyze(image,256,region,cancellation.Token);
+                    }
+                    catch(OperationCanceledException) when(cancellation.IsCancellationRequested)
+                    {
+                        // 用户切图/改ROI是正常的Latest-request淘汰。就地处理，
+                        // 不让预期取消异常冒泡出线程池造成VS“用户未处理”中断。
+                        return null;
+                    }
+                },cancellation.Token);
+                if (result==null || cancellation.IsCancellationRequested ||
                     Interlocked.Read(ref _analysisEpoch) != epoch ||
                     !ReferenceEquals(_viewer.ActiveImage,image))
                     return;
