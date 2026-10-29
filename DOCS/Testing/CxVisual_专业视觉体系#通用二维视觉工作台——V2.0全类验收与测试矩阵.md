@@ -355,3 +355,9 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 - **ALG-M05**：Gray16小端7×7 RAW，中心4000与孤立60000构造，通过实际FIM Median1和三节点下游产生同Run Gray16图/5px²面积，源RAW原始字节不变。固定`3ed5a1526d21d3a1862d432384f47854943c47d1`，[Imaging Windows #40820986353](https://github.com/oudream/cx-visual-x3/actions/runs/40820986353) success，[Engineering #40820986454](https://github.com/oudream/cx-visual-x3/actions/runs/40820986454) success。
 - **UI-ALG-M02**：TestCenter Compute选择中值增强后，原`MPWImageViewerControl`创建并显示已提交的同Run FIM图；Run切换/模块切换清除旧预览，半径0仍走三节点。Smoke断言实际显示图像在(0,0)=0、(3,3)=210。固定提交`382a8f7cab5d7f466ac267ad0f73447be0ba91eb`，后续合并新HEAD的[Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787)首轮待验，绝不将既有纯逻辑UIA通过等价为新图窗验收。
+
+### 20.2 四节点操作页固定SHA实测
+
+- 固定`49b40da48099219a8114b2ddd3b671981aa9e57a`：[Compute UIA #40820622091](https://github.com/oudream/cx-visual-x3/actions/runs/40820622091) success / [Four G1 #40820622056](https://github.com/oudream/cx-visual-x3/actions/runs/40820622056) success，真实WPF切换半径、RAW→FIM增强→区域/面积数值验证成功。
+- 固定`2847c2c7af10e02c8fab197cc9a712f36fc509fc`：[Compute UIA #40821068464](https://github.com/oudream/cx-visual-x3/actions/runs/40821068464) success，MPW Viewer加入后真实Compute UIA未回退。
+- 增量图窗`PreviewImage`像素校验后的[Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787)首次登记in_progress；[Module Center RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) success。不同固定SHA不能相互冒用完成结论。
