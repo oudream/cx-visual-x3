@@ -25,6 +25,7 @@
     <Compile Include="MOCEngineeringCompiler.cs"/>
     <Compile Include="MOCCapabilityCatalog.cs"/>
     <Compile Include="MDCDecisionService.cs"/>
+    <Compile Include="MDCObjectiveSelection.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

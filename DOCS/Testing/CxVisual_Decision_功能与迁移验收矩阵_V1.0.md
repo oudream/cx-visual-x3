@@ -223,3 +223,17 @@ flowchart LR
 | MDC-10 | 不存在输入端口 | Rejected + MDC_NO_INPUT |
 
 **验收运行入口**：`CxVisual.Tests.ArchitectureSmoke.exe --decision`；默认ArchitectureSmoke也会调用。文档更新时若无对应Actions日志，必须继续标记“源码存在/待Windows编译验收”，不可写“测试通过”。后续还需复核外部主仓并行CI阻断、MOC SourceMap/Runtime Golden和设备安全边界。
+
+
+### P0进阶专项：D03/D04多目标比较（软件用例）
+
+| Case | 目的 | 验收断言 |
+|---|---|---|
+| MDC-11 | 质量与延迟两个目标冲突 | 两个实测可行方案同属Pareto，按用户Priority选首选 |
+| MDC-12 | GPU预算Hard失败但速度快 | Rejected，绝不在Pareto或Selected |
+| MDC-13 | 只有Estimated、Virtual、缺证据ID | Unknown，不自动成为最优 |
+| MDC-14 | 缺指标或单位不可比较 | Selected为空，给MDC_METRIC_MISSING/UNIT_MISMATCH |
+| MDC-15 | 两个候选指标完全一致 | 按OptionId稳定、可复现地破平 |
+| MDC-16 | 超过256候选或16目标 | 明确拒绝超预算，不做无界搜索 |
+
+源码入口\`MDCChoiceService.Compare\`；运行入口仍为\`ArchitectureSmoke.exe --decision\`及默认回归，完整V2优化目标的预测模型/业务证据有效性验证/资源真实预测器尚未实现。

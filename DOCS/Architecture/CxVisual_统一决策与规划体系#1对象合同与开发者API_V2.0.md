@@ -297,3 +297,21 @@ foreach (var candidate in selected)
 ~~~
 
 **边界**：只有项目实际编译与专项/默认回归成功后才称为Build/Automated。后续纯Decision程序集仍必须先拆旧MOC对MRK的依赖；本轮保留既有28工程，不提前伪称27工程/单DLL完成。
+
+
+## 11. 首批可实施的多目标比较（已编写源码；Windows专项验证待CI）
+
+\`Mechanism/Orchestration/MDCObjectiveSelection.cs\` 提供 \`MDCChoiceService.Compare(options,objectives)\`、\`MDCObjective\`、\`MDCMeasuredMetric\`、\`MDCOption\`、\`MDCComparisonResult\`。输入为调用者明确的硬约束评估结果、带单位/来源的数值指标和明确的Minimize/Maximize及Priority；先Hard过滤，再用**完整且已实测的可比证据**构建Pareto前沿，按业务优先级稳定选择一个首选（可同时显示其他非支配方案）。这个首选是指定目标下的词典序选择，不宣称全局最优。
+
+~~~csharp
+// 已编写源码形状；前提是业务方提供真实有效的指标与硬约束评估。
+var goals = new [] {
+    new MDCObjective("latency","ms",MDCObjectiveDirection.Minimize,0),
+    new MDCObjective("quality","score",MDCObjectiveDirection.Maximize,1)
+};
+MDCComparisonResult comparison = new MDCChoiceService().Compare(options,goals);
+if (comparison.Selected == null) ShowNoVerifiedFeasibleOption(comparison.Candidates);
+else ShowSelectionAndPareto(comparison.Selected,comparison.Pareto);
+~~~
+
+缺指标、单位冲突、仅估计/虚拟证据和Hard Unknown会进入Unknown而不自动选；违反Hard的候选即使更快也Rejected。首批比较使用有界256候选、16目标，无硬件设备查询，未来提供可信模型估计的咨询式排序须另订独立证据级别/授权，不能悄当实测。

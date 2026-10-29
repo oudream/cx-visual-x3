@@ -49,6 +49,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticConnectionIsFailClosed();
             CandidateGroupsAndNoExecution();
             HardConstraintAggregation();
+            MultiObjectiveSelection();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
         private static void OfflineCatalogAndLegacyResolver()
@@ -143,6 +144,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }); }
             catch (ArgumentException) { dup = true; }
             Check(dup, "duplicate rule id must not silently override a rule");
+        }
+
+        private static MDCMeasuredMetric Measure(string id, double value, string unit,
+            MDCMetricEvidence evidence = MDCMetricEvidence.Measured, string proof = "sample-1")
+        { return new MDCMeasuredMetric(id, value, unit, evidence, proof); }
+
+        private static void MultiObjectiveSelection()
+        {
+            var goals = new[] {
+                new MDCObjective("latency", "ms", MDCObjectiveDirection.Minimize, 0),
+                new MDCObjective("quality", "score", MDCObjectiveDirection.Maximize, 1)
+            };
+            var allowed = new MDCAssessment(new MDCConstraintOutcome[0]);
+            var denied = new MDCAssessment(new[] {
+                new MDCConstraintOutcome("GPU_BUDGET", MDCVerdict.Rejected, "memory exceeded")
+            });
+            var options = new[] {
+                new MDCOption("gpu", allowed, new[] {
+                    Measure("latency", 20, "ms"), Measure("quality", 0.95, "score") }),
+                new MDCOption("cpu", allowed, new[] {
+                    Measure("latency", 50, "ms"), Measure("quality", 0.99, "score") }),
+                new MDCOption("unsafe", denied, new[] {
+                    Measure("latency", 1, "ms"), Measure("quality", 1, "score") }),
+                new MDCOption("estimated", allowed, new[] {
+                    Measure("latency", 5, "ms", MDCMetricEvidence.Estimated),
+                    Measure("quality", 0.999, "score") })
+            };
+            var comparison = new MDCChoiceService().Compare(options, goals);
+            Check(comparison.Candidates.Count == 4 && comparison.Pareto.Count == 2 &&
+                comparison.Selected.Option.Id == "gpu", "Pareto/lexicographic selection wrong");
+            Check(comparison.Candidates.Single(x => x.Option.Id == "unsafe").Verdict ==
+                MDCVerdict.Rejected, "HardFail must never be rescued by attractive goals");
+            Check(comparison.Candidates.Single(x => x.Option.Id == "estimated").Verdict ==
+                MDCVerdict.Unknown, "Estimated evidence must not be selected as measured");
+            var missing = new MDCChoiceService().Compare(new[] {
+                new MDCOption("missing", allowed, new[] { Measure("quality", 1, "score") })
+            }, goals);
+            Check(missing.Selected == null && missing.Pareto.Count == 0 &&
+                missing.Candidates[0].ReasonCodes.Contains("MDC_METRIC_MISSING:latency"),
+                "missing evidence should yield no automatic selection");
+            var unit = new MDCChoiceService().Compare(new[] {
+                new MDCOption("wrongunit", allowed, new[] {
+                    Measure("latency", 5, "seconds"), Measure("quality", 0.99, "score") })
+            }, goals);
+            Check(unit.Selected == null && unit.Candidates[0].Verdict == MDCVerdict.Unknown,
+                "incomparable units cannot be ranked");
+            var tie = new MDCChoiceService().Compare(new[] {
+                new MDCOption("z", allowed, new[] {
+                    Measure("latency", 20, "ms"), Measure("quality", 0.95, "score") }),
+                new MDCOption("a", allowed, new[] {
+                    Measure("latency", 20, "ms"), Measure("quality", 0.95, "score") })
+            }, goals);
+            Check(tie.Pareto.Count == 2 && tie.Selected.Option.Id == "a",
+                "equal metrics need deterministic capability id tie break");
         }
     }
 }

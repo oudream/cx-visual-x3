@@ -172,3 +172,10 @@ flowchart TB
 首批`AssessHardConstraints`可对已明确给出的`MDCConstraintOutcome`做纯聚合，拒绝重复RuleId；未来完整RuleOwner、策略、目标基线、多目标Pareto以及证据版本仍属设计。输入如无任何规则，聚合结果的数学真值为Allowed，但这并不证明该场景所需安全/资源规则已经被供应；应用层必须明确RequiredChecks且不可自动发布。
 
 测试入口：`CxVisual.Tests.ArchitectureSmoke.exe --decision`；期望含三态、重复ID拒绝、非隐式转换和离线元数据验证。CI是否通过以具体提交的Windows运行记录为准。
+
+
+## 13. D03/D04首批真实实现：Hard→Pareto→稳定首选（静态源码）
+
+\`MDCChoiceService\` 当前支持按已提供的单项约束结论过滤多方案，区别Rejected/Unknown/Feasible；仅当**每个业务目标**均具备相同单位、有限数值、Measured级别和非空EvidenceId时，才参与Pareto与自动首选。若两个可行方案各自优于另一项指标，则都保留在Pareto；再依用户明确的Priority进行词典序选择并以OptionId稳定破平。**无法比较不等于可以自动选择**，也不意味着经签名验证的实验数据：EvidenceId本身由调用方/专业Owner负责证明真实可靠。
+
+支持的策略范围为有界直接比较（至多256候选/16目标），不调用设备，不进行遗传算法/蒙特卡洛/加权归一化，不计算不具有来源依据的“全局综合分”。CPU/GPU资源预算需作为已评估的Hard Outcome输入，当前没有统一实际资源占用预测器。对应专项负例：硬资源拒绝不能被极速方案冲淡，Estimated/Virtual不能冒充Measured，缺指标/单位冲突无法自动选，完全平局按ID稳定。

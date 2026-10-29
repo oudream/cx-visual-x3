@@ -41,3 +41,8 @@ flowchart LR
 ## 四、下一批最优先实现
 
 P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项目引用（先去除MOC/MRK循环依赖），用TypeId/CLR显式映射验证同一Provider的描述与运行端口，再完善功能的真实Studio消费。只有经过Windows编译/Smoke和前后Golden后，才执行Logic/Orchestration物理合并及项目数从28到27的结构迁移。
+
+
+## 五、P0之后增构：有实测依据的多目标选择（同一过渡工程）
+
+新增\`Mechanism/Orchestration/MDCObjectiveSelection.cs\`，沿用\`MDCAssessment\`实现HardFail优先、Unknown禁止自动选；\`MDCObjective\`显式方向/优先级/单位，\`MDCMeasuredMetric\`提供数值/EvidenceTier/来源ID，\`MDCChoiceService\`生成候选状态、Pareto与稳定首选。完全不运行设备/重用执行器，也不建立第二Capability目录。测试\`MDCDecisionTests.MultiObjectiveSelection\`覆盖Pareto两方案、Hard GPU超限、仅估计、单位冲突、缺指标与稳定平局。状态仍为“源码已编写；以本批Windows提交/CI为准”，不把EvidenceId自动视为经过签署的真实工业测量。
