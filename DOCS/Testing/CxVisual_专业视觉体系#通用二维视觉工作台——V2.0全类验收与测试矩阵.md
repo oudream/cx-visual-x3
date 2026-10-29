@@ -378,3 +378,9 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | UI-IMG-26 | 6144×3072=18874368原始像素，Gray16统计扫描变成逐行一遍、65536整数频数再聚合256档，不用显示窗计算原像素；实际大图性能需要有机器基准值 | 算法优化代码和测试已提交，不臆造毫秒性能指标 |
 
 **仍需**：用户实际6144×3072源图的Fit截图、完整最新SHA Windows UIA和性能实测；上一工作流success不能自动推断当前最终HEAD验收通过。
+
+### 21.1 UI-IMG-27：自动直方图不得误取消专业Mask轮廓
+
+固定`8ff63f336b68b70736e88ad9c59cf155d2a57035` 的[Imaging #40828887469](https://github.com/oudream/cx-visual-x3/actions/runs/40828887469) **failure**，WPF旧CPU Mask轮廓7px²回归受影响；不允许跳过轮廓验收。修复`98912b4c972c9737ceab09dc7f016da92de9b657`将自动Histogram的CancellationTokenSource/Epoch与Mask轮廓、区域操作分开，守护轮廓发布期间的内部图层选中；真实原图变更仍使旧处理请求失效。
+
+**最新待复测**：[Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) / [TestCenter #40829484729](https://github.com/oudream/cx-visual-x3/actions/runs/40829484729)。必须同时通过自动直方图、Gray16统计、407? 无此项、CPU Mask→轮廓7px²和原像素保持反证，才将UI-IMG-27标完成。
