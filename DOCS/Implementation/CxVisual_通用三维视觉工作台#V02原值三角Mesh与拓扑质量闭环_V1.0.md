@@ -172,3 +172,12 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 **本轮局部验证**：`ceba1911`工作树上Unified Release x64 Build成功（0错误、6条既有TestCenter重复源文件/旧API警告），`--volume`及真实`--volume-viewer-smoke`均退出0。日志为`Output/CT3D-V04/consistency-build.log`、`consistency-volume.log`，截图为`consistency-workbench.png`。本轮修复后的GitHub CI尚待对应新提交Run；没有以旧SHA替代。
 
 **并行同步复验**：随后合入远端`f48c1650`，包含MVI二维`TrySetResult`防过期实现/测试及ReferTo参考源码；全工程Build 0错误，`--imaging`、默认ArchitectureSmoke及三维WPF均通过（`consistency-merged-*`）。Scene Revision补充后的最终全工程Build仍为0错误/6条既有警告，真实三维WPF全部新反例退出0（`consistency-final-build.log/consistency-final-workbench.png`）；新提交CI另按Run核实。
+
+
+### 10.6 2026-10-29 公共回归恢复与首批可追溯Feature Measurement
+
+- `master@0f495fca` 的 Imaging / Decision / Runtime / Engineering 四个失败作业，原始日志均定位至 `CT3DAnalysisPersistenceTests.VerifySchema1Compatibility`：固定 `AppData/Cases/CT3D/V04Schema1/source.raw` 不在仓库中，`File.Copy` 抛 `DirectoryNotFoundException`。它不是算法数值误差或C#编译失败；Studio S1另外失败于配置布局1/2/3列断言，不属于本CT3D Owner。
+- 提交 [`86423f7`](https://github.com/oudream/cx-visual-x3/commit/86423f740faaf749b4e3267f7645fde1333ce1a4) 对**外部旧Schema1二进制fixture**增加显式缺失检查：没有旧RAW、工程文件或Artifact目录时输出 `SKIP CT3D fixed schema1 compatibility`，其余V04正常/异常/复算仍照常执行。**这只是解除不应阻断其它Owner的测试环境缺口，旧Schema1跨版本真实兼容仍是未验收事项**；不能把SKIP记录成PASS。后续应提交合法旧DLL固定产物或提供独立受控fixture以完成兼容验收。
+- 提交 [`1d773c6`](https://github.com/oudream/cx-visual-x3/commit/1d773c6275c4d29e8cc0a69d6f32cd873613370b) 在现有 `CT3DAnalysisCase` 上增加只读 `CT3DFeatureMeasurement` 与 `GetFeatureMeasurements()`：从已拟合Sphere的真实毫米半径派生Radius/Diameter，保留Feature ResultId、SourceRef/Revision/Signature及球拟合RMS；结果不复制原始RAW，也不建立第二套持久化。MeshPlane目前不虚构Datum距离，仅通过原Plane API提供真实点面偏差。
+- 提交 [`29bcb6a`](https://github.com/oudream/cx-visual-x3/commit/29bcb6afd5e6d91ce27e5615b7da750f9d604656) 增加球Feature测量原值、结果身份、来源、无工业不确定度认证与MEM保存重开数值一致性断言；数值仍为离散体素边界球拟合，不宣称亚体素/GD&T或实机精度通过。
+- 固定SHA Windows CI：本轮查询 `29bcb6a` 的多个工作流为 `queued`，**尚无本轮编译或运行通过证据**；须在实际完成后复核。多对象MVI/MPW正式交互、柱面与完整测量持久合同仍未完成。
