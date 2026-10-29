@@ -1,5 +1,8 @@
 using System;
 using System.ComponentModel;
+using System.IO;
+using System.Threading;
+using CxVisual.Mechanism.Core;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Visual;
 
@@ -140,6 +143,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 scene3d.Clear();
                 Check(scene3d.Count==0 && scene3d.SelectedId==null,
                     "会话清空不能创建第二套持久工程定义");
+                // B包：Scene引用/分组/显示/选择必须写入同一个MEM工程Visual Aspect。
+                string layoutRoot=Path.Combine(Path.GetTempPath(),
+                    "cxvisual-scene-layout-"+Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(layoutRoot);
+                string projectFile=Path.Combine(layoutRoot,"visual.cxproj");
+                var layout=new MVI3DSceneState();
+                Guid meshVisual=layout.Add(MVI3DSceneKind.Mesh,"ct3d:mesh:verified",4,"frame:1",.6);
+                Guid cadVisual=layout.Add(MVI3DSceneKind.Cad,"cad:solid:verified",3,"frame:1",.3);
+                layout.SetOrganization(meshVisual,"analysis","inspection");
+                layout.SetOrganization(cadVisual,"reference","inspection");
+                layout.Select(cadVisual);
+                MRIObjectAddress layoutAddress;
+                using(var engineering=MEMEngineering.Create("三维可视工程"))
+                {
+                    var owner=engineering.AddPage("Scene").RootContent;
+                    int before=engineering.Revision;
+                    layoutAddress=MVI3DSceneLayoutPersistence.Commit(engineering,owner,
+                        before,layout,CancellationToken.None);
+                    Check(engineering.Revision==before+1,"Scene保存必须使用唯一MEM事务");
+                    bool staleRejected=false;
+                    try{MVI3DSceneLayoutPersistence.Commit(engineering,owner,before,
+                        layout,CancellationToken.None);}
+                    catch(InvalidOperationException){staleRejected=true;}
+                    Check(staleRejected,"Scene过期工程Revision必须拒绝覆盖");
+                    engineering.SaveAs(projectFile);
+                }
+                using(var engineering=MEMEngineering.Open(projectFile))
+                {
+                    var restoredScene=new MVI3DSceneState();
+                    MVI3DSceneLayoutPersistence.Open(engineering,layoutAddress,restoredScene,
+                        item=>item.SourceRef=="ct3d:mesh:verified"||
+                            item.SourceRef=="cad:solid:verified",CancellationToken.None);
+                    MVI3DSceneItem restoredMesh,restoredCad;
+                    Check(restoredScene.Count==2&&restoredScene.SelectedId==cadVisual&&
+                        restoredScene.TryGet(meshVisual,out restoredMesh)&&
+                        restoredScene.TryGet(cadVisual,out restoredCad)&&
+                        restoredMesh.LayerKey=="analysis"&&restoredMesh.GroupKey=="inspection"&&
+                        restoredMesh.Opacity==.6&&restoredCad.Opacity==.3,
+                        "MEM重开恢复多对象稳定ID、分组、透明度与专业选择");
+                    long unchanged=restoredScene.Revision;
+                    bool invalidRefRejected=false;
+                    try{MVI3DSceneLayoutPersistence.Open(engineering,layoutAddress,
+                        restoredScene,item=>false,CancellationToken.None);}
+                    catch(InvalidDataException){invalidRefRejected=true;}
+                    Check(invalidRefRejected&&restoredScene.Revision==unchanged&&
+                        restoredScene.SelectedId==cadVisual,
+                        "来源不可解析必须拒绝整批恢复而不污染现有Scene");
+                    bool cancelled=false;
+                    try{MVI3DSceneLayoutPersistence.Open(engineering,layoutAddress,
+                        restoredScene,item=>true,new CancellationToken(true));}
+                    catch(OperationCanceledException){cancelled=true;}
+                    Check(cancelled&&restoredScene.Revision==unchanged,
+                        "Scene取消恢复不能修改当前会话");
+                }
+                Directory.Delete(layoutRoot,true);
                 MVI3DCameraState camera=state.Camera;
                 long cameraRevision=camera.Revision;
                 int cameraEvents=0;
