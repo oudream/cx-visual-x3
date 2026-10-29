@@ -430,3 +430,18 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | INLINE-05 | WPF切半径1触发旧Run失效，之后新5节点出现中值处理图与Mask，不复用旧RunId | G2 已提交WPF Smoke，G5待跑 |
 
 **Windows验收命令**：`CxVisual.Unified.sln` Release/x64、Owner结构脚本、`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`、默认ArchitectureSmoke、`CxVisual.TestCenter.exe --imaging-viewer-smoke`。现有`.github/workflows/imaging-foundation-windows.yml`监听专业Vision、ArchitectureSmoke及TestCenter Imaging路径；未取到工作流日志之前保持全部G3～G5待验。
+
+## 25. 正式Run轮廓WPF选择与源失效测试（2026-10-29）
+
+新增`TCTImageViewerSmoke`中真实点击`TCT.Imaging.CpuGenerateContours`并选择Contour结果项，覆盖如下用例。代码提交[e1eabcdd](https://github.com/oudream/cx-visual-x3/commit/e1eabcddf7544cd314e4275b37340c269dacfe72)。
+| ID | 场景和断言 | 当前验收 |
+|---|---|---|
+| RUN-CT-01 | 当前真实MRK Run中按需生成轮廓；RunId、SourceId保留，旧Image/Mask/Region/Measurement不变，ResultItem数量一致 | G2源码，Windows新SHA待验 |
+| RUN-CT-02 | 7px²原图Mask投影为Contour，选择列表项可在原16位原图上显示已锁定Annotation，ExternalId匹配ResultItemId | G2源码，Windows WPF待验 |
+| RUN-CT-03 | 反复选择同一Contour仍只有一个投影，不产生重复Overlay | G2源码，Windows WPF待验 |
+| RUN-CT-04 | CPU参数修改使旧Run失效，只移除旧Run生成的Contour，保留手绘Annotation；不污染原Gray16/原结果槽 | G2源码，Windows WPF待验 |
+| RUN-CT-05 | 轮廓计算进行时切图/编辑ROI/取消或超过预算必须放弃过期计算，不得向新Run提交 | 源码保护已实现；完整竞争场景待追加专项 |
+| RUN-CT-06 | 真实环形Mask：正外环、负孔洞、多项同Run来源及WPF点选可见 | Headless孔洞测试已存在；WPF环形专例待补 |
+
+**G5门禁**：匹配新SHA的`CxVisual.TestCenter.exe --imaging-viewer-smoke`；`ArchitectureSmoke --vision-results`、`--imaging`以及默认全回归应先完成。此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)已核实成功，但不覆盖当前新UI提交。
+
