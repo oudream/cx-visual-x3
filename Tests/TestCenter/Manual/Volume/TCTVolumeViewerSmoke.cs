@@ -961,6 +961,37 @@ namespace CxVisual.TestCenter.UI
                 try{frame.AnalyzeCurrentMeshPlaneTopZ();}catch(InvalidOperationException){invalidated=true;}
                 Check(invalidated,"标定Frame改变后旧Mesh不可继续测量");
                 frame.Volume.SetSpatialFrame(oldFrame);
+                // 同工程第二个Case必须通过正式MEM API装配，不在TestCenter生成平行存储。
+                Guid secondPlaneId;
+                using(var batch=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
+                {
+                    var owner=batch.AddPage("第二三维案例").RootContent;
+                    var second=restored.Recompute(root,System.Threading.CancellationToken.None);
+                    secondPlaneId=second.Plane.ResultId;
+                    CxVisual.Professional.CT3D.CT3DAnalysisPersistence.Commit(batch,owner,
+                        batch.Revision,root,second,System.Threading.CancellationToken.None);
+                    batch.Save();
+                }
+                frame.LoadDemo();
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,1,
+                    System.Threading.CancellationToken.None));
+                Check(frame.LastOpenedProfessionalCase.Plane.ResultId==secondPlaneId &&
+                    frame.ViewState.Scene3D.Count==3,
+                    "WPF多Case入口能选择并显示第二个独立专业结果");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                using(var batch=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
+                {
+                    var all=CxVisual.Professional.CT3D.CT3DAnalysisPersistence.OpenAll(
+                        batch,root,System.Threading.CancellationToken.None);
+                    Check(all.Count==2&&all[0].Plane.ResultId==planeId&&
+                        all[1].Plane.ResultId!=planeId,
+                        "保存选定第二个Case后不能覆盖同工程第一个Case");
+                }
+                frame.LoadDemo();
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,0,
+                    System.Threading.CancellationToken.None));
+                Check(frame.LastOpenedProfessionalCase.Plane.ResultId==planeId,
+                    "多Case索引选择能够返回原始专业结果");
                 using(var external=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
                 {external.Rename(external.Project,"外部编辑");external.Save();}
                 bool conflict=false;
