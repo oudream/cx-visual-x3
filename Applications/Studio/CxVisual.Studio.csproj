@@ -70,5 +70,11 @@
     <PackageReference Include="Dirkster.AvalonDock.Serializer.Xml" Version="5.0.1"/>
     <PackageReference Include="Dirkster.AvalonDock.Themes.VS2013" Version="5.0.1"/>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj">
+      <Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project>
+      <Name>CxVisual.Foundation.Imaging</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
