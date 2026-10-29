@@ -82,6 +82,24 @@ namespace CxVisual.Professional.Vision
             CxVisionPixelDepth depth = GetPixelDepth(image);
             if (depth != expectedDepth)
                 throw new ArgumentException("图像位深与已编译CPU检测Plan配置不一致", "expectedDepth");
+            return new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                { "RawPixels", new FDTReadOnlyBuffer(ToPackedRawPixels(image, expectedDepth)) },
+                { "Width", image.Width },
+                { "Height", image.Height }
+            };
+        }
+
+        /// <summary>
+        /// 向既有MEM/MOC/MRK专业输入提供原图紧排字节快照；
+        /// 只复制/剔除Stride padding，不更改Gray16小端语义，不引入文件中转。
+        /// </summary>
+        public static byte[] ToPackedRawPixels(FIMImageBuffer image,
+            CxVisionPixelDepth expectedDepth)
+        {
+            CxVisionPixelDepth depth = GetPixelDepth(image);
+            if (depth != expectedDepth)
+                throw new ArgumentException("原图位深与专业配置不匹配", "expectedDepth");
             CheckPixelCount(image);
             int rowBytes = checked(image.Width * (depth == CxVisionPixelDepth.Bits8 ? 1 : 2));
             byte[] source = image.CopyPixels();
@@ -94,12 +112,7 @@ namespace CxVisual.Professional.Vision
                     Buffer.BlockCopy(source, checked(y * image.Stride),
                         packed, checked(y * rowBytes), rowBytes);
             }
-            return new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                { "RawPixels", new FDTReadOnlyBuffer(packed) },
-                { "Width", image.Width },
-                { "Height", image.Height }
-            };
+            return packed;
         }
 
         private static int CheckPixelCount(FIMImageBuffer image)
