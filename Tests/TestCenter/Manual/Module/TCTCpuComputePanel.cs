@@ -32,6 +32,8 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _minArea=Text("TCT.Cpu.MinArea","2",65);
         private readonly TextBox _maxArea=Text("TCT.Cpu.MaxArea","100",70);
         private readonly ComboBox _depth=new ComboBox {Width=85,Margin=new Thickness(4)};
+        private readonly ComboBox _medianRadius=new ComboBox {Width=95,
+            Margin=new Thickness(4),ToolTip="0为原始三节点；1—3为FIM中值滤波增强四节点（临时执行参数）"};
         private readonly TextBlock _status=new TextBlock {TextWrapping=TextWrapping.Wrap,
             Margin=new Thickness(4,5,4,4)};
         private readonly DataGrid _regions=new DataGrid {IsReadOnly=true,AutoGenerateColumns=true,
@@ -56,6 +58,9 @@ namespace CxVisual.TestCenter.UI
             _hasUnsavedDraft=hasUnsavedDraft??throw new ArgumentNullException("hasUnsavedDraft");
             _depth.ItemsSource=Enum.GetValues(typeof(CxVisionPixelDepth));
             _depth.SelectedItem=CxVisionPixelDepth.Bits8;
+            _medianRadius.ItemsSource=new[]{0,1,2,3};
+            _medianRadius.SelectedItem=0;
+            AutomationProperties.SetAutomationId(_medianRadius,"TCT.Cpu.MedianRadius");
             AutomationProperties.SetAutomationId(this,"TCT.Cpu.Panel");
             AutomationProperties.SetAutomationId(_depth,"TCT.Cpu.PixelDepth");
             AutomationProperties.SetAutomationId(_status,"TCT.Cpu.Status");
@@ -82,7 +87,9 @@ namespace CxVisual.TestCenter.UI
             Add(inputs,"宽",_width);Add(inputs,"高",_height);
             outer.Children.Add(inputs);
             var settings=new WrapPanel();
-            Add(settings,"位深",_depth);Add(settings,"阈值",_threshold);
+            Add(settings,"位深",_depth);
+            Add(settings,"中值半径(0=关闭)",_medianRadius);
+            Add(settings,"阈值",_threshold);
             Add(settings,"最小面积",_minArea);Add(settings,"最大面积",_maxArea);
             settings.Children.Add(_save);settings.Children.Add(_load);
             outer.Children.Add(settings);
@@ -140,6 +147,16 @@ namespace CxVisual.TestCenter.UI
             _threshold.Text=threshold.ToString(CultureInfo.InvariantCulture);
             _minArea.Text=min.ToString(CultureInfo.InvariantCulture);
             _maxArea.Text=max.ToString(CultureInfo.InvariantCulture);
+        }
+        /// <summary>
+        /// 控制工作台本次软件执行的FIM增强半径。它不是MHS保存的专业配方；
+        /// 工程中会经MOL参数和Capability ReleaseVersion固定后执行。
+        /// </summary>
+        public void SetMedianRadius(int radius)
+        {
+            if(_running!=null)throw new InvalidOperationException("运行中不能改变增强参数");
+            if(radius<0||radius>3)throw new ArgumentOutOfRangeException("radius");
+            _medianRadius.SelectedItem=radius;
         }
         private string RequireScope()
         {
@@ -245,8 +262,12 @@ namespace CxVisual.TestCenter.UI
                 _running.CancelAfter(compute.TimeoutMs);
                 _run.IsEnabled=false;_save.IsEnabled=false;_load.IsEnabled=false;
                 _cancel.IsEnabled=true;_status.Text="实际CPU算法/原MOC-MRK执行中…";
-                var report=await Task.Run(()=>CxVisionRawCpuRunner.ExecuteMeasuredAsync(
-                    _session,_provider,filename,w,h,_running.Token),_running.Token);
+                int radius=(int)_medianRadius.SelectedItem;
+                var report=await Task.Run(()=>radius==0 ?
+                    CxVisionRawCpuRunner.ExecuteMeasuredAsync(
+                        _session,_provider,filename,w,h,_running.Token) :
+                    CxVisionRawCpuRunner.ExecuteEnhancedMeasuredAsync(
+                        _session,_provider,filename,w,h,radius,_running.Token),_running.Token);
                 LastReport=report;
                 _regions.ItemsSource=report.Inspection.Regions.Select((x,i)=>new {
                     No=i+1,Area=x.PixelArea,MinX=x.MinX,MinY=x.MinY,MaxX=x.MaxX,MaxY=x.MaxY
@@ -260,6 +281,8 @@ namespace CxVisual.TestCenter.UI
                     "；阈值像素="+report.Inspection.ThresholdPixelCount+
                     "；缺陷区域="+report.Inspection.Regions.Count+
                     "；已接受面积="+report.AcceptedRegionPixelArea+" px²"+
+                    (report.EnhancedImage==null?"；增强=关闭":
+                        "；FIM中值增强=半径"+radius+"(Gray"+(int)_provider.PixelDepth+")")+
                     "；FlowId="+report.FlowId.ToString("N")+
                     "；MOC指纹="+report.Fingerprint+
                     "；配置="+report.ConfigVersion+
