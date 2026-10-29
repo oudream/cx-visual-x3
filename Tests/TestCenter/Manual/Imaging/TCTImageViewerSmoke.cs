@@ -580,8 +580,69 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "真实CPU Mask→FIM轮廓→像素面积7链路错误或破坏原图");
                 frame.Viewer.ClearOverlays();
+                // 真实点击“从本次Run生成轮廓结果项”：必须继承同一个Run，
+                // 只新增只读Contour，且点击条目时仅在唯一MVI Store产生临时标注。
+                outputTabs.SelectedIndex=4;
+                window.UpdateLayout();
+                Button generateRunContours=FindControl<Button>(frame,
+                    "TCT.Imaging.CpuGenerateContours");
+                if(generateRunContours==null)
+                    throw new InvalidOperationException("CPU Run轮廓结果生成入口不存在");
+                generateRunContours.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var runContourWait=System.Diagnostics.Stopwatch.StartNew();
+                while((frame.CpuEvidence==null || !frame.CpuEvidence.Items.Any(x=>
+                    x.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Contour)) &&
+                    runContourWait.ElapsedMilliseconds<20000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var withRunContour=frame.CpuEvidence;
+                if(withRunContour==null || withRunContour.RunId!=evidence.RunId ||
+                    withRunContour.SourceId!=evidence.SourceId ||
+                    withRunContour.Items.Count!=evidence.Items.Count+1 ||
+                    cpuResults.Items.Count!=withRunContour.Items.Count)
+                    throw new InvalidOperationException("Run轮廓未按需生成或失去身份与列表同步");
+                var runContour=withRunContour.Items.Single(x=>
+                    x.Kind==CxVisual.Professional.Vision.CxVisionResultKind.Contour);
+                if(runContour.Contour==null || runContour.Contour.IsHole ||
+                    Math.Abs(runContour.Contour.SignedAreaPixels-7)>1e-9 ||
+                    runContour.RunId!=evidence.RunId || runContour.SourceId!=evidence.SourceId)
+                    throw new InvalidOperationException("正式Contour面积7/原Run来源不正确");
+                var projectedRow=cpuResults.Items.OfType<ListBoxItem>().Single(row=>
+                    ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).ItemId==
+                        runContour.ItemId);
+                cpuResults.SelectedItem=projectedRow;
+                Guid? projectedOverlayId=frame.Viewer.SelectedOverlayId;
+                var projected=projectedOverlayId.HasValue ?
+                    frame.Viewer.Overlays.Find(projectedOverlayId.Value):null;
+                if(projected==null || !projected.IsLocked ||
+                    projected.ExternalId!=runContour.ItemId ||
+                    projected.Kind!=MVIImageOverlayKind.PolygonAnnotation ||
+                    frame.Viewer.Session.ActiveSlot!=MVIImageSlot.Original ||
+                    frame.Viewer.Session.Original.PixelFormat!=FIMPixelFormat.Gray16)
+                    throw new InvalidOperationException(
+                        "点选Contour未产生带ItemId的只读MVI标注或污染Gray16原图");
+                // 再点同一条目不可生成两个相同轮廓；主动保留用户手工标注。
+                cpuResults.SelectedItem=null;
+                cpuResults.SelectedItem=projectedRow;
+                if(frame.Viewer.Overlays.Items.Count(x=>x.ExternalId==runContour.ItemId)!=1)
+                    throw new InvalidOperationException("重复选择同一Contour生成了重复标注");
+                var manual=new MVIImageOverlayItem(MVIImageOverlayKind.PolygonAnnotation,
+                    MVIImageOverlayLayer.Annotation,new FGERect2D(0,0,1,1),
+                    new[]{new FGEPoint2D(0,0),new FGEPoint2D(1,0),
+                        new FGEPoint2D(0,1)},"用户标注");
+                frame.Viewer.AddOverlay(manual);
                 // 修改参数必须清空属于旧Run的显示槽和证据；无效参数不能重用旧结果。
                 cpuThreshold.Text="70000";
+                if(frame.Viewer.Overlays.Find(projectedOverlayId.Value)!=null ||
+                    frame.Viewer.Overlays.Find(manual.Id)==null)
+                    throw new InvalidOperationException(
+                        "检测参数失效未删除旧Run临时轮廓或误删用户标注");
                 if(frame.CpuEvidence!=null || cpuResults.Items.Count!=0 ||
                     frame.Viewer.Session.Result!=null ||
                     frame.Viewer.Session.ActiveSlot!=MVIImageSlot.Original ||
