@@ -83,3 +83,7 @@
 ## 11. 静态目录与MRK探测分文件解耦（本阶段仍28项目）
 
 调整原`MOCCapabilityCatalog.cs`为无MRK类型导入的纯目录实现；新增`MOCCapabilityCatalog.Runtime.cs`保存旧`IMRKCapabilityResolver`构造和`GetAvailability`。复用原`MDCDecisionTests.OfflineCatalogAndLegacyResolver`证明旧API/Resolver探测次数、离线目录不触达Runtime的既有行为。没有变更正式程序集名、GUID、工程引用或专业Provider；属于向Decision无Runtime依赖迁移的一项**源码前置措施**，P0工程DAG尚未通过，测试状态以本提交Windows Actions为准。
+
+## 12. 修复静态来源闭包的Core ContentReference合法性缺口
+
+审计原`MOCEngineeringCompiler`确认：无论V1 Invoke还是V2 `moc.invoke:GUID`，除了目标Content存在，还必须由父Content正式声明`MRIReferenceKind.Content`。因此强化`MDCStaticSourceManifestBuilder`的显式引用验证（不存在Content和存在但缺Core引用分别报错），测试用真实`MEMEngineeringSession.Edit(...Reference(...))`构造合法父子闭包，新增目标存在但没正式引用的负例。修复前的来源闭包自动CI成功不等于此安全语义已得到覆盖；以本修复提交CI为准。

@@ -392,3 +392,12 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-77 | `MDCStaticSourceManifest`、D10和Studio/ModuleCenter回归不因partial源码拆分而变化 |
 
 以上是**源码组织/兼容性阶段**，不得借此宣称Orchestration.csproj→Runtime的引用已消失。实际结果按本批固定SHA的Windows CI登记。
+
+### 子Content正式引用安全补验（MDC-78～79）
+
+| Case | 期望 |
+|---|---|
+| MDC-78 | V1父Content调用V2子Content：使用真实`session.Edit(...Reference(...))`声明Core ContentReference后闭包才能提取成功 |
+| MDC-79 | 目标Content虽然实际存在，但父Content没有`MRIReferenceKind.Content`引用时显式拒绝；绝不误把字符串GUID当授权引用 |
+
+原MOC编译的`moc.invoke.missing_content_ref`及`moc.deep.missing_content_ref`约束是源事实依据，源提取必须与之对齐；环路也须由Core原引用规则或静态遍历保护。此项只测试软件工程定义，不涉及专业设备安全授权。

@@ -779,18 +779,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var session=MEMEngineering.Create("decision-source-manifest");
             try
             {
-                var child=session.AddPage("Reconstruction");
+                var child=session.AddContent(session.Project,"Reconstruction");
                 var childStep=MOLControlBlock.Action("ct.reconstruct");
-                MOLWiringCodec.Set(session,child.RootContent,new MOLWiringDefinition(
+                MOLWiringCodec.Set(session,child,new MOLWiringDefinition(
                     childStep.Id,new[]{childStep},
                     new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
                         {childStep.Id,new MPCPortDescriptor[0]}
                     },new MOLLink[0]));
                 var parent=session.AddPage("Inspection");
                 var parentStep=MOLControlBlock.Action("vision.acquire");
-                var call=MOLControlBlock.InvokeContent(child.RootContent.Id);
+                var call=MOLControlBlock.InvokeContent(child.Id);
                 MOLLogicCodec.Set(session,parent.RootContent,
                     new MOLLogicDefinition(MOLControlBlock.Sequence(parentStep,call)));
+                session.Edit("正式引用CT子流程",edit=>{
+                    edit.Reference(parent.RootContent,child,"CT子流程");
+                    return true;
+                }).RequireValue();
                 var catalog=new MDCStaticCatalogSnapshot(new[]{
                     new MOCCapabilityDescriptor("ct.reconstruct","CT Reconstruction","CT3D"),
                     new MOCCapabilityDescriptor("vision.acquire","Acquire","Vision")
@@ -807,9 +811,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     manifest.RootContentId==parent.RootContent.Id,
                     "static manifest must preserve authoritative Core project/version/root IDs");
                 var root=manifest.Contents.Single(x=>x.ContentId==parent.RootContent.Id);
-                var sub=manifest.Contents.Single(x=>x.ContentId==child.RootContent.Id);
+                var sub=manifest.Contents.Single(x=>x.ContentId==child.Id);
                 Check(root.ReferencedContentIds.Count==1 &&
-                    root.ReferencedContentIds[0]==child.RootContent.Id &&
+                    root.ReferencedContentIds[0]==child.Id &&
                     root.CapabilityUses.Count==1 &&
                     root.CapabilityUses[0].BlockId==parentStep.Id &&
                     root.CapabilityUses[0].CapabilityId=="vision.acquire",
@@ -833,7 +837,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(mismatch,"catalog schema change must invalidate a static source manifest");
 
                 var updatedStep=MOLControlBlock.Action("ct.optimized");
-                MOLWiringCodec.Set(session,child.RootContent,new MOLWiringDefinition(
+                MOLWiringCodec.Set(session,child,new MOLWiringDefinition(
                     updatedStep.Id,new[]{updatedStep},
                     new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
                         {updatedStep.Id,new MPCPortDescriptor[0]}
@@ -851,6 +855,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException) {missing=true;}
                 Check(missing,"missing referenced Content cannot become an executable source bundle");
 
+                var noRef=session.AddPage("MissingReference");
+                MOLLogicCodec.Set(session,noRef.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(child.Id)));
+                bool missingReference=false;
+                try {builder.Create(session.GetSnapshot(),noRef.RootContent.Id,catalog);}
+                catch(InvalidOperationException ex)
+                {
+                    missingReference=ex.Message.StartsWith(
+                        "decision.source_manifest.missing_content_reference:",
+                        StringComparison.Ordinal);
+                }
+                Check(missingReference,
+                    "existing subflow without authoritative Core ContentReference must be rejected");
+
                 var a=session.AddPage("CycleA");
                 var b=session.AddPage("CycleB");
                 MOLLogicCodec.Set(session,a.RootContent,
@@ -858,9 +876,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MOLLogicCodec.Set(session,b.RootContent,
                     new MOLLogicDefinition(MOLControlBlock.InvokeContent(a.RootContent.Id)));
                 bool cycle=false;
-                try {builder.Create(session.GetSnapshot(),a.RootContent.Id,catalog);}
+                try
+                {
+                    session.Edit("引用B",edit=>{
+                        edit.Reference(a.RootContent,b.RootContent,"B");return true;
+                    }).RequireValue();
+                    session.Edit("引用A",edit=>{
+                        edit.Reference(b.RootContent,a.RootContent,"A");return true;
+                    }).RequireValue();
+                    builder.Create(session.GetSnapshot(),a.RootContent.Id,catalog);
+                }
                 catch(InvalidOperationException) {cycle=true;}
-                Check(cycle,"cyclic Invoke Content references must reject static source extraction");
+                Check(cycle,
+                    "Core reference validator or static traversal must reject cyclic subflow references");
             }
             finally {session.Close(true);}
         }

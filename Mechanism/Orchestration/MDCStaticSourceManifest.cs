@@ -165,7 +165,21 @@ namespace CxVisual.Mechanism.Decision
                     items.Add(id,new MDCStaticContentSource(id,aspect.SchemaVersion,sourceHash,
                         children,uses.OrderBy(x=>x.BlockId)
                         .ThenBy(x=>x.CapabilityId,StringComparer.Ordinal)));
-                    foreach(Guid child in children) visit(child,depth+1);
+                    foreach(Guid child in children)
+                    {
+                        var target=project.Find(child);
+                        if(target==null || target.Kind!=MEMNodeKind.Content)
+                            throw new InvalidOperationException(
+                                "decision.source_manifest.missing_content:"+child.ToString("N"));
+                        // Match the existing MOC compiler's mandatory Core ownership
+                        // rule: a plain capability string is NOT an authorized reference.
+                        if(!node.References.Any(r=>r.Kind==MRIReferenceKind.Content &&
+                            r.TargetId==child))
+                            throw new InvalidOperationException(
+                                "decision.source_manifest.missing_content_reference:"+
+                                node.Id.ToString("N")+":"+child.ToString("N"));
+                        visit(child,depth+1);
+                    }
                 }
                 finally { active.Remove(id); }
             };

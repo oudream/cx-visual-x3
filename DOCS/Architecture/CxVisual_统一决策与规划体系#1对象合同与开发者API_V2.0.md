@@ -419,3 +419,9 @@ manifest.RequireCurrent(session.GetSnapshot(),
 ~~~
 
 **明确停止线**：此产物只有来源与依赖校验，没有控制DAG、参数、执行策略或可执行委托，不可命名为完整`MDCPlanArtifact`，更不可绕开`MOCBuildService`。其价值是为后续真正的声明Plan编译和MRK Loader拆分提供无重复Core数据的稳定源身份。
+
+### 静态来源合同补充：必须有Core正式子流程引用
+
+`MDCStaticSourceManifestBuilder`不仅确认Invoke目标Content存在，还复用原MOC Compiler已执行的Core真源规则：**父Content必须有对应`MRIReferenceKind.Content`且TargetId完全匹配**。未声明引用时返回`decision.source_manifest.missing_content_reference`；目标不存在时返回`decision.source_manifest.missing_content`。因此不得凭一个`moc.invoke:GUID`字符串或`MOLControlBlock.InvokeContent`就声称静态来源可被合法调用。
+
+这仍只是源身份和引用前置条件，不能替代原MOC的子流程PublicPorts、跨层依赖、MRK真实能力绑定、发布权限校验。
