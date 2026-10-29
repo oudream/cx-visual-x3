@@ -30,6 +30,8 @@ namespace CxVisual.Professional.Vision
         /// <summary>Only present for the independent Mask segmentation node.</summary>
         public Guid SegmentBlockId {get;internal set;}
         public FIMImageBuffer ThresholdMask {get;internal set;}
+        /// <summary>仅显式请求UI预览时保留与执行字节相同的原图快照。</summary>
+        public FIMImageBuffer SourceImage {get;internal set;}
         /// <summary>Only present for opt-in FIM median enhancement flow.</summary>
         public Guid EnhanceBlockId {get;internal set;}
         public FIMImageBuffer EnhancedImage {get;internal set;}
@@ -221,7 +223,8 @@ namespace CxVisual.Professional.Vision
             cancellation.ThrowIfCancellationRequested();
             CxVisionInspectionOptions options=provider.CaptureInspectionOptions();
             return ExecuteCoreAsync(session,provider,path,width,height,cancellation,true,
-                medianRadius:medianRadius,splitNodes:true,splitOptions:options);
+                medianRadius:medianRadius,splitNodes:true,splitOptions:options,
+                captureSourceImage:true);
         }
 
         /// <summary>同一已保存MEM/MOL拆分工作链，重新绑定RAW/Provider并验证节点参数。</summary>
@@ -266,7 +269,7 @@ namespace CxVisual.Professional.Vision
             string path,int width,int height,CancellationToken cancellation,
             bool includeMeasurement,Guid? existingContentId=null,int medianRadius=0,
             bool splitNodes=false,CxVisionInspectionOptions splitOptions=null,
-            byte[] suppliedPixels=null)
+            byte[] suppliedPixels=null,bool captureSourceImage=false)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -557,7 +560,12 @@ namespace CxVisual.Professional.Vision
                         e.Transition.State==MRKStepState.Completed);
                     if(completed==0||trace.LostCount!=0)
                         throw new InvalidOperationException("MRK真实完成Trace缺失");
+                    FIMImageBuffer capturedOriginal=captureSourceImage ?
+                        new FIMImageBuffer(width,height,
+                            vision.PixelDepth==CxVisionPixelDepth.Bits8 ?
+                            FIMPixelFormat.Gray8 : FIMPixelFormat.Gray16,pixels) : null;
                     return new CxVisionCpuRun {
+                        SourceImage=capturedOriginal,
                         PageId=pageId,FlowId=result.FlowId,InspectBlockId=inspect,
                         SegmentBlockId=segmentation,ThresholdMask=thresholdMask,
                         EnhanceBlockId=enhance,EnhancedImage=enhancedImage,
