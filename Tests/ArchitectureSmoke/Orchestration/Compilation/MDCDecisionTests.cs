@@ -563,6 +563,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var parent = session.AddPage("Parent");
                 MOLLogicCodec.Set(session, parent.RootContent,
                     new MOLLogicDefinition(MOLControlBlock.InvokeContent(v1.RootContent.Id)));
+                var unrelated = session.AddPage("Unrelated");
+                MOLLogicCodec.Set(session, unrelated.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.Action("unrelated.compute")));
                 var previous = new MDCStaticCatalogSnapshot(new[] {
                     new MOCCapabilityDescriptor("vision.old", "Old", "Vision"),
                     new MOCCapabilityDescriptor("gpu.backend", "GPU", "Compute")
@@ -586,6 +589,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "direct V2 content must be included");
                 Check(report.AffectedContentIds.Count == 3,
                     "unrelated engineering content must not be marked affected");
+
+                Check(!report.AffectedContentIds.Contains(unrelated.RootContent.Id),
+                    "unrelated Content must not be included by inference");
+                var none = MDCProjectImpactAnalyzer.Analyze(session.GetSnapshot(),
+                    MDCCatalogImpactAnalyzer.Compare(previous,previous));
+                Check(none.IsComplete && none.DirectBlocks.Count == 0 &&
+                    none.AffectedContentIds.Count == 0,
+                    "unchanged catalog must have no affected engineering nodes");
+                var missing = session.AddPage("MissingInvoke");
+                MOLLogicCodec.Set(session, missing.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(Guid.NewGuid())));
+                var incomplete = MDCProjectImpactAnalyzer.Analyze(session.GetSnapshot(), changes);
+                Check(!incomplete.IsComplete &&
+                    incomplete.UnknownContentIds.Contains(missing.RootContent.Id),
+                    "unresolvable Invoke target must report incomplete impact analysis");
+
             }
             finally { session.Close(true); }
         }

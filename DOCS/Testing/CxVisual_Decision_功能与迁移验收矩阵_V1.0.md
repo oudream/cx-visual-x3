@@ -316,3 +316,15 @@ flowchart LR
 | MDC-49 | 无法读取的逻辑Schema、引用缺失、分析预算溢出须IsComplete=false，不能报告为“安全” |
 
 D10首批只对Core快照和静态能力声明作分析。工程实际运行差异、专业算法性能或现场事故原因，仍须MRK事实、MDS数据和专业Owner证据。
+
+
+### 已核验固定SHA的Decision专项Windows证据（截至2026-10-29）
+
+| 交付项 | 提交与Run（该提交的自动软件测试） | 实际状态 |
+|---|---|---|
+| D07资源区间/硬约束与目标选择 | [4f4fc3ee](https://github.com/oudream/cx-visual-x3/commit/4f4fc3ee4da2ac266c1ea78069ad170d68e6d7c7) / [Run 40821840370](https://github.com/oudream/cx-visual-x3/actions/runs/40821840370) | Windows .NET48 Build + Decision专项 + 默认ArchitectureSmoke成功 |
+| 能力目录指纹、工程/策略/环境过期失效 | [21d1fb8d](https://github.com/oudream/cx-visual-x3/commit/21d1fb8d0ee6bc9605d0b090f4ab1c73b6ebdaa6) / [Run 40822268636](https://github.com/oudream/cx-visual-x3/actions/runs/40822268636) | 同上成功 |
+| 简便综合推荐、输入/测量/预算变更失效 | [1cbfab7b](https://github.com/oudream/cx-visual-x3/commit/1cbfab7bcfc8a1998f1cc56fb5835fe1ba5e47eb) / [Run 40822851898](https://github.com/oudream/cx-visual-x3/actions/runs/40822851898) | 同上成功 |
+| 真实Core V1/V2/Invoke工程影响分析 | [cd2c012e](https://github.com/oudream/cx-visual-x3/commit/cd2c012e8e1851c0da39ea5ea89fead57b2a2a13) / [Run 40823510242](https://github.com/oudream/cx-visual-x3/actions/runs/40823510242) | 同上成功 |
+
+**MDC-49反向补验**：后续增补无关内容/空变更/失效Invoke的自动测试，必须另登记实际SHA/Run，未验证前仍不能将此项视为通过。以上软件证据等级Automated，不代表全部Studio/TetsCenter及专业设备HIL/Field已完成。[实施覆盖与未完成台账](../Implementation/CxVisual_Decision_V2_实施覆盖与未完成验收台账_20261029.md)作为动态状态导航。

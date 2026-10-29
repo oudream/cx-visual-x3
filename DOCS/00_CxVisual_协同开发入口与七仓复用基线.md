@@ -91,6 +91,8 @@
 
 
 
+**Decision V2.0 最新实施覆盖与未完成验收（2026-10-29）**：[Decision实施覆盖与未完成验收台账](Implementation/CxVisual_Decision_V2_实施覆盖与未完成验收台账_20261029.md)；汇总D01～D10真实源码/固定SHA/Windows运行记录，区分已自动测试的静态能力、局部Studio集成、尚未开发的安全策略/纯Plan/模拟联动及27项目融合P0。原[#0～#6](Architecture/CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)仍为目标设计权威；台账只是动态事实入口，不替代测试母表或设备验收。
+
 **Decision首批源码实装（2026-10-29）**：[P0离线能力发现与静态约束筛选实现验收](Implementation/CxVisual_Decision_P0离线能力发现与静态约束筛选_实现验收_V1.0.md)：沿用现有MOC目录/MPC端口，增加无Runtime Resolver的离线发现、`AvailabilityKnown`和`MDCDecisionService`静态端口三态/候选筛选，新增ArchitectureSmoke `--decision`测试。当前仅是**过渡源码切片**，未迁移物理工程、未完全解耦MOC→MRK，也未实现Studio界面或复杂优化；Windows CI证据以实际run为准。
 
 **历史与现状**：原[#0 V1.0](Architecture/CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md)、[#1 V1.0](Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)仅保留历史可追溯，不再双线维护。最新设计**不等于源码交付**：目前仍是 `Mechanism/Logic`、`Mechanism/Orchestration`、`Mechanism/Runtime` 既有工程，MOC→MRK编译时依赖未断，Decision新项目/新MDC接口/统一注解/约束求解尚未实施；只有真实CI与现场证据可证明功能与安全。对于DOCS/02～04 XLSX需要实施前逐Sheet比对Owner/签名，不得将当前文本性摘要冒称表格审计。
