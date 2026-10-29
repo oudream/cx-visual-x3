@@ -13,6 +13,8 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
+using CxVisual.Mechanism.Presentation.Wpf.Imaging;
+using CxVisual.Mechanism.Visual;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Foundation.Data.Configuration;
@@ -181,6 +183,23 @@ namespace CxVisual.Studio
                             System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                             "Studio.ModuleCenter.CancelRaw"),
                         "Studio模块中心缺少拆分式RAW四五节点/半径与取消的共用操作入口");
+                    var resultPanel=moduleHeader.Children.OfType<Expander>()
+                        .SingleOrDefault(x=>System.Windows.Automation.AutomationProperties
+                            .GetAutomationId(x)=="Studio.ModuleCenter.ResultPanel");
+                    var resultStack=resultPanel==null?null:resultPanel.Content as StackPanel;
+                    Assert(resultPanel!=null && resultStack!=null &&
+                        resultStack.Children.OfType<MPWImageViewerControl>().Any(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.ResultViewer") &&
+                        resultStack.Children.OfType<ListBox>().Any(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.ResultItems") &&
+                        resultStack.Children.OfType<WrapPanel>()
+                            .SelectMany(x=>x.Children.OfType<Button>())
+                            .Count(x=>new[]{"Studio.ModuleCenter.ShowRunOriginal",
+                                "Studio.ModuleCenter.GenerateRunContours"}.Contains(
+                                System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==2,
+                        "Studio模块中心缺少统一MPW图窗、可视结果列表或Contour入口");
                     Assert(configure!=null&&flow!=null,"模块中心缺少工程配置/流程快捷入口");
                     configure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,configure));
                     Assert(window.GetStudioContentIds().Contains("doc.config"),
@@ -3238,6 +3257,60 @@ namespace CxVisual.Studio
                                 x.State=="Completed") &&
                             session.Find(split.PageId) is MEMPage,
                             "Studio四节点真实Mask/Region/面积及工程Trace执行不正确");
+                        // 使用真实Studio Report和MPW WPF控件验证结果显示，而非只测算法。
+                        var previewViewer=new MPWImageViewerControl();
+                        var previewItems=new ListBox();
+                        Assert(split.SourceImage!=null &&
+                            split.SourceImage.PixelFormat==CxVisual.Foundation.Imaging.FIMPixelFormat.Gray8 &&
+                            split.SourceImage.GetGrayValue(0,0)==210 &&
+                            split.SourceImage.GetGrayValue(4,2)==250,
+                            "Studio真实Runner没有保留与MRK同字节的源图快照");
+                        MainWindow.PopulateStudioVisionResults(split,previewViewer,previewItems);
+                        Assert(previewItems.Items.Count==split.Evidence.Items.Count &&
+                            Object.ReferenceEquals(previewViewer.Session.Original,split.SourceImage),
+                            "Studio结果面板未共用原MPW Viewer及完整Run产物");
+                        var imageResult=split.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask);
+                        MainWindow.SelectStudioVisionResult(split.Evidence,split.SourceImage,
+                            previewViewer,imageResult);
+                        Assert(Object.ReferenceEquals(previewViewer.Session.Result,imageResult.Image) &&
+                            previewViewer.Session.ActiveSlot==MVIImageSlot.Result &&
+                            previewViewer.ActiveImage.GetGrayValue(4,2)==255,
+                            "Studio点击Mask不能显示真实MRK二值产物");
+                        var projectedRun=split.Evidence.WithThresholdMaskContours();
+                        var outer=projectedRun.Items.Where(x=>x.Kind==CxVisionResultKind.Contour)
+                            .First(x=>!x.Contour.IsHole);
+                        var projection=new MainWindow.StudioCpuVisionReport {
+                            FlowId=split.FlowId,Evidence=projectedRun,
+                            SourceImage=split.SourceImage
+                        };
+                        MainWindow.PopulateStudioVisionResults(projection,previewViewer,previewItems);
+                        MainWindow.SelectStudioVisionResult(projectedRun,split.SourceImage,
+                            previewViewer,outer);
+                        MainWindow.SelectStudioVisionResult(projectedRun,split.SourceImage,
+                            previewViewer,outer);
+                        Assert(previewViewer.Overlays.Items.Count(x=>x.ExternalId==outer.ItemId)==1 &&
+                            previewViewer.Overlays.Items.Single(x=>x.ExternalId==outer.ItemId).IsLocked &&
+                            previewViewer.Session.ActiveSlot==MVIImageSlot.Original &&
+                            previewItems.Items.Count==projectedRun.Items.Count,
+                            "Studio Contour结果项在同一个MVI Store重复创建或未显示原图");
+                        bool staleResultDenied=false;
+                        try
+                        {
+                            MainWindow.SelectStudioVisionResult(cpuReport.Evidence,split.SourceImage,
+                                previewViewer,outer);
+                        }
+                        catch(InvalidOperationException){staleResultDenied=true;}
+                        Assert(staleResultDenied,"Studio旧Run不得展示新Run的轮廓");
+                        previewViewer.Clear();
+                        bool clearedDenied=false;
+                        try
+                        {
+                            MainWindow.SelectStudioVisionResult(projectedRun,split.SourceImage,
+                                previewViewer,outer);
+                        }
+                        catch(InvalidOperationException){clearedDenied=true;}
+                        Assert(clearedDenied && previewViewer.Overlays.Items.Count==0,
+                            "Studio视口Clear之后旧Contour不可再进入Viewer");
                         var snapshot=session.GetSnapshot();
                         var splitContent=snapshot.Nodes.Single(x=>x.Kind==MEMNodeKind.Content &&
                             x.ParentId==split.PageId);
