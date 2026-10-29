@@ -37,6 +37,7 @@ namespace CxVisual.TestCenter.UI
         private MPALengthFrameProtocol _peerProtocol;
         private string _id,_effectiveVersion;
         private int _timeoutMs,_responses;
+        private volatile bool _dropResponses;
         private bool _busy;
         public bool IsBusy {get{return _busy;}}
         public bool IsStarted {get{return _module!=null&&_module.IsStarted;}}
@@ -68,6 +69,8 @@ namespace CxVisual.TestCenter.UI
             stack.Children.Add(row);stack.Children.Add(_status);
             Content=new ScrollViewer {Content=stack,MaxHeight=410,
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+            _drop.Checked+=(s,e)=>_dropResponses=true;
+            _drop.Unchecked+=(s,e)=>_dropResponses=false;
             _load.Click+=(s,e)=>LoadEffective();
             _start.Click+=async(s,e)=>await StartAsync();
             _send.Click+=async(s,e)=>await SendAsync();
@@ -166,7 +169,7 @@ namespace CxVisual.TestCenter.UI
                 _pair[1].SessionId.ToString("N"),received.Address);
             foreach(byte[] decoded in _peerProtocol.ProcessReceived(received,ctx))
             {
-                if(_drop.IsChecked==true)continue;
+                if(_dropResponses)continue;
                 byte[] response=_peerProtocol.PrepareSend(decoded,ctx);
                 _pair[1].SendAsync(response,new FTRSubChannelAddress(_pair[1].Id),
                     CancellationToken.None).GetAwaiter().GetResult();
@@ -220,6 +223,7 @@ namespace CxVisual.TestCenter.UI
                 await _module.StopAsync(CancellationToken.None);
                 _pair[1].Received-=HandleVirtualPeer;
                 _pair[1].Close();
+                _peerProtocol.ResetAll();
                 _status.Text="Connector已Stopped / 两端Virtual Channel Closed；再次Send应拒绝。";
             }
             catch(Exception ex){_status.Text="Connector停止失败："+ex.Message;}
