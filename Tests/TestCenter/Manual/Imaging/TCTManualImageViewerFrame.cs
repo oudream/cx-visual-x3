@@ -56,6 +56,7 @@ namespace CxVisual.TestCenter.UI
             Text = "10", Margin = new Thickness(3) };
         private readonly TextBox _cpuMinArea = new TextBox { Width = 70,
             Text = "2", Margin = new Thickness(3) };
+        private readonly ComboBox _cpuMedianRadius = new ComboBox { Width=68, Margin=new Thickness(3) };
         private CancellationTokenSource _cpuRunCancellation;
         private FIMImageBuffer _cpuSourceImage;
         private string _cpuSourceId;
@@ -130,6 +131,7 @@ namespace CxVisual.TestCenter.UI
             _cpuResultItems.SelectionChanged += (sender,args) => SelectCpuResultItem();
             _cpuThreshold.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
             _cpuMinArea.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
+            _cpuMedianRadius.SelectionChanged += (sender,args) => InvalidateCpuVisionParameters();
             // 显示统计页时自动给当前原始像素/ROI计算；后台运行不阻塞UI。
             _inspectTabs.SelectionChanged += (sender,args) =>
             {
@@ -307,7 +309,10 @@ namespace CxVisual.TestCenter.UI
         /// 真实FIM输入→既有MRK CPU专业检测→正式Image/Mask结果→同一MPW/MVI。
         /// 不额外建立图像会话、结果历史、数据堆或调度器。
         /// </summary>
-        private async void RunCpuVision()
+        private void RunCpuVision() { RunCpuVision(false); }
+        private void RunCpuSeparatedVision() { RunCpuVision(true); }
+
+        private async void RunCpuVision(bool separated)
         {
             CancellationTokenSource request = null;
             try
@@ -348,7 +353,11 @@ namespace CxVisual.TestCenter.UI
                 Show("正在使用现有MRK运行CPU视觉检测（真实处理图、阈值Mask与区域）…");
                 // TestCenter只负责输入/当前Source验证与结果选择；MRK生命周期、
                 // 已提交产物、取消和测量语义归Professional统一无界面API。
-                CxVisionRunSummary evidence = await Task.Run(() =>
+                int medianRadius=separated && _cpuMedianRadius.SelectedItem is int ?
+                    (int)_cpuMedianRadius.SelectedItem : 0;
+                CxVisionRunSummary evidence = await Task.Run(() => separated ?
+                    CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                        original,options,sourceId,medianRadius,token) :
                     CxVisionDataFlow.RunCpuInspectionPreviewAsync(
                         original, options, sourceId, token), token);
                 if (token.IsCancellationRequested ||
@@ -362,7 +371,7 @@ namespace CxVisual.TestCenter.UI
                     mask.Image == null || mask.Image.PixelFormat != FIMPixelFormat.Gray8 ||
                     mask.Image.Width != original.Width || mask.Image.Height != original.Height)
                     throw new InvalidOperationException("运行结果来源或掩码坐标与当前原图不匹配。");
-                _viewer.ShowResult(mask.Image);
+                if(!_viewer.TryShowResult(version,mask.Image))return;
                 _cpuDisplayedMask = mask.Image;
                 _cpuEvidence = evidence;
                 _cpuResultItems.Items.Clear();
@@ -383,7 +392,8 @@ namespace CxVisual.TestCenter.UI
                     });
                 }
                 var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
-                Show("真实CPU检测完成：阈值命中=" +
+                Show((separated?"拆分式MEM/MOC/MRK检测完成":"真实CPU检测完成")+
+                    "：阈值命中=" +
                     evidence.Items.Single(i => i.Name == "阈值命中像素数").IntegerValue +
                     " px；面积规则保留=" + accepted.Length + "区域；Run=" +
                     evidence.RunId.ToString("N") + "。结果图是阈值Mask，原图未修改。");
