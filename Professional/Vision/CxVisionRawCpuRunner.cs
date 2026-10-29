@@ -321,6 +321,15 @@ namespace CxVisual.Professional.Vision
                     throw new InvalidOperationException("vision.saved.image_dimensions_changed");
                 if(splitNodes)
                 {
+                    IReadOnlyDictionary<string,string> regionParameters;
+                    string pinnedRule;
+                    if(!wiring.Parameters.TryGetValue(inspect,out regionParameters) ||
+                       !regionParameters.TryGetValue("RuleVersion",out pinnedRule) ||
+                       !string.Equals(pinnedRule,regions.ReleaseVersion,StringComparison.Ordinal))
+                        throw new InvalidOperationException("vision.saved.region_rules_changed");
+                }
+                if(splitNodes)
+                {
                     string thresholdText;
                     int savedThreshold;
                     if(!parameters.TryGetValue("Threshold",out thresholdText) ||
@@ -345,6 +354,7 @@ namespace CxVisual.Professional.Vision
                         regions.DescribeCapabilities().Single():vision.DescribeCapabilities().Single());
                     if(splitNodes)
                     {
+                        b.SetParameter(inspect,"RuleVersion",regions.ReleaseVersion);
                         segmentation=b.Step(segment.DescribeCapabilities().Single());
                         b.SetParameter(segmentation,"Width",width.ToString(CultureInfo.InvariantCulture));
                         b.SetParameter(segmentation,"Height",height.ToString(CultureInfo.InvariantCulture));
