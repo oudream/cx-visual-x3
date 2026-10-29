@@ -31,6 +31,7 @@ namespace CxVisual.TestCenter.UI
         private readonly System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>
             _layerColorButtons=new System.Collections.Generic.Dictionary<MVIImageOverlayLayer,Button>();
         private Slider _windowWidthSlider,_windowCenterSlider;
+        private TextBlock _windowWidthMaxLabel,_windowCenterMaxLabel;
         private readonly TextBlock _windowRangeHint=new TextBlock {
             Text="窗宽范围：1～65535；窗位范围：0～65535",
             FontSize=12, Foreground=Brushes.SteelBlue,
@@ -422,7 +423,9 @@ namespace CxVisual.TestCenter.UI
         }
         private UIElement WindowSliderRow(string label,TextBox field,bool isWidth,out Slider slider)
         {
-            Grid row=new Grid { Margin=new Thickness(2,9,2,9) };
+            Grid row=new Grid { Margin=new Thickness(2,9,2,7) };
+            row.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(37) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(94) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star),
@@ -455,6 +458,21 @@ namespace CxVisual.TestCenter.UI
             };
             Grid.SetColumn(field,1);row.Children.Add(field);
             Grid.SetColumn(current,2);row.Children.Add(current);
+            // 端点刻度贴在对应滑条下方，随Gray8/Gray16像素范围更新。
+            Grid ticks=new Grid { Margin=new Thickness(6,0,7,0) };
+            ticks.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
+            ticks.ColumnDefinitions.Add(new ColumnDefinition { Width=GridLength.Auto });
+            TextBlock minimum=new TextBlock {
+                Text=isWidth?"1":"0",FontSize=11,Foreground=Paint(100,119,141),
+                HorizontalAlignment=HorizontalAlignment.Left };
+            TextBlock maximum=new TextBlock {
+                Text=_windowLimit.ToString("0.###",CultureInfo.InvariantCulture),
+                FontSize=11,Foreground=Paint(100,119,141),
+                HorizontalAlignment=HorizontalAlignment.Right };
+            if(isWidth)_windowWidthMaxLabel=maximum;else _windowCenterMaxLabel=maximum;
+            ticks.Children.Add(minimum);
+            Grid.SetColumn(maximum,1);ticks.Children.Add(maximum);
+            Grid.SetRow(ticks,1);Grid.SetColumn(ticks,2);row.Children.Add(ticks);
             return row;
         }
         private UIElement BuildGrayPage()
