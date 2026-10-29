@@ -30,6 +30,24 @@ namespace CxVisual.TestCenter.UI
                     "CxVisual","TestCenter","Logs");
                 FLDLogHelper.Initialize(logRoot);
             }
+            if(e.Args.Length==1&&e.Args[0]=="--module-simulation-ui-automation")
+            {
+                ShutdownMode=ShutdownMode.OnExplicitShutdown;
+                string report=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    "TestCenter-Simulation-UIA-Report.txt");
+                try
+                {
+                    if(File.Exists(report))File.Delete(report);
+                    await TCTSimulationStepUiSmoke.RunAsync();
+                    Shutdown(0);
+                }
+                catch(Exception ex)
+                {
+                    File.WriteAllText(report,"FAIL TCT.Simulation.UIA"+Environment.NewLine+ex);
+                    Shutdown(3);
+                }
+                return;
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--module-cpu-ui-automation")
             {
                 ShutdownMode=ShutdownMode.OnExplicitShutdown;
