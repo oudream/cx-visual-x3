@@ -35,6 +35,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Studio AvalonDock NuGet Restore failed" }
           & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "Full Windows .NET48 rebuild failed" }
+      - name: B1-B4 real engineering and Vision MDS vertical gate
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --orchestration-vertical
+          if ($LASTEXITCODE -ne 0) { throw "Real orchestration vertical gate failed" }
       - name: Execute real concurrency and orchestration tests
         shell: pwsh
         run: |
