@@ -324,3 +324,16 @@ else ShowSelectionAndPareto(comparison.Selected,comparison.Pareto);
 检查覆盖：MPC必填声明与MRK输入必填、一方缺少或多余的输入、输入CLR类型、MPC具名输出与MRK Data.Return类型、具名输出缺失、专业语义TypeId与Host明确映射。标准原语按严格已知映射；专业TypeId须由Owner明确提供CLR Type，**不做任意反射Type.GetType或隐式转换**。Legacy Provider未声明输入合同/用`object`接受专业输入时返回`Unknown`或对应Reject原因；不能用运行可解析代替兼容性证明。
 
 该检查与纯`MDCDecisionService`是两个关注点：前者在MRK绑定边界，后者在不接触Runtime的编排阶段。现阶段仍在Orchestration.dll中共同编译以便迁移保真，并不意味着物理Decison工程已完成。当前Windows验证结果以新提交的Decision CI为准。
+
+
+## 13. 最小资源判断SDK（新增源码）
+
+`MDCResourceBudgetPlanner`只需要Host只读预算与专业需求区间，不必先建工程/Worker：
+~~~csharp
+// 已新增的纯静态接口；以下数值仅演示调用，不是任何设备的实测结果。
+var resources = new MDCResourceBudgetPlanner().Assess(
+    new[] { new MDCResourceBudget("GPU_MEMORY","MiB",4096,1024,"host-snapshot") },
+    new[] { new MDCResourceRequirement("GPU_MEMORY","MiB",2800,3500,"ct-model") });
+// 结果Unknown：剩余3072MiB落在[2800,3500]需求区间，需验证。
+~~~
+成功条件：有证明的UpperBound≤剩余容量；确定不可行：LowerBound>剩余容量。实际Runtime资源获取仍由F19/MRK负责。本接口与有界MDCChoiceService组合时作为硬约束输入；SourceMap、Core编辑和发布无需更改。

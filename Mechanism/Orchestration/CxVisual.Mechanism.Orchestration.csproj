@@ -27,6 +27,7 @@
     <Compile Include="MDCDecisionService.cs"/>
     <Compile Include="MDCObjectiveSelection.cs"/>
     <Compile Include="MOCBindingContractInspector.cs"/>
+    <Compile Include="MDCResourceBudgetPlanner.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

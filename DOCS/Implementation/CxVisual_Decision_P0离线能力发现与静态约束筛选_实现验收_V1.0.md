@@ -74,3 +74,8 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 在现有`Applications/Studio/StudioShell.ModuleCenter.cs`“加入当前主流程”操作中，继续先执行已有`MHS Effective`版本/权限、当前Scope、运行中禁止编辑检查，**再调用`MOCBindingContractInspector.Assess`核对真实Vision Threshold的MPC端口与MRK具名CLR合同**。静态检查不通过（Rejected/Unknown）显示规则原因并阻止`MOCFlowBuilder.Edit`，通过后仍走原来的Core编辑事务和Undo，未直接执行专业算法，也不能将这一步视为生产发布许可。
 
 后续Windows软件证据需同时包含Decision专项和ModuleCenter CPU RAW WPF闭环。当前只为Vision已知软件Provider示例，不宣称所有专业Provider与Studio画布智能过滤都已接入。完整Attribute/Fluent及动态策略仍待开发。
+
+
+## 十、静态资源预算与方案优化的第一次组合实现
+
+新增`Mechanism/Orchestration/MDCResourceBudgetPlanner.cs`，资源容量快照由Host提供、需求上下界由专业模型提供，两者均需证据Id。判断可用容量与需求区间为Allowed/Rejected/Unknown；结果可以直接进入已有多目标选择的Hard门禁，阻止资源已证实超限的极速GPU方案被推荐。新增`MDCDecisionTests.ResourcePlanningFeedsSelection`覆盖资源区间、单位、证据缺失、预算冲突与CPU/GPU选择反例；当前是静态软件能力，真实运行资源租约归F19/MRK不变。具体Windows通过状态应在实际Run后记录。

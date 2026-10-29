@@ -259,3 +259,17 @@ flowchart LR
 | MDC-22 | 真实Vision领域TypeId缺明确映射 → Unknown；即使显式映射了语义类型，Legacy `object`输入仍 Unknown |
 
 本检查由Host在MRK边界消费，非纯Decision自创第二套Runtime；当前CI和软件测试只能证明签名差异诊断，不能证明设备副作用/授权安全。下一阶段须让专业端收敛宽泛`object`签名并建立全局版本指纹。
+
+
+### D07资源预算首批专项（新增软件用例）
+
+| Case | 期望 |
+|---|---|
+| MDC-23 | 硬证据上界可容纳 → Allowed |
+| MDC-24 | 硬证据下界超出Host剩余容量 → Rejected |
+| MDC-25 | 需求上下界跨越剩余容量 → Unknown |
+| MDC-26 | 缺Host预算、单位冲突、需求证据缺失 → Unknown |
+| MDC-27 | GPU速度更快但确定资源超限 → MDCChoiceService只选满足Hard的CPU方案 |
+| MDC-28 | 重复资源Id → 拒绝，不静默覆盖 |
+
+备注：此时只验证调用方提供的证据、区间与静态数学结果，不代表实际GPU余量、运行资源锁或硬件HIL通过；证据等级须附本批Windows CI。

@@ -176,6 +176,13 @@ flowchart TB
 
 ## 13. D03/D04首批真实实现：Hard→Pareto→稳定首选（静态源码）
 
-\`MDCChoiceService\` 当前支持按已提供的单项约束结论过滤多方案，区别Rejected/Unknown/Feasible；仅当**每个业务目标**均具备相同单位、有限数值、Measured级别和非空EvidenceId时，才参与Pareto与自动首选。若两个可行方案各自优于另一项指标，则都保留在Pareto；再依用户明确的Priority进行词典序选择并以OptionId稳定破平。**无法比较不等于可以自动选择**，也不意味着经签名验证的实验数据：EvidenceId本身由调用方/专业Owner负责证明真实可靠。
+`MDCChoiceService` 当前支持按已提供的单项约束结论过滤多方案，区别Rejected/Unknown/Feasible；仅当**每个业务目标**均具备相同单位、有限数值、Measured级别和非空EvidenceId时，才参与Pareto与自动首选。若两个可行方案各自优于另一项指标，则都保留在Pareto；再依用户明确的Priority进行词典序选择并以OptionId稳定破平。**无法比较不等于可以自动选择**，也不意味着经签名验证的实验数据：EvidenceId本身由调用方/专业Owner负责证明真实可靠。
 
 支持的策略范围为有界直接比较（至多256候选/16目标），不调用设备，不进行遗传算法/蒙特卡洛/加权归一化，不计算不具有来源依据的“全局综合分”。CPU/GPU资源预算需作为已评估的Hard Outcome输入，当前没有统一实际资源占用预测器。对应专项负例：硬资源拒绝不能被极速方案冲淡，Estimated/Virtual不能冒充Measured，缺指标/单位冲突无法自动选，完全平局按ID稳定。
+
+
+## 14. D07静态资源预算区间与可行域（新增源码）
+
+`MDCResourceBudgetPlanner.Assess(budgets,requirements)` 是纯静态资源判断：Host提供`MDCResourceBudget(Id,Unit,Capacity,Reserved,SnapshotId)`，专业模型提供`MDCResourceRequirement(Id,Unit,LowerBound,UpperBound,EvidenceId)`。若**可用容量 = Capacity - Reserved**，已证明的需求上界不超过容量 → Allowed；已证明的需求下界超过容量 → Rejected；两区间重叠 → Unknown。未提供Host预算、单位不一致、缺Snapshot或需求证据 → Unknown。严格限制128条预算/需求及唯一Id。
+
+本判断**不持有GPU显存、PLC或F19资源租约**；所有容量快照仍需Runtime在实际执行前重新验证。EvidenceId是调用方提供的索引，不等于证据已被平台签署或算法预测可靠。可将该Assessment作为原`MDCChoiceService`的HardConstraints，先判断资源可行域再进行质量/速度Pareto比较；静态超限方案不得被速度权重“救回”。

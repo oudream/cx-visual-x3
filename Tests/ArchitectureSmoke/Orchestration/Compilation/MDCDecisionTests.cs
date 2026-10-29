@@ -51,6 +51,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CandidateGroupsAndNoExecution();
             HardConstraintAggregation();
             MultiObjectiveSelection();
+            ResourcePlanningFeedsSelection();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -293,6 +294,52 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "real Vision capability discovery and static candidate mapping failed");
 
             Check(executed==0,"static contract checks must not execute professional code");
+        }
+
+        private static void ResourcePlanningFeedsSelection()
+        {
+            var planner = new MDCResourceBudgetPlanner();
+            var snapshot = new [] {
+                new MDCResourceBudget("GPU_MEMORY","MiB",4096m,1024m,"gpu-capacity-v1")
+            };
+            MDCAssessment fits = planner.Assess(snapshot,new [] {
+                new MDCResourceRequirement("GPU_MEMORY","MiB",1024m,3000m,"ct-upper-v1")
+            });
+            MDCAssessment exceeds = planner.Assess(snapshot,new [] {
+                new MDCResourceRequirement("GPU_MEMORY","MiB",3500m,4000m,"ct-lower-v1")
+            });
+            MDCAssessment overlaps = planner.Assess(snapshot,new [] {
+                new MDCResourceRequirement("GPU_MEMORY","MiB",2900m,3500m,"ct-bounds-v1")
+            });
+            Check(fits.Verdict == MDCVerdict.Allowed,
+                "certified resource upper bound should be feasible");
+            Check(exceeds.Verdict == MDCVerdict.Rejected,
+                "certified lower bound exceeding available memory should reject");
+            Check(overlaps.Verdict == MDCVerdict.Unknown,
+                "overlapping demand interval must not be called feasible");
+            Check(planner.Assess(new MDCResourceBudget[0],new [] {
+                new MDCResourceRequirement("GPU_MEMORY","MiB",1m,2m,"proof")
+            }).Verdict == MDCVerdict.Unknown, "missing resource must be unknown");
+            Check(planner.Assess(snapshot,new [] {
+                new MDCResourceRequirement("GPU_MEMORY","GB",1m,2m,"proof")
+            }).Verdict == MDCVerdict.Unknown, "resource units cannot be guessed");
+            Check(planner.Assess(snapshot,new [] {
+                new MDCResourceRequirement("GPU_MEMORY","MiB",1m,2m,"")
+            }).Verdict == MDCVerdict.Unknown, "no demand evidence cannot be authorized");
+            var cpu = new MDCOption("cpu",new MDCAssessment(new MDCConstraintOutcome[0]),
+                new[]{Measure("latency",80,"ms")});
+            var gpu = new MDCOption("gpu",exceeds,
+                new[]{Measure("latency",3,"ms")});
+            var chosen = new MDCChoiceService().Compare(new[]{gpu,cpu},
+                new[]{new MDCObjective("latency","ms",MDCObjectiveDirection.Minimize)});
+            Check(chosen.Selected!=null && chosen.Selected.Option.Id=="cpu" &&
+                chosen.Candidates.Single(x=>x.Option.Id=="gpu").Verdict==MDCVerdict.Rejected,
+                "fast GPU candidate cannot override a certified resource rejection");
+            bool duplicate=false;
+            try {planner.Assess(new[]{snapshot[0],snapshot[0]},
+                new[]{new MDCResourceRequirement("GPU_MEMORY","MiB",1m,2m,"proof")});}
+            catch(ArgumentException){duplicate=true;}
+            Check(duplicate,"duplicate Host resource budgets must be rejected");
         }
 
     }
