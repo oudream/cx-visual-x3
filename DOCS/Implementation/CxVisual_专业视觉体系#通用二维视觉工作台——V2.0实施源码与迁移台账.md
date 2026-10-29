@@ -407,3 +407,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - 回归`Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs`：带Padding Gray16、精确ROI、末端Bin、常量65535、取消；首次Windows CI报CS0128局部`padded`重名，已修复[788a7b0](https://github.com/oudream/cx-visual-x3/commit/788a7b0260d54f4fbd73047157b2b503eed3405a)；`TCTImageViewerSmoke.cs`在打开图后**无需点击**统计按钮检查256点、Gray8/16范围、4096×2048真实Fit、像素不变。注意UI实际临界效果需等最新固定SHA/工业大图人工截图确认。
 
 **已核实**：修复变量冲突后的[Imaging Windows #40828384405](https://github.com/oudream/cx-visual-x3/actions/runs/40828384405) success；包含大图Fit新增回归的[Imaging #40828542464](https://github.com/oudream/cx-visual-x3/actions/runs/40828542464) success。最新打开即统计与取消修订后的CI仍须按新固定SHA结果核验；不能臆测6144大图实际耗时已降至某个毫秒数，也不把合成4096图布局测试当用户现场截图验收。
+
+### 22.1 统计自动化与Mask轮廓取消域隔离
+
+[Imaging Windows #40828887469](https://github.com/oudream/cx-visual-x3/actions/runs/40828887469) 对固定`8ff63f3` 的首次全WPF Smoke结果为**failure**，日志在`TCTImageViewerSmoke`“真实CPU Mask→FIM轮廓→像素面积7链路错误或破坏原图”，而原先未自动计算直方图时该链路曾通过。逐源核对发现原`_analysisCancellation/_analysisEpoch`同时控制FIM统计、ROI处理和轮廓处理；新自动统计在`Session.Changed/Overlays.Changed`调用`CancelAnalysis`，有可能把刚生成Overlay时仍在执行的轮廓任务误取消（真实跨功能生命周期耦合）。
+
+已在[98912b4](https://github.com/oudream/cx-visual-x3/commit/98912b4c972c9737ceab09dc7f016da92de9b657)修复：统计独占`_histogramCancellation/_histogramEpoch`；统计重算只调用`CancelHistogram`、不取消Mask轮廓；原图真正变更仍保留`CancelAnalysis`，而`_publishingContours`守护内部AddOverlays/SelectOverlay，不因轮廓自身发布触发错误取消。原图、结果图和Run证据Owner不变。不删除失败记录、不放松旧Mask轮廓测试，后续[Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522)和[TestCenter #40829484729](https://github.com/oudream/cx-visual-x3/actions/runs/40829484729)必须重跑；首次登记in_progress。
