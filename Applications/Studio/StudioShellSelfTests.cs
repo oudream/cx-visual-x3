@@ -143,6 +143,17 @@ namespace CxVisual.Studio
                     Button flow=actions.FirstOrDefault(x=>
                         System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                         "Studio.ModuleCenter.OpenFlow");
+                    var rawPanel=moduleHeader.Children.OfType<WrapPanel>()
+                        .FirstOrDefault(x=>x.Children.OfType<Button>().Any(y=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(y)==
+                            "Studio.ModuleCenter.RunSeparatedRaw"));
+                    Assert(rawPanel!=null && rawPanel.Children.OfType<ComboBox>().Any(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.MedianRadius") &&
+                        rawPanel.Children.OfType<Button>().Any(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.CancelRaw"),
+                        "Studio模块中心缺少拆分式RAW四五节点/半径与取消的共用操作入口");
                     Assert(configure!=null&&flow!=null,"模块中心缺少工程配置/流程快捷入口");
                     configure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,configure));
                     Assert(window.GetStudioContentIds().Contains("doc.config"),
@@ -3169,6 +3180,91 @@ namespace CxVisual.Studio
                             session.Find(cpuReport.PageId) is MEMPage &&
                             session.Revision>before,
                             "真实RAW→MEM→MOC授权发布→MRK计算/Trace闭环未获得可复核输出");
+                        var captured=provider.CaptureInspectionOptions();
+                        Assert(captured.PixelDepth==CxVisionPixelDepth.Bits8 &&
+                            captured.GrayThreshold==200 && captured.MinDefectArea==2,
+                            "Studio拆分能力未读取当前真实MHS Effective参数");
+                        // 修改返回副本不得影响已固定的Provider或下一次参数捕获。
+                        captured.GrayThreshold=5;
+                        Assert(provider.CaptureInspectionOptions().GrayThreshold==200,
+                            "CPU Provider泄露了可变配置别名");
+                        var split=MainWindow.ExecuteStudioSeparatedCpuVisionFileAsync(
+                            session,provider,filename,5,3,0,System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        var mask=split.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask);
+                        Assert(split.FlowId!=cpuReport.FlowId &&
+                            split.SegmentId!=Guid.Empty && split.EnhanceId==Guid.Empty &&
+                            split.MeasureId!=Guid.Empty && split.InspectId!=Guid.Empty &&
+                            mask.RunId==split.FlowId &&
+                            mask.Image.GetGrayValue(0,0)==255 &&
+                            mask.Image.GetGrayValue(4,2)==255 &&
+                            split.Inspection.ThresholdPixelCount==4 &&
+                            split.Inspection.Regions.Count==1 &&
+                            split.AcceptedRegionPixelArea==3 &&
+                            split.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                                .IntegerValue==3 &&
+                            split.TraceRecords.Any(x=>x.BlockId==split.SegmentId &&
+                                x.State=="Completed") &&
+                            session.Find(split.PageId) is MEMPage,
+                            "Studio四节点真实Mask/Region/面积及工程Trace执行不正确");
+                        var snapshot=session.GetSnapshot();
+                        var splitContent=snapshot.Nodes.Single(x=>x.Kind==MEMNodeKind.Content &&
+                            x.ParentId==split.PageId);
+                        var wiring=MOLWiringCodec.Get(splitContent);
+                        Assert(wiring!=null && wiring.Blocks.Count==4 &&
+                            wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==3 &&
+                            wiring.FlowOutputs.ContainsKey("ThresholdMask") &&
+                            wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea"),
+                            "Studio拆分式算法没有进入唯一MEM/MOL工程模型");
+                        // 以隔离测试会话验证五节点，真实中值处理不能修改RAW原件。
+                        byte[] larger=new byte[49];
+                        for(int y=2;y<=4;y++)for(int x=2;x<=4;x++)larger[y*7+x]=210;
+                        larger[0]=250;
+                        File.WriteAllBytes(filename,larger);
+                        var five=MainWindow.ExecuteStudioSeparatedCpuVisionFileAsync(
+                            session,provider,filename,7,7,1,System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Assert(five.EnhanceId!=Guid.Empty && five.SegmentId!=Guid.Empty &&
+                            five.Inspection.ThresholdPixelCount==5 &&
+                            five.AcceptedRegionPixelArea==5 &&
+                            five.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask)
+                                .Image.GetGrayValue(0,0)==0 &&
+                            five.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Image) &&
+                            File.ReadAllBytes(filename).SequenceEqual(larger),
+                            "Studio五节点FIM中值/分割/面积执行或原RAW保护失败");
+                        int unchanged=session.Revision;
+                        bool badRadius=false;
+                        try
+                        {
+                            MainWindow.ExecuteStudioSeparatedCpuVisionFileAsync(
+                                session,provider,filename,7,7,4,
+                                System.Threading.CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                        }
+                        catch(ArgumentOutOfRangeException){badRadius=true;}
+                        Assert(badRadius && session.Revision==unchanged,
+                            "超出半径预算的Studio执行修改了正式工程");
+                        var update=config.UpdateAsync(c=>c.GrayThreshold=201,
+                            "Studio Effective变化栅栏",System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Assert(update.Success && config.ApplyPendingAtTaskBoundary(),
+                            "测试MHS生效配置变更失败");
+                        bool staleDenied=false;
+                        try { provider.CaptureInspectionOptions(); }
+                        catch(InvalidOperationException){staleDenied=true;}
+                        Assert(staleDenied,"旧MHS Effective Provider在配置已更新后仍可启动拆分工程");
+                        unchanged=session.Revision;
+                        bool staleRunDenied=false;
+                        try
+                        {
+                            MainWindow.ExecuteStudioSeparatedCpuVisionFileAsync(
+                                session,provider,filename,7,7,0,
+                                System.Threading.CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                        }
+                        catch(InvalidOperationException){staleRunDenied=true;}
+                        Assert(staleRunDenied && session.Revision==unchanged,
+                            "已失效MHS Provider仍可新增工程或污染Revision");
                     }
                     finally
                     {
