@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Professional.CT3D
 {
@@ -42,6 +43,34 @@ namespace CxVisual.Professional.CT3D
         public string ParameterSignature {get;private set;}
         public string RoiSignature {get;private set;}
         public bool HasEvaluatedUncertainty {get{return false;}}
+    }
+
+    /// <summary>局部Mesh ROI顶点的稳定引用；同源同物理几何复算可重新解析。</summary>
+    public sealed class CT3DRoiVertexReference
+    {
+        internal CT3DRoiVertexReference(string sourceSignature,string roiSignature,
+            int vertexIndex,FGEPoint3D pointMm)
+        {
+            if(string.IsNullOrWhiteSpace(sourceSignature)||string.IsNullOrWhiteSpace(roiSignature)||
+                vertexIndex<0)throw new ArgumentException("ROI顶点身份无效。");
+            SourceSignature=sourceSignature;RoiSignature=roiSignature;
+            VertexIndex=vertexIndex;PointMm=pointMm;
+            using(var stream=new MemoryStream())
+            {
+                using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
+                {
+                    writer.Write(sourceSignature);writer.Write(roiSignature);writer.Write(vertexIndex);
+                    writer.Write(pointMm.X);writer.Write(pointMm.Y);writer.Write(pointMm.Z);
+                }
+                StableId=CT3DArtifactFiles.HashBytes(stream.ToArray());
+            }
+        }
+        public string StableId {get;private set;}
+        public string SourceSignature {get;private set;}
+        public string RoiSignature {get;private set;}
+        public int VertexIndex {get;private set;}
+        public FGEPoint3D PointMm {get;private set;}
+        public string Unit {get{return "mm";}}
     }
 
     /// <summary>V03专业结果及其可复算配方；不拥有MEM树、WPF状态或原始数据副本。</summary>
@@ -97,6 +126,17 @@ namespace CxVisual.Professional.CT3D
                     return CT3DArtifactFiles.HashBytes(stream.ToArray());
                 }
             }
+        }
+        /// <summary>把ROI逐顶点解析成稳定可追溯子元素引用，禁止使用屏幕或GPU坐标。</summary>
+        public IReadOnlyList<CT3DRoiVertexReference> GetSelectedVertexReferences()
+        {
+            var values=new List<CT3DRoiVertexReference>();
+            if(Kind!=CT3DAnalysisKind.MeshPlane)return values.AsReadOnly();
+            string signature=RoiSignature;
+            foreach(int index in SelectedVertexIndices)
+                values.Add(new CT3DRoiVertexReference(Source.Signature,signature,
+                    index,Mesh.Mesh.Vertices[index]));
+            return values.AsReadOnly();
         }
         public double MaxPlanarityRatio {get;private set;}
         public double MaxInPlaneCondition {get;private set;}
