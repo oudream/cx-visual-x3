@@ -179,6 +179,11 @@ namespace CxVisual.Professional.Vision
             }
             var frame=new CxVisionGrayFrame(w,h,_depth,values);
             CxVisionInspectionResult outcome=_pipeline.Inspect(frame,_configRevision,token);
+            // MOC跨节点Inspection必须经过既有FDT安全冻结。单节点返回曾不需要
+            // 复制适配器，接入Measurement后不允许在DataStack共享可变Region引用。
+            context.Data.Adapters.Register<CxVisionInspectionResult>(
+                CxVisionDataFlow.CopyResult,kind:FDTDataKind.Object,
+                sizeEstimator:result=>checked(128L+result.Regions.Count*64L));
             return Task.FromResult((object)outcome);
         }
     }
