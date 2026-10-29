@@ -214,11 +214,18 @@ namespace CxVisual.Mechanism.Decision
 
         private static string HashAspect(MPMAspect aspect)
         {
+            return HashLogicPayload(aspect.SchemaVersion,aspect.Required,aspect.Payload);
+        }
+
+        /// <summary>Identical Core Aspect SHA256 proof for exported Plan payloads;
+        /// the provider identity is always the one authoritative MOL codec.</summary>
+        public static string HashLogicPayload(int schema,bool required,byte[] bytes)
+        {
+            if(bytes==null)throw new ArgumentNullException("bytes");
             return Hash(writer=>{
-                Write(writer,aspect.ProviderId);
-                writer.Write(aspect.SchemaVersion);
-                writer.Write(aspect.Required);
-                var bytes=aspect.Payload;
+                Write(writer,MOLLogicCodec.ProviderId);
+                writer.Write(schema);
+                writer.Write(required);
                 writer.Write(bytes.Length);
                 writer.Write(bytes);
             });

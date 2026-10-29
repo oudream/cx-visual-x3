@@ -118,16 +118,34 @@ namespace CxVisual.Mechanism.Decision
         public string ExecutionGroup {get;private set;}
     }
 
+    /// <summary>Frozen Core reference identity for detached plan lowering.
+    /// This is an immutable description, never a live editable reference.</summary>
+    public sealed class MDCPlanReference
+    {
+        internal MDCPlanReference(MRIReferenceSnapshot reference)
+        {
+            Id=reference.Id;TargetId=reference.TargetId;Kind=reference.Kind;
+        }
+        public Guid Id {get;private set;}
+        public Guid TargetId {get;private set;}
+        public MRIReferenceKind Kind {get;private set;}
+    }
+
     public sealed class MDCPlanContent
     {
         private readonly byte[] _source;
-        internal MDCPlanContent(Guid contentId,int schemaVersion,bool isWiring,
-            Guid entry,IEnumerable<MDCPlanBlock> blocks,IEnumerable<MDCPlanLink> links,
+        internal MDCPlanContent(MEMNodeSnapshot origin,bool required,
+            Guid contentId,int schemaVersion,bool isWiring,Guid entry,IEnumerable<MDCPlanBlock> blocks,IEnumerable<MDCPlanLink> links,
             IEnumerable<MDCPlanPort> ports,IEnumerable<MDCPlanNamedPort> inputs,
             IEnumerable<MDCPlanNamedPort> outputs,IEnumerable<MDCPlanLiteral> literals,
             IEnumerable<MDCPlanPolicy> policies,MDCPlanSemanticIndex semantics,byte[] source)
         {
+            if(origin==null || origin.Id!=contentId)
+                throw new ArgumentException("decision.plan.content_identity");
             ContentId=contentId;SchemaVersion=schemaVersion;IsWiring=isWiring;
+            StorageRootId=origin.StorageRootId;LogicRequired=required;
+            References=new ReadOnlyCollection<MDCPlanReference>(
+                origin.References.Select(x=>new MDCPlanReference(x)).ToArray());
             EntryBlockId=entry;
             Blocks=new ReadOnlyCollection<MDCPlanBlock>(blocks.ToArray());
             Links=new ReadOnlyCollection<MDCPlanLink>(links.ToArray());
@@ -140,6 +158,9 @@ namespace CxVisual.Mechanism.Decision
             _source=(byte[])source.Clone();
         }
         public Guid ContentId {get;private set;}
+        public Guid StorageRootId {get;private set;}
+        public bool LogicRequired {get;private set;}
+        public IReadOnlyList<MDCPlanReference> References {get;private set;}
         public int SchemaVersion {get;private set;}
         public bool IsWiring {get;private set;}
         public Guid EntryBlockId {get;private set;}
@@ -180,7 +201,37 @@ namespace CxVisual.Mechanism.Decision
         public string CatalogFingerprint {get;private set;}
         public IReadOnlyList<MDCPlanContent> Contents {get;private set;}
         public void RequireCurrent(MEMProjectSnapshot project,MDCStaticCatalogSnapshot catalog)
-        { _source.RequireCurrent(project,catalog); }
+        { _source.RequireCurrent(project,catalog); RequireIntegrity(); }
+
+        /// <summary>Validate the exact frozen logic bytes and reference closure,
+        /// independent of an accessible MEM engineering snapshot.</summary>
+        public void RequireIntegrity()
+        {
+            if(Contents.Count==0 || Contents.Count!=_source.Contents.Count ||
+                !Contents.Any(x=>x.ContentId==RootContentId))
+                throw new InvalidOperationException("decision.plan.closure_incomplete");
+            var declared=_source.Contents.ToDictionary(x=>x.ContentId);
+            var seen=new HashSet<Guid>();
+            foreach(MDCPlanContent content in Contents)
+            {
+                MDCStaticContentSource source;
+                if(content==null || !seen.Add(content.ContentId) ||
+                    !declared.TryGetValue(content.ContentId,out source) ||
+                    source.SchemaVersion!=content.SchemaVersion)
+                    throw new InvalidOperationException("decision.plan.content_mismatch");
+                string fingerprint=MDCStaticSourceManifestBuilder.HashLogicPayload(
+                    content.SchemaVersion,content.LogicRequired,
+                    content.CopyCanonicalLogicPayload());
+                if(!StringComparer.Ordinal.Equals(source.LogicFingerprint,fingerprint))
+                    throw new InvalidOperationException("decision.plan.logic_integrity");
+                var links=new HashSet<Guid>(content.References
+                    .Where(x=>x.Kind==MRIReferenceKind.Content)
+                    .Select(x=>x.TargetId));
+                if(source.ReferencedContentIds.Any(x=>!links.Contains(x)) ||
+                   content.References.Any(x=>x.Id==Guid.Empty || x.TargetId==Guid.Empty))
+                    throw new InvalidOperationException("decision.plan.content_references_invalid");
+            }
+        }
         /// <summary>Current compatibility bridge can use the underlying source
         /// identity without owning a second editable engineering definition.</summary>
         public MDCStaticSourceManifest SourceManifest {get{return _source;}}
@@ -234,7 +285,7 @@ namespace CxVisual.Mechanism.Decision
                         .OrderBy(x=>x.BlockId).ThenBy(x=>x.PortMemberId,StringComparer.Ordinal);
                     var policies=wiring.Policies.Select(x=>new MDCPlanPolicy(x.Key,x.Value))
                         .OrderBy(x=>x.BlockId);
-                    plan.Add(new MDCPlanContent(node.Id,logic.SchemaVersion,true,
+                    plan.Add(new MDCPlanContent(node,logic.Required,node.Id,logic.SchemaVersion,true,
                         wiring.EntryBlockId,blocks,links,ports,
                         wiring.FlowInputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
                             .OrderBy(x=>x.Name,StringComparer.Ordinal),
@@ -248,7 +299,7 @@ namespace CxVisual.Mechanism.Decision
                     if(structured==null)
                         throw new InvalidOperationException("decision.plan.unknown_logic_schema");
                     var blocks=FlattenStructured(structured.Root).ToArray();
-                    plan.Add(new MDCPlanContent(node.Id,logic.SchemaVersion,false,
+                    plan.Add(new MDCPlanContent(node,logic.Required,node.Id,logic.SchemaVersion,false,
                         structured.Root.Id,blocks,new MDCPlanLink[0],
                         new MDCPlanPort[0],new MDCPlanNamedPort[0],
                         new MDCPlanNamedPort[0],new MDCPlanLiteral[0],

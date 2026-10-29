@@ -62,6 +62,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticSourceManifestPreservesCoreRevisionAndClosure();
             ManifestRuntimeBindingHandoffAndSafety();
             ImmutablePlanExecutionLoweringParity();
+            DetachedPlanRuntimeLowering();
             VersionPinnedRuntimeHandoffRejectsDrift();
             DeclarativePlanPreservesV1V2Semantics();
             RuntimeBindingContractConsistency();
@@ -1318,6 +1319,104 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "stale engineering source cannot be lowered after a Content edit");
             }
             finally {session.Close(true);}
+        }
+
+        private static void DetachedPlanRuntimeLowering()
+        {
+            // Build the complete Core closure once, then close the entire MEM
+            // engineering session before the Runtime binder is constructed.
+            MDCDeclarativePlan v1Plan=null,v2Plan=null;
+            MOCCompiledPlan v1Legacy=null,v2Legacy=null;
+            Guid dynamicAction=Guid.Empty,nestedAction=Guid.Empty;
+            var catalog=new MDCStaticCatalogSnapshot(new[] {
+                new MOCCapabilityDescriptor("vision.gray16","Gray16","Vision")
+            });
+            var session=MEMEngineering.Create("decision-detached-plan-loader");
+            try
+            {
+                var page=session.AddPage("V1Loop");
+                var action=MOLControlBlock.Action("vision.gray16");
+                dynamicAction=action.Id;
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(
+                    MOLControlBlock.Repeat(MOLLoopMode.For,7,action)));
+
+                var child=session.AddContent(session.Project,"SharedChild");
+                MOCFlowBuilder.Edit(session,child,flow=>{
+                    nestedAction=flow.Step("vision.gray16");
+                });
+                var parent=session.AddPage("V2Caller");
+                session.Edit("Reference shared child",edit=>{
+                    edit.Reference(parent.RootContent,child,"Child");return true;
+                }).RequireValue();
+                MOCFlowBuilder.Edit(session,parent.RootContent,flow=>{
+                    flow.InvokeContent(child);
+                });
+                var snapshot=session.GetSnapshot();
+                var compiler=new MDCDeclarativePlanCompiler();
+                v1Plan=compiler.Compile(snapshot,page.RootContent.Id,catalog);
+                v2Plan=compiler.Compile(snapshot,parent.RootContent.Id,catalog);
+                v1Legacy=new MOCEngineeringCompiler().Compile(snapshot,
+                    page.RootContent.Id,new ProbeResolver{IncludeSignature=false});
+                v2Legacy=new MOCEngineeringCompiler().Compile(snapshot,
+                    parent.RootContent.Id,new ProbeResolver());
+            }
+            finally {session.Close(true);}
+
+            var binder=new MOCManifestRuntimeBinding();
+            var versions=new Dictionary<string,string>(StringComparer.Ordinal) {
+                {"vision.gray16","vision.gray16/algorithm:1"}
+            };
+            var loopResolver=new VersionedProbeResolver();
+            loopResolver.Binding.IncludeSignature=false;
+            var detachedLoop=binder.Bind(v1Plan,catalog,loopResolver,
+                allowUnverifiedLegacyContracts:true,
+                expectedCapabilityVersions:versions);
+            Check(detachedLoop.Plan.Id==v1Legacy.Plan.Id &&
+                detachedLoop.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)
+                    .SequenceEqual(v1Legacy.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)) &&
+                detachedLoop.SourceMap.Find(dynamicAction).Count>0 &&
+                loopResolver.Binding.Calls==1 && loopResolver.Binding.Executions==0,
+                "closed-MEM V1 dynamic Loop must compile from pure Plan closure and preserve MRK SourceMap");
+
+            var wiredResolver=new VersionedProbeResolver();
+            var detachedWired=binder.Bind(v2Plan,catalog,wiredResolver,
+                expectedCapabilityVersions:versions);
+            Check(detachedWired.Plan.Id==v2Legacy.Plan.Id &&
+                detachedWired.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)
+                    .SequenceEqual(v2Legacy.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)) &&
+                detachedWired.SourceMap.Find(nestedAction).Count>0 &&
+                wiredResolver.Binding.Calls==1 && wiredResolver.Binding.Executions==0,
+                "closed-MEM V2 nested Content closure must produce exact MRK plan and SourceMap");
+
+            var unpinned=new VersionedProbeResolver();
+            bool missing=false;
+            try {binder.Bind(v2Plan,catalog,unpinned);}
+            catch(InvalidOperationException ex)
+            {missing=ex.Message=="moc.bind.detached_requires_version_pin";}
+            Check(missing && unpinned.Binding.Calls==0 && unpinned.VersionChecks==0,
+                "detached loader must fail closed without complete Host capability versions");
+
+            var otherCatalog=new MDCStaticCatalogSnapshot(new[] {
+                new MOCCapabilityDescriptor("vision.gray16","Changed schema","Vision")
+            });
+            var mismatched=new VersionedProbeResolver();
+            bool changed=false;
+            try {binder.Bind(v2Plan,otherCatalog,mismatched,
+                expectedCapabilityVersions:versions);}
+            catch(InvalidOperationException ex)
+            {changed=ex.Message=="moc.bind.detached_catalog_changed";}
+            Check(changed && mismatched.Binding.Calls==0 &&
+                mismatched.VersionChecks==0,
+                "detached loader must reject changed static catalog before touching professional runtime");
+
+            var stale=new VersionedProbeResolver {Version="vision.gray16/algorithm:2"};
+            bool wrongVersion=false;
+            try {binder.Bind(v2Plan,catalog,stale,
+                expectedCapabilityVersions:versions);}
+            catch(InvalidOperationException ex)
+            {wrongVersion=ex.Message.StartsWith("moc.bind.provider_version_mismatch:",StringComparison.Ordinal);}
+            Check(wrongVersion && stale.Binding.Calls==0,
+                "detached loader must reject provider version drift before execution binding");
         }
 
         private static void DeclarativePlanPreservesV1V2Semantics()

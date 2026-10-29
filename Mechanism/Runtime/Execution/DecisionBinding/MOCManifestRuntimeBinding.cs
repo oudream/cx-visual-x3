@@ -40,6 +40,29 @@ namespace CxVisual.Mechanism.Orchestration
                 professionalTypes,allowUnverifiedLegacyContracts,expectedCapabilityVersions,plan);
         }
 
+        /// <summary>Compile a completely detached immutable Decision Plan.
+        /// No MEMProjectSnapshot or live engineering tree is consulted.
+        /// The Host MUST provide a complete professional version pin. This
+        /// constructs a Plan; publication, authorization and device interlocks
+        /// still belong exclusively to Runtime/Host.</summary>
+        public MOCCompiledPlan Bind(MDCDeclarativePlan plan,
+            MDCStaticCatalogSnapshot catalog,IMRKCapabilityResolver resolver,
+            IReadOnlyDictionary<string,Type> professionalTypes=null,
+            bool allowUnverifiedLegacyContracts=false,
+            IReadOnlyDictionary<string,string> expectedCapabilityVersions=null)
+        {
+            if(plan==null)throw new ArgumentNullException("plan");
+            if(expectedCapabilityVersions==null)
+                throw new InvalidOperationException("moc.bind.detached_requires_version_pin");
+            plan.RequireIntegrity();
+            if(catalog==null || !StringComparer.Ordinal.Equals(
+                plan.CatalogFingerprint,catalog.Fingerprint))
+                throw new InvalidOperationException("moc.bind.detached_catalog_changed");
+            return BindCore(null,plan.SourceManifest,catalog,resolver,
+                professionalTypes,allowUnverifiedLegacyContracts,
+                expectedCapabilityVersions,plan);
+        }
+
         /// <summary>
         /// Fail closed BEFORE invoking a provider's resolver for stale, incomplete
         /// or structurally invalid source. A resolver is probed only once per
@@ -64,12 +87,21 @@ namespace CxVisual.Mechanism.Orchestration
             IReadOnlyDictionary<string,string> expectedCapabilityVersions,
             MDCDeclarativePlan plan)
         {
-            if(project == null) throw new ArgumentNullException("project");
+            if(project==null && plan==null)
+                throw new ArgumentNullException("project/plan");
             if(manifest == null) throw new ArgumentNullException("manifest");
             if(catalog == null) throw new ArgumentNullException("catalog");
             if(resolver == null) throw new ArgumentNullException("resolver");
 
-            manifest.RequireCurrent(project,catalog);
+            if(project!=null)
+                manifest.RequireCurrent(project,catalog);
+            else
+            {
+                plan.RequireIntegrity();
+                if(!object.ReferenceEquals(manifest,plan.SourceManifest) ||
+                    !StringComparer.Ordinal.Equals(manifest.CatalogFingerprint,catalog.Fingerprint))
+                    throw new InvalidOperationException("moc.bind.detached_catalog_changed");
+            }
             if(!manifest.HasCompleteStaticMetadata)
                 throw new InvalidOperationException("moc.bind.unknown_static_capability:"+
                     string.Join(",",manifest.UnknownCapabilityIds));
@@ -81,9 +113,10 @@ namespace CxVisual.Mechanism.Orchestration
             MOCPlanLogicReader planSource=plan==null?null:new MOCPlanLogicReader(plan);
             foreach(var content in manifest.Contents)
             {
-                MEMNodeSnapshot node = project.Find(content.ContentId);
                 MOLWiringDefinition wiring = planSource==null?
-                    MOLWiringCodec.Get(node):planSource.Wiring(node);
+                    MOLWiringCodec.Get(project.Find(content.ContentId)):
+                    planSource.Wiring(new MOCContentView(
+                        plan.Contents.Single(x=>x.ContentId==content.ContentId)));
                 if(wiring == null) continue; // V1 structural logic remains Core-owned.
                 var assessment=preflight.Assess(wiring,catalog);
                 if(assessment.Verdict == MDCVerdict.Rejected)
@@ -183,6 +216,7 @@ namespace CxVisual.Mechanism.Orchestration
             var compiler=new MOCEngineeringCompiler();
             MOCCompiledPlan compiled = plan==null ?
                 compiler.Compile(project,manifest.RootContentId,pinned) :
+                project==null ? compiler.Compile(plan,pinned) :
                 compiler.Compile(project,plan,pinned);
             if(compiled.ProjectId != manifest.ProjectId ||
                 compiled.EngineeringRevision != manifest.EngineeringRevision)

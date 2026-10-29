@@ -19,6 +19,7 @@ namespace CxVisual.Mechanism.Orchestration
         internal MOCPlanLogicReader(MDCDeclarativePlan plan)
         {
             if(plan==null)throw new ArgumentNullException("plan");
+            plan.RequireIntegrity();
             if(plan.Contents.Count==0 || plan.Contents.Count>1024 ||
                 !plan.Contents.Any(x=>x.ContentId==plan.RootContentId))
                 throw new InvalidOperationException("moc.plan.incomplete_closure");
@@ -37,7 +38,7 @@ namespace CxVisual.Mechanism.Orchestration
             }
         }
 
-        internal MOLWiringDefinition Wiring(MEMNodeSnapshot content)
+        internal MOLWiringDefinition Wiring(MOCContentView content)
         {
             if(content==null)throw new InvalidOperationException("moc.plan.content_missing");
             MOLWiringDefinition result;
@@ -47,7 +48,7 @@ namespace CxVisual.Mechanism.Orchestration
                 content.Id.ToString("N"));
         }
 
-        internal MOLLogicDefinition Structured(MEMNodeSnapshot content)
+        internal MOLLogicDefinition Structured(MOCContentView content)
         {
             if(content==null)throw new InvalidOperationException("moc.plan.content_missing");
             MOLLogicDefinition result;
