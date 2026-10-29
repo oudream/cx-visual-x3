@@ -783,6 +783,7 @@ namespace CxVisual.TestCenter.UI
             WrapPanel export = Row();
             Action(export,"保存图像PNG","SaveRawPng",Save);
             Action(export,"导出无损原像素RAW","ExportActiveRaw",ExportActiveRawWithDialog);
+            Action(export,"导出当前Run结果CSV","ExportCpuRunCsv",ExportCpuRunCsvWithDialog);
             Action(export,"保存含标注视口","SaveViewPng",SaveViewPng);
             Action(export,"复制图像","Copy",()=>_viewer.CopyToClipboard());
             Action(export,"导出测量/标注CSV","ExportMeasurements",ExportMeasurements);
