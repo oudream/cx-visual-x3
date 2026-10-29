@@ -47,7 +47,6 @@
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Logic\CxVisual.Mechanism.Logic.csproj"><Project>{71A7BD54-3D24-50DC-B60D-42A9848E8DB0}</Project><Name>CxVisual.Mechanism.Logic</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
-    <ProjectReference Include="..\..\Mechanism\Lifecycle\CxVisual.Mechanism.Lifecycle.csproj"><Project>{F67A9A14-1668-55D5-8642-55B4BAD0F0B0}</Project><Name>CxVisual.Mechanism.Lifecycle</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Presentation.Wpf\CxVisual.Mechanism.Presentation.Wpf.csproj"><Project>{718A728A-4133-59EF-804F-62B7E8EE11EA}</Project><Name>CxVisual.Mechanism.Presentation.Wpf</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Automation\CxVisual.Professional.Automation.csproj"><Project>{02494452-8A8C-593B-8B49-A58D05218D88}</Project><Name>CxVisual.Professional.Automation</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Vision\CxVisual.Professional.Vision.csproj"><Project>{828ED8C8-D754-54EB-9934-E27843EAF22D}</Project><Name>CxVisual.Professional.Vision</Name></ProjectReference>
