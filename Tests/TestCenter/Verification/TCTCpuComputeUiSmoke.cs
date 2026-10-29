@@ -148,11 +148,13 @@ namespace CxVisual.TestCenter.UI
                 Check(panel.LastReport==null,"Invalid file returned fake result");
                 await Set(hwnd,"TCT.Cpu.Width","5");
                 await Click(hwnd,"TCT.Cpu.Run");
-                await Until(()=>!panel.IsRunning&&
-                    (panel.LastReport!=null ||
-                     panel.StatusMessage.StartsWith("CPU检测失败") ||
-                     panel.StatusMessage.StartsWith("CPU检测已取消")),
-                    "real CPU inspection completion");
+                // The prior negative run left a failure message. UIA Invoke may return
+                // before WPF schedules the next async handler, so the old failure text
+                // must never be accepted as the *new* run's terminal state.
+                await Until(()=>panel.LastReport!=null,
+                    "new real CPU inspection result (previous failure does not count)",500);
+                Check(!panel.IsRunning || panel.LastReport!=null,
+                    "真实CPU结果未发布");
                 if(panel.LastReport==null)
                     throw new InvalidOperationException("真实CPU执行未产生结果："+panel.StatusMessage);
                 var first=panel.LastReport;
