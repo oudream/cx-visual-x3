@@ -54,12 +54,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(copy.ContentHash==source.ContentHash && File.ReadAllBytes(raw).SequenceEqual(bytes),
                 "内容寻址导入不改原始文件");
             string project=Path.Combine(folder,"analysis.cxproj");MRIObjectAddress address;
+            string originalArtifactPath;
             int revision;
             using(var engineering=MEMEngineering.Create("三维分析案例"))
             {
                 var page=engineering.AddPage("三维");var owner=page.RootContent;
                 int before=engineering.Revision;
                 address=CT3DAnalysisPersistence.Commit(engineering,owner,before,folder,analysis,CancellationToken.None);
+                originalArtifactPath=Directory.GetFiles(Path.Combine(folder,"artifacts","ct3d"),"*.analysis").Single();
                 revision=engineering.Revision;
                 Check(revision==before+1 && engineering.CanUndo,"工程由MEM统一事务提交");
                 engineering.Undo().RequireValue();
@@ -146,7 +148,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 string missing=raw+".missing";File.Move(raw,missing);
                 Reject<FileNotFoundException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
                 File.Move(missing,raw);
-                string blob=Directory.GetFiles(Path.Combine(folder,"artifacts","ct3d"),"*.analysis").Single();
+                string blob=originalArtifactPath;
                 byte[] original=File.ReadAllBytes(blob);File.WriteAllBytes(blob,new byte[]{1,2,3});
                 Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
                 File.WriteAllBytes(blob,original);
