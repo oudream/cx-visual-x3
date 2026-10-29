@@ -2008,6 +2008,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
                     b.AddPort(inspect,new MPCPortDescriptor("Height",
                         MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
+                    b.AddPort(inspect,new MPCPortDescriptor("Inspection",
+                        MPCPortDirection.Output,
+                        CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        MPCPortKind.Data));
                     b.SetParameter(inspect,"Width","5");
                     b.SetParameter(inspect,"Height","3");
                     b.Connect(source,"Done",inspect,"Start");
