@@ -99,7 +99,7 @@ namespace CxVisual.Mechanism.Decision
                     // Start/Done and other MOL control ports belong to the
                     // engineering workflow, not the professional data signature.
                     if ((port.Kind == MPCPortKind.Data || port.Kind == MPCPortKind.Stream) &&
-                        !found.Definition.Ports.Any(x => x.MemberId == port.MemberId))
+                        !found.Ports.Any(x => x.MemberId == port.MemberId))
                         checks.Add(new MDCConstraintOutcome(
                             "MDC_PREFLIGHT_EXTRA_PORT:" + prefix + port.MemberId,
                             MDCVerdict.Unknown,

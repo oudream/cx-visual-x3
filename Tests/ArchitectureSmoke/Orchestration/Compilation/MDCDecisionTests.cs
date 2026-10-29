@@ -1035,6 +1035,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(rejectedStatic && staticProbe.Calls==0,
                     "MOL business port mismatch must reject before MRK resolver probing");
 
+                // Positive V2 path: the existing Builder/Compiler/SourceMap all
+                // remain authoritative; the adapter only verifies and pins them.
+                var v2Page=session.AddPage("TypedV2");
+                Guid v2BlockId=Guid.Empty;
+                MOCFlowBuilder.Edit(session,v2Page.RootContent,
+                    flow=>{ v2BlockId=flow.Step("vision.gray16"); });
+                var v2Snapshot=session.GetSnapshot();
+                var v2Manifest=new MDCStaticSourceManifestBuilder().Create(
+                    v2Snapshot,v2Page.RootContent.Id,catalog);
+                var v2Probe=new ProbeResolver();
+                var v2Plan=binder.Bind(v2Snapshot,v2Manifest,catalog,v2Probe);
+                Check(v2Plan!=null && v2Plan.SourceMap.Find(v2BlockId).Count>0 &&
+                    v2Probe.Calls==1 && v2Probe.Executions==0,
+                    "real MOL V2 Builder must retain original compiled SourceMap and one pinned resolver");
+
+
             }
             finally {session.Close(true);}
         }
