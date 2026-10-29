@@ -1951,11 +1951,20 @@ namespace CxVisual.Studio
                         exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
                         exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
                         "第三个专业并未通过注册接入同一个真实配置页面");
+                    // WPF AvalonDock document content can be hosted through a
+                    // ControlTemplate. LogicalTreeHelper alone misses visual-only
+                    // panels after template expansion, even when they are rendered.
                     var panels=new List<System.Windows.Controls.Primitives.UniformGrid>();
+                    var visited=new HashSet<System.Windows.DependencyObject>();
                     Action<System.Windows.DependencyObject> visit=null;
                     visit=node=>{
+                        if(node==null||!visited.Add(node))return;
                         var grid=node as System.Windows.Controls.Primitives.UniformGrid;
                         if(grid!=null)panels.Add(grid);
+                        var visual=node as System.Windows.Media.Visual;
+                        if(visual!=null)
+                            for(int index=0;index<System.Windows.Media.VisualTreeHelper.GetChildrenCount(visual);index++)
+                                visit(System.Windows.Media.VisualTreeHelper.GetChild(visual,index));
                         foreach(var child in System.Windows.LogicalTreeHelper.GetChildren(node)
                             .OfType<System.Windows.DependencyObject>())visit(child);
                     };
