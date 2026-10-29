@@ -940,6 +940,7 @@ namespace CxVisual.TestCenter.UI
             CancellationTokenSource cancellation=new CancellationTokenSource();
             _analysisCancellation=cancellation;
             long epoch=Interlocked.Read(ref _analysisEpoch);
+            long resultVersion=_viewer.Session.SourceVersion;
             Stopwatch timer=Stopwatch.StartNew();
             Show("正在按原图精确ROI阈值分割，可切图、改ROI或发起新请求取消旧任务。");
             try
@@ -953,8 +954,7 @@ namespace CxVisual.TestCenter.UI
                    epoch!=Interlocked.Read(ref _analysisEpoch) ||
                    !ReferenceEquals(original,_viewer.Session.Original))return;
                 timer.Stop();
-                _viewer.ShowResult(segmented.Mask);
-                _viewer.SelectResult();
+                if(!_viewer.TryShowResult(resultVersion,segmented.Mask))return;
                 Show("ROI阈值分割完成："+segmented.PixelCount+
                     "/"+segmented.SampledPixelCount+"像素；"+
                     (snapshot==null ? BoundsText(region) : snapshot.Kind+" "+snapshot.Id)+
@@ -1020,6 +1020,7 @@ namespace CxVisual.TestCenter.UI
             CancellationTokenSource cancellation=new CancellationTokenSource();
             _analysisCancellation=cancellation;
             long epoch=Interlocked.Read(ref _analysisEpoch);
+            long resultVersion=_viewer.Session.SourceVersion;
             Stopwatch timer=Stopwatch.StartNew();
             Show("区域生长正在分析原图ROI：种子("+seedX+","+seedY+")，容差 "+
                 tolerance.ToString("0.###",CultureInfo.InvariantCulture)+"，支持取消。");
@@ -1032,8 +1033,7 @@ namespace CxVisual.TestCenter.UI
                     epoch!=Interlocked.Read(ref _analysisEpoch) ||
                     !ReferenceEquals(original,_viewer.Session.Original))return;
                 timer.Stop();
-                _viewer.ShowResult(grown.Mask);
-                _viewer.SelectResult();
+                if(!_viewer.TryShowResult(resultVersion,grown.Mask))return;
                 Show("区域生长完成："+grown.PixelCount+"像素，种子灰度 "+
                     grown.SeedGrayValue.ToString("0.###",CultureInfo.InvariantCulture)+
                     "，范围 "+BoundsText(grown.Bounds)+
