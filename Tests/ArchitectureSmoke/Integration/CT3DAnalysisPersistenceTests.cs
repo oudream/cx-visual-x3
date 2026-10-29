@@ -67,6 +67,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 engineering.Redo().RequireValue();
                 var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
                 Check(restored.Mesh.ResultId==analysis.Mesh.ResultId,"Undo/Redo不重新生成结果身份");
+                int recomputeRevision=engineering.Revision;
+                CT3DAnalysisPersistence.RecomputeAndCommit(engineering,owner,recomputeRevision,folder,CancellationToken.None);
+                var replaced=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
+                Check(replaced.Mesh.ResultId!=restored.Mesh.ResultId&&
+                    replaced.Plane.ResultId!=restored.Plane.ResultId&&
+                    replaced.Source.Signature==restored.Source.Signature&&
+                    engineering.Revision==recomputeRevision+1,
+                    "原位复算生成新结果身份、保留同源并通过MEM版本事务替换");
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.RecomputeAndCommit(
+                    engineering,owner,recomputeRevision,folder,CancellationToken.None));
+                int replacementRevision=engineering.Revision;
+                Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.RecomputeAndCommit(
+                    engineering,owner,replacementRevision,folder,new CancellationToken(true)));
+                Check(engineering.Revision==replacementRevision,"版本冲突与取消不修改专业工程");
+                engineering.Undo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
+                    .Mesh.ResultId==restored.Mesh.ResultId,"MEM Undo恢复旧专业结果身份");
+                engineering.Redo().RequireValue();
                 Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.Commit(engineering,owner,before,
                     folder,analysis,CancellationToken.None));
                 int current=engineering.Revision;
