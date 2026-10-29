@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Runtime.Execution;
 
