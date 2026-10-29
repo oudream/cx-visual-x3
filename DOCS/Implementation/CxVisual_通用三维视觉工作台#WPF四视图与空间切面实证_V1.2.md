@@ -44,3 +44,10 @@
 - `MVI3DSceneState`沿用既有不可变`MVI3DSceneItem`，新增可视`LayerKey/GroupKey`、`SetOrganization`、`SnapshotLayer`、`SetGroupVisibility`、`SetGroupOpacity`与`TrySelectSource`；变更只影响会话可视引用，不复制RAW、CAD/Mesh实体、不另建MEM资源存储。空图层、不合法透明度拒绝；整组批量修改只发一次Revision，隐藏已选成员时清理Selection；同SourceRef多个可见Scene实例拒绝无歧义自动选择。
 - 对应源提交：`e1da3e4`（多对象图层分组）、`8ffdf95`（Headless组合反证）、`6cc8f14`/`49390bd`（真实WPF Surface与Measurement整组显隐）、`2ea1552`/`a9639a3`（整组透明度及非法值验证）、`acd8498`/`ab23524`（专业来源反向选择与歧义拒绝）。
 - **证据边界**：上述提交均已推送GitHub，最新固定SHA Windows CI在记录时仍处于queued/in_progress；未能宣布G1/G3通过。仍待统一组层次的WPF可视编辑入口、MEM工程场景样式保存重开、真正Mesh/Volume混合透明深度与对象级GPU拾取、资源预算/Context恢复实证、三维ROI四视图精准交互。因此B**未完成**，不得将MVI状态单测当作完整工业三维工作台。
+
+
+### B包来源失效与可视版本管理续进
+
+- `9fecb6b`/`4131ef1`：`MVI3DSceneState.RemoveOlderSourceRevisions`按SourceRef、当前专业Revision一次性撤销旧Surface/Measurement等场景引用，保留最新来源实例，自动清理旧选择并仅发布一次Changed事件。重复无效化保持零变更；不删除MEM真源或物理资产。ArchitectureSmoke增加正反测试。
+- 这些仅属于MVI公共Scene消费端的失效控制，实际专业结果的变更由CT3D/MEM既有Owner发起；未来Studio/MPW须在结果提交与重开恢复路径调用此统一方法，而非另建Scene版本栈。
+- 固定SHA Windows CI及真实GPU混合深度、像素精确拾取、场景样式MEM保存重开、ROI跨切片变换、LOD/预算仍待验证。不得标B工作包完成。
