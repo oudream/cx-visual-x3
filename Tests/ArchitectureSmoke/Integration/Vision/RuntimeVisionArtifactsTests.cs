@@ -57,6 +57,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ProjectBackedMeasuredInspection();
             ProjectBackedMedianEnhancement();
             ProjectBackedSeparatedNodes();
+            SeparatedGray16AndInputSafety();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
         }
@@ -726,6 +727,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(File.Exists(rawPath))File.Delete(rawPath);
                 if(File.Exists(projectPath))File.Delete(projectPath);
             }
+        }
+
+        /// <summary>独立拆分节点的Gray16、小端、预取消与坏RAW原子性反证。</summary>
+        private static void SeparatedGray16AndInputSafety()
+        {
+            string path=Path.Combine(Path.GetTempPath(),
+                "vision-split16-"+Guid.NewGuid().ToString("N")+".raw");
+            byte[] raw={0xF4,0x01,0xF4,0x01,0,0,0,0};
+            File.WriteAllBytes(path,raw);
+            try
+            {
+                CxVisionInspectionOptions options=Options(CxVisionPixelDepth.Bits16,400);
+                using(var project=MEMEngineering.Create("独立分割16位"))
+                {
+                    try
+                    {
+                        var result=CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync(
+                            project,options,103,path,2,2,0,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Check(result.ThresholdMask!=null &&
+                            result.ThresholdMask.PixelFormat==FIMPixelFormat.Gray8 &&
+                            result.ThresholdMask.GetGrayValue(0,0)==255 &&
+                            result.ThresholdMask.GetGrayValue(1,0)==255 &&
+                            result.ThresholdMask.GetGrayValue(0,1)==0 &&
+                            result.Inspection.ThresholdPixelCount==2 &&
+                            result.AcceptedRegionPixelArea==2 &&
+                            result.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask)
+                                .Image.GetGrayValue(1,0)==255 &&
+                            File.ReadAllBytes(path).SequenceEqual(raw),
+                            "独立Gray16小端阈值与二值Mask/接受区域不一致");
+                        long before=project.GetSnapshot().Revision;
+                        using(var cancelled=new CancellationTokenSource())
+                        {
+                            cancelled.Cancel();
+                            Reject<OperationCanceledException>(()=>
+                                CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync(
+                                    project,options,103,path,2,2,0,cancelled.Token)
+                                    .GetAwaiter().GetResult(),
+                                "预取消操作不得写入新工程节点");
+                        }
+                        File.WriteAllBytes(path,new byte[]{1,2,3});
+                        Reject<InvalidDataException>(()=>
+                            CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync(
+                                project,options,103,path,2,2,0,CancellationToken.None)
+                                .GetAwaiter().GetResult(),
+                            "损坏RAW不得编译/污染工程或产生正式Mask");
+                        Check(project.GetSnapshot().Revision==before,
+                            "无效RAW或已取消操作不允许新增工程节点");
+                    }
+                    finally{project.Close(true);}
+                }
+            }
+            finally{if(File.Exists(path))File.Delete(path);}
         }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
