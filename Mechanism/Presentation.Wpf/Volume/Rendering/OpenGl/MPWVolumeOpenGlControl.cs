@@ -736,24 +736,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _gl.BindVertexArray(_lineVao);
                 _gl.DrawArrays(0x0001,0,MPWVolumeGeometry.CubeLines.Length/3);
             }
-            // 真实GL framebuffer中的专业Surface点层，避免HwndHost airspace导致WPF伪叠加。
-            if(_surfaceVertices.Length!=0 && _surfaceVao!=0)
+            // 同一GL framebuffer中的专业Mesh先进行真实深度测试，Surface点后绘制；
+            // Raymarch合成体未提供逐像素深度，本阶段只保证几何叠加自身前后遮挡。
+            if((_meshTriangles.Length!=0&&_meshVao!=0)||
+               (_surfaceVertices.Length!=0&&_surfaceVao!=0))
             {
-                UseShaderProgram(_lineShader);
-                Matrix("mvp",mvp);
-                Vec3("lineColor",1f,.78f,.2f);
-                _gl.BindVertexArray(_surfaceVao);
-                glPointSize(4f);
-                _gl.DrawArrays(0x0000,0,_surfaceVertices.Length/3); // GL_POINTS
-            }
-            if(_meshTriangles.Length!=0 && _meshVao!=0)
-            {
-                // 预览色面叠加于同一GL framebuffer；深度正确混合待GPU实机专项验证。
-                UseShaderProgram(_lineShader);
-                Matrix("mvp",mvp);
-                Vec3("lineColor",.3f,.85f,.94f);
-                _gl.BindVertexArray(_meshVao);
-                _gl.DrawArrays(0x0004,0,_meshTriangles.Length/3); // GL_TRIANGLES
+                glEnable(0x0B71); // GL_DEPTH_TEST
+                try
+                {
+                    if(_meshTriangles.Length!=0&&_meshVao!=0)
+                    {
+                        UseShaderProgram(_lineShader);
+                        Matrix("mvp",mvp);
+                        Vec3("lineColor",.3f,.85f,.94f);
+                        _gl.BindVertexArray(_meshVao);
+                        _gl.DrawArrays(0x0004,0,_meshTriangles.Length/3); // GL_TRIANGLES
+                    }
+                    if(_surfaceVertices.Length!=0&&_surfaceVao!=0)
+                    {
+                        UseShaderProgram(_lineShader);
+                        Matrix("mvp",mvp);
+                        Vec3("lineColor",1f,.78f,.2f);
+                        _gl.BindVertexArray(_surfaceVao);
+                        glPointSize(4f);
+                        _gl.DrawArrays(0x0000,0,_surfaceVertices.Length/3); // GL_POINTS
+                    }
+                }
+                finally {glDisable(0x0B71);}
             }
             if(_showOrientation)DrawOrientationIndicator(w,h);
             SwapBuffers(_dc);
@@ -1002,6 +1011,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("opengl32.dll")] private static extern void glTexImage2D(uint target,int level,int internalFormat,
             int width,int height,int border,uint pixelFormat,uint pixelType,IntPtr pixels);
         [DllImport("opengl32.dll")] private static extern void glEnable(uint flag);
+        [DllImport("opengl32.dll")] private static extern void glDisable(uint flag);
         [DllImport("opengl32.dll")] private static extern void glBlendFunc(uint source,uint destination);
         private static bool ValidProc(IntPtr value)
         { long x=value.ToInt64(); return x!=0&&x!=1&&x!=2&&x!=3&&x!=-1; }
