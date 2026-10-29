@@ -63,3 +63,10 @@
 - 真实 `MEMProjectSnapshot` 目前仍用于项目和 Content 的身份、授权引用、StorageRootId、SourceMap 对象地址；它不再充当 Plan 入口的逻辑载荷真源。这是**来源与执行绑定解耦**，尚不意味着无工程上下文的设备独立执行包或进程外发布已完成。
 - ArchitectureSmoke 新增对 V1 动态 Loop、V2 自由连接、MRK PlanId 与 SourceMap 一致性、计划载荷防御性复制、工程修改后失效的用例。动态 Loop/Foreach 仍归原 MRK 编译与执行机制。
 - 真实 Windows 验收以固定提交 SHA 对应的 GitHub Actions 为准；提交记录不能替代 CI Success。
+
+## 8. Plan执行编译固定SHA与Windows修复
+
+- [687b58f5db77](https://github.com/oudream/cx-visual-x3/commit/687b58f5db775b7f156061ecbc888f4c460f2373)：正式 Plan→MOC 编译器接入。
+- [7cbbdad5b77](https://github.com/oudream/cx-visual-x3/commit/7cbbdad5b7730ba083c01b901711e1da42717bcc)：修复新增 Reader 变量与旧源码局部 source 重名。Windows Run 40871331922 已通过 Decision 静态架构检查，但全量构建仍因**Studio 并行提交的 MEMContent/MEMNodeSnapshot 实参错误**失败。
+- [4194f2fecec7](https://github.com/oudream/cx-visual-x3/commit/4194f2fecec7de7ede17ea9f8996793851a30167)：将 Studio 自测的 MOL Get 参数修为真实 MEMNodeSnapshot。新全量构建及决策专项需以此修复之后的固定 SHA 重新运行。
+- 未拿到新的 `--decision`、默认 ArchitectureSmoke 和 Runtime 成功结果之前，不把 Plan 真实编译入口写成已通过验收；此记录只是提交/根因闭环与下一次 CI 门禁。
