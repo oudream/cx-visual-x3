@@ -41,3 +41,21 @@ export interface EventsEnvelope {
   scope: 'local-only'
   generatedAt: string
 }
+
+export interface HistoricalIncident {
+  programId: string
+  pid: number
+  event: number
+  time: number
+  severity: 'critical' | 'warning'
+  kind: 'max-error' | 'max-start' | 'start-failed'
+  message: string
+}
+
+export interface AlertHistoryEnvelope {
+  data: HistoricalIncident[]
+  scope: 'local-only'
+  kind: 'historical-failures'
+  historyWindowBytes: number
+  generatedAt: string
+}

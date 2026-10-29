@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gogo/internal/events"
+	"gogo/internal/security"
 )
 
 // EventProvider reads existing persisted events; it must not modify log files.
@@ -17,23 +17,8 @@ type EventProvider func(limit int) ([]events.Record, error)
 // registerEvents is deliberately restricted to loopback requests until real
 // authentication, authorization and log data redaction are implemented.
 func registerEvents(api *gin.RouterGroup, provider EventProvider) {
-	api.GET("/events", func(c *gin.Context) {
-		host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-		if err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})
-			return
-		}
-		// A local reverse proxy can hide the remote peer behind 127.0.0.1.
-		// Fail closed when forwarding headers are present until proper auth exists.
-		if c.GetHeader("Forwarded") != "" || c.GetHeader("X-Forwarded-For") != "" || c.GetHeader("X-Real-IP") != "" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})
-			return
-		}
-		ip := net.ParseIP(host)
-		if ip == nil || !ip.IsLoopback() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})
-			return
-		}
+	api.GET("/events", security.LocalOnly(), func(c *gin.Context) {
+		var err error
 		limit := 30
 		if q := c.Query("limit"); q != "" {
 			limit, err = strconv.Atoi(q)

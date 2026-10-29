@@ -13,4 +13,5 @@ import (
 func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	e.GET("/programs_status", getProgramStatusList)
 	httpapi.Register(e, apiProgramSnapshot, apiEventHistory)
+	httpapi.RegisterAlertHistory(e, apiAlertHistory)
 }

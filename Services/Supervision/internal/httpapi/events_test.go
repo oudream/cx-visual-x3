@@ -39,6 +39,7 @@ func TestEventRouteLocalOnly(t *testing.T) {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 		req.RemoteAddr = tc.remote
+		req.Host = "localhost:7811"
 		router.ServeHTTP(w, req)
 		if w.Code != tc.status {
 			t.Fatalf("%s from %s: expected %d, got %d", tc.path, tc.remote, tc.status, w.Code)
@@ -50,6 +51,7 @@ func TestEventRouteLocalOnly(t *testing.T) {
 	w := httptest.NewRecorder()
 	forwarded := httptest.NewRequest(http.MethodGet, "/api/v1/events?limit=3", nil)
 	forwarded.RemoteAddr = "127.0.0.1:12345"
+	forwarded.Host = "localhost:7811"
 	forwarded.Header.Set("X-Forwarded-For", "203.0.113.99")
 	router.ServeHTTP(w, forwarded)
 	if w.Code != http.StatusForbidden {
@@ -68,6 +70,7 @@ func TestEventProviderFailureDoesNotLeakDetails(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
 	req.RemoteAddr = "127.0.0.1:3333"
+	req.Host = "localhost:7811"
 	router.ServeHTTP(w, req)
 	if w.Code != 500 || strings.Contains(w.Body.String(), "confidential") {
 		t.Fatalf("error leaked internal path: %s", w.Body.String())

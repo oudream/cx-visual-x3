@@ -109,3 +109,9 @@ Services/Supervision/
 ## 7. 12 大功能域与 P0 查询扩展
 
 完整功能矩阵及分阶段验收见 [12 大功能域与实施验收矩阵 V1.0](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。本次新增事件只读历史接口、原 Monitor 事件文件限量读取、程序详情和双主题前端。事件查询仅本机可用，未来远程访问必须先完成身份认证、授权和敏感信息脱敏；未新增独立事件数据库、Gateway 或第三个常驻进程。
+
+## 8. 原事件异常提取与安全边界（2026-10-30）
+
+为 S08 增加只读 `/api/v1/alerts/history`，底层 `internal/alerts` 直接复用 Monitor NDJSON 日志，不建立第二套状态或数据库。识别规则只匹配原 `EventMaxError`、`EventMaxCount` 和明确写有“启动失败”的 `EventStart`，普通退出、登录和心跳不视为告警。
+
+仅允许本机查询，拒绝远端地址、外部 Host、转发头与跨域 Origin。返回的 `kind=historical-failures` 明示“历史故障观察”而非“当前活动告警”。未来确认、恢复、角色与审计必须有真正的数据模型与安全闭环，再开放对应接口。

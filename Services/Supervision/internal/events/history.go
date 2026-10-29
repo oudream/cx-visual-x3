@@ -23,10 +23,16 @@ type Record struct {
 	Message   string `json:"msg"`
 }
 
-// ReadRecent returns up to limit real events, newest first. Reads at most
-// 2 MiB from the end of the file; old events outside that window are not
-// returned. An absent log is an empty history, not a synthetic alarm.
+// ReadRecent returns up to limit original events, newest first.
 func ReadRecent(path string, limit int) ([]Record, error) {
+	return ReadRecentWhere(path, limit, nil)
+}
+
+// ReadRecentWhere filters all decodable records within the bounded tail
+// before applying the result limit. This prevents frequent heartbeats from
+// displacing rarer error events out of the requested result page.
+// A nil predicate includes all records; a missing file returns an empty list.
+func ReadRecentWhere(path string, limit int, match func(Record) bool) ([]Record, error) {
 	if limit < 1 || limit > 100 {
 		return nil, fmt.Errorf("event limit out of range")
 	}
@@ -73,7 +79,9 @@ func ReadRecent(path string, limit int) ([]Record, error) {
 			// Interrupted/legacy-corrupt lines must not block other events.
 			continue
 		}
-		items = append(items, value)
+		if match == nil || match(value) {
+			items = append(items, value)
+		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Time > items[j].Time })
 	if len(items) > limit {

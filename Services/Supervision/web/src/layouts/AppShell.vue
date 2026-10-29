@@ -11,7 +11,7 @@ const theme = useThemeStore()
 const { error, loading, updatedAt } = storeToRefs(monitor)
 let poller: ReturnType<typeof setInterval> | undefined
 const titles: Record<string, string> = {
-  '/': '运行总览', '/programs': '程序与服务', '/events': '事件记录',
+  '/': '运行总览', '/programs': '程序与服务', '/alerts': '异常历史', '/events': '事件记录',
 }
 const title = computed(() => titles[route.path] || '运行总览')
 
@@ -37,6 +37,7 @@ onBeforeUnmount(() => {
       <nav class="nav" aria-label="主导航">
         <RouterLink to="/"><span class="nav-icon">⌂</span>运行总览</RouterLink>
         <RouterLink to="/programs"><span class="nav-icon">▣</span>程序与服务</RouterLink>
+        <RouterLink to="/alerts"><span class="nav-icon">!</span>异常历史</RouterLink>
         <RouterLink to="/events"><span class="nav-icon">♧</span>事件记录</RouterLink>
       </nav>
       <div class="sidebar-foot">
