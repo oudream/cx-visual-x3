@@ -334,3 +334,7 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 `ARCH-O06/O07`针对固定`dceed1d7a8ceb0b6685615ebf8b83245947553ef`：[Imaging #40811670554](https://github.com/oudream/cx-visual-x3/actions/runs/40811670554) **success**（实际Windows构建、`--imaging`、保存重开显式重绑成功、合法18字节6×3输入与保存5×3工程不匹配被拒绝，工程Revision不变），[Unified Runtime #40811670497](https://github.com/oudream/cx-visual-x3/actions/runs/40811670497) **success**。同SHA工程专项[Engineering #40811670459](https://github.com/oudream/cx-visual-x3/actions/runs/40811670459) 首次登记in_progress，不据此称其success。
 
 `UI-COMP-02`固定`2b110f5429bba324a57c5e024d49dd615dfcf97e`：[TestCenter Compute UIA #40811544416](https://github.com/oudream/cx-visual-x3/actions/runs/40811544416) **success**， [Four G1 #40811544542](https://github.com/oudream/cx-visual-x3/actions/runs/40811544542) **success**。明确以等待新`LastReport`终结负例之后的真实重跑，不能以旧错误文本为条件伪造完成。
+
+### 19.5 全Engineering门禁未通过的真实阻断
+
+固定`dceed1d7a8ceb0b6685615ebf8b83245947553ef`：[Engineering #40811670459](https://github.com/oudream/cx-visual-x3/actions/runs/40811670459) 为**failure**（`FTRNamedPipeBulkTests.MultiplePeersAndIndependentSends`→`FTRNamedPipeServerChannel.OnCloseAsync`→`ObjectDisposedException: Safe handle has been closed`），不得声称全Engineering验收已通过，归属独立Foundation.Transport Owner；此次未修改传输源码。相同SHA [Imaging #40811670554](https://github.com/oudream/cx-visual-x3/actions/runs/40811670554) 和 [Runtime #40811670497](https://github.com/oudream/cx-visual-x3/actions/runs/40811670497) 为success；其证明范围为对应实际执行的视觉/RUNTIME测试，不替代全局门禁、现场硬件或工业稳定性。
