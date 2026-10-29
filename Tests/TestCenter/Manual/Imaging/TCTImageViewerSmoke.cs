@@ -1084,6 +1084,17 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.SelectOriginal();
                 if (frame.Viewer.ActiveImage != image)
                     throw new InvalidOperationException("Original/result session identity not preserved");
+                // 真实MPW控件的异步结果提交：旧版本绝不覆盖新结果或切换页签。
+                long resultGeneration=frame.Viewer.Session.SourceVersion;
+                FIMImageBuffer acceptedResult=FIMImageOperations.FlipHorizontal(image);
+                if(!frame.Viewer.TryShowResult(resultGeneration,acceptedResult) ||
+                    frame.Viewer.ActiveImage!=acceptedResult)
+                    throw new InvalidOperationException("MPW current-generation result was not displayed");
+                frame.Viewer.SelectOriginal();
+                if(frame.Viewer.TryShowResult(resultGeneration,image) ||
+                    frame.Viewer.ActiveImage!=image ||
+                    frame.Viewer.Session.Result!=acceptedResult)
+                    throw new InvalidOperationException("MPW stale result overwrote committed image or selection");
                 // 将真实统计和像素剖面数据送入可复用WPF绘图控件，不只输出文字。
                 frame.HistogramPlot.SetHistogram(FIMImageAnalyzer.GetHistogram(image, 16));
                 frame.ProfilePlot.SetLineProfile(FIMImageAnalyzer.GetLineProfile(image, 0, 0, 3, 3));
