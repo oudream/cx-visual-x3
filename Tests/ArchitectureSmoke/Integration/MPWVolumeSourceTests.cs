@@ -96,6 +96,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try {MPWVolumeSurfaceProjection.ProjectMesh(meshFge,frame,11,21,31,0);}
             catch(ArgumentOutOfRangeException){overBudget=true;}
             Check(overBudget,"预览三角面预算不合法必须拒绝");
+            var detailedVertices=new List<FGEPoint3D>();
+            var detailedIndices=new List<int>();
+            for(int face=0;face<40;face++)
+            {
+                double x=face%8+.1,y=face/8+.1;
+                foreach(FVOPhysicalPoint3D p in new[]{
+                    frame.VoxelToPhysical(x,y,2),frame.VoxelToPhysical(x+.6,y,2),
+                    frame.VoxelToPhysical(x,y+.6,2)})
+                {
+                    detailedIndices.Add(detailedVertices.Count);
+                    detailedVertices.Add(new FGEPoint3D(p.X,p.Y,p.Z));
+                }
+            }
+            var detailed=new FGETriangleMesh3D(detailedVertices,detailedIndices);
+            MPWVolumeDisplayMesh previewLod=MPWVolumeSurfaceProjection.ProjectMeshPreviewLod(
+                detailed,frame,11,21,31,7);
+            Check(previewLod.TriangleCount<=7&&previewLod.TriangleCount>0&&
+                detailed.TriangleCount==40&&
+                previewLod.Vertices.Count<=21&&
+                MPWVolumeSurfaceProjection.ProjectMeshPreviewLod(detailed,frame,11,21,31,7)
+                    .TriangleIndices.SequenceEqual(previewLod.TriangleIndices),
+                "仅显示LOD必须稳定限制三角面/顶点预算并保留原FGE的40个计量面片");
+
 
             // 正式MPW调度器不需要模拟GPU成功即可验证失效合并与代次。
             Dispatcher dispatcher=Dispatcher.CurrentDispatcher;
