@@ -1240,10 +1240,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 foreach(Guid entry in new[]{page.RootContent.Id,wiringPage.RootContent.Id})
                 {
                     var staticPlan=staticCompiler.Compile(snapshot,entry,catalog);
-                    var legacyResolver=new ProbeResolver();
-                    var planResolver=new ProbeResolver();
+                    bool structuredLoop=entry==page.RootContent.Id;
+                    // The V1 For loop injects its iteration value into the
+                    // body. This legacy probe has no declared iteration input;
+                    // retain the genuine old untyped contract only for V1.
+                    // V2 wiring must still pass the strict typed boundary.
+                    var legacyResolver=new ProbeResolver {
+                        IncludeSignature=!structuredLoop
+                    };
+                    var planResolver=new ProbeResolver {
+                        IncludeSignature=!structuredLoop
+                    };
                     var direct=sourceCompiler.Compile(snapshot,entry,legacyResolver);
-                    var lowered=binder.Bind(snapshot,staticPlan,catalog,planResolver);
+                    var lowered=binder.Bind(snapshot,staticPlan,catalog,planResolver,
+                        allowUnverifiedLegacyContracts:structuredLoop);
                     Check(direct.Plan.Id==lowered.Plan.Id &&
                         direct.ProjectId==lowered.ProjectId &&
                         direct.EngineeringRevision==lowered.EngineeringRevision &&
