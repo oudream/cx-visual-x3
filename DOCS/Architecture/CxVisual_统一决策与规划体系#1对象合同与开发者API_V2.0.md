@@ -397,3 +397,25 @@ if (recommendation.Comparison.Selected != null) {
 `MDCStaticBuildPreflight.Assess(MOLWiringDefinition, MOCCapabilityCatalog, requireExecutable=true)`是已有Core/MOL与MOC静态描述的无MRK适配。它首先复用MOL自己的`Validate/ValidateExecutable`，然后只核对原BlockId对应的CapabilityId、已声明端口的MemberId/Kind/方向/TypeId/必填、多重性与MTU合同。无描述的专业能力返回Unknown；必需端口缺失、静态类型不一致返回Rejected+BlockId/PortName；只为普通专业能力检查，不创建或序列化MRK Plan，保留Invoke/StateMachine为Core原Owner。
 
 本接口只证明当前MOLWiring与当前静态目录的局部一致性；完整跨Content编译、真实Provider绑定、Runtime资源、执行授权与SourceMap仍需原MOC/MRK/Host进一步验证。编辑草稿可传`requireExecutable=false`，正式Build必须`true`，不允许用预检成功冒充Plan可执行。
+
+
+## 17. P0静态来源清单：在真实Plan拆分前固化Core源身份（新增源码）
+
+`MDCStaticSourceManifestBuilder.Create(MEMProjectSnapshot, rootContentId, MDCStaticCatalogSnapshot)`从**真实Core只读快照**和已批准的MOL V1/V2 Codec获得一个子流程引用闭包，完全不接收MRK Resolver、执行Delegate、设备句柄或运行态数据。返回`MDCStaticSourceManifest`：`ProjectId`/`EngineeringRevision`/`RootContentId`/`CatalogFingerprint`/`Fingerprint`、`Contents`（每Content原Logic SchemaVersion与Payload的SHA-256、原BlockId对应CapabilityId、引用的子ContentId）及`UnknownCapabilityIds`。
+
+`HasCompleteStaticMetadata=false`表示目录未提供某项专业能力的静态合同，**不表示可运行**。碰到缺失Content、无/非法Logic Aspect、子流程引用环、超预算时明确抛出带`decision.source_manifest.*`前缀的失败，而不是凭空补一个“成功”Plan。`RequireCurrent(project,catalog)`重新计算根Content及其子流程闭包内容指纹，能拒绝工程Revision、能力目录以及被调子流程定义变更后旧建议。
+
+~~~csharp
+// 本轮新增的真实API：来源清单，不是最终可执行Plan。
+var snapshot = session.GetSnapshot();
+var catalogSnapshot = new MDCStaticCatalogSnapshot(capabilityCatalog);
+var manifest = new MDCStaticSourceManifestBuilder().Create(
+    snapshot, contentId, catalogSnapshot);
+if (!manifest.HasCompleteStaticMetadata)
+    throw new InvalidOperationException("专业能力静态元数据不足，不能自动发布");
+manifest.RequireCurrent(session.GetSnapshot(),
+    new MDCStaticCatalogSnapshot(capabilityCatalog));
+// 之后仍由唯一MOC/MRK原编译/绑定/Host授权体系完成运行。
+~~~
+
+**明确停止线**：此产物只有来源与依赖校验，没有控制DAG、参数、执行策略或可执行委托，不可命名为完整`MDCPlanArtifact`，更不可绕开`MOCBuildService`。其价值是为后续真正的声明Plan编译和MRK Loader拆分提供无重复Core数据的稳定源身份。

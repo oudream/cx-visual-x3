@@ -34,6 +34,8 @@
     <Compile Include="MDCRecoverySafetyAssessor.cs"/>
     <Compile Include="MDCStaticBuildPreflight.cs"/>
     <Compile Include="MDCStaticPathExplorer.cs"/>
+    <Compile Include="MDCLogicTraversal.cs"/>
+    <Compile Include="MDCStaticSourceManifest.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

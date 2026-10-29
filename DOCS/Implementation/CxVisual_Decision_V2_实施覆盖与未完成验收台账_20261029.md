@@ -74,3 +74,8 @@
 ## 09. 静态预检对MOC真实画布控制端口的兼容修复
 
 专业Capability目录通常只声明Data/Stream业务端口，MOL的`Start/Done`由原`MOCFlowBuilder.Step`附加，属于Core控制连线合同，不应被`MDCStaticBuildPreflight`误报为未声明的专业端口。保留强校验：专业必需端口缺失/类型冲突拒绝，额外业务Data端口Unknown；排除Control/其他非业务端口作为额外专业端口的误判。新增真实`MOCFlowBuilder.Edit`产生的画布节点正例及额外Data负例，结果应由Windows CI核验。完整跨Content与MRK Binder的静态拆分仍未完成。
+
+
+## 10. P0纯静态来源与原MOL引用闭包（首批实现）
+
+增加`MDCStaticSourceManifest.cs`，只读`MEMProjectSnapshot`及MOL正式Codec，生成Content/Block/Capability子流程来源闭包及稳定指纹；对不完整的专业目录保留Unknown，缺失Content/引用环拒绝。公共V1遍历抽入`MDCLogicTraversal`，D10 Impact与来源提取使用同一实现。真实工程正反例包含V1调用V2、目录版本和子流程变更、缺失Content及环。本产物**不是执行Plan**；`Orchestration.csproj`仍有MRK Runtime引用、未合并27项目；Windows结果待对应SHA/Run核定。

@@ -261,3 +261,10 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 **强制兼容检查**：以旧MOC/MRK输入/输出、MOL结构、SourceMap、具名Data.Return、配置Effective版、三层Invoke/动态Loop/Foreach、R05/R06/发布/Trace为Golden；迁移中用单向Adapter而不留下长期双编译器。根异常不得被次级UI/关闭错误覆盖。保留旧API废弃时间窗口、调用方/场景/测试和回滚条件。
 
 **未验证阻断项**：DOCS/02～04 XLSX的逐Sheet类型/Owner对照仍须实做，不能以本报告代替；且无Windows实际重建/真实安全测试，不得把“已设计”升级“项目已融合”。
+
+
+## P0新增验证切片：无Runtime的Core静态来源清单（2026-10-29）
+
+当前仍保留28项目和`Orchestration → Runtime`工程引用，**尚未解环或物理合并**。先在过渡程序集增加`MDCStaticSourceManifestBuilder`，只以`MEMProjectSnapshot`与静态Capability目录为输入，追踪V1结构化Logic和V2 MOLWiring子流程引用闭包、真实ContentId/BlockId、原Logic Aspect Payload摘要及目录指纹，不建立第二棵Graph/第二套Compiler/可执行Plan。它用于**隔离静态编译输入的来源合同**，不能替代现有MOC编译器。
+
+同时抽取共用的`MDCLogicTraversal.Flatten`，供现有D10工程影响分析和本次静态来源提取共同复用，避免在Decision内部维护两份V1树遍历。此修改不触碰Core MOL定义/Serializer、不迁移MRK执行合同、不新增项目引用。后续迁移时：1）单独将该纯静态源提取与静态编译组合成完整不可变Plan；2）独立验证Branch/Loop/Foreach/Try/State/Named Ports的语义保真；3）由MRK Owner添加执行绑定适配；4）移走原MOC对MRK的依赖；5）最后合并Logic+Orchestration改为Decision并保留兼容期验收。不可把“静态来源清单”误报为P0纯Plan或项目融合完成。

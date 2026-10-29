@@ -365,3 +365,19 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | MDC-65 | 静态探索没有任何专业Provider、MRK调用或设备命令 |
 
 `HasCompleteAssumptions`仅表示此静态探索的已访问条件都有假设，不能提高Virtual/Replay/HIL的证据等级。物理仿真/场景模型/真实设备安全依然未验收。
+
+
+### P0静态来源清单（MDC-66～73）
+
+| 编号 | 预期与不退化条件 |
+|---|---|
+| MDC-66 | 真实MEM快照中V1 Logic父Content → V2 Wiring子Content，闭包精确为两项 |
+| MDC-67 | 原ProjectId/Revision、ContentId、BlockId、CapabilityId与Logic Aspect Schema保真 |
+| MDC-68 | 对同一工程/目录重复提取生成相同SHA-256指纹，未运行Provider/Resolver |
+| MDC-69 | 缺少静态专业Capability声明保留UnknownCapabilityIds，不伪称可绑定运行 |
+| MDC-70 | Capability目录或子Content定义/工程Revision变化，`RequireCurrent`拒绝旧Manifest |
+| MDC-71 | 指向不存在Content的Invoke显式拒绝，禁止产生“无缺陷”来源合同 |
+| MDC-72 | 引用环拒绝，禁止无限展开或将Loop迭代复制成运行Step |
+| MDC-73 | 旧D10影响分析仍使用同一V1 Core遍历而不丢Source/Block定位，默认回归不退化 |
+
+证据等级仅为Windows自动构建与Core真实软件测试；不代表已经具有完整纯静态Plan、MRK Binder或CT/HIL。测试通过后才可在实施台账记录对应Run。

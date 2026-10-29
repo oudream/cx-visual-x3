@@ -58,6 +58,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RetrySafetyRequiresRealAcknowledgment();
             StaticWiringPreflightWithoutRuntime();
             StaticBranchScenarioExploration();
+            StaticSourceManifestPreservesCoreRevisionAndClosure();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -771,6 +772,97 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "assumptions on unconditional blocks cannot be accepted");
             }
             finally { session.Close(true); }
+        }
+
+        private static void StaticSourceManifestPreservesCoreRevisionAndClosure()
+        {
+            var session=MEMEngineering.Create("decision-source-manifest");
+            try
+            {
+                var child=session.AddPage("Reconstruction");
+                var childStep=MOLControlBlock.Action("ct.reconstruct");
+                MOLWiringCodec.Set(session,child.RootContent,new MOLWiringDefinition(
+                    childStep.Id,new[]{childStep},
+                    new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
+                        {childStep.Id,new MPCPortDescriptor[0]}
+                    },new MOLLink[0]));
+                var parent=session.AddPage("Inspection");
+                var parentStep=MOLControlBlock.Action("vision.acquire");
+                var call=MOLControlBlock.InvokeContent(child.RootContent.Id);
+                MOLLogicCodec.Set(session,parent.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.Sequence(parentStep,call)));
+                var catalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("ct.reconstruct","CT Reconstruction","CT3D"),
+                    new MOCCapabilityDescriptor("vision.acquire","Acquire","Vision")
+                });
+                var source=session.GetSnapshot();
+                var builder=new MDCStaticSourceManifestBuilder();
+                var manifest=builder.Create(source,parent.RootContent.Id,catalog);
+                var again=builder.Create(source,parent.RootContent.Id,catalog);
+                Check(manifest.Contents.Count==2 && manifest.HasCompleteStaticMetadata &&
+                    manifest.Fingerprint.Length==64 && manifest.Fingerprint==again.Fingerprint,
+                    "deterministic source manifest should track the original Core V1/V2 closure");
+                Check(manifest.ProjectId==source.ProjectId &&
+                    manifest.EngineeringRevision==source.Revision &&
+                    manifest.RootContentId==parent.RootContent.Id,
+                    "static manifest must preserve authoritative Core project/version/root IDs");
+                var root=manifest.Contents.Single(x=>x.ContentId==parent.RootContent.Id);
+                var sub=manifest.Contents.Single(x=>x.ContentId==child.RootContent.Id);
+                Check(root.ReferencedContentIds.Count==1 &&
+                    root.ReferencedContentIds[0]==child.RootContent.Id &&
+                    root.CapabilityUses.Count==1 &&
+                    root.CapabilityUses[0].BlockId==parentStep.Id &&
+                    root.CapabilityUses[0].CapabilityId=="vision.acquire",
+                    "V1 invoke must be a source reference, never a cloned runtime step");
+                Check(sub.CapabilityUses.Count==1 &&
+                    sub.CapabilityUses[0].BlockId==childStep.Id &&
+                    sub.CapabilityUses[0].CapabilityId=="ct.reconstruct",
+                    "V2 original action identity must survive source extraction");
+                manifest.RequireCurrent(session.GetSnapshot(),catalog);
+                var partialCatalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.acquire","Acquire","Vision")
+                });
+                var unknown=builder.Create(session.GetSnapshot(),
+                    parent.RootContent.Id,partialCatalog);
+                Check(!unknown.HasCompleteStaticMetadata &&
+                    unknown.UnknownCapabilityIds.SequenceEqual(new[]{"ct.reconstruct"}),
+                    "unknown professional metadata must remain visible and cannot authorize binding");
+                bool mismatch=false;
+                try {manifest.RequireCurrent(session.GetSnapshot(),partialCatalog);}
+                catch(InvalidOperationException) {mismatch=true;}
+                Check(mismatch,"catalog schema change must invalidate a static source manifest");
+
+                var updatedStep=MOLControlBlock.Action("ct.optimized");
+                MOLWiringCodec.Set(session,child.RootContent,new MOLWiringDefinition(
+                    updatedStep.Id,new[]{updatedStep},
+                    new Dictionary<Guid,IEnumerable<MPCPortDescriptor>> {
+                        {updatedStep.Id,new MPCPortDescriptor[0]}
+                    },new MOLLink[0]));
+                mismatch=false;
+                try {manifest.RequireCurrent(session.GetSnapshot(),catalog);}
+                catch(InvalidOperationException) {mismatch=true;}
+                Check(mismatch,"child Content schema/revision must invalidate a parent source manifest");
+
+                var orphan=session.AddPage("Orphan");
+                MOLLogicCodec.Set(session,orphan.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(Guid.NewGuid())));
+                bool missing=false;
+                try {builder.Create(session.GetSnapshot(),orphan.RootContent.Id,catalog);}
+                catch(InvalidOperationException) {missing=true;}
+                Check(missing,"missing referenced Content cannot become an executable source bundle");
+
+                var a=session.AddPage("CycleA");
+                var b=session.AddPage("CycleB");
+                MOLLogicCodec.Set(session,a.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(b.RootContent.Id)));
+                MOLLogicCodec.Set(session,b.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(a.RootContent.Id)));
+                bool cycle=false;
+                try {builder.Create(session.GetSnapshot(),a.RootContent.Id,catalog);}
+                catch(InvalidOperationException) {cycle=true;}
+                Check(cycle,"cyclic Invoke Content references must reject static source extraction");
+            }
+            finally {session.Close(true);}
         }
 
     }

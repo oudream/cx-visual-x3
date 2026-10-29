@@ -90,7 +90,7 @@ namespace CxVisual.Mechanism.Decision
                     {
                         MOLLogicDefinition legacy = MOLLogicCodec.Get(node);
                         if (legacy == null) continue;
-                        foreach (MOLControlBlock block in Flatten(legacy.Root))
+                        foreach (MOLControlBlock block in MDCLogicTraversal.Flatten(legacy.Root))
                         {
                             if (++totalSteps > 131072)
                                 throw new InvalidOperationException("decision.impact.step_budget");
@@ -148,28 +148,6 @@ namespace CxVisual.Mechanism.Decision
             parents.Add(parent);
         }
 
-        private static IEnumerable<MOLControlBlock> Flatten(MOLControlBlock root)
-        {
-            var stack = new Stack<MOLControlBlock>();
-            var ids = new HashSet<Guid>();
-            stack.Push(root);
-            while(stack.Count > 0)
-            {
-                MOLControlBlock block = stack.Pop();
-                if (!ids.Add(block.Id))
-                    throw new InvalidOperationException("decision.impact.duplicate_block");
-                yield return block;
-                foreach (var child in block.Children) stack.Push(child);
-                foreach (var item in block.Cases) stack.Push(item.Body);
-                if (block.Loop != null) stack.Push(block.Loop.Body);
-                if (block.TryRegion != null)
-                {
-                    stack.Push(block.TryRegion.TryBody);
-                    if (block.TryRegion.CatchBody != null) stack.Push(block.TryRegion.CatchBody);
-                    if (block.TryRegion.FinallyBody != null) stack.Push(block.TryRegion.FinallyBody);
-                    foreach (var c in block.TryRegion.Catches) stack.Push(c.Body);
-                }
-            }
-        }
+
     }
 }
