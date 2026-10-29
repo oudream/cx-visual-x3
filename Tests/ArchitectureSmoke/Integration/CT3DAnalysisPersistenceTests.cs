@@ -258,6 +258,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     allCases.All(c=>c.Kind==CT3DAnalysisKind.SurfaceSphere&&c.Source.Signature==source.Signature)&&
                     allCases[0].Sphere.ResultId!=allCases[1].Sphere.ResultId,
                     "同一MEM工程组合多个独立Feature且完整加载");
+                var batchOwners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                    .Where(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId)).ToArray();
+                int beforeRevision=engineering.Revision;
+                var before=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
+                CT3DAnalysisPersistence.RecomputeAllAndCommit(engineering,batchOwners,
+                    beforeRevision,folder,CancellationToken.None);
+                var after=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
+                Check(engineering.Revision==beforeRevision+1&&after.Count==before.Count&&
+                    after.Zip(before,(next,prev)=>
+                        next.Sphere.ResultId!=prev.Sphere.ResultId&&
+                        next.ParameterSignature==prev.ParameterSignature).All(v=>v),
+                    "两个Case通过单MEM修订原值复算且更新Feature身份");
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.RecomputeAllAndCommit(
+                    engineering,batchOwners,beforeRevision,folder,CancellationToken.None));
+                engineering.Undo().RequireValue();
+                Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None)
+                    .Select(c=>c.Sphere.ResultId).SequenceEqual(before.Select(c=>c.Sphere.ResultId)),
+                    "批量复算Undo整体恢复旧专业结果");
+                engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None)
+                    .Select(c=>c.Sphere.ResultId).SequenceEqual(after.Select(c=>c.Sphere.ResultId)),
+                    "批量复算Redo整体恢复新专业结果");
+                engineering.Undo().RequireValue();
                 Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.OpenAll(
                     engineering,folder,new CancellationToken(true)));
                 var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
