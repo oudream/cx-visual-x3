@@ -26,7 +26,14 @@
 - Studio、ModuleCenter、专业 Vision、TestCenter 相关 CI，用于检查旧 MOC 编译与算法调用方。
 - 真实 CI 状态应记录固定 SHA、运行 ID 与结果；如失败必须修复，不能仅凭移动文件声称完成。
 
-## 4. 后续仍需推进
+## 4. Windows 固定 SHA 验证证据
+
+- 源码迁移 [75194ba5](https://github.com/oudream/cx-visual-x3/commit/75194ba5681f241d8160ba305335e5c7d1357db1)，兼容编译修复 [a7a8501](https://github.com/oudream/cx-visual-x3/commit/a7a850139004ed567e56c377a530a12f4737e65d)、[bc06f5e](https://github.com/oudream/cx-visual-x3/commit/bc06f5e04ce5024761c05cc0879838d99253e376)。
+- [Decision Windows 40861427187](https://github.com/oudream/cx-visual-x3/actions/runs/40861427187)：静态依赖检查 **Success**、.NET48 x64 全量 Build **Success**、`ArchitectureSmoke --decision` **Success**；默认回归 **Failure**。
+- [Unified Runtime 40861427163](https://github.com/oudream/cx-visual-x3/actions/runs/40861427163)：全量 Rebuild **Success**，默认架构测试 **Failure**。两项失败均定位到并行 CT3D 专业测试 `CT3DAnalysisPersistenceTests.VerifyRoundtrip` 第 132 行 `Single()` 异常；非此次 Decision 专项检查失败，但不能据此宣称全量回归通过。
+- 设备 HIL 与工业场景验收未执行。
+
+## 5. 后续仍需推进
 
 - P1：统一静态 MDCDeclarativePlan、版本、SourceMap、动态控制结构与 Runtime.Loader 的不可变交接；减少 Runtime 编译器对工程快照的直接依赖。
 - P1：能力注册单一声明与 MPC/MRK 双签名一致性、Studio Context 选型和约束提示。
