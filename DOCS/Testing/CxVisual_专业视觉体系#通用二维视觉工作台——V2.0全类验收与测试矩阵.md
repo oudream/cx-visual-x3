@@ -338,3 +338,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ### 19.5 全Engineering门禁未通过的真实阻断
 
 固定`dceed1d7a8ceb0b6685615ebf8b83245947553ef`：[Engineering #40811670459](https://github.com/oudream/cx-visual-x3/actions/runs/40811670459) 为**failure**（`FTRNamedPipeBulkTests.MultiplePeersAndIndependentSends`→`FTRNamedPipeServerChannel.OnCloseAsync`→`ObjectDisposedException: Safe handle has been closed`），不得声称全Engineering验收已通过，归属独立Foundation.Transport Owner；此次未修改传输源码。相同SHA [Imaging #40811670554](https://github.com/oudream/cx-visual-x3/actions/runs/40811670554) 和 [Runtime #40811670497](https://github.com/oudream/cx-visual-x3/actions/runs/40811670497) 为success；其证明范围为对应实际执行的视觉/RUNTIME测试，不替代全局门禁、现场硬件或工业稳定性。
+
+## 20. ALG-G03四节点FIM中值增强工程与实际WPF结果验收（2026-10-29）
+
+| ID | 真实断言 | 结果 |
+|---|---|---|
+| ALG-M01 | FIM Median半径1处理7×7 Gray8原始样本：孤立250亮点消失、3×3亮块经中值成为5像素连通区域；四节点MOC处理图逐像素等于同参数FIM直接调用，输入RAW不变 | `a55d094`固定SHA [Imaging #40820286578](https://github.com/oudream/cx-visual-x3/actions/runs/40820286578) success |
+| ALG-M02 | MOC增强Provider需公开RawPixels、Width、Height、Radius输入及EnhancedPixels输出；参数0/4拒绝，半径1/2 ReleaseVersion不同；MEM/MOL四块三条Data边、两公开输出 | `a55d094` 同SHA Imaging与Engineering success |
+| ALG-M03 | 四节点源图/增强图/Inspection/Measure共用真正RunId、SourceId、MOC SourceMap；Measurement=5px²而非滤波前10个亮像素，公开正式MDS增强图和面积输出 | 增强图RunSummary投影已提交，更新后的固定SHA CI待独立确认 |
+| ALG-M04 | MEM SaveAs/Close/Open后，显式新Provider和RAW绑定重复运行不改Revision；错误半径/大小必须明确拒绝且不污染工程 | `a55d094` Imaging / Engineering success |
+| UI-ALG-M01 | TestCenter Compute可手动选择中值0或1—3；真实WPF用户Run产生新四节点FlowId、Trace、增强图与5px²，0保持旧三节点兼容 | [Compute UIA #40820622091](https://github.com/oudream/cx-visual-x3/actions/runs/40820622091) 首轮登记待验，不能冒称已通过 |
+
+仍未通过独立四节点的“增强→阈值Mask→区域组件→测量”所有细分专业算子目标：目前是RAW入口 + 中值增强 + 一体化阈值与连通域 + 面积测量四个真实工程节点。无需将设计候选的四个CapabilityId冒充现有实现。
