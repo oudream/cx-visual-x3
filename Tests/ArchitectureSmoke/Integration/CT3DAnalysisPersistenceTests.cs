@@ -41,6 +41,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(analysis.Mesh.Mesh.VertexCount==26 && analysis.Plane.SampleCount==9 &&
                 Math.Abs(analysis.Plane.PointMm.Z-46.5)<1e-9 && analysis.Plane.RmsResidualMm<1e-9 &&
                 !analysis.HasEvaluatedMeasurementUncertainty,"真实UInt16 Mesh到局部平面质量合同");
+            var planeMeasures=analysis.GetFeatureMeasurements();
+            Check(planeMeasures.Count==2&&
+                planeMeasures[0].Kind=="plane.rms-residual"&&
+                planeMeasures[1].Kind=="plane.max-absolute-residual"&&
+                Math.Abs(planeMeasures[0].ValueMm-analysis.Plane.RmsResidualMm)<1e-12&&
+                Math.Abs(planeMeasures[1].ValueMm-analysis.Plane.MaxAbsoluteResidualMm)<1e-12&&
+                planeMeasures.All(m=>m.FeatureResultId==analysis.Plane.ResultId&&
+                    m.SourceSignature==source.Signature&&!m.HasEvaluatedUncertainty),
+                "平面RMS与最大偏差必须属于质量证据而非虚构Datum尺寸");
             var copy=CT3DAssetReference.Import(folder,raw,info,frame,7,CancellationToken.None,source.Id);
             Check(copy.ContentHash==source.ContentHash && File.ReadAllBytes(raw).SequenceEqual(bytes),
                 "内容寻址导入不改原始文件");
@@ -78,6 +87,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(restored.Source.SpatialFrame!=frame &&
                     Math.Abs(restored.Plane.SignedDistanceMm(new FVOPhysicalPoint3D(25,35,47.5),restored.Source.SpatialFrame)-1)<1e-9,
                     "重建Frame对象后仍可在恢复的同一Frame内测量");
+                var reopenedMeasures=restored.GetFeatureMeasurements();
+                Check(reopenedMeasures.Count==2&&
+                    reopenedMeasures.All(m=>m.FeatureResultId==restored.Plane.ResultId&&
+                        m.SourceSignature==source.Signature)&&
+                    Math.Abs(reopenedMeasures[0].ValueMm-planeMeasures[0].ValueMm)<1e-12,
+                    "MEM恢复平面质量量值与原结果身份");
                 var recomputed=restored.Recompute(folder,CancellationToken.None);
                 Check(recomputed.Mesh.ResultId!=restored.Mesh.ResultId &&
                     recomputed.Plane.ResultId!=restored.Plane.ResultId &&
