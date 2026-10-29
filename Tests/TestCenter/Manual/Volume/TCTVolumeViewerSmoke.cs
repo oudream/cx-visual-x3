@@ -853,7 +853,7 @@ namespace CxVisual.TestCenter.UI
                     Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
                     Guid sphereMeasurement=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Measurement).Id;
                     Check(scene.SelectedId==null,"隐藏选中对象后不能隐式恢复旧选择");
-                    scene.Select(sphereMeasurement);
+                    scene.Select(sphereSurface);
                     Guid selectedSurface=scene.SelectedId.Value;
                     scene.SetOrganization(sphereSurface,"surface","measurement-session");
                     scene.SetOrganization(sphereMeasurement,"analysis","measurement-session");
