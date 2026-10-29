@@ -2,7 +2,7 @@
 
 > **身份：唯一三维总体架构主文档；R5先从用户目标推导完整目标对象，再比较现状，仍属架构评审候选，不等于新增公共API/Owner已批准。** 本次审核日期：2026-10-29；源码核对基线：`master@0487b050f73fff9b3efe03e561ca017b9a02e16a`；本轮仅修改设计与导航，未重新编译、运行测试或在线复核历史CI。
 > **核心原则：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**  
-> **阅读顺序**：§0～2（需求推导/26项能力）→§3～6（Owner、数据、对象、GPU、专业计算）→**附录E（完整目标类职责、协作关系与26项对应）**→§7～8（工业操作/接口时序）→§9～14（源码、证据、实施、决议）；附录A/B为专题UML，C为原文存在性索引，D为实施检查表。
+> **阅读顺序**：§0～2（需求推导/26项能力）→§3～6（Owner、数据、对象、GPU、专业计算）→**附录E（完整目标类职责、协作关系与26项对应）**→**附录F（对象身份、OOP/GoF/AOP、UML及验收合同）**→§7～8（工业操作/接口时序）→§9～14（源码、证据、实施、决议）；附录A/B为专题UML，C为原文存在性索引，D为实施检查表。
 > **状态图例**：【E】现有源码、【R】现有类需调整、【N】候选新增、【P】远期规划、【T】固定提交自动测试、【H】真实GPU/工业样本尚未实证。**E≠T，T≠H**。  
 > **不可突破**：F/M/P和28项目/135子方面Owner、唯一MEM工程真源、CT3D与MPW不形成循环引用、TestCenter只验收、ReferTo/Vision只读，不另建第二套资源/命令/执行/Undo/专业数据体系。  
 > **需求来源更新**：用户2026-10-29提供两张目标截图，直接可读范围为**R11～R64，共54条**；R01～R10与R65～R90共36条仍无原文。截图是需求证据，不是其中提及SDK已安装或功能已实现的证据。DOCS/04本轮定向读取F_Geometry/F_Volume/M_Visual/M_PresentationWpf，发现F06/F07与F12的Mesh候选重叠；DOCS/02～04尚未完成全Sheet交叉裁决，新增Owner仍按ADR处理。
@@ -1621,3 +1621,245 @@ sequenceDiagram
 | R5-E 工业高阶能力 | CAD/配准/偏差/GD&T/缺陷/厚度逐条纵切片 | 真实SDK与样本、计量依据及误差、Inspection规则/复核/报告、MRK批任务 |
 
 上述次序允许独立的数值和GPU专项交错推进，不要求等全部LOD完成才验证专业计算。每包在既有项目内按需要实现必要类型，配套正反例、固定SHA Windows证据与适用的G1～G5；本附录不构成一次性迁移全部候选类的代码授权。
+
+
+---
+
+## 附录 F｜全类关系、设计模式与可执行验收合同（R5 深化）
+
+> **定位**：是附录 E 的“关系与约束审计”，不是另建总纲；所有名称均为**目标概念/建议类型**，除被源码逐项确认的【E】外均为【N】候选。R5/R4 的六条真源原则保持不变。先审语义及 Owner，再实施接口。审计基于本次阅读的 R5 主文及现有 FGE Mesh、CT3D 体素边界、平面分析、MVI3DSceneState；未对 DOCS/02～04 全 Sheet、Windows CI、真实硬件做本轮验收。
+
+### F.1 从“功能表”到“对象关系”的统一审计方法
+
+**同一操作至少检查 12 个问题**：用户意图（谁发起）→工程定义（谁提交）→资产引用（谁拥有）→来源版本（谁固定）→单位/坐标（谁保证）→子元素/ROI（如何定位）→算法输入（何时租赁）→质量与失败（如何诊断）→结果产物（谁拥有）→场景投影（谁显示）→重开/复算（如何再现）→自动化/SDK（不启动WPF能否用）。任何一项缺失，不能认定该能力已形成工业闭环。
+
+**五种对象身份，绝不混用**：
+
+| 身份 | 建议合同 | 生命周期及关键不变量 | Owner/核实状态 |
+|---|---|---|---|
+| 工程身份 | Project/Content/Case 定义、稳定工程地址 | 工程提交由 MEM；同一资源重新加载后能定位；不能在 MVI 再造工程树 | MEM【E基础，三维Schema N】 |
+| 数据资产身份 | AssetRef + ContentHash + Format/SchemaVersion + SourceRevision | 同资产多处显示不复制真源；重载必须校验完整性；大RAW独立外部存储/租约 | MEM/FVO/专业Result【N合同】 |
+| 物理空间身份 | FrameRef + FrameRevision + Units + TransformChain | 不同Frame不能仅凭数值相同判定等价；变换方向与手系明确；跨坐标测量需注册/校准证据 | FVO空间映射【E】；FGE Frame图【N/ADR-02】 |
+| 算法结果身份 | ResultRef + InputSignatures + ParameterHash + AlgorithmVersion + Quality | 不可变结果；源变化标Stale；取消/失败不替换最后有效结果；绝不从GPU Preview计量 | CT3D当前ResultId/Revision【E初步】；持久结果【N】 |
+| 可视实例身份 | SceneItemId + SourceRef + Style + LocalDisplayTransform | 可以多实例共享同一资产；显隐/选择不改源；仅可视状态由 MVI 管理 | MVI3DSceneState【E初步】 |
+
+**物理实体≠几何表示≠可视实例≠检测结果。** 示例：同一工业零件的RAW、Mask、Surface、Mesh、CAD是不同表示或数据资产；一个Mesh可在四视图里显示多次；一个测量结果引用其来源版本而不是复制整份Mesh。
+
+### F.2 UML 01｜主领域对象的身份、组合与依赖（概念图）
+
+\`\`\`mermaid
+classDiagram
+direction LR
+class MEMContent {
+  +StableId
+  +CaseDefinitionRef
+  +SaveRevision()
+}
+class AssetReference {
+  +AssetId
+  +ContentHash
+  +SchemaVersion
+  +SourceRevision
+}
+class SpatialFrameRef {
+  +FrameId
+  +Revision
+  +Unit
+}
+class CT3DCaseSession {
+  +ResolveInput()
+  +ExecuteOperation()
+  +ResolveResult()
+}
+class ProfessionalResult {
+  +ResultId
+  +InputSignatures
+  +AlgorithmVersion
+  +Quality
+  +Status
+}
+class MVI3DSceneState {
+  +Revision
+  +Select()
+  +Snapshot()
+}
+class MVI3DSceneItem {
+  +SourceRef
+  +SpatialFrameRef
+  +Opacity
+}
+class MPWViewport {
+  +RenderSnapshot()
+}
+MEMContent "1" o-- "*" AssetReference : 持久引用
+MEMContent "1" o-- "*" ProfessionalResult : 结果元数据引用
+AssetReference --> SpatialFrameRef : 附带空间说明
+CT3DCaseSession ..> AssetReference : 获取租约
+CT3DCaseSession ..> ProfessionalResult : 生产
+ProfessionalResult --> AssetReference : 追溯输入
+MVI3DSceneState "1" *-- "*" MVI3DSceneItem : 仅会话组合
+MVI3DSceneItem --> AssetReference : 不拥有数据
+MVI3DSceneItem --> SpatialFrameRef : 仅引用
+MPWViewport ..> MVI3DSceneState : 消费不可变快照
+\`\`\`
+
+**依赖规则**：图中关系是逻辑合同，不意味着 CT3D 静态引用 MEM/MVI/MPW 程序集。由现有宿主组合根解析 AssetRef、调度专业运算、投影 ResultRef；Foundation 不调用专业层；MPW 不成为专业数据真源。外部 Artifact 注册/校验/原子提交继续交给 MEM 既有机制扩展合同，不设第二份CT3D资产仓库。
+
+### F.3 UML 02｜专业操作和模式组合，不引入万能 Processor
+
+\`\`\`mermaid
+classDiagram
+direction TB
+class ProfessionalOperation {
+  <<interface candidate>>
+  +Validate(input, parameters)
+  +Execute(input, context, cancellation)
+}
+class SurfaceOperation
+class FeatureFitOperation
+class RegistrationOperation
+class MeasurementOperation
+class OperationContext {
+  +SourceSignatures
+  +FrameChain
+  +ResourceLease
+  +Diagnostics
+}
+class ProfessionalResult {
+  +Quality
+  +Provenance
+  +FailureClassification
+}
+class OperationPolicy {
+  <<interface candidate>>
+  +CheckPreconditions()
+  +CheckResultQuality()
+}
+class ExistingRuntime {
+  +Schedule()
+  +Cancel()
+}
+ProfessionalOperation <|.. SurfaceOperation
+ProfessionalOperation <|.. FeatureFitOperation
+ProfessionalOperation <|.. RegistrationOperation
+ProfessionalOperation <|.. MeasurementOperation
+ProfessionalOperation --> OperationContext
+ProfessionalOperation --> ProfessionalResult
+ProfessionalOperation --> OperationPolicy
+ExistingRuntime ..> ProfessionalOperation : 通过宿主适配
+\`\`\`
+
+该接口只是表达**参数化输入、受控执行、质量、取消的一致形态**。不建议实施成运行期任意object输入输出、基类反射分派或另起CT3D调度引擎；已有静态高性能函数可先用薄适配包裹，不强制所有算法继承抽象类。耗时计算的中间状态/进度由已有MRK/FCR等机制接入。
+
+### F.4 关键类的合同补全矩阵（对附录 E 的验收增强）
+
+| 类/类型角色 | 必须落实的不变量与操作 | 反证 / 质量门禁 | 设计取舍 |
+|---|---|---|---|
+| FVO RAW/RegionLease | 原始格式、Stride、端序、物理空间、取消；Lease所有权显式 | 释放后访问、异常取消、超界、精度回退、Buffer复用 | 大体数据不经MEM内嵌；精确与预览请求分离 |
+| FGE Mesh/Topology | 有效索引、无孤立顶点、连通片、绕序、法向、退化/自交质量诊断 | bow-tie、交叉面、开放壳、溢出及大坐标偏移 | 修补不自动覆盖原Mesh；保存前后拓扑身份校验 |
+| FrameChain / Calibration | FrameRef、单位、时间/版本、变换方向、镜像、逆变换条件数 | mm↔inch、左手系、奇异矩阵、失效标定、跨Frame拒绝 | 配准结果不是直接改写原始FVO的Frame |
+| ROI/Selection | 对资产或子元素的稳定引用、几何域与选择域分离 | Mesh重建导致索引过期、屏幕坐标误计量、2D切面畸变 | ROI定义可持久；鼠标拖拽中间态仅会话持有 |
+| Surface / Feature | 输入源Hash、表面策略、拟合残差、方法版本和退化原因 | 阶梯面假冒亚体素、离群/退化、被取消后旧结果污染 | Feature是专业值/资产，非视觉图元真源 |
+| CAD B-Rep / Proxy | 精确B-Rep语义、单位、装配结构、拓扑标签与渲染Proxy区分 | STEP导入失败、单位不符、退化曲面、Proxy当测量真值 | 厂商SDK经Adapter隔离；授权/实际DLL另验 |
+| Measurement / GD&T | Datum、理论值、测量方法、容差、量值、误差预算/不确定度 | 无标定仍报合格、方向相反、采样偏差与旧CAD版本 | 数值测量CT3D；业务判定Inspection |
+| Result / Artifact | 来源签名、参数Hash、版本、不可变提交、Stale/Failed/Cancelled | 改原数据Hash、丢外部文件、重开校验失败、重复提交 | 复用MEM/MDS/MRK，不另建工程结果平台 |
+| Scene/Renderer | 渲染快照、GPU ContextEpoch、Dirty合帧、ResourceBudget | 先关闭后回调、跨线程GL、Context重建、透明深度错误 | MVI持交互意图；MPW持GPU资源及后端 |
+| Timeline/Track | Track指向稳定对象Ref、Keyframe版本与确定性求值 | 数据改版仍播放旧结果、重复序列化、视频帧错乱 | 编辑定义进MEM；播放状态进MVI/宿主 |
+
+### F.5 OOP 和 GoF 的“采用—禁止”审计
+
+| 机制 | 适用变化点与目标类 | 采用条件 / 现有复用 | 不应采用的方式 |
+|---|---|---|---|
+| OOP Entity/Value Object | 有身份的Asset/Result/Case与不可变Frame/参数/Transform | 稳定标识、封装不变量；仅由Owner修改真值 | 万能3DObject持有GPU、RAW、CAD、测量全部状态 |
+| OOP Composition/ISP | Volume/Surface/Mesh/CAD各自暴露所需能力 | 小接口对应真实消费方 | 深继承形成大量无行为的子类 |
+| GoF Strategy | 真实存在多种Surface/Fit/Registration求解方法 | 方法具备共同数据语义与独立金标准测试时引入 | 为只有一种实现的功能制造空Strategy |
+| GoF Adapter/Abstract Factory | 具体VTK/ITK/HALCON/CAD内核/渲染设备接口 | SDK和授权真实可用；技术边界需隔离 | 将第三方类型泄漏为所有公开SDK输入 |
+| GoF Composite | CAD Assembly、工程Group、Scene显示分组 | 复用MEM工程组合语义；仅Scene内维护投影层级 | 第二棵可提交工程树 |
+| GoF Command | ROI保存、参数更新、结果提交、Undo | 使用现有命令/MEM事务，保留原子与审计 | CT3D私有UndoStack和第二CommandBus |
+| GoF Observer | Scene/Asset/Result Revision导致多个视图失效 | 带版本、合帧、弱订阅/显式解除 | 不带代次的事件使过期结果覆盖新显示 |
+| GoF State | 绘制ROI工具、GPU初始化/回退、播放控制 | 状态和合法跃迁写为表、反例 | 每个枚举机械生成State类 |
+| GoF Bridge | UI无关可视语义 ↔ GL/WPF后端 | MPW消费统一快照；明确后端能力与回退错误 | GPU和WPF各自维护独立Camera真值 |
+| GoF Facade | SDK和宿主专业工作流入口 | 封装真实复杂协作，仍提供高级可组合接口 | 将业务逻辑移入TestCenter或UI单例 |
+| GoF Builder | 复杂报告/Recipe/Timeline配置 | 组合校验并能原子保存 | 把简单参数struct包装成十层Builder |
+| GoF Decorator | 算法入口指标/审计/资源限制 | 只在粗粒度服务边界 | 逐体素、逐三角、每GL draw反射代理 |
+
+**模式退出条件**：没有第二实现、没有可测的变化点、增加了反向依赖或长期生命周期不清楚时，不引入该抽象；已引入的抽象若无法解释可替换对象和测试合同，应简化。
+
+### F.6 AOP 横切关注点与失败保证
+
+| 关注点 | 接入位置 | 保证与验收 |
+|---|---|---|
+| 参数与源验证 | 任务入口，获取RAW租约之前 | 缺失Frame/Hash、非法阈值/ROI、超资源预算时不启动算法 |
+| 取消/超时/资源释放 | MRK运行范围与FVO/MPW明确Lease | 取消后释放，不发布半成品；不得用GC终结代替确定性释放 |
+| 质量/精度策略 | CT3D结果完成后、MEM提交之前 | 质量不足只能返回警告/拒绝，不默默标记合格 |
+| 日志、Trace、计时 | 命令/算法边界 | 记录算法版本/输入签名/耗时/错误，不在每个体素记录日志 |
+| 权限、审计、重试 | 已有工程/命令/运行边界 | 重试幂等键由任务身份+参数+来源确定；不得重试不安全外部设备副作用 |
+| Revision/失效传播 | MEM结果提交与MVI显示更新之间 | 旧Task A迟于B完成不得覆盖B；Stale结果只能显式展示 |
+| GPU/内存预算 | MPW RenderHost/Renderer及FVO Cache | ContextEpoch变化时禁止使用旧GL句柄；低显存回退不能把R8伪装成精密原值 |
+
+**事务边界**：算法可长时间运行，不占用长期工程写锁；输出先生成临时不可变产物并验证；提交前再次比较输入SourceRevision/Hash/FrameRevision，采用现有MEM原子事务登记结果；失败清理未发布产物，旧正式结果不受影响。外部大Artifact建议采用临时写入→校验Hash→原子定位/提交→失败回收策略，具体协议与Owner须经ADR-11及既有MEM API核实。
+
+### F.7 UML 03｜用户在四视图选择ROI到保存重开的端到端时序
+
+\`\`\`mermaid
+sequenceDiagram
+autonumber
+actor User as 工程师
+participant UI as Studio/独立宿主
+participant MVI as MVI选择与视图
+participant FVO as FVO原值及Frame
+participant RT as MRK现有运行机制
+participant CT as CT3D专业算法
+participant MEM as MEM工程/Artifact
+participant MPW as MPW投影
+User->>UI: 选择四视图切面中的ROI
+UI->>MVI: 记录带Frame/SourceRef的物理ROI
+MVI-->>UI: Selection/ROI引用
+UI->>FVO: 请求固定源版本的RAW Lease
+FVO-->>UI: Lease+SourceRevision+Frame
+UI->>RT: 绑定专业操作及参数快照
+RT->>CT: Execute(ROI, Lease, Params, Token)
+CT->>CT: Surface/Mesh -> Fit -> Measurement
+CT-->>RT: Result+Quality+Provenance
+RT-->>UI: 候选结果或失败/取消
+UI->>MEM: 校验源版本/Hash/Frame并原子登记
+alt 版本一致且质量合格
+  MEM-->>UI: ResultRef
+  UI->>MVI: 添加Measurement显示引用
+  MVI-->>MPW: Revision/快照变更
+  MPW-->>User: 三维量值叠加
+else 来源变更/质量不足/已取消
+  MEM-->>UI: Stale/Rejected/Cancelled
+  UI-->>User: 明确诊断，不提交半成品
+end
+User->>UI: 保存并关闭
+UI->>MEM: Save工程定义/Ref/参数/Timeline
+User->>UI: 重新打开工程
+UI->>MEM: Load并校验Artifact/依赖/版本
+MEM-->>UI: 有效/过期/缺失的ResultRef状态
+UI->>MVI: 恢复视图引用/工具定义
+UI-->>User: 恢复结果或显示需重算的诊断
+\`\`\`
+
+**二维复用关键**：显示切片的像素坐标应经 \`FVOSliceSamplingMap\` 回到原体素/物理Frame；厚层/弯曲切面需标注多值/近似采样语义，不能当作唯一3D点。UI可复用2D成熟ROI交互，但不能以2D显示像素代替三维源采样。
+
+### F.8 六条必须做成自动化的架构反证
+
+1. **唯一真源**：引入第二套工程树、CT3D→MPW静态依赖、或用GPU R8作为计量输入时架构测试必须失败。
+2. **身份和精度**：两个Frame数值矩阵相同但身份/标定版本不同、或单位不一致时，不得直接比较毫米偏差。
+3. **生命周期与并发**：Load A→B→C、ROI编辑/算法结果迟到、关闭窗口后回调均不得覆盖最新状态或泄漏Lease。
+4. **保存重开**：工程保存后删除/替换外部Artifact，重开应识别Missing/HashMismatch/Stale，而非静默恢复旧量值。
+5. **几何质量**：开放面、bow-tie、孤立顶点、非有限RAW、拟合共线、配准不收敛均应有明确质量/失败。
+6. **宿主独立**：同一RAW/ROI/参数在Headless SDK与Studio中产生同等专业Result签名；禁用GPU不影响真实数值计算。
+
+### F.9 审计结论：现状差距和优先裁决
+
+| 优先级 | 缺口（相对R5目标） | 处理建议 | 放行依据 |
+|---|---|---|---|
+| P0 | 资源身份/Frame/Artifact缺统一闭环 | 先核准ADR-02/03/09/11及现有MEM/MDS/CT3D API，实施最小可复算ResultRef | 小RAW→Mesh→Fit→Measure→Save/Reload及故障反例 |
+| P0 | 测量输入可追溯但仍为体素阶梯面 | 保留现有V03平面/球测试，新增真实表面及误差策略 | 标准件、金标准、来源版本、误差预算 |
+| P1 | MVI显示引用尚非通用子元素选择 | 引入稳定子元素ID/ROI映射并共享四视图 | Mesh重建过期拒绝、多对象拾取及同步 |
+| P1 | 混合渲染与动画未闭环 | 使用统一Scene快照和MPW后端，Timeline持久/播放分离 | 实GPU像素/透明深度、保存重播 |
+| P1 | 高级CAD/Inspection/缺陷/厚度 | 经专业适配和已验证质量合同逐条纵切片 | 正反工业样本、CAD SDK证据及报告一致性 |
+
+**R5评审结论**：既有F/M/P、MEM唯一工程真源、FVO原值、FGE/FNU通用数值、CT3D专业算法、MVI会话、MPW渲染边界继续保留；本附录强化**对象语义、接口资格、设计模式准入、失败一致性及验收**，不批准全部候选类型，不宣称原有26项已经交付。本轮仅为文档优化，编译/CI/GPU/工业精度**未验证**。
