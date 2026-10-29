@@ -26,6 +26,7 @@ namespace CxVisual.TestCenter.UI
         private readonly MPWImageViewerControl _xz = new MPWImageViewerControl();
         private readonly MPWImageViewerControl _yz = new MPWImageViewerControl();
         private readonly MPWVolumeSliceSceneControl _scene = new MPWVolumeSliceSceneControl();
+        private readonly MPWVolumeSceneObjectListControl _sceneObjects = new MPWVolumeSceneObjectListControl();
         private readonly Slider _sliderX = new Slider { Minimum = 0, TickFrequency = 1, IsSnapToTickEnabled = true };
         private readonly Slider _sliderY = new Slider { Minimum = 0, TickFrequency = 1, IsSnapToTickEnabled = true };
         private readonly Slider _sliderZ = new Slider { Minimum = 0, TickFrequency = 1, IsSnapToTickEnabled = true };
@@ -212,6 +213,7 @@ namespace CxVisual.TestCenter.UI
                 if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
                 _state.Scene3D.Changed += OnProfessionalSceneChanged;
+                _sceneObjects.Bind(_state.Scene3D);
                 _sphereThresholdText.Text=((volume.ScalarMin+volume.ScalarMax)/2.0f)
                     .ToString("0.###",System.Globalization.CultureInfo.InvariantCulture);
                 _workbench.Bind(volume,_state);
