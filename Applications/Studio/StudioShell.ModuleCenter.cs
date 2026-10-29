@@ -53,7 +53,7 @@ namespace CxVisual.Studio
             MEMEngineeringSession session,CxVisionThresholdProvider provider,
             string path,int width,int height,CancellationToken cancellation)
         {
-            CxVisionCpuRun report=await CxVisionRawCpuRunner.ExecuteAsync(session,provider,
+            CxVisionCpuRun report=await CxVisionRawCpuRunner.ExecuteMeasuredAsync(session,provider,
                 path,width,height,cancellation).ConfigureAwait(false);
             return new StudioCpuVisionReport {
                 PageId=report.PageId,FlowId=report.FlowId,InspectId=report.InspectBlockId,
