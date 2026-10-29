@@ -1812,7 +1812,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(nullModuleDenied,"null module accepted");
 
             bool rejected=false;
-            try{new MOCCapabilityCatalog(new[]{
+            try{MOCCapabilityCatalogRuntimeFactory.Create(new[]{
                 new DemoCapabilityProvider(inspect),new DemoCapabilityProvider(inspect)},resolver);}
             catch(InvalidOperationException){rejected=true;}
             Check(rejected,"catalog silently merged duplicate capability");
