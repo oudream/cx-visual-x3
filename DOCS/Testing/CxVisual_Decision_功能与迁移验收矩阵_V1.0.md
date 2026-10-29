@@ -405,3 +405,7 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 ### P0静态源码禁止回流Runtime的CI门禁（MDC-80）
 
 `.github/workflows/decision-windows.yml`在Windows Build前检查已经过审的Decision静态源文件，包括静态能力目录、目录快照、约束、选择、资源、恢复策略、工程影响、来源清单与路径推演。若重新引入`CxVisual.Mechanism.Runtime.*`命名空间、MRK Resolver、MRK执行计划/引擎/Handle等类型则提前失败；MRK探测兼容适配明确留在`MOCCapabilityCatalog.Runtime.cs`。同时维持整仓.NET48构建、`--decision`及默认ArchitectureSmoke的真实验证。**仅检查受控文件清单**，不等于全局27项目DAG已无环；文件改名/新增时必须更新清单。
+
+### V2真实MOCFlowBuilder子流程引用闭包（MDC-81）
+
+通过原`MEMEngineeringSession.Edit(...Reference(parent,child))`登记正式Core ContentReference，并使用`MOCFlowBuilder.Edit(...InvokeContent(child))`生成V2连线父流程；`MDCStaticSourceManifestBuilder`应识别`moc.invoke:<ContentGuid>`，只读收敛为父、子两个原始Content，不把Invoke虚构成专业Provider、执行Step或设备回执。这是对MDC-66（V1→V2）在V2→V2方向的真实工程补充。复用原MOL/Codec和MOCFlowBuilder，专项CI状态以对应SHA记录。

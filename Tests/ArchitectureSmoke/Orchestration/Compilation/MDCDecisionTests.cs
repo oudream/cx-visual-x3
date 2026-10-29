@@ -836,6 +836,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException) {mismatch=true;}
                 Check(mismatch,"catalog schema change must invalidate a static source manifest");
 
+
+                var v2Parent=session.AddPage("WiredCaller");
+                session.Edit("正式引用V2子流程",edit=>{
+                    edit.Reference(v2Parent.RootContent,child,"V2CT");
+                    return true;
+                }).RequireValue();
+                Guid v2Invoke=Guid.Empty;
+                MOCFlowBuilder.Edit(session,v2Parent.RootContent,flow=>{
+                    v2Invoke=flow.InvokeContent(child);
+                });
+                var v2Manifest=builder.Create(session.GetSnapshot(),
+                    v2Parent.RootContent.Id,catalog);
+                Check(v2Manifest.Contents.Count==2 &&
+                    v2Manifest.HasCompleteStaticMetadata &&
+                    v2Manifest.Contents.Single(x=>x.ContentId==v2Parent.RootContent.Id)
+                        .ReferencedContentIds.SequenceEqual(new[]{child.Id}) &&
+                    !v2Manifest.Contents.Single(x=>x.ContentId==v2Parent.RootContent.Id)
+                        .CapabilityUses.Any(x=>x.BlockId==v2Invoke),
+                    "real MOCFlowBuilder V2 Invoke must preserve target Content without a fake provider action");
+
                 var updatedStep=MOLControlBlock.Action("ct.optimized");
                 MOLWiringCodec.Set(session,child,new MOLWiringDefinition(
                     updatedStep.Id,new[]{updatedStep},

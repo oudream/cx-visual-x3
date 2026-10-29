@@ -91,3 +91,7 @@
 ## 13. P0静态源码层的Runtime防回流工作流门禁
 
 Decision Windows CI新增`Verify static Decision source files are Runtime-free`步骤，覆盖已拆出的12个静态目录/判断/规划源文件，禁止静态侧再导入Runtime命名空间或执行器、Resolver、Plan、FlowHandle等正式MRK类型；原Resolver兼容入口独立留在`MOCCapabilityCatalog.Runtime.cs`。这保护的是**当前部分源码边界**，尚不能证明整个Orchestration程序集已移除Runtime引用、27项目融合或全局依赖无环。该工作流本身的成功与否以本提交的Windows Run为准。
+
+## 14. 补齐V2 Invoke的真实Core引用正例
+
+ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeContent`生成V2父调用V2子，正式登记`MRIReferenceKind.Content`，验证来源Manifest只列原父、子Content和引用目标，不复制子流程、不将Invoke伪装成专业Provider。没有MRK执行或模拟HIL；完整V2跨层参数、具名数据、循环和真实Plan Loader仍未完成。具体Windows记录以该提交的Run为准。
