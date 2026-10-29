@@ -268,3 +268,28 @@ Run/Attempt/证据快照；NoEvidence、需要人工审签、资源 Lease 未暴
 - **右键状态**：仅已有正式功能可运行/停止；驱动与真实现场能力未授权时禁用，不生成假的ManualSession Passed。删除运行中的自动计划/Smoke前必须先停止，并拒绝误丢未保存模块配置。
 
 **自动验证**：`TCT.UI.WORKSPACE.001/002` 覆盖四根、唯一注册、实例保存重开、独立配置ID、CaseId隔离、删除与错误文件防覆盖；Windows `--ui-automation` 验证实际WPF菜单Click路径、实例Tab打开/关闭/重开/删除、五种模块、Smoke真实EXE、场景与报告独立Tab及History Owner。相应CI截图与人工Windows实测分别签认；即使CI通过也不能代替100%/125%/150% DPI与视觉/设备HIL人工验收。
+
+## 功能模块中心四类实际软件闭环（2026-10-29）
+
+在 TestCenter「专有测试 → 模块测试」中选择 Connector、Driver、Compute、Simulation 或 Service，使用同一个 MPW/FCM/MHS 正式配置编辑器。先创建/打开配置并完成保存和生效，再选择专业测试 Tab：
+
+| 模块 | 专业操作 Tab | 正式配置与软件执行范围 |
+|---|---|---|
+| Compute | CPU真实检测 | Device=Cpu、ProviderTypeId=vision.cpu.threshold.inspect且CapabilityIds含相同Id；Vision专业配置生效、真实RAW数据、MEM/MOC/MRK执行、缺陷区域与Trace、重试/错误输入 |
+| Simulation | 虚拟轴MRK单步 | ModelId=axis、ProviderTypeId=simulation.axis.linear、CapabilityIds含simulation.axis.step、Mode=Step；MHS读取、初始化、MRK单步、虚拟位置/时间、故障阻断、Reset恢复 |
+| Service | 本地服务请求 | ProviderTypeId=testcenter.service.local.echo、CapabilityIds含service.local.echo；MLC Start/Ready、真实进程内请求/SHA256、RequestId幂等、冲突拒绝、Stop/Restart |
+| Connector | Virtual规约回环 | Channel=Virtual、Protocol=LengthFrame；原MCN/FTR/MPA真实帧编码解析与软件虚拟Peer回环、丢回应超时、Stop与Restart；不是物理PLC或设备完成证明 |
+| Driver | 正式配置页（无虚假执行Tab） | 设备SDK/枚举/初始化/采集或控制/安全HIL尚待实机；仅配置成功不可称为执行通过 |
+
+**真实Windows WPF UIA独立入口：**
+
+```powershell
+.\Output\Debug\x64\CxVisual.TestCenter.exe --module-cpu-ui-automation
+.\Output\Debug\x64\CxVisual.TestCenter.exe --module-simulation-ui-automation
+.\Output\Debug\x64\CxVisual.TestCenter.exe --module-service-ui-automation
+.\Output\Debug\x64\CxVisual.TestCenter.exe --module-connector-ui-automation
+```
+
+独立固定SHA绿色证据：[Compute #40667201069](https://github.com/oudream/cx-visual-x3/actions/runs/40667201069)、[Simulation #40807801093](https://github.com/oudream/cx-visual-x3/actions/runs/40807801093)、[Service #40808529672](https://github.com/oudream/cx-visual-x3/actions/runs/40808529672)、[Connector #40809446080](https://github.com/oudream/cx-visual-x3/actions/runs/40809446080)。[同一SHA四类集成G1 Windows工作流](https://github.com/oudream/cx-visual-x3/actions/workflows/testcenter-module-g1-windows.yml)须单独检查最终结论与四份报告，不因已有独立绿灯就提前标记。
+
+这些入口仅代表 **G1本地软件验证**。MHS管理配置、MFM管理模块声明、MEM工程、MOC编译发布、MRK运行、MLC生命周期和各专业算法/模型仍为唯一Owner。TestCenter没有第二套Host/Scheduler/数据目录。所有实机Driver HIL、完整PointTable与MDS运行映射、跨进程/跨PC、工业安全/长稳以及RAW与结果持久化重放均须另外取证。
