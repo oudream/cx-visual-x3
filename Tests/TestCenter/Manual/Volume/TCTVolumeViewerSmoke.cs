@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Mechanism.Presentation.Wpf.Volume;
 using CxVisual.Professional.CT3D;
 
 namespace CxVisual.TestCenter.UI
@@ -818,6 +819,10 @@ namespace CxVisual.TestCenter.UI
                         Check(frame.GpuControlForHardwareTest.SurfacePreviewPointCount==
                               frame.SurfaceDisplayedPointCount,
                             "有真实GPU时Surface也必须提交到GL framebuffer");
+                    var objectPanel=FindVisualByAutomationId<MPWVolumeSceneObjectListControl>(
+                        frame,"MPW.Volume.SceneObjects");
+                    Check(objectPanel!=null&&objectPanel.DisplayedObjectCount==3,
+                        "正式MPW多对象面板须实时列出Volume、Surface、Measurement");
                     Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
                     var scene=frame.ViewState.Scene3D;
                     Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
