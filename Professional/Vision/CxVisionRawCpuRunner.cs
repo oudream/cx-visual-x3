@@ -143,10 +143,25 @@ namespace CxVisual.Professional.Vision
             return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true);
         }
 
+        /// <summary>
+        /// Re-execute an already saved and reopened three-node MEM/MOL definition,
+        /// explicitly rebinding the RAW input and CPU Provider for this invocation.
+        /// Never mutates the saved engineering tree; the new RunId is independent,
+        /// while the same source and pinned versions retain the definition fingerprint.
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteSavedMeasuredAsync(
+            MEMEngineeringSession session,Guid contentId,CxVisionThresholdProvider vision,
+            string path,int width,int height,CancellationToken cancellation)
+        {
+            if(contentId==Guid.Empty)
+                throw new ArgumentException("必须指定已保存的工程Content","contentId");
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,contentId);
+        }
+
         private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation,
-            bool includeMeasurement)
+            bool includeMeasurement,Guid? existingContentId=null)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -163,24 +178,69 @@ namespace CxVisual.Professional.Vision
             IMRKVersionedCapabilityResolver resolver=includeMeasurement ?
                 (IMRKVersionedCapabilityResolver)measureProvider : vision;
             var source=new RawProvider(pixels,resolver);
-            var page=session.AddPage((includeMeasurement ?
-                "CPU RAW检测与面积测量 · " : "CPU RAW检测 · ")+Path.GetFileName(path));
+            Guid pageId=Guid.Empty,entryContentId=Guid.Empty;
             Guid inspect=Guid.Empty,measure=Guid.Empty;
-            MOCFlowBuilder.Edit(session,page.RootContent,b=>{
-                Guid raw=b.Step(source.DescribeCapabilities().Single());
-                inspect=b.Step(vision.DescribeCapabilities().Single());
-                b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
-                b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
-                b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
-                b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
-                if(includeMeasurement)
-                {
-                    measure=b.Step(measureProvider.DescribeCapabilities().Single());
-                    b.Connect(inspect,"Done",measure,"Start",MPCPortKind.Control);
-                    b.Connect(inspect,"Inspection",measure,"Inspection",MPCPortKind.Data);
-                    b.ExposeOutput("AcceptedRegionPixelArea",measure,"Area");
-                }
-            });
+            if(existingContentId.HasValue)
+            {
+                // Validate persisted definition before any MOC publication or MRK work.
+                var saved=session.GetSnapshot();
+                MEMNodeSnapshot content=saved.Find(existingContentId.Value);
+                MEMNodeSnapshot parent=content==null||!content.ParentId.HasValue ?
+                    null:saved.Find(content.ParentId.Value);
+                if(content==null || content.Kind!=MEMNodeKind.Content ||
+                    parent==null || parent.Kind!=MEMNodeKind.Page)
+                    throw new InvalidOperationException("vision.saved.invalid_content");
+                MOLWiringDefinition wiring=MOLWiringCodec.Get(content);
+                if(wiring==null || wiring.Blocks.Count!=3 ||
+                    wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)!=2 ||
+                    !wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea"))
+                    throw new InvalidOperationException("vision.saved.requires_three_node_wiring");
+                var rawBlocks=wiring.Blocks.Where(x=>x.CapabilityId==InputId).ToArray();
+                var inspectBlocks=wiring.Blocks.Where(x=>
+                    x.CapabilityId==CxVisionThresholdProvider.CapabilityId).ToArray();
+                var measureBlocks=wiring.Blocks.Where(x=>
+                    x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId).ToArray();
+                if(rawBlocks.Length!=1 || inspectBlocks.Length!=1 || measureBlocks.Length!=1)
+                    throw new InvalidOperationException("vision.saved.capability_mismatch");
+                inspect=inspectBlocks[0].Id;
+                measure=measureBlocks[0].Id;
+                IReadOnlyDictionary<string,string> parameters;
+                string declaredWidth,declaredHeight;
+                int expectedWidth,expectedHeight;
+                if(!wiring.Parameters.TryGetValue(inspect,out parameters) ||
+                    !parameters.TryGetValue("Width",out declaredWidth) ||
+                    !parameters.TryGetValue("Height",out declaredHeight) ||
+                    !int.TryParse(declaredWidth,NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,out expectedWidth) ||
+                    !int.TryParse(declaredHeight,NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,out expectedHeight) ||
+                    expectedWidth!=width || expectedHeight!=height)
+                    throw new InvalidOperationException("vision.saved.image_dimensions_changed");
+                pageId=parent.Id;
+                entryContentId=content.Id;
+            }
+            else
+            {
+                var page=session.AddPage((includeMeasurement ?
+                    "CPU RAW检测与面积测量 · " : "CPU RAW检测 · ")+Path.GetFileName(path));
+                pageId=page.Id;
+                entryContentId=page.RootContent.Id;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    Guid raw=b.Step(source.DescribeCapabilities().Single());
+                    inspect=b.Step(vision.DescribeCapabilities().Single());
+                    b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
+                    b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
+                    b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
+                    b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                    if(includeMeasurement)
+                    {
+                        measure=b.Step(measureProvider.DescribeCapabilities().Single());
+                        b.Connect(inspect,"Done",measure,"Start",MPCPortKind.Control);
+                        b.Connect(inspect,"Inspection",measure,"Inspection",MPCPortKind.Data);
+                        b.ExposeOutput("AcceptedRegionPixelArea",measure,"Area");
+                    }
+                });
+            }
             string rawVersion;
             source.TryGetCapabilityVersion(InputId,out rawVersion);
             var versions=new Dictionary<string,string>(StringComparer.Ordinal) {
@@ -189,7 +249,7 @@ namespace CxVisual.Professional.Vision
                 versions.Add(CxVisionAcceptedRegionMeasureProvider.CapabilityId,
                     CxVisionAcceptedRegionMeasureProvider.Version);
             MEMProjectSnapshot snapshot=session.GetSnapshot();
-            var candidate=MOCProjectRelease.Prepare(snapshot,page.RootContent.Id,source,versions);
+            var candidate=MOCProjectRelease.Prepare(snapshot,entryContentId,source,versions);
             cancellation.ThrowIfCancellationRequested();
             var baseline=new MRKExecutionPlan("vision.cpu.inert",
                 new[]{new MRKExecutionStep("inert",new string[0],
@@ -250,7 +310,7 @@ namespace CxVisual.Professional.Vision
                     if(completed==0||trace.LostCount!=0)
                         throw new InvalidOperationException("MRK真实完成Trace缺失");
                     return new CxVisionCpuRun {
-                        PageId=page.Id,FlowId=result.FlowId,InspectBlockId=inspect,
+                        PageId=pageId,FlowId=result.FlowId,InspectBlockId=inspect,
                         MeasureBlockId=measure,AcceptedRegionPixelArea=acceptedArea,
                         EngineeringRevision=snapshot.Revision,Fingerprint=candidate.Fingerprint,
                         ConfigVersion=version,Inspection=inspection,CompletedTraceEvents=completed,
