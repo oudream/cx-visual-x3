@@ -1271,7 +1271,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 // V2 parent invokes a distinct V2 child by the original Core
                 // ContentReference. The immutable Plan must carry the whole
                 // closure; the loader may use MEM only for IDs and SourceMap.
-                var nestedChild=session.AddPage("NestedChild").RootContent;
+                var nestedChild=session.AddContent(session.Project,"NestedChild");
                 Guid nestedAction=Guid.Empty;
                 MOCFlowBuilder.Edit(session,nestedChild,flow=>{
                     nestedAction=flow.Step("vision.gray16");
