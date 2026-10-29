@@ -85,6 +85,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
                     .Mesh.ResultId==restored.Mesh.ResultId,"MEM Undo恢复旧专业结果身份");
                 engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
+                    .Mesh.ResultId==replaced.Mesh.ResultId,"MEM Redo恢复新专业结果身份");
+                engineering.Undo().RequireValue();
                 Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.Commit(engineering,owner,before,
                     folder,analysis,CancellationToken.None));
                 int current=engineering.Revision;
