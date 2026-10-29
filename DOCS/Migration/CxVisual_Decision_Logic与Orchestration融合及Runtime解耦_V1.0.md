@@ -240,3 +240,24 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 | Simulation虚拟模型/设备安全 | Professional.Simulation / Automation | 静态推演不冒充虚拟/现场执行，未知外部命令不能自动重发 |
 
 在P0逐类调用方清单中增加：`FCMConfigSchemaBuilder/FCMConfigCatalog`、`MFMModuleDescriptor`、`MOCCapabilityCatalog`、`CxVisionThresholdProvider`、`MRKCodeRuntimeBuilder`、`MOLRuntimeOverlay`、`PSMSimulationModule`。P4合并后执行REG/CST/AUT/RUN及六专业场景Goldens；**不得以“工程数27”替代功能验收**。
+
+---
+
+## V2.0审评P0/P1门禁：能力描述与运行绑定先解耦，再融合（2026-10-29）
+
+审查依据：[Decision全类反推与OOP/GoF/AOP审评](../Architecture/CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md) 的 ARC-01～12。继续沿用原P0～P5，以下是每一阶段必须完成的实施条件，不是“已迁移”。
+
+| Gate | 真实代码锚点 | 先做的动作 | 必须通过 |
+|---|---|---|---|
+| P0-A | MFMModuleDescriptor、MPCPortDescriptor、FCMConfigSchema | 核对ModuleId/CapabilityId/PortId/TypeId/配置Effective版本唯一真源，兼容旧MOC语义 | 静态目录不需要MRK Resolver才能描述专业能力 |
+| P0-B | MOCCapabilityCatalog(MOC描述, IMRKCapabilityResolver) | 拆纯描述与RuntimeAvailable解析状态，保持旧API单向兼容 | 无Decision→MRK引用；注册时同Id冲突拒绝 |
+| P0-C | MRKResolvedCapability(MRK CLR Type/Delegate) | 设计 `TypeId↔CLR Type`、输入/具名输出/必填方向/版本的确定映射 | 不匹配拒绝，不能把MRK委托写进纯Plan |
+| P1 | FCM/专业Provider/旧MOC目录 | 验证注解/Fluent/显式Provider可归一同一只读CapabilitySnapshot，旧CxVisionThresholdProvider等价 | 无第二ModuleRegistry/FCM Schema/专业硬编码Switch |
+| P2 | MOCBuildService/MOCEngineeringCompiler/MRKExecutionCompiler | 纯静态Assess/Build/Plan与真实Binder分离 | 简单连线不编整张Plan；Loop/SourceMap/子流程等价 |
+| P3 | Host/MRK Loader/ExecutionPlan | 受控绑定真实能力/权限/安全/资源，保持单一引擎 | 静态Allowed不能直接生产执行，外部Unknown命令不自动重试 |
+| P4 | 旧Logic/Orchestration项目与全量消费者 | 只在静态/运行合同分离+DAG无环后改名/删项目，保留Owner与GUID迁移 | SLN项目数目标27/Mechanism8、Windows Smoke/专业Goldens |
+| P5 | D03/04/06/07/08/09及Studio/专业 | 依据目标与证据增加候选/引导/资源/虚拟/反馈能力 | REV/REG/CST/AUT/RUN/UX专项按SHA证明 |
+
+**强制兼容检查**：以旧MOC/MRK输入/输出、MOL结构、SourceMap、具名Data.Return、配置Effective版、三层Invoke/动态Loop/Foreach、R05/R06/发布/Trace为Golden；迁移中用单向Adapter而不留下长期双编译器。根异常不得被次级UI/关闭错误覆盖。保留旧API废弃时间窗口、调用方/场景/测试和回滚条件。
+
+**未验证阻断项**：DOCS/02～04 XLSX的逐Sheet类型/Owner对照仍须实做，不能以本报告代替；且无Windows实际重建/真实安全测试，不得把“已设计”升级“项目已融合”。

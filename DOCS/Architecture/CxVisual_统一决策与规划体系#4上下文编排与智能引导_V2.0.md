@@ -144,3 +144,25 @@ sequenceDiagram
 | AUT-10 | Studio/SDK一致性 | 同Revision同规则的硬约束判定与ReasonCode一致 |
 
 **开发者价值指标**：完成典型5节点工程的操作数/耗时、误连拦截率、首次Build通过率、定位首个错误所需点击数和解释覆盖率；有固定使用者与夹具前仅作为验收目标，不声明已实现改善百分比。
+
+---
+
+## 11. V2.0审评：约束驱动编排的增量分析与编辑边界
+
+**在何时/在哪里/谁用/结果给谁**：Studio选中Symbol、Content、Capability、Port、变量或配置项时发出一次只读Decision请求；SDK调用相同纯服务。用户看到的候选分`Applicable / ApplicableWithAdaptation / Unknown / Rejected / Deprecated`，但**静态硬约束真值**仍只有Pass/Fail/Unknown；“需适配”是候选操作建议，不是第四种硬约束结果。用户可切换查看被拒/未知及理由。
+
+| 场景 | 必须获得的轻量回应 | 应用Owner与安全 |
+|---|---|---|
+| 从Gray16图像端口拖线 | 灰度输入/方向/位深/坐标/版本的过滤，明确转换精度风险 | 用户确认后由Core Edit插入节点；不自动增加有损转换 |
+| HMI绑定MDS变量 | 类型/读写权限/质量、Symbol适用条件、候选说明 | HMI只是显示与授权Command入口，不能自行发真实设备命令 |
+| CT3D输入Projection | Geometry/Unit/体素尺寸约束、资源证据缺口 | 无内存预算证据则Unknown，不让UI自动选择GPU |
+| Automation并行多设备 | ExclusiveGroup/事件先后/状态与幂等规则 | Decision提示串行/替代，实际资源租约归MRK/F19 |
+| 多层Invoke/Foreach | SourceMap、作用域、Join/数据寿命、动态Region | 不静态展开全部迭代，不复制另一个工程Graph |
+
+**增量处理合同**：请求`ProjectRevision + SelectionVersion + CapabilityCatalogFingerprint + PolicyRevision + EnvironmentEpoch`；Port/Block/ConstraintId建立依赖子图，变化只使相关候选失效；任何异步响应提交前再次验证全部版本，旧响应只可作为带“已过期”标签的历史参考。拖线时不跑完整Pareto/仿真，超预算明确标Unknown/分析未完成。
+
+**应用路径**：`Studio UI → Decision只读建议 → 用户选择 → Core单一Edit/Undo事务 → NewRevision → 重新Assess/Build`。所有Error有ReasonCode/SourceId/MemberId、可执行的下一步与安全等级。WPF只作可视投影，用户取消或切换工程不留下隐式提交。
+
+**三个不同入口**：局部即时校验、整工程Build静态校验、专业Simulation+MRK受控虚拟执行。静态可能路径与真实执行轨迹必须分开，未建模型时不伪造仿真结果。
+
+**验收**：REV-02/04/05/08 + AUT-01～10，额外确认不兼容候选可查看原因、Fast Drag不阻塞UI、两个版本的候选缓存不串用、Undo正确、同一RuleId在Studio/SDK/Build下得到一致静态诊断。

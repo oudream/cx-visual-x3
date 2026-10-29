@@ -215,3 +215,57 @@ Source/Plan/Capability/Policy/Environment版本与每份结果绑定；Core正�
 **实际存在**：MEM/MOL定义、MFM模块描述、MOC目录/Build/SourceMap、MRK执行/调试/Trace、FCM注解/配置；**提议新增**：完整MDC服务及接口/纯Plan/三态约束/候选排序/按需路由；**未验证**：在当前SHA上V2 SDK集成或全类专业真实设备就绪。
 
 落地顺序：①先保证最小连接Assess+Diagnostics不需要Runtime；②接入现有Capability目录的只读快照/FCM Schema；③增加FindCandidates（适用/不适用/未知）；④在MOC/MRK静态与委托分离后提供Compile+受控Loader；⑤扩展目标协调、策略、资源和仿真优化；⑥开发者示例在Windows CI上按签名真实编译。验收以[Testing](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)为准。
+
+---
+
+## 09. V2.0 OOP/GoF/AOP对象合同反审与实现细化（2026-10-29）
+
+> 依据[审评报告ARC-01～12](CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)；以下补充只收敛拟议公开合同，不能据此认为MDC类型存在或C#例程已通过编译。
+
+### 9.1 最小领域对象：有职责才建类
+
+| 合同 | 不变量及生命周期 | 实施提示 |
+|---|---|---|
+| CapabilitySnapshot（只读） | 同一CapabilityId+Version+SchemaFingerprint对应唯一规范化Ports/Config/Traits；纯声明可离线读取 | 由MFM/MPC/FCM/专业目录投影，不是Decision第二个Registry |
+| DecisionContext | DefinitionRevision、CatalogVersion、PolicyRevision、EnvironmentEpoch与Evidence固定于一次请求，纯只读 | 不持有Studio控件、MRK Flow Handle、设备对象 |
+| ConstraintOutcome/Assessment | 每条规则Pass/Fail/Unknown、ReasonCode/SourceRef/Evidence；聚合HardFail优先于Unknown | 返回值必须携RequiredRuntimeChecks且不自动执行它 |
+| CandidateEvaluation | Feasible/Rejected/Unknown分别列示，推荐只能来自Feasible，适用条件和目标证据可追溯 | 排序可用Strategy，不引入第二套评分真源 |
+| PurePlan | 版本化DAG/Regions/PortSchema/SourceMap/策略声明/依赖清单及确定性指纹 | 不含Delegate、CLR设备句柄、Task、MDS活Frame；MRK Loader才可绑定 |
+| Explanation/RunEvidenceReference | 决策原因与真实Run/Step/Attempt/SourceMap引用分离 | Trace事实仍归MRK，不生成第二份运行状态 |
+
+**当前源码差异**：`MOCCapabilityDescriptor` 存MPC字符串TypeId端口，`MRKResolvedCapability` 存CLR `Type` 输入和Delegate；两者不能依显示名匹配，也不可直接把MRKResolvedCapability引用进Decision。需要经Core/基础TypeId契约作确定性 `TypeId↔CLR Type`/方向/必填/输出/版本映射，并在不一致时给出稳定诊断码。FCM Schema/Effective版本不能被新属性覆盖。
+
+### 9.2 目标实现边界图
+
+~~~mermaid
+flowchart LR
+  C["Core/MFM+MPC/FCM：权威定义"] --> P["静态能力只读投影"]
+  P --> D["Decision：Constraint/Goal/Candidate/PurePlan"]
+  D --> X["MDCPlanArtifact：纯数据指纹"]
+  X --> L["MRK Loader：校验+真实Delegate绑定"]
+  L --> E["MRKExecutionPlan/Engine"]
+  C --> L
+  T["Professional：实际Provider"] --> L
+~~~
+
+图是目标业务/装配协作；工程引用必须`Runtime → Decision → Core`，同时`Decision ↛ Runtime`。迁移前不能强制沿用已有MOC编译器里的`IMRKCapabilityResolver`，否则会产生项目依赖环。
+
+### 9.3 OOP/GoF/AOP选择记录
+
+| 变化点 | 选择 | 反对的实现 |
+|---|---|---|
+| 多目标排序和不同专业资源模型 | Strategy/可选注入Ranker/Estimator（确有两种策略才抽象） | 十个DxxManager或无意义工厂 |
+| 约束AND/OR/NOT | Composite/领域Specification复用MOL表达与FCM校验 | 第二套持久MOL规则语言 |
+| 旧MOC和MRK投影 | 单向Adapter兼容窗口+Golden | 两套Compiler长期并行 |
+| 编辑建议被应用 | 仅调用Core唯一Edit/Undo Command | Decision修改MEM工程或隐藏更新Config |
+| 跨调用审计/计时/缓存/脱敏 | Decorator/AOP在纯评估边界；版本键完整 | 以AOP安全拦截代替Host/PLC显式安全门禁 |
+
+**结果层分离**：`MDCVerdict`是已完成判定的三态；Cancelled/TimedOut/Incomplete应是**独立求解完成状态**，不可被折叠进Allowed。应先确定完整DTO和旧API映射，再固定公开签名并编写Windows可编译SDK样例；当前示例仍为拟议形状。
+
+### 9.4 五项接口收敛门槛
+
+1. 最小Assess两端口+Context即可调用，无MEM/Runtime；硬Fail/Unknown有稳定ReasonCode。
+2. FindCandidates/Compare读取同一快照，无可行者Selected=null，先硬过滤后软比较；用户可显示被拒/未知候选。
+3. 对FCM、MPC、MOC、MRK四方类型/端口/版本差异设置拒绝与兼容测试，不靠CLR Type.FullName随意转TypeId。
+4. PurePlan对包含动态Loop/Foreach/Try/子Content的结构不按迭代次数展开，跨进程序列化没有Delegate。
+5. 所有公开MDC目标API保留Proposed状态，实际可用SDK须列出代码位置、签名、消费测试SHA及CI。

@@ -162,3 +162,24 @@ flowchart LR
 ## 11. 验收定义
 
 **文档完善** ≠ **Decision功能实现** ≠ **集成/CI通过** ≠ **工业现场就绪**。每条功能做到“真实用户入口→有效上下文→真实判断→结果被应用→效果被测量”后才能宣布业务能力交付；仅生成了对象和单元测试不算。
+
+---
+
+## 12. V2.0正式反审：需求→能力→对象→使用→验证的双向门禁（2026-10-29）
+
+审查依据：[全类反推与OOP/GoF/AOP架构审评 V1.0](CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)；本节为总体架构规则，详细对象与验收分别归#1与Testing。本轮文档修订不代表增加任何源码实现。
+
+**六层闭环**：六专业真实目标 → 两类用户L0～L3的七问使用链 → R1～R8/D01～D10覆盖 → 最小对象/唯一Owner → 真实源码/项目DAG → 正反例/性能/证据。反向检查每个对象是否有真实使用理由，删除空壳抽象；没有入口或数据来源的Dxx不能被判为已交付。
+
+**每个正式功能必须有** `ScenarioId, RequirementId, CapabilityIds(Dxx), Trigger, Caller, InputSnapshot, ConstraintOwner, RequiredEvidence, Output/Consumer, TypeOwner, TestId, EvidenceTier`。缺一项时是架构待确认，不允许因文档“全类”一词将它视为完整。
+
+| 设计域 | 保留的核心 | 反审后增加的硬要求 |
+|---|---|---|
+| 专业轻接入 | 普通方法→Capability→编排 | 一次声明经同一纯Schema/版本投影被Studio、Decision、MRK消费，不能创建第二注册中心 |
+| 约束驱动 | Can/Should/Best | HardFail/Unknown不可放行；Should需要基线；Best只在有证据的可行域内比较 |
+| 上下文编排 | Symbol/Content/Capability筛选/引导 | UI局部校验、旧Revision结果失效、Core Edit事务和Undo是强制不变量 |
+| 计划与运行 | Decision纯Plan、Runtime真实执行 | 不得把MRK委托/设备句柄/CLR运行Context塞进可序列化Decision Plan |
+| 诊断/模拟 | MRK真实Trace和PSM模型 | 静态推演、Virtual、Replay、HIL、Field各自独立，EvidenceTier不可越级 |
+| OOP/GoF/AOP | 按需组合/扩展 | 每个新接口/模式/横切有具体变化点、Owner、反例测试；不得为模式添加空壳Manager |
+
+**当前整体评价**：架构方向合理、D01～D10分类暂不变；工程依赖/能力静态-运行绑定属于P0；最小API/三态约束/专业注册/Studio闭环为P1，仍然需要工程证明。不得把P0/P1未消除的V2文档标为“可直接无歧义实现完成”。参见审评报告ARC-01～12与REV-01～12。

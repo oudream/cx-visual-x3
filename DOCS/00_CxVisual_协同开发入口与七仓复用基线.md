@@ -82,6 +82,8 @@
 6. [#5 运行调试模拟与反馈 V2.0](Architecture/CxVisual_统一决策与规划体系%235运行调试模拟与反馈_V2.0.md)：MRK/MDS/Trace/SourceMap/断点、静态与Virtual/Replay/HIL分级、故障诊断和版本化改进。
 7. [#6 专业应用与完整案例 V2.0](Architecture/CxVisual_统一决策与规划体系%236专业应用与完整案例_V2.0.md)：Vision、CT3D、Automation、Inspection、HMI、Simulation 及跨专业产线端到端案例。
 
+**架构反推与OOP/GoF/AOP审评（2026-10-29）**：[Decision V2.0全类反推与OOP/GoF/AOP架构审评 V1.0](Architecture/CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)——以六专业真实任务与七问使用链反审#0～#6，列出ARC-01～12架构缺口、REV-01～12反向测试及P0/P1门禁；**性质为审评报告，不是第八份权威技术规格或已实装证据**。已将关键结论回填各#0～#6，并与迁移/测试矩阵关联；当前若未解除MOC→MRK依赖、未实测SDK/CI与设备HIL，不得称为工业就绪。
+
 **配套工程权威**：
 - [Decision 融合与Owner裁决 V1.0（含V2衔接）](Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md)：项目正式名称与无环依赖归属。
 - [Logic+Orchestration融合/Runtime解耦迁移 V1.0（含V2门禁）](Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)：逐文件类型和P0～P5迁移，目标28→27、Mechanism9→8。

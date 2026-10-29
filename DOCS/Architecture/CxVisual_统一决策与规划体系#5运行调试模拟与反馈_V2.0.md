@@ -153,3 +153,25 @@ flowchart LR
 ## 11. 技术边界与实施路线
 
 先使用现有MRK/SourceMap/FCM/MDS和专业Provider，补统一RunEvidence与Studio只读诊断定位；再做纯Plan/Loader拆分及新Decision解释入口；最后接Simulation Scenario/Replay/专业实测优化。不得为了“有Decision”重写执行引擎、Trace/Journal、专业模型或MDS数据所有权。
+
+---
+
+## 12. V2.0审评：真实问题追踪与推论分离的证据合同
+
+**事实与解释必须分层**：MRK拥有RunId/StepId/InvocationPath/AttemptId和实际Trace/Journal/Snapshot；MDS拥有Frame/Heap/结果的生命周期；专业Provider拥有真实错误码、图像/Volume/设备状态及模型证据；Decision仅对明确传入的**版本化只读证据引用**作约束诊断、方案影响/推荐，不重建第二执行/调试/Trace体系。
+
+| 层次 | 一定要有哪些字段 | 不可越权断言 |
+|---|---|---|
+| Core定义 | Project/Revision/ContentId/BlockId/PortId + SourceMap | 不能直接代表某次运行实例 |
+| 描述Plan | PlanId/Fingerprint/CapabilitySchema/PolicyRevision/SourceMap | 不存Delegate、设备Handle及正在占用的Frame |
+| Runtime事实 | RunId/InvocationPath/Iteration/StepId/AttemptId/Code/State/Time、TraceCursor/LostCount | TraceGap表示历史缺失，不能伪造丢失事件 |
+| 专业输出 | Model/Algorithm/ConfigEffectiveRevision、受控ArtifactRef/输入输出摘要、设备确认 | 未授权显示敏感数据和真实现场访问不允许 |
+| Decision分析 | RequestId/RuleId/ReasonCode/EvidenceId/Tier/Assumptions/Confidence/RequiredCheck | “可能原因”不是“已证明根因”，Virtual不是HIL |
+
+**诊断用例**：一个Vision检测Block在三层Content嵌套调用的第2轮Iteration失败。必须先按MRK的`RunId+InvocationPath+StepId+AttemptId`取真实状态，再以SourceMap定位唯一工程Block，MDS提供经权限授权的输入/Mask摘要，专业错误指明像素格式不符。Decision比较“换16bit算法”和“有损转8bit”两个候选，解释精度/资源/策略与未知证据。**最终由用户决定更改、Core保存新Revision；生产MRK活动Plan不能被此建议直接改变。**
+
+**模拟与调试**：调试控制复用MRK DebugController，严禁危险设备Step被普通断点无限暂停；静态路径推演仅证明可达性/条件可能，Virtual必须有PSM兼容Model/Clock/Seed，Replay需记录完整且标TraceGap，HIL/Field要专业Owner实机证据。无模型/无真实时间证据返回Unknown而不假定成功。
+
+**AOP边界**：MRK观察/指标、Decision解释/性能、Studio展示可共用CorrelationId/诊断码和脱敏机制；不因审计/优化把决策计算插进每帧实时运行路径。异常处理必须保留真实根异常及设备确认状态。
+
+**验收**：REV-06～08/10/12与RUN-01～12；至少对虚拟、纯CPU、实际设备三类设独立测试等级，不能由一个Headless绿色CI证明硬件安全。

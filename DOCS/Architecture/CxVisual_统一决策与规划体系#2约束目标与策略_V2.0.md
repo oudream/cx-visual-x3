@@ -138,3 +138,26 @@ flowchart TB
 | CST-10 | 大规模约束及并发取消 | 有界时间/内存，取消不可放行，诊断可定位 |
 
 每例记录代码引用、调用入口、固定夹具、期望/实际、硬件/环境、commit、CI URL与EvidenceTier。迁移前以当前MOC/FCM/MRK实际测试为Goldens，不因新Decision文档宣称通过。
+
+---
+
+## 11. V2.0审评补充：可判定的规则合并、目标证据与策略选择
+
+[审评报告](CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)指出：只有约束定义和打分原则不足以证明“该不该、怎样最好”。因此必须具备如下**可实现算法合同**。
+
+| 阶段 | 输入 | 必须产物与反证 |
+|---|---|---|
+| Source Normalization | Core/FCM/MPC/专业/Host规则Id/Scope/Version | 单位和TypeId的可证转换、来源/优先级、时效与适用条件；无法归一→Unknown/InvalidDeclaration |
+| Conflict & Evaluation | 同Scope多个Hard、证据及有效期 | 不允许最后一个规则覆盖前者；给Fail、Unknown或ConflictSet，最小冲突子集在算法预算允许时求取 |
+| Baseline & Goals | 现有候选、业务目标、指标方向/单位/容忍度 | `KeepCurrent`视为明确基线；没有基线则NeedsBaseline，绝不捏造节省率 |
+| Feasible Set | 全部Hard评估 | 已证实全部满足者才进候选可行集；Unknown有RequiredChecks，不进入自动推荐 |
+| Trade-off | 可行集合、可比指标、统计口径和成本 | Pareto非支配集、优先级/词典/有界权重、稳定平局、风险和置信区间 |
+| Strategy | 选项/环境/副作用/幂等/资源 | 方案及启用条件/禁止条件/Fallback/验证计划，不执行实际重试/设备动作 |
+
+**逻辑区分**：`Pass/Fail/Unknown`属于约束结果；`Rejected/Allowed/Unknown`属于完成的静态评估结论；`TimedOut/Cancelled/Incomplete`属于求解完成状态。不得因求解异常或现场数据缺失写成Pass。即使静态Allowed，Runtime仍复核实际许可/资源/版本，特别是不可逆动作。
+
+**策略实施边界**：`DecisionStrategy`负责如何评价/比较；`ExecutionPolicy`仅是描述，由MRK/Host负责实际效果；设备端安全联锁不通过AOP Advice实现。标准预测/Virtual/Replay/HIL/Field的证据等级必须显示；错误取数不可用时返回NeedsEvidence。
+
+**GoF与性能**：规则可用Composite+Specification表达，但不复制MOL/FCM逻辑；Ranker/Estimator确有变体时使用Strategy，来源转换用Adapter，外部缓存/取消/审计用Decorator。规则依赖图和失效缓存按Revision/Policy/Capability/EnvironmentEpoch确定；不能在WPF UI线程运行非有界Pareto或蒙特卡洛。
+
+**验收加项**：跨来源相互矛盾的Hard、过期性能样本、未知设备许可、单位混淆、软目标重权覆盖Hard、相同种子稳定Pareto、外部非幂等重试拒绝，均有明确ReasonCode/Owner与前置验证；参见Testing中的REV系列。

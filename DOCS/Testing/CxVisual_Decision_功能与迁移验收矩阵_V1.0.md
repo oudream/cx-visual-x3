@@ -178,3 +178,26 @@ flowchart LR
 **每条验收的七个必填属性**：做什么、何时触发、在哪里、谁调用、怎样使用、结果由谁应用、实际效果如何。每条记录Owner、源码路径、测试名、固定夹具、Expected/Actual、提交SHA、CI Run、EvidenceTier(Design/Source/Build/Automated/Integrated/HIL/Field)和风险。通过标准必须包括**真实调用入口、逻辑正确、结果应用与效果测量**，仅有接口/文档不算完成。
 
 测试示例及专业输入详见 [#3](../Architecture/CxVisual_统一决策与规划体系%233专业能力声明与注册_V2.0.md)、[#4](../Architecture/CxVisual_统一决策与规划体系%234上下文编排与智能引导_V2.0.md)、[#5](../Architecture/CxVisual_统一决策与规划体系%235运行调试模拟与反馈_V2.0.md)、[#6](../Architecture/CxVisual_统一决策与规划体系%236专业应用与完整案例_V2.0.md)。真实设备/安全验证必须单独验收，不能因模拟成功升为现场通过。
+
+
+---
+
+## V2.0审评追溯补充：ARC-01～12 + REV-01～12（全部为目标测试）
+
+[正式审评报告](../Architecture/CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)为发现/反例/责任链索引，本文件继续是**唯一正式测试验收母表**。下列测试**尚未实施**；必须与原D-T、M、REG、CST、AUT、RUN、UX进行双向关联，避免重复建立执行器或测试名簿。
+
+| Gate及测试 | 要求的证据 | 失败即停止的条件 |
+|---|---|---|
+| REV-01 简单直达 | 真实普通专业函数和MRKCodeRuntimeBuilder的L0/L1调用无需Decision/完整MEM工程 | 新增架构使简单算法多依赖/初始化 |
+| REV-02/03 注册与换专业 | Vision/CT3D/Automation两个以上真实/受控Provider同一只读静态合同，`MPC TypeId↔MRK CLR Type`确定性，版本/端口/输出一致 | Descriptor与运行解析冲突、专业硬编码、重复Registry |
+| REV-04 约束/证据 | HardFail拒绝/Unknown不放行、不同来源硬约束合取、软权重不能覆盖、单位与时效可验证 | 未知设备/显存自动推荐或选择 |
+| REV-05 Studio | 异步旧Revision/Selection/Policy失效、Core唯一Undo/Edit、候选原因可见 | 过期建议自动改变工程或发布 |
+| REV-06 Plan与DAG | ProjectReference拓扑无环、Decision Plan不含Delegate/Handle/Task、运行Loader真实绑定 | Decision引用MRK或出现第二静态编译实现 |
+| REV-07 调试身份 | RunId/InvocationPath/Iteration/StepId/AttemptId/SourceMap定位多层循环及具名数据 | TraceGap伪造旧历史、数据跨帧误读 |
+| REV-08 仿真等级 | Static/Virtual/Replay/HIL/Field的Tier及版本/种子，虚拟运行真实设备动作严格0 | 无模型却返回Virtual Passed/实际触达PLC |
+| REV-09 OO/模式必要性 | 每个新接口/Manager记录Owner、需求、变化点、两个现实实现或明确兼容例、删除反证 | 大量空壳Manager/重复RuleDSL |
+| REV-10 性能并发 | 固定Windows环境候选10/100/1000、节点100/1000/10000，冷/热p50/p95、PeakAllocated、取消 | UI主线程被耗时求解阻塞、缓存越界、动态Loop展开 |
+| REV-11 六专业闭环 | 每专业至少一例接口→能力发现→编排→MRK→观察/解释，且正反/效果对照；Inspection/HMI须实际先有Provider | 空工程或示意图充当功能证据 |
+| REV-12 工业安全 | 非幂等设备ACK未知需对账、实机安全权限/联锁专业HIL签署 | 未经授权重发、将静态Allowed当现场许可 |
+
+**证据登记列**：ScenarioId、RequirementId、Dxx、Owner、源码路径/签名、实际测试方法、失败/正常夹具、环境/设备、SHA/CI URL、Expected/Actual、EvidenceTier、性能对照与缺陷Owner；未有运行证据的一律标Design。**门槛**：P0/P1未解决前，不得宣称可直接完整实现或工业验收完成。

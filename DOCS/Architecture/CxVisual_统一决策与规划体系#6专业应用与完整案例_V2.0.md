@@ -164,3 +164,23 @@ var allowed = decision.Assess(
 | CASE-S | D05/06/08/09/10 | 固定Seed虚拟运行/断点/故障 | 无模型却回Passed、触达真机 | Virtual不能替代Field |
 
 **等级**：当前案例整体是Design；对应各类已有函数是Source；每个测试结果必须在未来的[Testing](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)登记SHA/CI/设备证据，不能因案例文字宣称集成完成。
+
+
+---
+
+## J. V2.0审评：用六专业实际案例反证“轻量”与“全类”
+
+[正式审评报告](CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)要求每个专业案例补一张“用户实际做什么→触发与输入→真实或拟议API→谁消费结果→成功/失败→实测对照”的可追溯卡，不能只有解释性文字。下面是实施前必须首先补齐的**最小验证切片**：
+
+| 案例 | 第一条真实可落地路径 | 架构反例（必须失败） | 验收效果指标 |
+|---|---|---|---|
+| Vision/X-Ray | CxVisionThresholdProvider已具MOC描述+MRK绑定，验证一次合同一致性及单图预览/SourceMap | Gray8/16、模型版本/许可、NG非幂等重发 | 从注册到可编排行数/重复契约数/故障定位步骤 |
+| CT3D | 选纯CPU合法几何/参数资源说明→静态候选→专业重建调用（需核实真实可用算法） | 类型/体素几何不正确、显存预测冒充实测 | 资源预测误差/过界拦截/真实运行耗时 |
+| Automation | 受控Driver/虚拟设备声明Command+Idempotency→两路独占判断 | ACK超时却自动重试、无Host授权执行 | 实际设备动作0误重发/互斥竞争 |
+| Inspection | 从结构化DefectSummary→JudgeResult的拟议能力，先验证规则版本和证据 | 无关键输入却默认OK | 从NG回溯原图/规则/结果链完整率 |
+| HMI | Bool/Analog变量→MEMSymbol过滤/绑定/质量状态 | “可显示”即允许写PLC | 属性面板错误提示/类型与权限拦截 |
+| Simulation | 以现有PSM基础和兼容虚拟Provider做固定Seed/故障时序 | 无真实模型却报告Virtual Passed或触达设备 | 可重复性、场景覆盖、虚实隔离 |
+
+**真实状态细化**：Vision有实际CPU预览与Threshold Provider；CT3D/Automation/Simulation部分功能需要按真实类、设备/算法后端进一步确认；Inspection/HMI当前主要是工程骨架，本轮只能定义测试夹具与拟议能力。与其他专业共用的实际接口由#1/#3归一，不能在每一专业自建一套Decision SDK。
+
+**反证实验**：同一5节点任务分别使用普通专业API/MRK手工组合与Decision辅助，以相同业务结果记录代码行数、手工端口规则、配置步骤、错误出现时机、定位耗时、P95、内存/资源误差与人机操作；仅有数据之后才能声称“更轻量、更好”。

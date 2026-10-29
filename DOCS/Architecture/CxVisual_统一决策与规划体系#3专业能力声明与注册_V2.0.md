@@ -145,3 +145,33 @@ HMI的 MEMSymbol 不等于 MFM 模块实例；将 Symbol 放入页面后是工�
 | REG-10 | 兼容旧 `CxVisionThresholdProvider` | 不丢现有MOC目录/执行ID，测试Old/New行为一致 |
 
 效果度量：新增专业能力所需的**额外声明行数、手动Adapter数量、首次可编排操作数、诊断定位步骤、编译与运行前拦截错误比例**；在固定夹具中对照未接入Decision的实现，不在设计文档写虚构收益百分比。
+
+---
+
+## 10. V2.0审评补充：真正“一次声明、多处使用”的最小切片
+
+**对现状的修正理解**：现有 `MFMModuleDescriptor` 仅持ModuleId/Kind/CapabilityIds；`MOCCapabilityDescriptor` 另定义MPC端口及Version；`MRKResolvedCapability` 持有CLR输入输出与Delegate；`FCMConfigSchemaBuilder`从属性生成配置Schema。当前不能宣称它们已由一次自动注册保证一致。参见[架构审评 ARC-01/02/05](CxVisual_统一决策与规划体系%23V2全类反推与OOP-GoF-AOP架构审评_V1.0.md)。
+
+~~~mermaid
+sequenceDiagram
+  actor Dev as 专业开发者
+  participant Cr as 受控Composition Root/Host
+  participant Meta as MFM/MPC/FCM + 能力描述真源
+  participant Dec as Decision静态消费
+  participant MRK as MRK实际Resolver
+  Dev->>Cr: 注解/Fluent/显式Descriptor + Provider绑定（一次注册动作）
+  Cr->>Meta: Normalize/Validate ID+Version+Ports+ConfigSchema
+  Meta-->>Cr: Immutable Descriptor/Fingerprint
+  Cr->>MRK: 注册真实执行绑定（不传入Decision）
+  Cr-->>Dec: 只读CapabilitySnapshot
+  Dec-->>Dev: 可见性/适用性/约束理由
+  MRK-->>Dev: 仅授权后Run/Result/Trace
+~~~
+
+**四个硬门禁**：
+1. Attribute、Fluent、Descriptor只是不同的作者输入，优先合并已有FCM/MPC合同，不能三份Schema相互覆盖；同Id/Version但端口不一致必须诊断拒绝。
+2. 必需对齐：`CapabilityId/Version/SchemaFingerprint`、端口MemberId/Direction/Required/TypeId、CLR `Type` 映射、具名Data.Return输出、Effective配置Revision、线程/数据所有权与专业副作用。未知单位/格式/设备安全条件必须显式Unknown。
+3. 只读目录支持**离线发现**，无需在查询候选时调用Runtime Resolver；Runtime绑定独立由Host装配并做真实权限、资源、版本复核。`RuntimeAvailable`仅代表旧Resolver成功，不能当已授权。
+4. L0无需注册；L1最低元数据获得发现/编排与MRK基本运行；L2明确约束/专业参数得到引导；L3必须提供测量/模型才可比较、推演、优化。不能用注解自动宣称真实仿真或AI模型质量。
+
+**最小可验证实施切片**：以真实 `CxVisionThresholdProvider` 作为旧黄金，增加一个第二专业（例如CT3D纯CPU、Automation虚拟设备），用同一个规范化描述完成 Headless/Studio 的端口发现、一次连线合法性、MRK执行、SourceMap定位。要求目录和执行的端口/类型/版本一致，且没有新Decision→MRK编译依赖。新增专业不得修改Studio内置专业类型Switch。详见REV-02/03。
