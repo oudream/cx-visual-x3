@@ -89,6 +89,7 @@ namespace CxVisual.TestCenter.UI
         private CancellationTokenSource _analysisCancellation;
         private long _analysisEpoch;
         private bool _analysisNeedsRefresh=true, _automaticHistogramQueued;
+        private FIMImageBuffer _observedHistogramImage;
         public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
         public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
         private readonly TextBox _polygonVertexIndex = new TextBox {
@@ -137,6 +138,8 @@ namespace CxVisual.TestCenter.UI
             };
             _withRoi.Checked += (sender,args) => InvalidateHistogram();
             _withRoi.Unchecked += (sender,args) => InvalidateHistogram();
+            Loaded += (sender,args) => QueueAutomaticHistogram();
+            Unloaded += (sender,args) => CancelAnalysis();
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
@@ -195,10 +198,12 @@ namespace CxVisual.TestCenter.UI
                     _cpuDisplayedMask = null;
                     _cpuResultItems.Items.Clear();
                 }
-                CancelAnalysis();
                 FIMImageBuffer current = _viewer.ActiveImage;
-                if (!ReferenceEquals(current, _plottedSource))
+                // 显示窗/Gamma/平移等只改显示，不触发原始灰度重新统计。
+                if (!ReferenceEquals(current, _observedHistogramImage))
                 {
+                    _observedHistogramImage=current;
+                    CancelAnalysis();
                     _analysisNeedsRefresh=true;
                     _histogramPlot.Clear();
                     _profilePlot.Clear();
@@ -1433,15 +1438,13 @@ namespace CxVisual.TestCenter.UI
 
         private void QueueAutomaticHistogram()
         {
-            if(_automaticHistogramQueued || _inspectTabs.SelectedIndex!=1 ||
-                _viewer.ActiveImage==null || !IsLoaded) return;
+            if(_automaticHistogramQueued || _viewer.ActiveImage==null || !IsLoaded) return;
             _automaticHistogramQueued=true;
             Dispatcher.BeginInvoke(new Action(()=>
             {
                 _automaticHistogramQueued=false;
-                if(IsLoaded && _inspectTabs.SelectedIndex==1 &&
-                   _viewer.ActiveImage!=null && _analysisNeedsRefresh)
-                    Calculate();
+                if(IsLoaded && _viewer.ActiveImage!=null && _analysisNeedsRefresh)
+                    CalculateCore(false);
             }),System.Windows.Threading.DispatcherPriority.Background);
         }
 
@@ -1456,7 +1459,9 @@ namespace CxVisual.TestCenter.UI
         /// 大图计算在后台执行；只有当前图像、ROI和请求仍匹配才允许更新图表。
         /// 旧ImageViewerControl的取消及latest-request语义直接在唯一工作台落地。
         /// </summary>
-        private async void Calculate()
+        private void Calculate() { CalculateCore(true); }
+
+        private async void CalculateCore(bool showStatisticsTab)
         {
             FIMImageBuffer image = _viewer.ActiveImage;
             if (image == null)
@@ -1525,7 +1530,7 @@ namespace CxVisual.TestCenter.UI
                 _histogramPlot.SetHistogram(result.Histogram);
                 _plottedSource = image;
                 _analysisNeedsRefresh=false;
-                _inspectTabs.SelectedIndex = 1;
+                if(showStatisticsTab) _inspectTabs.SelectedIndex = 1;
                 FIMImageStatistics stats = result.Statistics;
                 _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
                     "格式：" + image.PixelFormat + "\n" +
