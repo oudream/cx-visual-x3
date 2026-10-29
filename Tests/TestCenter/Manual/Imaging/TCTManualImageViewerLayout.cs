@@ -730,13 +730,19 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(_cpuMinArea,"TCT.Imaging.CpuMinArea");
             content.Children.Add(Row(Label("灰度阈值"),_cpuThreshold,
                 Label("最小面积(px²)"),_cpuMinArea));
+            _cpuMedianRadius.Items.Clear();
+            for(int radius=0;radius<=3;radius++)_cpuMedianRadius.Items.Add(radius);
+            _cpuMedianRadius.SelectedItem=0;
+            AutomationProperties.SetAutomationId(_cpuMedianRadius,"TCT.Imaging.CpuMedianRadius");
+            content.Children.Add(Row(Label("拆分式增强半径(0=关闭)"),_cpuMedianRadius));
             WrapPanel cpuActions=Row();
             Action(cpuActions,"运行CPU检测 → Mask","CpuVisionRun",RunCpuVision);
+            Action(cpuActions,"运行拆分式工程链","CpuVisionSplitRun",RunCpuSeparatedVision);
             Action(cpuActions,"取消CPU检测","CpuVisionCancel",CancelCpuVision);
             content.Children.Add(cpuActions);
-            content.Children.Add(Hint("仅接受Gray8/Gray16原图。调用现有专业CPU阈值检测MRK流程，"
-                +"结果图为面积过滤前的0/255 Mask，候选区域来自真实检测输出。"
-                +"切换原图或再次运行时会取消旧任务并拒绝过期结果。"));
+            content.Children.Add(Hint("仅接受Gray8/Gray16原图。原CPU按钮保留旧MRK结果；拆分式按钮使用真实MEM→MOC→MRK链，"
+                +"将FIM内存图像作为输入，可选FIM中值增强，再独立阈值Mask→连通区域→面积测量。"
+                +"两者共用结果列表、原图和图窗，切图/改参数会取消旧任务与拒绝过期结果。"));
 
             content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
             AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
