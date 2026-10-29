@@ -62,3 +62,8 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 七、MPC静态描述与MRK绑定签名验证（实施中）
 
 新增`Mechanism/Orchestration/MOCBindingContractInspector.cs`：不调用`ExecuteAsync`，对正式MPC端口与MRK输入/具名输出进行差异检查，包括缺少/多余端口、Required与CLR类型冲突、未映射专业TypeId、宽泛object Legacy契约、具名输出与StepResult不同语义。这是确保新Decision未来可纯静态运行的**迁移边界适配器**；最终应留在Runtime/Host侧，不得制造`Decision → Runtime`依赖。新增`MDCDecisionTests.RuntimeBindingContractConsistency`（含真实`CxVisionAcceptedRegionMeasureProvider`）检验正常与错误组合，具体软件验证以本批实际Windows提交和Run为准。旧MOC构建未被悄悄加上强制阻断，避免Legacy Provider未经迁移即破坏产线。
+
+
+## 八、专业真实Contract与Decision轻量候选合流验证（新增软件案例）
+
+扩展`MDCDecisionTests.RuntimeBindingContractConsistency`：使用真实`CxVisionThresholdProvider(new CxVisionInspectionOptions(),0)`，取得同一Provider的MPC静态`RawPixels/Width/Height/Inspection`以及MRK运行CLR输入/具名输出，以专业显式`vision.cpu.inspection.result → CxVisionInspectionResult`映射核对合同；同时从真实MOC离线目录输入一个`byte[]`输出端口，验证Decision可找到`RawPixels`适配候选。**不读取相机、不执行检测或改动工程**，证明已有专业Provider可以在编排期零设备调用地共用同一能力身份；与需要Legacy`object`的RegionMeasure仍为Unknown形成反例。验证结果以包含该测试的实际Windows CI为准。

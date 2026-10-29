@@ -268,6 +268,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(mapped.Verdict==MDCVerdict.Unknown &&
                 mapped.ReasonCodes.Contains("MDC_BIND_OBJECT_UNVERIFIED:INPUT:Inspection"),
                 "existing broad object contract needs explicit adapter evidence");
+
+            // A real professional software provider can prove the same MPC/CLR contract
+            // without starting MRK or executing pixels. Only domain semantic output needs
+            // an explicit trusted type mapping, not a second registration database.
+            var threshold = new CxVisionThresholdProvider(new CxVisionInspectionOptions(), 0);
+            var thresholdDescription = threshold.DescribeCapabilities().Single();
+            MRKResolvedCapability thresholdBinding;
+            Check(threshold.TryResolve(CxVisionThresholdProvider.CapabilityId,
+                out thresholdBinding), "threshold provider could not resolve");
+            var thresholdContract = inspector.Assess(thresholdDescription, thresholdBinding,
+                new Dictionary<string,Type> {
+                    { CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        typeof(CxVisionInspectionResult) }
+                });
+            Check(thresholdContract.Verdict == MDCVerdict.Allowed,
+                "real Vision threshold static/CLR contract must agree");
+            var catalog = new MOCCapabilityCatalog(new IMOCCapabilityProvider[] { threshold });
+            var decisions = new MDCDecisionService().FindCandidates(
+                Port("Raw", MPCPortDirection.Output, "byte[]"), catalog);
+            Check(decisions.Count == 1 &&
+                decisions[0].Assessment.Verdict == MDCVerdict.Allowed &&
+                decisions[0].TargetPort.MemberId == "RawPixels",
+                "real Vision capability discovery and static candidate mapping failed");
+
             Check(executed==0,"static contract checks must not execute professional code");
         }
 
