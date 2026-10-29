@@ -75,5 +75,8 @@
 | V04-03 | 真WPF保存/再次保存→重开原值/Mesh/Measurement→继续使用工具 | Volume切换使晚到Open丢弃；Frame变化和外部StoreToken冲突拒绝 | `--volume-viewer-smoke` |
 | V04-04 | 校验读锁与RAW映射共存、读原值1700 | 映射有效期内并发改写必须拒绝，释放后可回收 | `--volume` |
 | V04-05 | 现有GL真实Raymarch/原生鼠标/3次装载 | 回退不得算GPU通过 | 本机`--volume-gpu-smoke` PASS，NVIDIA OpenGL 3.3/576.02；不外推新Mesh深度或工业精度 |
+| V04-06 | 保存快照完成且保留当前较新分析，再次保存沿用最新Token | 保存期间Frame/局部ROI拟合/Scene Revision改变不得回填旧Mesh/Plane或重置显隐，磁盘成功不能伪报回滚 | `TCTVolumeViewerSmoke.VerifyProfessionalPersistence`新增异步正反例；修复提交另核Windows证据 |
 
 Windows本地Build/Headless/WPF/GPU与GitHub CI分开登记；推送后只依据对应SHA Run升级CI。本包未完成完整三维ROI编辑、Studio专业工作区、通用Artifact注册、CAD/GD&T或工业标准件精度验收。
+
+**固定CI更新**：`b71827db`的Windows Imaging `40837507856`、TestCenter `40837508115`、Graphics `40837507948`已SUCCESS；其Imaging日志含V04 Headless与三维WPF成功步骤。Studio S1 `40837507882`构建成功，但配置组合响应式容器断言失败。V04-06后续新增修复不借用这些旧SHA结果。详细日志结论统一维护于实施记录第10.5节。

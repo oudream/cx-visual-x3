@@ -33,11 +33,15 @@ namespace CxVisual.TestCenter.UI
             if(File.Exists(full)&&expectedStore==null)
                 throw new IOException("目标已存在且不是当前打开的案例，请先重开或选择新文件名。");
             long capturedEpoch=_sphereEpoch;
+            var capturedVolume=_volume;
             string raw=_volume.SourceFilePath;
             var frame=_volume.SpatialFrame;
             var info=new FVORawVolumeInfo(_volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
                 _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,_volume.SourceFormat.Value,raw);
             var previous=LastVoxelMesh;
+            var previousPlane=LastMeshPlaneFit;
+            var capturedScene=_state.Scene3D;
+            long capturedSceneRevision=capturedScene.Revision;
             var priorSource=_professionalSource;
             var roi=(int[])_planeRoi.Clone();double ratio=_planePlanarity;
             string savedToken=null;
@@ -71,12 +75,21 @@ namespace CxVisual.TestCenter.UI
                 }
                 return analysis;
             },cancellation);
-            if(capturedEpoch==_sphereEpoch)
+            bool sameVolume=capturedEpoch==_sphereEpoch&&Object.ReferenceEquals(_volume,capturedVolume);
+            bool restore=sameVolume&&Object.ReferenceEquals(_volume.SpatialFrame,frame)&&
+                Object.ReferenceEquals(LastVoxelMesh,previous)&&Object.ReferenceEquals(LastMeshPlaneFit,previousPlane)&&
+                _state!=null&&Object.ReferenceEquals(_state.Scene3D,capturedScene)&&
+                capturedScene.Revision==capturedSceneRevision;
+            if(sameVolume)
             {
-                RestoreProfessionalCase(saved);
+                // 磁盘提交已完成，应接纳新的保存Token；Frame/ROI变化时只更新保存收据，
+                // 不让旧快照替换当前专业结果。后续保存仍可沿用资产身份并递增来源修订。
+                if(restore)RestoreProfessionalCase(saved);
+                _professionalSource=saved.Source;
                 _professionalProjectPath=full;_professionalStoreToken=savedToken;
             }
-            _status.Text="专业案例已保存（原值/Frame/ROI/Mesh/平面；工业不确定度未评定）："+full;
+            _status.Text=(restore?"专业案例已保存（工业不确定度未评定）：":
+                "专业快照已保存；当前视图已改变，未覆盖当前分析：")+full;
         }
 
         public async Task OpenProfessionalCaseAsync(string projectFile,CancellationToken cancellation)

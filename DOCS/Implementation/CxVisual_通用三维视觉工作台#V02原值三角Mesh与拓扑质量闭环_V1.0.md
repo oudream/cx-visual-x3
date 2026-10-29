@@ -150,3 +150,25 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 ```
 
 下一工作包继续扩展Surface/球/通用Feature/Measurement的持久合同、正式Studio装配及交互ROI；CAD/GD&T/缺陷/壁厚/动画、通用Artifact/Frame图、跨工程导入重映射、全量26能力与缺证的90需求索引均未完成。保留主文R5 E/F/G的完整目标，不缩减为此首包。
+
+### 10.5 固定提交CI核实与异步保存一致性收敛
+
+固定源码提交`b71827db1dabd7aba5031699a5168f788c69dec4`已实际读取GitHub工作流状态、步骤与相关日志。23个工作流中22个成功；不能标为全绿：
+
+| 工作流 | 实际结果/覆盖 |
+|---|---|
+| [Windows Imaging 40837507856](https://github.com/oudream/cx-visual-x3/actions/runs/40837507856) | SUCCESS；Release x64全工程、Owner DAG、二维WPF、`--volume`及默认回归、三维WPF全部步骤成功。日志两次明确输出`PASS CT3D V04 MEM source/hash/frame, mesh/plane save reopen recompute, cancellation and corruption` |
+| [TestCenter .NET48 40837508115](https://github.com/oudream/cx-visual-x3/actions/runs/40837508115) | SUCCESS |
+| [Graphics Editor 40837507948](https://github.com/oudream/cx-visual-x3/actions/runs/40837507948) | SUCCESS |
+| [Engineering 40837508027](https://github.com/oudream/cx-visual-x3/actions/runs/40837508027)、[Runtime 40837507904](https://github.com/oudream/cx-visual-x3/actions/runs/40837507904) | SUCCESS；不外推工业量具/硬件 |
+| [Studio S1 40837507882](https://github.com/oudream/cx-visual-x3/actions/runs/40837507882) | FAILURE；全工程构建成功，STA自测在`配置组合未使用可响应布局的统一1/2/3列容器`断言失败。失败对应Studio配置布局，不能写成编译失败或三维专项失败，也不能据其余22项成功掩盖。其因果关系与修复归Studio专项核查 |
+
+随后同步远端`ceba1911`（五个ReferTo通信守护参考源码提交，无正式三维源码改动），本轮只修复现有V04保存一致性，不扩展新专业功能：
+
+- 原`SaveProfessionalCaseAsync`只比较Volume代次；Frame改变或用户在同一Volume重新选择/拟合ROI时，代次不变，旧保存快照仍可能回填当前专业结果。
+- 保存后额外核对原Volume对象、Frame对象、Mesh及Plane结果身份以及Scene对象/Revision。当前上下文已变时保留磁盘已保存事实和保存Token/资产身份，禁止旧快照回填Scene/Measurement；继续保存同一文件仍使用最新StoreToken，不制造伪冲突。
+- 真实WPF反例覆盖：启动保存后立即改Frame；启动保存后立即重新拟合；保存期间修改Scene显隐；较新结果保持后继续保存同一文件。局部修复提交的Build/WPF/CI须单独验证，不能借用上表`b71827db`通过结果。
+
+**本轮局部验证**：`ceba1911`工作树上Unified Release x64 Build成功（0错误、6条既有TestCenter重复源文件/旧API警告），`--volume`及真实`--volume-viewer-smoke`均退出0。日志为`Output/CT3D-V04/consistency-build.log`、`consistency-volume.log`，截图为`consistency-workbench.png`。本轮修复后的GitHub CI尚待对应新提交Run；没有以旧SHA替代。
+
+**并行同步复验**：随后合入远端`f48c1650`，包含MVI二维`TrySetResult`防过期实现/测试及ReferTo参考源码；全工程Build 0错误，`--imaging`、默认ArchitectureSmoke及三维WPF均通过（`consistency-merged-*`）。Scene Revision补充后的最终全工程Build仍为0错误/6条既有警告，真实三维WPF全部新反例退出0（`consistency-final-build.log/consistency-final-workbench.png`）；新提交CI另按Run核实。

@@ -13,6 +13,8 @@
 
 > **2026-10-29 V04源码增量**：`CT3DAssetReference/CT3DAnalysisCase/CT3DAnalysisPersistence`已在原CT3D项目实现首个RAW来源/Frame→Mesh/局部平面→MEM Aspect＋外部制品→保存重开/复算闭环；TestCenter消费正式API并恢复MVI/MPW。是局部实装，不提升全部候选类/ADR。实际命令、CI与硬件适用范围只在[既有V02台账第十节](../Implementation/CxVisual_通用三维视觉工作台%23V02原值三角Mesh与拓扑质量闭环_V1.0.md)维护；本机既有GPU Raymarch专项通过不等于新Mesh混合深度或工业量具验收。
 
+> **V04固定Windows证据**：`b71827db`的Imaging、TestCenter、Graphics已成功，包含保存重开/复算及三维WPF；Studio S1仍在配置组合布局断言失败，不标全绿。之后的异步保存Frame/ROI一致性修复须按新SHA另验，详细记录见同一台账第10.5节。
+
 ## 0. 读者导览：5 分钟理解全局
 
 **一句话定位：** 以高精度三维数据为真源，让工业工程师在一个统一工作空间中完成**导入→空间标定→观察→重建/表面确定→拟合/配准→测量/GD&T→CAD 对比→缺陷与材料分析→判定/报告→重放与自动化**，同时支持独立应用、Studio 嵌入和 Headless SDK。

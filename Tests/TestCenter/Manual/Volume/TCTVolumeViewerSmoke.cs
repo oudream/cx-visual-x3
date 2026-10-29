@@ -956,6 +956,39 @@ namespace CxVisual.TestCenter.UI
                 try{AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));}
                 catch(CxVisual.Mechanism.Core.MEMStoreConflictException){conflict=true;}
                 Check(conflict,"外部编辑后旧工作台保存必须报告StoreToken冲突");
+                var meshBeforeSave=frame.LastVoxelMesh;
+                var planeBeforeSave=frame.LastMeshPlaneFit;
+                var saveBeforeFrameChange=frame.SaveProfessionalCaseAsync(
+                    Path.Combine(root,"snapshot-frame.cxproj"),System.Threading.CancellationToken.None);
+                var changedFrame=new FVOVolumeSpatialFrame(1,1,1,22,30,40,
+                    new double[]{1,0,0,0,1,0,0,0,1},true);
+                frame.Volume.SetSpatialFrame(changedFrame);
+                AwaitProfessional(saveBeforeFrameChange);
+                Check(Object.ReferenceEquals(frame.Volume.SpatialFrame,changedFrame)&&
+                    Object.ReferenceEquals(frame.LastVoxelMesh,meshBeforeSave)&&
+                    Object.ReferenceEquals(frame.LastMeshPlaneFit,planeBeforeSave),
+                    "保存期间Frame改变不能由旧快照回填当前Mesh/Measurement");
+                frame.Volume.SetSpatialFrame(oldFrame);
+                string roiSnapshot=Path.Combine(root,"snapshot-roi.cxproj");
+                var saveBeforeRoiChange=frame.SaveProfessionalCaseAsync(roiSnapshot,System.Threading.CancellationToken.None);
+                var newerPlane=frame.AnalyzeCurrentMeshPlaneTopZ();
+                AwaitProfessional(saveBeforeRoiChange);
+                Check(Object.ReferenceEquals(frame.LastMeshPlaneFit,newerPlane),
+                    "保存期间用户重新拟合的较新ROI结果不能被旧平面覆盖");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(roiSnapshot,System.Threading.CancellationToken.None));
+                Check(frame.LastOpenedProfessionalCase!=null,
+                    "较新ROI保留后仍须接纳保存Token，允许继续保存同一案例");
+                var meshItem=System.Linq.Enumerable.Single(frame.ViewState.Scene3D.Snapshot(),
+                    i=>i.Kind==MVI3DSceneKind.Mesh);
+                var saveBeforeVisibilityChange=frame.SaveProfessionalCaseAsync(
+                    Path.Combine(root,"snapshot-style.cxproj"),System.Threading.CancellationToken.None);
+                frame.ViewState.Scene3D.SetVisibility(meshItem.Id,false);
+                AwaitProfessional(saveBeforeVisibilityChange);
+                MVI3DSceneItem hidden;
+                Check(frame.ViewState.Scene3D.TryGet(meshItem.Id,out hidden)&&!hidden.Visible&&
+                    frame.MeshDisplayedTriangleCount==0,
+                    "保存期间Scene显隐和选择修订改变不能被旧快照重建覆盖");
+                frame.ViewState.Scene3D.SetVisibility(meshItem.Id,true);
                 var late=frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None);
                 frame.LoadDemo();bool discarded=false;
                 try{AwaitProfessional(late);}catch(OperationCanceledException){discarded=true;}
