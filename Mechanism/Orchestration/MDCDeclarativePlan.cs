@@ -125,7 +125,7 @@ namespace CxVisual.Mechanism.Decision
             Guid entry,IEnumerable<MDCPlanBlock> blocks,IEnumerable<MDCPlanLink> links,
             IEnumerable<MDCPlanPort> ports,IEnumerable<MDCPlanNamedPort> inputs,
             IEnumerable<MDCPlanNamedPort> outputs,IEnumerable<MDCPlanLiteral> literals,
-            IEnumerable<MDCPlanPolicy> policies,byte[] source)
+            IEnumerable<MDCPlanPolicy> policies,MDCPlanSemanticIndex semantics,byte[] source)
         {
             ContentId=contentId;SchemaVersion=schemaVersion;IsWiring=isWiring;
             EntryBlockId=entry;
@@ -136,6 +136,7 @@ namespace CxVisual.Mechanism.Decision
             FlowOutputs=new ReadOnlyCollection<MDCPlanNamedPort>(outputs.ToArray());
             Literals=new ReadOnlyCollection<MDCPlanLiteral>(literals.ToArray());
             Policies=new ReadOnlyCollection<MDCPlanPolicy>(policies.ToArray());
+            Semantics=semantics??throw new ArgumentNullException("semantics");
             _source=(byte[])source.Clone();
         }
         public Guid ContentId {get;private set;}
@@ -149,6 +150,7 @@ namespace CxVisual.Mechanism.Decision
         public IReadOnlyList<MDCPlanNamedPort> FlowOutputs {get;private set;}
         public IReadOnlyList<MDCPlanLiteral> Literals {get;private set;}
         public IReadOnlyList<MDCPlanPolicy> Policies {get;private set;}
+        public MDCPlanSemanticIndex Semantics {get;private set;}
         /// <summary>
         /// A defensive copy of Core's authoritative MOL codec payload.
         /// Preserves V1 expressions/branches/loop/try and V2 state machines,
@@ -238,7 +240,7 @@ namespace CxVisual.Mechanism.Decision
                             .OrderBy(x=>x.Name,StringComparer.Ordinal),
                         wiring.FlowOutputs.Select(x=>new MDCPlanNamedPort(x.Key,x.Value))
                             .OrderBy(x=>x.Name,StringComparer.Ordinal),
-                        literals,policies,logic.Payload));
+                        literals,policies,MDCPlanSemanticCompiler.FromWiring(wiring),logic.Payload));
                 }
                 else
                 {
@@ -250,7 +252,8 @@ namespace CxVisual.Mechanism.Decision
                         structured.Root.Id,blocks,new MDCPlanLink[0],
                         new MDCPlanPort[0],new MDCPlanNamedPort[0],
                         new MDCPlanNamedPort[0],new MDCPlanLiteral[0],
-                        new MDCPlanPolicy[0],logic.Payload));
+                        new MDCPlanPolicy[0],MDCPlanSemanticCompiler.FromStructured(structured),
+                        logic.Payload));
                 }
             }
             return new MDCDeclarativePlan(manifest,plan.OrderBy(x=>x.ContentId));

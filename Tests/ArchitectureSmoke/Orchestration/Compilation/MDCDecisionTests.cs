@@ -1079,9 +1079,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var branch=MOLControlBlock.If(MOLExpression.InputTrue("enabled"),loop,each);
                 var final=MOLControlBlock.Action("vision.gray16");
                 var protectedRegion=MOLControlBlock.TryCatchFinally(
-                    MOLControlBlock.Action("vision.gray16"),finallyBody:final);
+                    MOLControlBlock.Throw("inspect.failure"),finallyBody:final,
+                    catches:new[]{new MOLCatchClause("inspect.failure",
+                        MOLControlBlock.Action("vision.gray16"))});
+                var wait=MOLControlBlock.Delay(25);
                 MOLLogicCodec.Set(session,structured.RootContent,
-                    new MOLLogicDefinition(MOLControlBlock.Sequence(first,branch,protectedRegion)));
+                    new MOLLogicDefinition(MOLControlBlock.Sequence(
+                        first,branch,protectedRegion,wait)));
 
                 var wired=session.AddPage("Wired");
                 Guid sourceId=Guid.Empty,targetId=Guid.Empty,dataLink=Guid.Empty,
@@ -1117,6 +1121,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     x.Kind==MOLControlKind.ForEach && x.MaxIterations==5000 &&
                     x.CollectionInput=="images"),
                     "Declarative Plan must preserve dynamic Loop/ForEach bounds without expansion");
+                Check(v1Content.Semantics.Branches.Count==2 &&
+                    v1Content.Semantics.Branches[0].Condition!=null &&
+                    v1Content.Semantics.Branches[0].Condition.Source==
+                        MOLExpressionSource.FlowInput &&
+                    v1Content.Semantics.Branches[0].Condition.Name=="enabled" &&
+                    v1Content.Semantics.Branches[1].Condition==null,
+                    "V1 typed branch guards and default case must preserve exact predicates");
+                Check(v1Content.Semantics.Loops.Count==2 &&
+                    v1Content.Semantics.Loops.Any(x=>x.BlockId==loop.Id &&
+                        x.MaxIterations==4097 && x.Mode==MOLLoopMode.For) &&
+                    v1Content.Semantics.Loops.Any(x=>x.BlockId==each.Id &&
+                        x.CollectionInput=="images"),
+                    "V1 typed loop rules retain dynamic bounds and collection inputs");
+                Check(v1Content.Semantics.Catches.Count==1 &&
+                    v1Content.Semantics.Catches[0].ErrorCode=="inspect.failure" &&
+                    v1Content.Semantics.Waits.Count==1 &&
+                    v1Content.Semantics.Waits[0].DurationOrTimeoutMs==25 &&
+                    v1Content.Semantics.Exits.Single().Kind==MOLExitKind.Throw &&
+                    v1Content.Semantics.Exits.Single().ErrorCode=="inspect.failure",
+                    "V1 declared catch/timeout/throw rules must be typed, not discarded");
                 Check(v1Content.Blocks.Count<20 &&
                     v1Content.Blocks.Any(x=>x.BlockId==branch.Id &&
                         x.Kind==MOLControlKind.Branch) &&
@@ -1163,6 +1187,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try {v2.RequireCurrent(snapshot,changedCatalog);}
                 catch(InvalidOperationException) {stale=true;}
                 Check(stale,"static Plan must reject changed professional catalog");
+                var statesPage=session.AddPage("Stateful");
+                Guid machineId=Guid.Empty;
+                var guarded=MOLExpression.All(MOLExpression.InputTrue("ready"),
+                    MOLExpression.InputTrue("authorized"));
+                var stateDefinition=new MOLStateMachineDefinition(new[]{
+                    new MOLStateDescriptor("Idle","Main",initial:true),
+                    new MOLStateDescriptor("Busy","Main",
+                        entryCapability:"vision.gray16",exitCapability:"vision.gray16")
+                },new[]{
+                    new MOLStateTransition("Idle","Start","Busy",guarded,7)
+                });
+                MOCFlowBuilder.Edit(session,statesPage.RootContent,edit=>{
+                    machineId=edit.AddStateMachine(stateDefinition);
+                });
+                var statePlan=compiler.Compile(session.GetSnapshot(),
+                    statesPage.RootContent.Id,catalog).Contents.Single();
+                Check(statePlan.IsWiring &&
+                    statePlan.Semantics.States.Count==2 &&
+                    statePlan.Semantics.States.Any(x=>x.MachineBlockId==machineId &&
+                        x.StateId=="Busy" && x.EntryCapabilityId=="vision.gray16" &&
+                        x.ExitCapabilityId=="vision.gray16") &&
+                    statePlan.Semantics.Transitions.Count==1 &&
+                    statePlan.Semantics.Transitions[0].Priority==7 &&
+                    statePlan.Semantics.Transitions[0].EventId=="Start" &&
+                    statePlan.Semantics.Transitions[0].Guard.Operator==MOLLogicalOperator.All &&
+                    statePlan.Semantics.Transitions[0].Guard.Terms.Count==2,
+                    "V2 typed hierarchical StateMachine and compound transition guard survive");
+
                 bool noExecutableDelegate=typeof(MDCDeclarativePlan).Assembly
                     .GetTypes().Where(t=>t.Name.StartsWith("MDCPlan",StringComparison.Ordinal))
                     .SelectMany(t=>t.GetProperties())

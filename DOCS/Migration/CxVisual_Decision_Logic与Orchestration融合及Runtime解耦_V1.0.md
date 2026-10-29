@@ -287,3 +287,9 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 新增`MDCDeclarativePlan.cs`作为无`MRK*`引用的瞬时静态编译结果。它消费Core的唯一权威Logic Aspect和已验`MDCStaticSourceManifest`，产生按原身份索引的V1结构关系与V2端口/链路/公开别名/参数/策略，并保留完整规范化MOL Payload防止复杂语义丢失。已审的Runtime-free CI清单包含该文件。
 
 迁移顺序保持：**Phase 1静态描述与来源保真 → Phase 2实现完全独立的Expr/Branch/Loop/Try/StateMachine声明式lowering及序列化金样 → Phase 3 MRK Host Loader/Binding消费该IR并保留SourceMap/Trace行为等价 → Phase 4消除旧Orchestration→Runtime引用 → Phase 5最后物理融合为Mechanism.Decision**。当前桥接器新增`Bind(project,MDCDeclarativePlan,catalog,resolver)`只检查Plan版本、继续调用唯一原编译器，不能误报为Phase 3完成。旧API保持。
+
+### Phase 2A：从规范化MOL源显式提取可判定的强类型控制语义
+
+在Phase 1的原Block/Link/Port/Policy描述式IR上，新增`MDCPlanSemanticIndex`及`MDCPlanSemanticCompiler`：静态、无MRK引用地复制原复合条件、分支Case、Loop/ForEach、Try/Catch/Finally、Wait/Throw及V2状态层级/转移Guard/优先级，组合结构和值语义。所有实体仍带原Content/Block/State身份；此层不执行表达式、不推断现场信号。新增Windows Runtime-free源码扫描目标，避免后续回流执行层。
+
+**未完成**：真正可让独立MRK Loader消费的全量指令格式、子流程参数/返回/异常与状态机完整运行等价、原MOC编译器的Runtime编译引用移除、旧程序集兼容迁移与27项目融合。不能因已有`MDCPlanSemanticIndex`而宣称D05全部lowering结束。

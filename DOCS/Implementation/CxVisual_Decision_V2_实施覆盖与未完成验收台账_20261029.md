@@ -120,3 +120,7 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 新增`MDCDeclarativePlanCompiler`及不可编辑Plan DTO，在原V1/V2 Core/MOL单一工程真源上构建SourceMap可追溯的原Content/Block索引。V1包含Branch、Loop/Foreach与Try结构关系，V2包含原控制与数据连线、端口、命名输入输出、字面量及步骤策略；完整原MOL规范化负载保留Complex Expression/StateMachine等尚未独立降低语义。不携带Delegate/MRKExecutionPlan/设备句柄、不产生第二套持久工程Graph。过渡`MOCManifestRuntimeBinding`增加Plan重载，重检版本后仍由原MOC Compiler做唯一最终lowering。测试以真实`MEMEngineering`和`MOCFlowBuilder`编排正例及已提交运行编译器回归为准。
 
 **关键未完成**：这是Phase 1“描述式IR”，不是全部控制语义已lowering的Runtime独立执行Plan；MRK Loader、工厂、Policy/State/Loop完整静态编译、27项目融合和多专业真实HIL均不在此批完成范围。WindowsCI状态须以后续Run登记。
+
+## 19. D05强类型控制表达式与状态机语义抽取（Phase 2A）
+
+`MDCPlanSemantics.cs`提供`MDCPlanExpression/BranchArm/LoopRule/CatchRule/WaitRule/ExitRule/StateRule/TransitionRule/BlockGuard`及只读`MDCPlanSemanticIndex`。复用唯一Core/MOL源，保留V1复合条件和结构化异常/动态循环规则、V2状态机正交区域/转移Guard的全部主要静态属性；不提供运行求值或第二种解释器，仍保留完整Codec payload作为无损溯源。测试用真正Core工程V1 If/Loop/Foreach/具名Catch/Wait/Throw、V2新StateMachine+复合Guard以及原有真实连线，验证只读内容与执行隔离。独立纯Plan lowering与项目合并仍待后续阶段，Windows结果须以后续固定SHA验收。

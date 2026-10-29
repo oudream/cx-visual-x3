@@ -451,3 +451,16 @@ CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明
 | MDC-98 | 未完成MRK独立Loader、纯执行Plan与27项目物理合并，不得由软件Smoke替代 |
 
 软件CI结果以对应SHA的Windows运行记录为证，不等于CT/GPU设备实测或现场HIL。
+
+### D05强类型控制语义（MDC-99～104）
+
+| Case | 断言 |
+|---|---|
+| MDC-99 | V1 Branch保留Case标签、优先顺序、`InputTrue`条件来源以及null默认Else |
+| MDC-100 | V1 Loop/Foreach保留Mode、动态迭代上限、CollectionInput与条件表达式，不展开成迭代Step |
+| MDC-101 | V1具名Catch、Finally、Wait及Throw错误码保留，未创建真实CLR异常/定时器 |
+| MDC-102 | V2 StateMachine保留原MachineBlockId、Region、Entry/Exit专业能力身份、Event、目标、Priority |
+| MDC-103 | V2复合All/Any/Not Guard保持有界树结构，缺少实际输入不得凭空计算True |
+| MDC-104 | Phase2A整个语义层源码无MRK依赖；新增与既有Decision/ArchitectureSmoke及ModuleCenter回归同时成功 |
+
+强调仅为纯静态语义描述和软件测试；动态执行、时序、State上下文及PLC/CT仿真仍归MRK/专业Host，暂无完整独立Loader验收。

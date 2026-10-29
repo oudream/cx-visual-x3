@@ -39,6 +39,7 @@
     <Compile Include="MDCLogicTraversal.cs"/>
     <Compile Include="MDCStaticSourceManifest.cs"/>
     <Compile Include="MDCDeclarativePlan.cs"/>
+    <Compile Include="MDCPlanSemantics.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

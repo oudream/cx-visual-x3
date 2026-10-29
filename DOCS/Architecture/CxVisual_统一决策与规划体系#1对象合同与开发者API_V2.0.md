@@ -458,3 +458,15 @@ var originalCompiled = new MOCManifestRuntimeBinding().Bind(
 ~~~
 
 **严格分层声明**：目前这是无Runtime的源描述与索引IR（Static Phase 1），尚未将V1表达式、V2 StateMachine/Guard与资源策略全部降低成**自足、可被MRK独立加载的执行IR**；桥接器虽接收此Plan，仍委托原MOCEngineeringCompiler完成最终lowering。不能宣称P0纯Plan迁移、项目解环或完整State/Loop行为等价证明已完成。
+
+## 20. D05语义提取第二阶段：强类型表达式、条件、状态机
+
+新增`MDCPlanSemantics.cs`，将`MDCPlanSemanticIndex`作为每个`MDCPlanContent.Semantics`的只读强类型投影，**不建立第二种规则解析或求值引擎**：
+
+- `MDCPlanExpression`：保留原`MOLLogicalOperator`（Scalar/All/Any/Not）、Source、Name、Comparison、Expected以及有界递归Terms；任一Expr深度≤16、总节点≤128，只有原值语义，不执行C#脚本。
+- `MDCPlanBranchArm`：原BranchId、Case顺序、BodyId、Label与默认Else（Condition=null）；`MDCPlanLoopRule`：原LoopId、Mode、动态预算、CollectionInput与完整条件树。
+- `MDCPlanCatchRule`、`MDCPlanWaitRule`、`MDCPlanExitRule`：原具名/兜底异常处理、Wait时间与事件合同、Throw错误码。
+- `MDCPlanStateRule`、`MDCPlanTransitionRule`：原V2状态机Block、Region、层级、Entry/Exit Capability、EventId、目标状态、Priority及复合Guard。
+- `MDCPlanBlockGuard`：原结构Block独立条件表达式。
+
+这些对象供Decision筛选、解释和静态路径推导复用；`MOLLogicCodec`与`MOLWiringCodec`仍是唯一序列化定义真源，`MRK`仍是实际条件求值、运行等待、状态转移和资源权限Owner。第二阶段的强类型IR不是现场仿真或设备执行授权；现有`MOCManifestRuntimeBinding`仍调用原MOC做最终lowering。
