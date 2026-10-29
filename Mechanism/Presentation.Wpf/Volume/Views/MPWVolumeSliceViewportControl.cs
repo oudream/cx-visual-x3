@@ -240,9 +240,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 _state.SliceX,_state.SliceY,_state.SliceZ,Plane,
                 (int)Math.Round(point.X),(int)Math.Round(point.Y),out x,out y,out z);
             var handler=VoxelInspected;
-            if(handler!=null)handler(this,new MPWVolumeVoxelInspectedEventArgs(x,y,z,
-                _volume.GetScalarByOriginalIndex(x,y,z),
-                x*_volume.SpacingX,y*_volume.SpacingY,z*_volume.SpacingZ));
+            if(handler!=null)
+            {
+                FVOPhysicalPoint3D physical=_volume.SpatialFrame.VoxelToPhysical(x,y,z);
+                handler(this,new MPWVolumeVoxelInspectedEventArgs(x,y,z,
+                    _volume.GetScalarByOriginalIndex(x,y,z),
+                    physical.X,physical.Y,physical.Z));
+            }
         }
 
         private static bool TryPixel(MouseEventArgs e,Image image,out int x,out int y)
