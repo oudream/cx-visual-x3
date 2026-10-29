@@ -388,3 +388,18 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ### 21.2 自动统计与轮廓原有G4回归重新通过
 
 [Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) 固定`98912b4` **success**；[Imaging #40829769427](https://github.com/oudream/cx-visual-x3/actions/runs/40829769427) 固定`73ecd00` **success**。覆盖大图Fit、原像素不变、自动直方图、ROI/Mask轮廓与7px²面积、取消域互不抢占。额外窗宽/窗位滑块端点直接标注且带自动化ID的新增代码[267db43](https://github.com/oudream/cx-visual-x3/commit/267db43581d6adfa4270ca9fda980df88464c7fe)还需以自身或后继固定SHA Windows实测验收，不能继承前述成功。
+
+## 22. V2D-12/21按需Contour结果：真实MRK测试代码与未验门禁（2026-10-29）
+
+**新增自动回归源码**：`Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs`，固定提交[d5ff3df](https://github.com/oudream/cx-visual-x3/commit/d5ff3df9342d021b2bb5d3cca6b6129f490e10fb)，相关实现[28e2f0d](https://github.com/oudream/cx-visual-x3/commit/28e2f0da4a17d04c9a45bdd111378dcb5845fae0)。这些是**可运行的测试代码，不是已取得Windows通过结果**。
+
+| 编号 | 真实正反场景 | 当前证据级别 |
+|---|---|---|
+| CT-01 | 真实MRK阈值Mask（3个相连及1个孤立像素）按需生成2个闭环、净4px²；与筛选后3px² Region明确不同 | G2测试已提交，G3/G4待执行 |
+| CT-02 | 所有Contour的RunId/SourceId/OutputPort继承真实MRK结果，ItemId唯一，原7项Run保持只读不被追加修改 | G2测试已提交，G4待执行 |
+| CT-03 | 公开点集只读，试图Clear必须拒绝；同一已投影Run重复调用不重复加入结果项 | G2测试已提交，G4待执行 |
+| CT-04 | 边界预算超限拒绝、非法上限拒绝、预取消令牌直接抛OperationCanceledException，不能产出截断假轮廓 | G2测试已提交，G4待执行 |
+| CT-05 | 真实MRK 3×3环形阈值Mask产生+9外环与-1孔洞，两者净面积8px² | G2测试已提交，G4待执行 |
+| CT-06 | 旧无Mask MRK Plan保持5项默认结果且拒绝生成Contour；不强制额外处理和内存成本 | G2测试已提交，G4待执行 |
+
+**门禁**：Windows Release/x64编译，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`及默认回归；必要时TestCenter WPF中验证Contour选择与显示，再登记G5。未实施设备HIL/G6；当前仍是同Run内存结果，不是持久ArtifactRef、完整FrameRef、Region过滤后轮廓或独立MOC轮廓Capability。
