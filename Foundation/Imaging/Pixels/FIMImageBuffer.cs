@@ -86,6 +86,16 @@ namespace CxVisual.Foundation.Imaging
                 destination, destinationOffset, count);
         }
 
+        /// <summary>仅同一FIM程序集中的无损RAW写入器可读取Stride整行（含填充）。</summary>
+        internal void CopyStorageRow(int y, byte[] destination)
+        {
+            if (y < 0 || y >= Height) throw new ArgumentOutOfRangeException("y");
+            if (destination == null) throw new ArgumentNullException("destination");
+            if (destination.Length < Stride)
+                throw new ArgumentException("目标行缓冲区长度不足", "destination");
+            Buffer.BlockCopy(_pixels, checked(y * Stride), destination, 0, Stride);
+        }
+
         internal static FIMImageBuffer FromOwnedArray(int width, int height,
             FIMPixelFormat format, byte[] pixels, int stride)
         {
