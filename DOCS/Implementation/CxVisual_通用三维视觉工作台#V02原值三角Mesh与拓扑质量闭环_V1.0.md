@@ -227,3 +227,13 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`02f8ee6`](https://github.com/oudream/cx-visual-x3/commit/02f8ee6833e15573a41ee8c2bf48b74396612d5d)和[`f0a1919`](https://github.com/oudream/cx-visual-x3/commit/f0a1919398ca80e5b519be1eb8e3366838f3ee58)为每条`CT3DFeatureMeasurement`增加算法版本、参数/ROI签名、Frame和来源完整信息，并验证三类Feature。
 - [`ffda2b2`](https://github.com/oudream/cx-visual-x3/commit/ffda2b237c8a78240cab05ab6e85c121ffaf678e)、[`b186992`](https://github.com/oudream/cx-visual-x3/commit/b18699290c146aa581060dce21663af1ba176ec7)、[`03b9091`](https://github.com/oudream/cx-visual-x3/commit/03b9091c08ee620cbabd50d01e91e894853860df)：原TestCenter复用正式圆柱Case保存重开、MVI/MPW投影、原值计算和球/圆柱切换失效；三维真实WPF Smoke增加显示/旧测量清理断言。它是可运行验收入口，不冒充全量Studio多Case工作台。
 - 最新工程为26项目，R5仍为唯一总纲；工业Surface侧壁分离与计量认证、独立子元素持久ID、多案例完整UI、旧Schema1真实外部样本及最新固定SHA全绿仍未闭合。
+
+
+### 10.13 A包完整专业合同续进与Windows证据（2026-10-29）
+
+- **专业拟合/ROI**：固定物理轴向圆柱已进入`CT3DAnalysisCase`、持久化及TestCenter；`CT3DSurfaceCylinderAnalysis.FitCylinder`支持显式侧壁点索引，`CT3DAnalysisPersistence`在Schema3读写ROI且兼容V2圆柱无显式ROI旧制品，复算保留同样的ROI顺序。对应提交`376c597`、`36deb37`、`d75f5fc`、`de419f7`、`f07b9bd`、`60c4be2`。
+- **稳定身份与专业证据**：`CT3DRoiVertexReference`公开原Mesh ROI顶点索引、物理毫米几何及稳定签名，`CT3DAssetReference.FrameSignature/SpatialFrameRef/MatchesSpatialFrame`独立标定引用用于跨MEM重开与不同源拒绝，`CT3DPlaneFitResult.SignedDistanceFromAssetMm`允许同资产同标定但不同实例的毫米测距；`CT3DQualityMetric`汇总平面/球/圆柱的RMS、最大残差、条件数及平面退化比，均注明非工业精度认证。对应`4646454`、`5a2ffe6`、`ae4a715`、`3a79390`、`16e5dd1`及正反测试。
+- **多Case**：`RecomputeAllAndCommit`与`CommitAll`重用一次MEM修订，提供批量原值复算、冲突、取消和整体Undo/Redo；提交累计制品预算256MiB，OpenAll最多128个；TestCenter已支持按索引打开/再保存同一工程的不同Case，WPF Smoke验证所选Case与未选择Case不相互覆盖。对应`b05968c`、`fef01ef`、`3e186a3`、`7f06375`、`3d4f82c`。
+- **已定位并修复的回归**：旧批量测试误插到单Case作用域造成CS0103，提交`5343458`修复；Undo后MEM拒绝脏会话关闭，提交`f6f699c`显式Discard；多Case WPF切换后恢复旧Volume的Frame对象导致误失效，提交`d7dcab1`改用当前Case Frame。未改变MEM事务、CT3D失效语义。
+- **固定成功证据**：`f6f699c`的 [Engineering 40864641611](https://github.com/oudream/cx-visual-x3/actions/runs/40864641611)、[Runtime 40864641858](https://github.com/oudream/cx-visual-x3/actions/runs/40864641858)、[Decision 40864641767](https://github.com/oudream/cx-visual-x3/actions/runs/40864641767)均SUCCESS；`9899cb5` [Engineering 40865223526](https://github.com/oudream/cx-visual-x3/actions/runs/40865223526)、[Runtime 40865223564](https://github.com/oudream/cx-visual-x3/actions/runs/40865223564)、[Decision 40865223502](https://github.com/oudream/cx-visual-x3/actions/runs/40865223502)亦SUCCESS。证明对应SHA的Release x64/ArchitectureSmoke，不等于最新A包所有修改或G5通过。
+- **待验阻点**：最新WPF修复及Schema3测试还要以其对应Windows SHA核实；旧Schema1外部历史二进制fixture实际缺失（当前仅显式SKIP）；GPU/真实工业样本G4/G5未作新增验收；大型工业圆柱侧面识别与不确定度评估不属于此离散拟合的已认证能力。持续以R5唯一主文收敛，不另建项目/通用工程树。
