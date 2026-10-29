@@ -1172,6 +1172,12 @@ namespace CxVisual.TestCenter.UI
             _windowLimit=image==null ? 65535 :
                 image.PixelFormat==FIMPixelFormat.Gray8 ? 255 :
                 image.PixelFormat==FIMPixelFormat.GrayFloat32 ? 1 : 65535;
+            // 明确标明当前位深允许的物理灰度范围，不能把滑块两端截断或
+            // 让用户误以为显示窗调整会写回Gray16原像素。
+            _windowRangeHint.Text="当前原始灰度范围：0～"+
+                _windowLimit.ToString("0.###",CultureInfo.InvariantCulture)+
+                "；窗宽 1～"+_windowLimit.ToString("0.###",CultureInfo.InvariantCulture)+
+                "，窗位 0～"+_windowLimit.ToString("0.###",CultureInfo.InvariantCulture);
             _syncingWindowControls=true;
             try
             {
