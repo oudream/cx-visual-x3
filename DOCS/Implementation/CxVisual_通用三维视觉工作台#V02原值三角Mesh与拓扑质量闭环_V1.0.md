@@ -188,3 +188,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`77a997d`](https://github.com/oudream/cx-visual-x3/commit/77a997d3bf5dd1023aa2702ebb46254df29a327f)：沿用现有 `CT3DAnalysisCase.GetFeatureMeasurements()` 输出，在 `MeshPlane` 路径公开 `plane.rms-residual` 与 `plane.max-absolute-residual`，单位毫米，依托已有FNU PCA平面拟合；共享ResultId/来源签名/Revision/拟合质量合同，不伪造Datum尺寸或GD&T。
 - [`5a75154`](https://github.com/oudream/cx-visual-x3/commit/5a75154d436c59c4dc171b02ac5246c4a4ddbfba)：增加平面正向值、Feature身份、来源一致性及MEM工程保存重开的回归断言，与原Surface/Sphere测试共用正式CT3D API。
 - **A工作包未完成**：圆柱拟合、可组合多专业结果Case、稳定独立ROI/Frame子元素身份、完整的对象级改写/失效/重算与并发版本兼容，以及最新Windows固定SHA测试证据仍缺失；不把上述两个增量等同A包整体验收。
+
+
+### 10.8 A包多个专业结果在同一MEM工程的组合重开
+
+- [`d83883d`](https://github.com/oudream/cx-visual-x3/commit/d83883d922fb4231fd0aeee9bf2f1f868b181755) 在原`CT3DAnalysisPersistence`提供`OpenAll(engineering,root,token)`，只遍历MEM正式数据Aspect，逐案例调用已存在的`Open`校验Source/Hash/Frame/算法，不生成平行工程索引、第二套ResultStore，任何损坏整体失败。
+- [`bb396f6`](https://github.com/oudream/cx-visual-x3/commit/bb396f6e6aaf7d3e56dbee58bcc2e21ec6781d70) 的真实Headless测试将两次独立Surface/Sphere分析写到同一工程的两个MEMContent，保存、关闭、重开后批量读取，验证两个Feature ResultId独立、共享来源签名，及取消拒绝。
+- **限制**：同工程多个Case不是单个Case内多Feature共享复合配方；当前TestCenter的单案例`OpenProfessionalCaseAsync`仍要求恰好一个CT3D内容，尚未接入工程级多案例交互。Windows固定SHA及真实现场尚待证据，不得宣称A完成。
