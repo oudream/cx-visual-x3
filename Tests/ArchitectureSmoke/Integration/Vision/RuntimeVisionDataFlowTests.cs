@@ -37,6 +37,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RealPixelNoDefectAndFailure();
             SixteenBitRealPixelInspection();
             ConcurrentFlowOwnershipIsolation();
+            CancelledFlowNeverCommitsVisionOutputs();
         }
 
         private static void RealPixelDetectionAndFanout()
@@ -166,6 +167,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "B4 invalid product published outputs or contaminated valid Flow");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+        private static void CancelledFlowNeverCommitsVisionOutputs()
+        {
+            // B4: cancellation already requested before admission must not be
+            // mistaken for a successful inspection or publish an OK/NG verdict.
+            MRKExecutionPlan plan = CxVisionDataFlow.CreateCpuInspectionPlan(Options(200));
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 8));
+            try
+            {
+                using (var cancel = new System.Threading.CancellationTokenSource())
+                {
+                    cancel.Cancel();
+                    MRKFlowHandle flow = engine.StartFlow(plan, Inputs(
+                        new byte[] { 220, 220, 0, 0, 0, 0 }, 3, 2), cancel.Token);
+                    MRKFlowResult result = flow.Completion.GetAwaiter().GetResult();
+                    Check(result.State == MRKFlowState.Cancelled &&
+                        result.CommittedOutputs.Count == 0,
+                        "B4 pre-cancelled inspection published a stale verdict");
+                }
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
         }
     }
 }
