@@ -233,11 +233,16 @@ namespace CxVisual.Studio
             CxVisionRunSummary run,FIMImageBuffer source,
             MPWImageViewerControl viewer,CxVisionResultItem item)
         {
-            if(run==null||source==null||viewer==null||item==null ||
+            if(run==null||viewer==null||item==null ||
                run.RunId!=item.RunId || run.SourceId!=item.SourceId ||
-               !run.Items.Any(x=>Object.ReferenceEquals(x,item)) ||
-               !Object.ReferenceEquals(source,viewer.Session.Original))
+               !run.Items.Any(x=>Object.ReferenceEquals(x,item)))
                 throw new InvalidOperationException("studio.vision.stale_result");
+            bool requiresImage=item.Kind==CxVisionResultKind.Image ||
+                item.Kind==CxVisionResultKind.Mask ||
+                item.Kind==CxVisionResultKind.Contour;
+            if(requiresImage && (source==null ||
+               !Object.ReferenceEquals(source,viewer.Session.Original)))
+                throw new InvalidOperationException("studio.vision.stale_source");
             if(item.Kind==CxVisionResultKind.Image || item.Kind==CxVisionResultKind.Mask)
             {
                 if(item.Image==null || item.Image.Width!=source.Width ||
@@ -275,7 +280,8 @@ namespace CxVisual.Studio
                     contour.SignedAreaPixels.ToString("0.###",CultureInfo.InvariantCulture)+
                     " px²；Run="+run.RunId.ToString("N");
             }
-            viewer.SelectOriginal();
+            if(source!=null && Object.ReferenceEquals(source,viewer.Session.Original))
+                viewer.SelectOriginal();
             return item.Kind+" · "+item.Name+"；Item="+item.ItemId+
                 (item.IntegerValue.HasValue?"；值="+
                     item.IntegerValue.Value.ToString(CultureInfo.InvariantCulture)+
@@ -534,9 +540,10 @@ namespace CxVisual.Studio
             resultList.SelectionChanged+=(sender,args)=>{
                 var selected=resultList.SelectedItem as ListBoxItem;
                 if(selected==null)return;
-                if(!hasCurrentSource())
+                if(displayedRun==null ||
+                   displayedProject!=_viewModel.ProjectSession.Project.Id)
                 {
-                    resultDetail.Text="当前工程或图像来源已经变化，拒绝显示旧Run。";
+                    resultDetail.Text="当前工程来源已变化，拒绝显示旧Run。";
                     return;
                 }
                 try {
@@ -580,7 +587,10 @@ namespace CxVisual.Studio
                 catch(Exception ex)
                 {
                     if(Object.ReferenceEquals(displayedRun,expected))
+                    {
                         resultDetail.Text="轮廓提取失败："+ex.Message;
+                        contourButton.IsEnabled=true;
+                    }
                 }
                 finally
                 {
