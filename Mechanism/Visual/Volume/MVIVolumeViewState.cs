@@ -141,6 +141,15 @@ namespace CxVisual.Mechanism.Visual
             };
         }
 
+        /// <summary>将当前三刀上的二维像素矩形映射到正式FVO物理Frame，不建立第二套ROI真值。</summary>
+        public FVOPhysicalSliceRectangle MapRectangleRoi(FVOSlicePlane plane,
+            int left,int top,int right,int bottom,FVOVolumeData volume)
+        {
+            if(volume==null)throw new ArgumentNullException("volume");
+            return FVOSliceImageBuilder.RectangleToPhysical(volume,SliceX,SliceY,SliceZ,
+                plane,left,top,right,bottom);
+        }
+
         public void ResetCentered(FVOVolumeData volume)
         {
             SetSlices(volume.OriginalWidth / 2, volume.OriginalHeight / 2, volume.OriginalDepth / 2, volume);
