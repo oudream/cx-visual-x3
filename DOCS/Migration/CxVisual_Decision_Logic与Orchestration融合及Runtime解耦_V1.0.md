@@ -222,3 +222,21 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 当前事实：Unified.sln 仍为28项目；Logic.csproj 只编译 AssemblyInfo；Orchestration.csproj 含 MOC 四源码并引用 Runtime；Runtime.csproj 同时包含 MRK 编译与执行；这只是**源码存在**证据，不等于本轮测试通过。
 
 任何一个阶段只要出现有向环、MDS 数据丢失/双重释放、不可逆设备动作重复、SourceMap/ID 错位、旧工程不能恢复、动态嵌套行为退化或正式 Windows 编译失败，立即停止后续物理融合。回滚该阶段代码，保留日志与诊断归因。本轮文档提交不代表项目融合已经实施。
+
+
+---
+
+## V2.0 专业轻声明与Decision使用的迁移附加门禁（2026-10-29）
+
+依赖目标与P0～P5迁移次序保持不变；新增架构入口：[Decision总纲#0](../Architecture/CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)、[专业声明#3](../Architecture/CxVisual_统一决策与规划体系%233专业能力声明与注册_V2.0.md)、[编排#4](../Architecture/CxVisual_统一决策与规划体系%234上下文编排与智能引导_V2.0.md)、[运行协同#5](../Architecture/CxVisual_统一决策与规划体系%235运行调试模拟与反馈_V2.0.md)。
+
+| 增量审计点 | 现有真实Owner | 未来迁移必须守住什么 |
+|---|---|---|
+| FCM注解/Schema/Validate | Foundation.Data.Configuration、MHS | 新Capability注解不复制参数Schema，绑定生效版本的只读投影 |
+| MFM模块/五类身份 | Mechanism.Core.Modules | 不再增加第二个ModuleRegistry/ModuleKind；普通函数允许无模块实例 |
+| MOC能力/端口目录 | Mechanism.Orchestration MOCCapabilityCatalog | 逐步归Decision静态只读目录，真实MRK Resolver拆开，保留CapabilityId/Port一致性 |
+| MEMSymbol/Content与MOLFlowCanvas | Core + Presentation.Wpf | Symbol/Content/Capability分类不合并，画布只消费候选/Diagnostics，Core是唯一Edit/Undo真源 |
+| F19/MRK/Trace/Journal/调试 | Runtime | Decision新增纯计划/解释，不复制执行器、状态或DebugController |
+| Simulation虚拟模型/设备安全 | Professional.Simulation / Automation | 静态推演不冒充虚拟/现场执行，未知外部命令不能自动重发 |
+
+在P0逐类调用方清单中增加：`FCMConfigSchemaBuilder/FCMConfigCatalog`、`MFMModuleDescriptor`、`MOCCapabilityCatalog`、`CxVisionThresholdProvider`、`MRKCodeRuntimeBuilder`、`MOLRuntimeOverlay`、`PSMSimulationModule`。P4合并后执行REG/CST/AUT/RUN及六专业场景Goldens；**不得以“工程数27”替代功能验收**。

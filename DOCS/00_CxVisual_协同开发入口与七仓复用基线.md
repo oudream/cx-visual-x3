@@ -69,17 +69,25 @@
 
 三份文档采用不同的研究重点，**均以事实与建议分离为原则**：源码事实/历史经验/设计提案/真实测试不得混同。按任务阅读相关档案，不要求每次全量读完；后续新增其他代码资产档案，应在此索引补入。
 
-### Decision 统一决策与规划体系（V1.1 深化；物理项目迁移未实施）
+### Decision 统一决策与规划体系（V2.0正式架构；物理合并未实施）
 
-- **[Decision 项目融合与归属裁决 V1.0（含V1.1补充）](Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md)**：用户已确认以 **Decision** 为名称，将 `Mechanism.Logic` 和 `Mechanism.Orchestration` 合并改名为 `CxVisual.Mechanism.Decision`；Core定义、Decision判断/决策/规划、Runtime运行。目标项目数 **28→27，Mechanism 9→8**，此为批准的目标，不是目前SLN事实。
-- **[Decision 唯一总体架构与十大能力 V1.0（含V1.1核心图与完整子能力）](Architecture/CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md)**：以“能不能做、该不该做、怎样做更好”为根本问题，涵盖D01～D10语义/可行性、目标协调、选型、逻辑规划、策略、资源、推演、仿真和可解释反馈。
-- **[Decision 对象合同与开发者 API V1.0（含V1.1核心对象UML/C#示例）](Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)**：仅为设计候选的 Assess/Compare/Plan/Explain、诊断/理由/条件/Plan合同、Studio与代码式调用；未建立的`MDC*`不得冒充已有SDK。
-- **[Logic+Orchestration 融合及 Runtime 解耦迁移 V1.0（含V1.1逐源码归属）](Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)**：基于真实MOC/MRK代码的逐文件Owner清单、避免`Orchestration→Runtime→Decision`环、P0～P5顺序、版本/API/项目GUID/SLN迁移与兼容。
-- **[Decision 功能与迁移验收矩阵 V1.0（含V1.1正反例与量化门禁）](Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)**：D01～D10、R01～R07、M01～M12的正反例/性能/安全/工程与Windows验收，项目合并完成不等于十项能力全部完成。
+**理念与目标**：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。Decision以约束为边界、目标为导向、策略为手段、证据为依据、反馈为校验，让六大专业的能力通过轻量声明/注册进入上下文编排、验证、方案选择、运行协同、同图调试、虚拟模拟及优化。**一份总纲、六份专题、裁决/迁移/验收三类工程文档；不复制现有Core/FCM/MFM/MOC/MRK/MDS或专业Owner。**
 
-**V1.1文档更新（2026-10-28）**：五份文件沿用原 V1.0 路径以保持链接和历史不失效，在文件内部增加 V1.1 的架构、API、源码 Owner 与测试合同。审查关注：旧 MOCFlowBuilder 的修改工程方法应归 Core 编辑事务，而非全部移入 Decision；描述型 Plan 与 MRK 运行委托必须分开；所有 MDC 类型是拟议合同，尚未实装。导航由本节统一，不在其他目录创建第二份总纲。
+**权威架构（阅读顺序）**：
+1. [Decision #0 总体架构与全类需求 V2.0](Architecture/CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)：唯一总纲、三大根本判断、十大能力、八个使用价值域、六专业需求、完整使用链与状态。
+2. [#1 对象合同与开发者API V2.0](Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V2.0.md)：最小SDK/纯Plan/三态结果/版本/SourceMap/执行交接，所有MDC签名拟议。
+3. [#2 约束目标与策略 V2.0](Architecture/CxVisual_统一决策与规划体系%232约束目标与策略_V2.0.md)：约束来源、硬软目标、冲突/未知、可行域/Pareto、选择/执行策略与算法验收。
+4. [#3 专业能力声明与注册 V2.0](Architecture/CxVisual_统一决策与规划体系%233专业能力声明与注册_V2.0.md)：C#注解/Fluent/Descriptor、五类模块、唯一Schema/目录、L0～L3渐进接入及六专业合同。
+5. [#4 上下文编排与智能引导 V2.0](Architecture/CxVisual_统一决策与规划体系%234上下文编排与智能引导_V2.0.md)：Symbol/Content/Capability过滤、端口连线/参数引导、即时校验、情景路径预演与Studio/SDK。
+6. [#5 运行调试模拟与反馈 V2.0](Architecture/CxVisual_统一决策与规划体系%235运行调试模拟与反馈_V2.0.md)：MRK/MDS/Trace/SourceMap/断点、静态与Virtual/Replay/HIL分级、故障诊断和版本化改进。
+7. [#6 专业应用与完整案例 V2.0](Architecture/CxVisual_统一决策与规划体系%236专业应用与完整案例_V2.0.md)：Vision、CT3D、Automation、Inspection、HMI、Simulation 及跨专业产线端到端案例。
 
-**现实基线**：`Mechanism/Logic`当前主要为AssemblyInfo，`Mechanism/Orchestration`包含MOC编译/Build且引用`Mechanism.Runtime`；**本次只写文档，未改.sln/.csproj/源码、旧DLL或28项目现状**。后续代码实施必须先解开静态Plan与执行委托的耦合，再逐步反转项目依赖，勿静默修改已有运行状态或专业Owner。
+**配套工程权威**：
+- [Decision 融合与Owner裁决 V1.0（含V2衔接）](Decisions/CxVisual_Mechanism_Decision_项目融合与归属裁决_V1.0.md)：项目正式名称与无环依赖归属。
+- [Logic+Orchestration融合/Runtime解耦迁移 V1.0（含V2门禁）](Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)：逐文件类型和P0～P5迁移，目标28→27、Mechanism9→8。
+- [Decision功能与迁移验收矩阵 V1.0（含V2验收索引）](Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)：D-T、M、REG/CST/AUT/RUN/CASE/UX的正反例、性能与证据等级。
+
+**历史与现状**：原[#0 V1.0](Architecture/CxVisual_统一决策与规划体系%230总体架构与10大能力_V1.0.md)、[#1 V1.0](Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)仅保留历史可追溯，不再双线维护。最新设计**不等于源码交付**：目前仍是 `Mechanism/Logic`、`Mechanism/Orchestration`、`Mechanism/Runtime` 既有工程，MOC→MRK编译时依赖未断，Decision新项目/新MDC接口/统一注解/约束求解尚未实施；只有真实CI与现场证据可证明功能与安全。对于DOCS/02～04 XLSX需要实施前逐Sheet比对Owner/签名，不得将当前文本性摘要冒称表格审计。
 
 ### 运行体系专项讨论稿（六角色期望 → 统一能力 → 执行模型）
 

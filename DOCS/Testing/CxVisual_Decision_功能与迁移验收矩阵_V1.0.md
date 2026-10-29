@@ -158,3 +158,23 @@ flowchart LR
 ### 五、测试中的最重要反模式
 
 禁止把一份 Markdown、“已知的绿色 CI”、Static Allowed、Virtual Replay、MOCCatalog 的 RuntimeAvailable、AI 优化建议或没有现场证据的性能预算当成真实 PLC/X-Ray/运动控制安全许可。静态未知必须在 Host/MRK/专业端形成未通过门禁，直到有可审计的运行现场证据。
+
+
+---
+
+## V2.0 对齐：专业轻声明、约束驱动编排、调试与仿真使用验收（目标设计）
+
+此节作为原有D-T01～D-T30、迁移M01～M12的扩充索引；**不代表测试已经编写或CI通过**。架构来源为 [Decision总纲V2](../Architecture/CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)，其中#2～#6的专业用例均为待验。
+
+| 测试组 | 具体必须完成的正反例 | 证据与阻断标准 |
+|---|---|---|
+| REG-01～10：专业注册 | 普通方法直调、一次Capability注册、五类模块、FCM自动表单、版本/端口一致、重复Id拒绝 | 同一目录/Schema真源；不得新建第二注册中心；声明≠实机授权 |
+| CST-01～10：约束与策略 | Gray16/8不匹配、CPU/GPU预算、硬软冲突、未知许可证、单位、Pareto、非幂等Retry | HardFail必拒绝、Unknown不得自动放行、选择理由与RuleId可复核 |
+| AUT-01～10：编排引导 | Symbol/Content/Capability分类、拖线过滤、范围提示、推荐解释、延迟建议过期、Build同图定位 | 不修改Core真源；旧结果不可跨Revision应用；错误候选可见原因 |
+| RUN-01～12：运行与调试 | 断点/单步、三层子流程、TraceGap、实际输入输出、外部Unknown、Replay/Virtual、版本切换 | 唯一MRK执行/调试，实际设备动作须授权，虚拟模式真实设备调用为0 |
+| CASE-V/C/A/I/H/S：六专业贯穿 | 声明→发现→编排→Decision→MRK/MDS→Trace/仿真→效果对照 | 实际源码/用例/真实RunId、专业安全测试等级分别登记 |
+| UX-01～08：易用与性能 | 5节点工程操作数、新增专业代码/适配量、100/1000/10000节点、10/100/1000候选、取消并发 | 统一Windows硬件记录p50/p95、CPU/内存/时间，未基线定案不写虚构指标 |
+
+**每条验收的七个必填属性**：做什么、何时触发、在哪里、谁调用、怎样使用、结果由谁应用、实际效果如何。每条记录Owner、源码路径、测试名、固定夹具、Expected/Actual、提交SHA、CI Run、EvidenceTier(Design/Source/Build/Automated/Integrated/HIL/Field)和风险。通过标准必须包括**真实调用入口、逻辑正确、结果应用与效果测量**，仅有接口/文档不算完成。
+
+测试示例及专业输入详见 [#3](../Architecture/CxVisual_统一决策与规划体系%233专业能力声明与注册_V2.0.md)、[#4](../Architecture/CxVisual_统一决策与规划体系%234上下文编排与智能引导_V2.0.md)、[#5](../Architecture/CxVisual_统一决策与规划体系%235运行调试模拟与反馈_V2.0.md)、[#6](../Architecture/CxVisual_统一决策与规划体系%236专业应用与完整案例_V2.0.md)。真实设备/安全验证必须单独验收，不能因模拟成功升为现场通过。

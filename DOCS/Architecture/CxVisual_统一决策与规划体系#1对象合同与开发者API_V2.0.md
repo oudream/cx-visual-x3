@@ -1,0 +1,217 @@
+# CxVisual Decision——#1 对象合同与开发者 API V2.0
+
+> **唯一公开合同规格**：所有新 `MDC*` 和下列示例是**拟议签名**，尚未加入 master；旧[#1 V1.0](CxVisual_统一决策与规划体系%231对象合同与开发者API_V1.0.md)为历史。总纲[#0](CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)，约束真源[#2](CxVisual_统一决策与规划体系%232约束目标与策略_V2.0.md)，真实类型映射以[Migration](../Migration/CxVisual_Decision_Logic与Orchestration融合及Runtime解耦_V1.0.md)为准。
+>
+> **设计意图**：一个简单问题只需要相关输入，一次调用返回结构化答案；复杂工程可以按 Assess→Compare→Plan→Compile 组合。禁止为了简单端口检查构建完整MEM工程/Runtime/Worker。
+
+## 01. 三种自然入口
+
+| 用法 | 示例意图 | 输入要求 | 返回 |
+|---|---|---|---|
+| A 轻量检查 | 两个端口能连吗？Gray16算法接受吗？ | 两个Descriptor、已知环境/规则 | 三态结果及可定位原因 |
+| B 筛选比较 | 这张图接下来可用哪些能力？CPU还是GPU？ | 输出端口、Capability快照、目标与资源 | 适用/未知/拒绝候选、推荐与证据 |
+| C 完整规划 | X-Ray多节点检测/CT流水线如何构建并发布？ | Core Revision、需求、能力/策略/环境快照 | 验证→静态Plan→Runtime受控装载 |
+
+**当前真实可用 API 示例**：`MOCCapabilityCatalog.Find/Search`、`MOCBuildService.Build(MEMProjectSnapshot,...)`、`MRKCodeRuntimeBuilder.Flow/Build`、`MRKDevelopmentRuntime.RunAsync/RunValueAsync`、`MRKExecutionDebugController` 等。**这些并不是本文拟议MDC的实现**。
+
+## 02. 目标类型与关系（原则上同一个Decision DLL）
+
+~~~mermaid
+classDiagram
+ class IMDCDecisionService {
+   +Assess(request)
+   +FindCandidates(request)
+   +Compare(request)
+   +Plan(request)
+   +Compile(request)
+   +Explain(request)
+   +AnalyzeImpact(request)
+ }
+ class MDCDecisionContext {
+   +RequestId
+   +DefinitionRevision
+   +CapabilitySnapshotId
+   +PolicyRevision
+   +EnvironmentEpoch
+   +EvidenceSet
+ }
+ class MDCConstraintSet {
+   +Hard
+   +Soft
+   +RequiredRuntimeChecks
+ }
+ class MDCAssessment {
+   +Verdict
+   +Diagnostics
+   +UnknownConditions
+ }
+ class MDCCandidateResult {
+   +Applicable
+   +Rejected
+   +Unknown
+   +Recommended
+ }
+ class MDCPlanningResult {
+   +Structure
+   +Strategies
+   +Resources
+   +Diagnostics
+ }
+ class MDCPlanArtifact {
+   +PlanId
+   +Fingerprint
+   +SourceMap
+   +Capabilities
+ }
+ class MDCExplanation {
+   +ReasonCodes
+   +EvidenceRefs
+   +SourceIds
+ }
+ IMDCDecisionService --> MDCDecisionContext
+ MDCDecisionContext --> MDCConstraintSet
+ IMDCDecisionService --> MDCAssessment
+ IMDCDecisionService --> MDCCandidateResult
+ IMDCDecisionService --> MDCPlanningResult
+ IMDCDecisionService --> MDCExplanation
+ MDCPlanningResult --> MDCPlanArtifact : pure compile
+~~~
+
+**唯一Owner**：Core owns MEM/MOL/MFM/MPC身份和持久定义；Decision owns不可变请求/评估/候选/策略/纯Plan；Runtime owns MRKExecutionPlan/Executor/Trace/RunContext；Professional owns专业实现及成本模型。只引用静态合同，不得把Runtime真实委托传给Decision。
+
+## 03. 关键数据结构与可判定不变量
+
+| 对象（拟议） | 必填语义 | 严格规则 |
+|---|---|---|
+| `MDCDecisionContext` | Scope、RequestId、SourceRevision、CatalogRevision、PolicyRevision、EnvironmentEvidence、Cancellation/TimeBudget | 只读快照，必须可确定地失效旧结果；无Studio线程依赖 |
+| `MDCConstraint` | Id、Origin、Kind(Hard/Soft/Conditional)、PredicateVersion、Unit、Value/Threshold、Scope、EvidenceRequirement | Null/过期/无法验证→Unknown，不伪装Pass |
+| `MDCObjective` | MetricId、Min/Max/Target、Unit、Priority、Weight、Tolerance、Baseline | 无共同单位/不可比较不能计算合法总分 |
+| `MDCCapabilityContract` | CapabilityId/Version、Input/Output、Traits、SideEffects、Idempotency、ResourceHints、ProviderOrigin | 引用MFM/MPC规范投影，不能第二份可写目录 |
+| `MDCAssessment` | Allowed/Rejected/Unknown、ConstraintOutcomes、Diagnostics、RequiredChecks | Hard Fail先于Unknown；Allowed只代表本次静态条件已证明 |
+| `MDCCandidateResult` | Feasible/Unknown/Rejected、Scores、ParetoSet、Selected、Alternatives、Reasons | 无 Feasible 则 Selected=null |
+| `MDCPlanningResult` | StructuralPlan、StrategySet、ResourceEstimate、SourceMap、Assumptions | 结构不受“最大循环迭代次数”线性展开 |
+| `MDCPlanArtifact` | Plan/SchemaVersion、Fingerprint、DAG/Regions、Capabilities、Policies、SourceMap | **纯可序列化数据**，不得包含Delegate/DeviceHandle/Task/LiveFrame |
+| `MDCExplanation` | DecisionId、SourceRefs、RuleId/Version、Evidence、Why/WhyNot、ImpactSet | 每项可归因至规则+工程SourceId；不凭空捏造根因 |
+
+**身份链**：`ProjectId/Revision → ContentId/BlockId/LinkId/PortId → SourceMap → PlanFingerprint → RunId/InvocationId/StepId/AttemptId → Trace/Evidence`；变更影响分析沿真实依赖传播。未知外部副作用必须保守标记。
+
+## 04. SDK（设计签名，非已编译源码）
+
+~~~csharp
+// Proposed: namespace CxVisual.Mechanism.Decision
+public enum MDCVerdict { Allowed, Rejected, Unknown }
+public interface IMDCDecisionService
+{
+    MDCAssessment Assess(MDCAssessmentRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+    MDCCandidateResult FindCandidates(MDCCandidateRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+    MDCCandidateResult Compare(MDCComparisonRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+    MDCPlanningResult Plan(MDCPlanningRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+    MDCCompileResult Compile(MDCCompileRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+    MDCExplanation Explain(MDCExplanationRequest request);
+    MDCImpactResult AnalyzeImpact(MDCImpactRequest request,
+        CancellationToken cancellation = default(CancellationToken));
+}
+~~~
+
+请求细分为**最小上下文**，不强迫每个小调用传完整项目；`FindCandidates`允许仅提供当前端口+CatalogSnapshot+ContextConstraints；`Plan`必须提供版本化Core定义。简单便捷门面不得返回未经证据支持的“最优”。
+
+### 示例 A：轻量连线、明确原因
+
+~~~csharp
+// Proposed illustrative code, not current SDK
+var result = decision.Assess(MDCAssessmentRequest.ForConnection(
+    sourcePort, targetPort, capabilitySnapshot, policies), token);
+if (result.Verdict != MDCVerdict.Allowed)
+    ShowDiagnostics(result.Diagnostics, result.RequiredRuntimeChecks);
+// Unknown不可自动连接；Studio可提供说明或等待复核。
+~~~
+
+### 示例 B：有硬约束的候选与备选
+
+~~~csharp
+// Proposed illustrative code
+var result = decision.Compare(MDCComparisonRequest.Create(
+    candidates, hardConstraints, softObjectives,
+    capabilitySnapshot, measuredEnvironment), token);
+if (result.Selected == null)
+    ShowNoFeasibleCandidates(result.Rejected, result.Unknown);
+else
+    ShowChoice(result.Selected, result.Alternatives, result.Explanation);
+~~~
+
+### 示例 C：Plan交付与执行职责分开
+
+~~~csharp
+// Proposed illustrative code
+var assessment = decision.Assess(projectRequest, token);
+if (assessment.Verdict != MDCVerdict.Allowed) return;
+var planned = decision.Plan(MDCPlanningRequest.From(projectRequest), token);
+var artifact = decision.Compile(MDCCompileRequest.From(planned), token);
+if (!artifact.Succeeded) return;
+var admission = runtimeHost.ValidateAndLoad(artifact.Plan, authorization);
+if (!admission.Allowed) return; // 现场资源、安全、版本必须复核
+runtimeHost.Start(admission);   // 属于Runtime/Host，不是Decision
+~~~
+
+即使接口名字简单，也必须把**真实版本、错误、安全边界、取消**留给对应Owner。
+
+
+## 05. 协同对象与版本固定
+
+~~~mermaid
+sequenceDiagram
+  actor Dev as SDK/Studio
+  participant Core as Core Snapshot
+  participant D as Decision
+  participant Host as Host/Lifecycle
+  participant R as MRK
+  participant Pro as Provider
+  Dev->>Core: Capture(Revision)
+  Core-->>Dev: Immutable engineering/constraints
+  Dev->>D: Assess/FindCandidates/Compare
+  D-->>Dev: verdict/reasons/unknowns/recommendations
+  Dev->>Core: 用户确认修改，经原Edit事务提交
+  Dev->>D: Plan/Compile(固定Revision)
+  D-->>Dev: PurePlan+SourceMap+Fingerprint
+  Dev->>Host: RequestPublishedRun(Plan)
+  Host->>R: ValidateAndLoad(许可/现场版本/资源)
+  R->>Pro: Provider真实绑定与前置核验
+  alt 接受
+    R->>Pro: 受控执行
+    Pro-->>R: 执行结果/专业证据
+    R-->>Dev: FlowResult/Trace/Journal
+  else 拒绝或未知
+    R-->>Dev: Rejected/Unknown + 现场原因
+  end
+~~~
+
+Source/Plan/Capability/Policy/Environment版本与每份结果绑定；Core正式修改产生新Revision并让旧推荐失效。Runtime不得在活动Plan上按Decision的异步建议直接热改；应进入新版本审批/激活流程。
+
+## 06. 最小可扩展接口而非十个 Manager
+
+- **判定扩展**：`IMDCConstraintEvaluator`用于纯硬条件，可提供算法ID/版本、数据来源、单位、可重复性。复用FCM Validator/MPM/MOL逻辑的单一判定真源，不创建复制RuleEngine。
+- **比较扩展**：`IMDCCandidateRanker`用于可替换的Pareto、词典式优先级、受控加权法；同输入/种子输出稳定。
+- **资源扩展**：`IMDCResourceEstimator`只能评估能力的资源描述/实际测量样本，不能占用真设备作推断。
+- **情景扩展**：`IMDCScenarioEvaluator`可消费纯模型/仿真证据，但不实现运行调度；仿真运行必须由MRK+Professional.Simulation完成。
+- **兼容扩展**：MOC→MDC只允许单向Adapter和明确退役计划，不得长期留MOC与MDC双编译器。
+- **横切**：Decorator做审计、限时、指标、缓存/脱敏；禁止异常时把Unknown或Rejected自动更改为Allowed。
+- **返回合同**：人可读消息 + 稳定机器错误码 + SourceId/MemberId + EvidenceId；一般编排错误不能表现为无上下文InvalidOperationException。程序缺陷与业务规则拒绝必须区分。
+
+## 07. 使用时机、取消与性能约束
+
+- 连接/参数变化：轻量纯检查，无副作用，缓存按 `Revision/CapabilityVersion/PolicyVersion/EnvironmentEpoch` 键；高频拖动节流并取消上一请求，UI不被阻塞。
+- 多候选比较：支持候选上限、评估预算、增量结果但只能在完整约束检查完成后发布Selected；超时返回Incomplete/Unknown而不做软评分选高分者。
+- 完整工程：节点数量100/1000/10000基准；Loop/Foreach/子流程动态展开由MRK执行，静态计划只表达Region。测试PeakAllocatedBytes/CPU/p50/p95以及冷/热缓存。
+- 单次请求资源上限、日志体积与诊断数量必须受控；同时评估多个工程不共享可变环境对象或设备句柄。
+- 所有示例使用`.NET Framework 4.8`可表达的API形状，不以未证实的C#版本特性作为最低条件。
+
+## 08. 现状和实现次序
+
+**实际存在**：MEM/MOL定义、MFM模块描述、MOC目录/Build/SourceMap、MRK执行/调试/Trace、FCM注解/配置；**提议新增**：完整MDC服务及接口/纯Plan/三态约束/候选排序/按需路由；**未验证**：在当前SHA上V2 SDK集成或全类专业真实设备就绪。
+
+落地顺序：①先保证最小连接Assess+Diagnostics不需要Runtime；②接入现有Capability目录的只读快照/FCM Schema；③增加FindCandidates（适用/不适用/未知）；④在MOC/MRK静态与委托分离后提供Compile+受控Loader；⑤扩展目标协调、策略、资源和仿真优化；⑥开发者示例在Windows CI上按签名真实编译。验收以[Testing](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)为准。
