@@ -140,7 +140,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 for (int i = 0; i < 10; ++i)
                     flows.Add(engine.StartFlow(plan, Inputs(i % 2 == 0
                         ? new byte[] { 255, 255, 0, 0, 0, 0 }
-                        : new byte[] { 0, 0, 0, 0, 0, 0 }, 3, 2)));
+                        : new byte[] { 100, 100, 0, 0, 0, 0 }, 3, 2)));
                 // A malformed product is admitted alongside valid products.
                 // Its failure must not publish partially committed outputs or
                 // change the outcomes of the other ten flows.
