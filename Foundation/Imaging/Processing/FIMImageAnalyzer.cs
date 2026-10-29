@@ -35,6 +35,12 @@ namespace CxVisual.Foundation.Imaging
             FIMPixelRegion? roi = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (binCount < 1 || binCount > 65536) throw new ArgumentOutOfRangeException("binCount");
+            if (image == null) throw new ArgumentNullException("image");
+            // 大型Gray8/16单次扫描：65536项整数精确频表代替对图像逐像素
+            // 两次GetGrayValue+Welford。保留原始灰度、Stride/ROI及取消语义。
+            if (image.PixelFormat == FIMPixelFormat.Gray8 ||
+                image.PixelFormat == FIMPixelFormat.Gray16)
+                return AnalyzeInteger(image, binCount, roi, cancellationToken);
             FIMImageStatistics stats = Calculate(image, roi, cancellationToken);
             FIMPixelRegion r = roi.HasValue ? roi.Value.ClipTo(image) : FIMPixelRegion.Entire(image);
             long[] bins = new long[binCount];
@@ -51,6 +57,69 @@ namespace CxVisual.Foundation.Imaging
                 }
             }
             return new FIMImageAnalysisResult(stats, new FIMImageHistogram(stats.Min, stats.Max, bins));
+        }
+
+        /// <summary>
+        /// Gray8/Gray16一次扫描精确原始灰度整数直方图。均值和总体方差从
+        /// 频数而非抽样/显示窗计算，ROI边界、行Padding和非8位灰度保持正确。
+        /// O(W*H + 65536)，与分箱数量无关；不缓存跨图像的像素或统计。
+        /// </summary>
+        private static FIMImageAnalysisResult AnalyzeInteger(FIMImageBuffer image,
+            int binCount,FIMPixelRegion? roi,CancellationToken cancellationToken)
+        {
+            FIMPixelRegion r=roi.HasValue?roi.Value.ClipTo(image):
+                FIMPixelRegion.Entire(image);
+            int depth=image.PixelFormat==FIMPixelFormat.Gray8?256:65536;
+            long[] frequency=new long[depth];
+            int bpp=image.PixelFormat==FIMPixelFormat.Gray8?1:2;
+            byte[] row=new byte[checked(r.Width*bpp)];
+            for(int y=r.Top;y<=r.Bottom;y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                image.CopyRow(y,r.Left,r.Width,row,0);
+                if(bpp==1)
+                {
+                    for(int p=0;p<row.Length;p++)
+                        frequency[row[p]]++;
+                }
+                else
+                {
+                    for(int p=0;p<row.Length;p+=2)
+                        frequency[row[p] | (row[p+1]<<8)]++;
+                }
+            }
+            int first=0,last=depth-1;
+            while(first<depth && frequency[first]==0)first++;
+            while(last>=0 && frequency[last]==0)last--;
+            if(first==depth)throw new InvalidOperationException("ROI没有像素。");
+            long count=0;
+            double sum=0,mean;
+            // 先按精确整数频数求均值，再按中心化值求方差，
+            // 避免大背景Gray16 E[X²]-E[X]²的灾难性抵消。
+            for(int i=first;i<=last;i++)
+            {
+                if((i&4095)==0)cancellationToken.ThrowIfCancellationRequested();
+                long n=frequency[i];
+                count=checked(count+n);
+                sum+=(double)i*n;
+            }
+            mean=sum/count;
+            double squared=0;
+            long[] bins=new long[binCount];
+            double span=last-first;
+            for(int i=first;i<=last;i++)
+            {
+                if((i&4095)==0)cancellationToken.ThrowIfCancellationRequested();
+                long n=frequency[i];
+                if(n==0)continue;
+                double d=i-mean;
+                squared+=d*d*n;
+                int index=span<=0?0:(int)((i-first)/span*binCount);
+                bins[Math.Max(0,Math.Min(binCount-1,index))]+=n;
+            }
+            return new FIMImageAnalysisResult(
+                new FIMImageStatistics(count,first,last,mean,Math.Sqrt(squared/count)),
+                new FIMImageHistogram(first,last,bins));
         }
 
         /// <summary>
