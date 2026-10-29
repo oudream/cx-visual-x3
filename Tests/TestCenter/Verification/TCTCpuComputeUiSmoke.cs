@@ -80,6 +80,12 @@ namespace CxVisual.TestCenter.UI
             string id="Cpu"+Guid.NewGuid().ToString("N").Substring(0,10);
             string raw=Path.Combine(root,"sample.raw");
             File.WriteAllBytes(raw,new byte[]{210,210,0,0,0,210,0,0,0,0,0,0,0,0,250});
+            string medianRaw=Path.Combine(root,"median.raw");
+            byte[] medianPixels=new byte[49];
+            for(int y=2;y<=4;y++)
+                for(int x=2;x<=4;x++)medianPixels[y*7+x]=210;
+            medianPixels[0]=250;
+            File.WriteAllBytes(medianRaw,medianPixels);
             Window host=null;
             try
             {
@@ -198,11 +204,44 @@ namespace CxVisual.TestCenter.UI
                     panel.StatusMessage.Contains("MOC指纹=") &&
                     panel.StatusMessage.Contains("真实Trace="),
                     "Operator cannot inspect actual result provenance");
+
+                // The WPF operator rebinds RAW, selects FIM median and clicks Run.
+                // Existing 3-node CPU path stays default when radius is zero.
+                panel.SetMedianRadius(1);
+                await Set(hwnd,"TCT.Cpu.RawPath",medianRaw);
+                await Set(hwnd,"TCT.Cpu.Width","7");
+                await Set(hwnd,"TCT.Cpu.Height","7");
+                await Click(hwnd,"TCT.Cpu.Run");
+                await Until(()=>(panel.LastReport!=null &&
+                        panel.LastReport.FlowId!=second.FlowId) ||
+                    (!panel.IsRunning && panel.StatusMessage.StartsWith("CPU检测失败")),
+                    "FIM median 4-node real WPF execution",500);
+                if(panel.LastReport==null || panel.LastReport.FlowId==second.FlowId)
+                    throw new InvalidOperationException("FIM增强未产生真实Run："+panel.StatusMessage);
+                var enhanced=panel.LastReport;
+                Check(enhanced.EnhancedImage!=null &&
+                    enhanced.EnhanceBlockId!=Guid.Empty &&
+                    enhanced.MeasureBlockId!=Guid.Empty &&
+                    enhanced.Inspection.ThresholdPixelCount==5 &&
+                    enhanced.AcceptedRegionPixelArea==5 &&
+                    enhanced.EnhancedImage.GetGrayValue(0,0)==0 &&
+                    enhanced.EnhancedImage.GetGrayValue(3,3)==210 &&
+                    enhanced.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Image &&
+                        x.OutputPort=="EnhancedPixels" && x.RunId==enhanced.FlowId) &&
+                    enhanced.Trace.Any(x=>x.BlockId==enhanced.EnhanceBlockId &&
+                        x.State=="Completed") &&
+                    panel.StatusMessage.Contains("FIM中值增强=半径1"),
+                    "实际WPF四节点增强、检测和面积证据不一致");
+                Check(File.ReadAllBytes(medianRaw).SequenceEqual(medianPixels),
+                    "FIM增强写坏原RAW");
+                panel.SetMedianRadius(0);
                 File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                     "TestCenter-Cpu-UIA-Report.txt"),
-                    "PASS TCT.Compute.UIA RAW/MHS Effective/MEM/MOC/MRK/results/Trace/repeat/negative"+
+                    "PASS TCT.Compute.UIA RAW/MHS Effective/MEM/MOC/MRK/results/Trace/repeat/negative/FIM-Median"+
                     Environment.NewLine+"FlowId1="+first.FlowId+
                     Environment.NewLine+"FlowId2="+second.FlowId+
+                    Environment.NewLine+"MedianFlowId="+enhanced.FlowId+
+                    Environment.NewLine+"MedianArea="+enhanced.AcceptedRegionPixelArea+
                     Environment.NewLine+"Config="+second.ConfigVersion+
                     Environment.NewLine+"Fingerprint="+second.Fingerprint+
                     Environment.NewLine+"ThresholdPixels="+second.Inspection.ThresholdPixelCount+
