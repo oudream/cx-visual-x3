@@ -41,6 +41,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(analysis.Mesh.Mesh.VertexCount==26 && analysis.Plane.SampleCount==9 &&
                 Math.Abs(analysis.Plane.PointMm.Z-46.5)<1e-9 && analysis.Plane.RmsResidualMm<1e-9 &&
                 !analysis.HasEvaluatedMeasurementUncertainty,"真实UInt16 Mesh到局部平面质量合同");
+            var planeQuality=analysis.GetQualityEvidence();
+            Check(planeQuality.Count==4&&
+                planeQuality.Any(m=>m.Kind=="plane.planarity-ratio"&&m.Unit=="ratio")&&
+                planeQuality.All(m=>m.FeatureResultId==analysis.Plane.ResultId&&
+                    m.ParameterSignature==analysis.ParameterSignature&&
+                    !m.IsIndustrialAccuracyCertified),
+                "平面质量证据应区分毫米残差与无量纲退化指标");
             var planeMeasures=analysis.GetFeatureMeasurements();
             Check(planeMeasures.Count==2&&
                 planeMeasures[0].Kind=="plane.rms-residual"&&
@@ -221,6 +228,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Object.ReferenceEquals(analysis.Sphere.SpatialFrame,source.SpatialFrame)&&
                 !analysis.HasEvaluatedMeasurementUncertainty,
                 "Float32原值Surface→球特征具有独立身份、毫米Frame与质量证据");
+            var sphereQuality=analysis.GetQualityEvidence();
+            Check(sphereQuality.Count==3&&
+                sphereQuality.Any(m=>m.Kind=="surface.fit-condition"&&m.Unit=="ratio")&&
+                sphereQuality.All(m=>m.FeatureResultId==analysis.Sphere.ResultId&&
+                    m.SourceSignature==source.Signature),
+                "球体拟合残差和数值条件数属于可追溯质量证据");
             var measurements=analysis.GetFeatureMeasurements();
             Check(measurements.Count==2&&measurements[0].Kind=="sphere.radius"&&
                 measurements[1].Kind=="sphere.diameter"&&
@@ -369,7 +382,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new[]{sidewall[0],sidewall[0],sidewall[0],sidewall[0],sidewall[0],sidewall[0]}));
                 var caseValue=CT3DAnalysisCase.AnalyzeCylinder(folder,source,1000,1,10000,axis,
                     CancellationToken.None,10000000,sidewall);
-                Check(caseValue.GetFeatureMeasurements().Count==2,"圆柱Feature提供半径和直径测量");
+                Check(caseValue.GetFeatureMeasurements().Count==2&&
+                    caseValue.GetQualityEvidence().Count==3&&
+                    caseValue.GetQualityEvidence().All(m=>
+                        m.FeatureResultId==caseValue.Cylinder.ResultId&&
+                        m.ParameterSignature==caseValue.ParameterSignature&&
+                        !m.IsIndustrialAccuracyCertified),
+                    "圆柱Feature/Measurement和质量证据归属相同专业结果");
                 string projectFile=Path.Combine(folder,"cylinder.cxproj");MRIObjectAddress address;
                 using(var engineering=MEMEngineering.Create("Cylinder"))
                 {
