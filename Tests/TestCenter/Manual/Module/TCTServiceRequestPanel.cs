@@ -56,9 +56,17 @@ namespace CxVisual.TestCenter.UI
         protected override Task OnStopAsync(CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            lock(_gate){_accepting=false;}
-            // Stop is only invoked outside a pending operator request by the UI.
-            // The semaphore remains owned until this service object is abandoned.
+            lock(_gate)
+            {
+                _accepting=false;
+                if(_slots!=null)
+                {
+                    if(_slots.CurrentCount!=Options.MaxConcurrentRequests)
+                        throw new InvalidOperationException("服务仍有正在处理的请求，不可标记Stopped");
+                    _slots.Dispose();
+                    _slots=null;
+                }
+            }
             return Task.CompletedTask;
         }
         public async Task<TCTServiceEchoResponse> RequestAsync(
