@@ -337,3 +337,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 `13f5b42c2949dd24e518e2f3fc4e52ada13dac60` 的 [Engineering Organization Windows #40809379292](https://github.com/oudream/cx-visual-x3/actions/runs/40809379292) **success**，以及 [Module Center CPU RAW E2E #40809379183](https://github.com/oudream/cx-visual-x3/actions/runs/40809379183) **success**：修正测试脏工程释放后，正式MEM/MOC测量工程与旧2节点回归已在Windows执行，现有CPU工作流基本兼容。请勿把这两个成功扩大解释为随后`Area`具名MDS导出补丁、完整Studio/TestCenter UIA也已通过。
 
 同SHA [Studio S1 #40809379277](https://github.com/oudream/cx-visual-x3/actions/runs/40809379277) **failure**，实际日志停在“配置组合未使用可响应布局的统一1/2/3列容器”，属于并行配置呈现Owner/UI断言，与本次CPU输出类型断言并非同一失败点。本阶段不跨Owner擅改它。更新后的MOC具名Area输出（`6df4f808`～`5ec2ef62`）须以其独立固定SHA的Imaging/Runtime工作流重新验收。
+
+### 20.2 MDS跨步骤冻结门禁的实际修复
+
+增加`Area`具名MRK/MDS输出后，Windows [Module Center CPU RAW #40809580828](https://github.com/oudream/cx-visual-x3/actions/runs/40809580828) 实测失败，日志为`类型尚未注册安全复制/冻结能力：CxVisual.Professional.Vision.CxVisionInspectionResult`，说明原两节点返回值可直接返回，但Inspect→Measure跨步骤需要正式FDT对象安全复制，不能传播可变Region。修复复用已有`CxVisionDataFlow.CopyResult`深拷贝和容量估算，在`CxVisionThresholdProvider.ExecuteAsync`正式注册`FDTDataKind.Object`适配器；没有绕开MDS的冻结检查。提交：[92f5eb6](https://github.com/oudream/cx-visual-x3/commit/92f5eb60b63f169cee0b358dec686de1d4c29f96)、[f1b7e86](https://github.com/oudream/cx-visual-x3/commit/f1b7e86927f4efd927793f5f7d62a0af4776c8e1)、[d047c0c](https://github.com/oudream/cx-visual-x3/commit/d047c0c04f8fab7f61031f9a2477903bca2e7e58)；[564b5d7](https://github.com/oudream/cx-visual-x3/commit/564b5d7d9516646cd668f165c3cb96226b42eb89)修复测试失败路径时脏工程Dispose掩盖源异常的问题。
+
+对应修复的 [Imaging #40810246586](https://github.com/oudream/cx-visual-x3/actions/runs/40810246586)、[Engineering #40810246877](https://github.com/oudream/cx-visual-x3/actions/runs/40810246877) 和 [Runtime #40810246928](https://github.com/oudream/cx-visual-x3/actions/runs/40810246928) 初次登记queued/in_progress，不得以修复代码取代CI实际通过。
