@@ -21,6 +21,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             new Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl>();
 
         public event EventHandler<MPWVolumeVoxelInspectedEventArgs> VoxelInspected;
+        public event Action<FVOPhysicalSliceRectangle> PhysicalRoiSelected;
         public event Action<string> NavigationValidationFailed;
 
         public MPWVolumeFourViewWorkbenchControl(MPWImageViewerControl xy,
@@ -127,6 +128,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 ()=>Layout.ToggleSlot(slot));
             Grid.SetRow(nav,0);
             slot.Children.Add(nav);
+            slice.PhysicalRoiSelected+=roi=>{
+                var listener=PhysicalRoiSelected;
+                if(listener!=null)listener(roi);
+            };
             slice.VoxelInspected+=(s,e)=>{
                 var listener=VoxelInspected;
                 if(listener!=null)listener(this,e);
