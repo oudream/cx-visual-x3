@@ -121,6 +121,64 @@ namespace CxVisual.Studio
             };
         }
 
+        /// <summary>
+        /// Studio模块中心的唯一可复用编辑入口：先核对MOC声明/MRK运行绑定、
+        /// MHS生效参数与版本，再由原MOCFlowBuilder提交一笔MEM事务。
+        /// 自定义object输入仍须由PVC已存在的运行时强类型规则校验；
+        /// 未知的其它签名不允许绕过。
+        /// </summary>
+        internal static Guid AddStudioVisionCapabilityToFlow(
+            MEMEngineeringSession session,MEMContent content,
+            CxVisionThresholdProvider provider,string capabilityId)
+        {
+            if(session==null)throw new ArgumentNullException("session");
+            if(content==null)throw new ArgumentNullException("content");
+            if(provider==null)throw new ArgumentNullException("provider");
+            if(string.IsNullOrWhiteSpace(capabilityId))
+                throw new ArgumentException("必须提供专业能力ID","capabilityId");
+            var composition=CreateStudioVisionCapabilities(provider);
+            string version;
+            if(!composition.Resolver.TryGetCapabilityVersion(capabilityId,out version))
+                throw new InvalidOperationException("当前Provider版本无法确认");
+            var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
+                composition.Providers,composition.Resolver);
+            var capability=catalog.Find(capabilityId);
+            if(capability==null || !capability.RuntimeAvailable)
+                throw new InvalidOperationException("MOC当前无法解析此软件能力");
+            MRKResolvedCapability action;
+            if(!composition.Resolver.TryResolve(capabilityId,out action)||action==null)
+                throw new InvalidOperationException("当前Provider运行签名不可解析");
+            var proof=new MOCBindingContractInspector().Assess(
+                capability.Definition,action,new Dictionary<string,Type>{
+                    {CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        typeof(CxVisionInspectionResult)},
+                    {CxVisionBinaryThresholdProvider.MaskTypeId,
+                        typeof(FIMImageBuffer)}
+                });
+            string[] codes=proof.ReasonCodes.ToArray();
+            // 这两类专业数据通过现有PVC执行器动态检查，其他Unknown均拒绝。
+            bool guardedObjectInput=proof.Verdict==MDCVerdict.Unknown &&
+                codes.Length==1 &&
+                ((capabilityId==CxVisionMaskRegionsProvider.CapabilityId &&
+                  codes[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:ThresholdMask") ||
+                 (capabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId &&
+                  codes[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:Inspection"));
+            if(proof.Verdict!=MDCVerdict.Allowed && !guardedObjectInput)
+                throw new InvalidOperationException(
+                    "能力声明与执行端口不一致或待验证："+string.Join(", ",codes));
+            CxVisionInspectionOptions options=provider.CaptureInspectionOptions();
+            Guid created=Guid.Empty;
+            MOCFlowBuilder.Edit(session,content,builder=>{
+                created=builder.Step(capability.Definition);
+                if(capabilityId==CxVisionBinaryThresholdProvider.CapabilityId)
+                    builder.SetParameter(created,"Threshold",
+                        options.GrayThreshold.ToString(CultureInfo.InvariantCulture));
+                else if(capabilityId==CxVisionMaskRegionsProvider.CapabilityId)
+                    builder.SetParameter(created,"RuleVersion",composition.Regions.ReleaseVersion);
+            });
+            return created;
+        }
+
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
         { SafeStudioAction(()=>OpenStudioDocument("doc.modules")); }
 
@@ -223,61 +281,19 @@ namespace CxVisual.Studio
                         throw new InvalidOperationException("工程或配置Scope已切换，请重新读取Effective");
                     if(_logicRunning)throw new InvalidOperationException("运行中的主流程不可编辑");
                     // Re-check MHS version and permissions on the pinned Provider.
-                    var composition=CreateStudioVisionCapabilities(selectedProvider);
-                    string version;
-                    if(!composition.Resolver.TryGetCapabilityVersion(selected.Id,out version))
-                        throw new InvalidOperationException("当前Provider版本无法确认");
                     var page=_viewModel.ActivePage;
                     if(page==null)throw new InvalidOperationException("请先选择有效工程页面");
-                    var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
-                        composition.Providers.Concat(new IMOCCapabilityProvider[]{_simulation}),
-                        composition.Resolver);
-                    var capability=catalog.Find(selected.Id);
-                    if(capability==null||!capability.RuntimeAvailable)
-                        throw new InvalidOperationException("MOC当前无法解析此软件能力");
-                    // Editing must not persist an already inconsistent MPC/MRK signature.
-                    // MOC holds the static identity, MRK the callable CLR contract.
-                    // This is only a static check; Host authorization still applies.
-                    MRKResolvedCapability action;
-                    if(!composition.Resolver.TryResolve(selected.Id,out action)||action==null)
-                        throw new InvalidOperationException("当前Provider运行签名不可解析");
-                    var proof=new MOCBindingContractInspector().Assess(
-                        capability.Definition,action,new Dictionary<string,Type>{
-                            {CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
-                                typeof(CxVisionInspectionResult)},
-                            {CxVisionBinaryThresholdProvider.MaskTypeId,
-                                typeof(FIMImageBuffer)}
-                        });
-                    // MOC目前将专业组合端口声明为object。只允许现有PVC
-                    // 对这两个明确的输入实施运行时强校验；其它Unknown一律拒绝。
-                    string[] exceptions=proof.ReasonCodes.ToArray();
-                    bool guardedObjectInput=proof.Verdict==MDCVerdict.Unknown &&
-                        exceptions.Length==1 &&
-                        ((selected.Id==CxVisionMaskRegionsProvider.CapabilityId &&
-                          exceptions[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:ThresholdMask") ||
-                         (selected.Id==CxVisionAcceptedRegionMeasureProvider.CapabilityId &&
-                          exceptions[0]=="MDC_BIND_OBJECT_UNVERIFIED:INPUT:Inspection"));
-                    if(proof.Verdict!=MDCVerdict.Allowed && !guardedObjectInput)
-                        throw new InvalidOperationException(
-                            "能力声明与执行端口不一致或待验证："+
-                            string.Join(", ",proof.ReasonCodes));
-                    // 必填配置参数随已选MHS Effective快照一起写入MEM；
-                    // 真正像素/Region仍需工程师通过现有MOL流程图正式连接。
-                    MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
-                        builder=>{
-                            Guid step=builder.Step(capability.Definition);
-                            if(selected.Id==CxVisionBinaryThresholdProvider.CapabilityId)
-                                builder.SetParameter(step,"Threshold",
-                                    selectedProvider.CaptureInspectionOptions()
-                                        .GrayThreshold.ToString(CultureInfo.InvariantCulture));
-                            if(selected.Id==CxVisionMaskRegionsProvider.CapabilityId)
-                                builder.SetParameter(step,"RuleVersion",
-                                    composition.Regions.ReleaseVersion);
-                        });
+                    Guid inserted=AddStudioVisionCapabilityToFlow(
+                        _viewModel.ProjectSession,page.RootContent,selectedProvider,selected.Id);
+                    string version;
+                    if(!selectedProvider.TryGetCapabilityVersion(
+                        CxVisionThresholdProvider.CapabilityId,out version))
+                        throw new InvalidOperationException("MHS配置版本已经变化");
                     RefreshScene();
                     OpenStudioDocument("doc.flow");
                     effectiveStatus.Text="已加入当前MEM主流程："+selected.Id+
-                        " / "+version+"。这是未连线的能力节点，需完成输入绑定、MOC构建与MRK授权后才能执行。";
+                        "；Block="+inserted.ToString("N")+" / 生效配置 "+version+
+                        "。专业参数已锁定，图像/Mask/Region仍需连线、MOC构建和MRK授权。";
                 }
                 catch(UnauthorizedAccessException) {
                     effectiveStatus.Text="配置读取权限已撤销，不允许新增该版本的流程能力。";
