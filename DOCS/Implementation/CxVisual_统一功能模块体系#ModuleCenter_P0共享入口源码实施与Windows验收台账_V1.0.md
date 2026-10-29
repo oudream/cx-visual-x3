@@ -219,3 +219,42 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 - [TestCenter Windows .NET48 #40667201278](https://github.com/oudream/cx-visual-x3/actions/runs/40667201278)，提交 `1535a2ec49cb96662ce5b5f24e9bf1668bb5ffc7`：**Success**。全解决方案Windows x64 Debug Rebuild、原TestCenter WPF界面/UIA、Connector PointTable/DataMapping、MDS生命周期、NUnit及Native Worker、故障/重复运行/历史报告和证据归档均返回成功。此Run覆盖了Compute测试面板及运行约束所在版本的完整TestCenter回归。
 - 同一固定SHA [Compute独立真实WPF UIA #40667201069](https://github.com/oudream/cx-visual-x3/actions/runs/40667201069)：**Success**，报告明确包含不同MRK FlowId的两次真实RAW检测、阈值命中4像素、缺陷区域1和配置Effective版本；不是模拟执行或直接调用业务函数代替按钮的验证。
 - **G1完成范围**：TestCenter Compute CPU软件人工可用的“配置→输入→执行→缺陷明细→Trace→重复/错误输入”闭环，且全量TestCenter原有回归未被破坏。禁止把这两次G1成功推导为Driver硬件HIL、其他四类模块专业执行、跨进程权限或工业G2/G3通过。
+
+## 16. Simulation与Service专业G1真实界面闭环（2026-10-29）
+
+### Simulation：PSM + MRK 真实单步
+
+- [PSMAxisLinearModel `abe880d`](https://github.com/oudream/cx-visual-x3/commit/abe880d51ef7ea29a39998397cb247e4ac20525e) 在原 Professional.Simulation 增加确定性虚拟轴：模型状态、速度/限位、故障注入；仿真时间仍由正式 PSMSimulationClock 持有，不是物理运动轴驱动。
+- [TestCenter UI `267eac1`](https://github.com/oudream/cx-visual-x3/commit/267eac1a914c986f176b8080af8a4d66a3f42987) 及 [统一模块分页 `ae22f75`](https://github.com/oudream/cx-visual-x3/commit/ae22f758313cab11a5a9d8047fba2bd93588b5af)：正式MHS Effective、PSMSimulationModule、初始化/Reset、MRKExecutionEngine按用户点击执行单步，显示模型位置/时钟、FlowId/记录；故障不得推进状态。
+- [独立真实WPF UIA #40807801093](https://github.com/oudream/cx-visual-x3/actions/runs/40807801093)：**Success**，真实控件/正式FCM、单步两次并校验不同FlowId与位置/时间、故障阻止推进、Reset及重新初始化恢复。
+- **使用路径**：TestCenter → 专有测试 → 模块测试 → Simulation → 虚拟轴MRK单步；正式FCM设 ModelId=axis、ProviderTypeId=simulation.axis.linear、CapabilityIds含simulation.axis.step、Mode=Step并生效。只支持显式Step；Realtime/Accelerated/Replay未在此作为已实现执行模式。
+
+### Service：MLC正式生命周期 + 真实本地请求
+
+- [本地服务 `b7372b7`](https://github.com/oudream/cx-visual-x3/commit/b7372b70c3b9bcdd799a07df4382c101724cda9c)、[统一模块页 `d150d3d`](https://github.com/oudream/cx-visual-x3/commit/d150d3d6718cb29ecfe6d0166e227d830d667c61) 使用原 MLCServiceModuleBase Start/Stop/Ready，由测试实现注册/卸载真实进程内请求处理器，按正式MHS Effective固定ProviderTypeId/CapabilityIds；最大并发额度复用正式配置。响应含真实大写转换、SHA256、Sequence与UTC，重复RequestId同内容幂等，变更内容拒绝。
+- [服务停止/重启修复 `aabe580`](https://github.com/oudream/cx-visual-x3/commit/aabe5804493b7c393964a02b70e6ba6f72086ea8)：停止校验请求已结算、释放并发资源，允许重新Start重新注册，不假报Ready。
+- [独立真实WPF UIA #40808529672](https://github.com/oudream/cx-visual-x3/actions/runs/40808529672)：**Success**，正式模块读取、Start Ready、响应/幂等/内容冲突、Stop后拒绝、Restart恢复及WPF结果表完整测试。
+- **使用路径**：TestCenter → 专有测试 → 模块测试 → Service → 本地服务请求。FCM设ProviderTypeId=testcenter.service.local.echo，CapabilityIds含service.local.echo，Enabled=true，生效后装配、启动、提交本地请求、查看结果、停止、重新启动。明确这是**本机进程内G1**，并非对外HTTP/RPC、MES/ERP系统或生产鉴权验收。
+
+### 不可跨越的Owner边界
+
+这两类工作台均复用原MHS正式配置、MFM描述、PSM专业状态、MRK或MLC正式生命周期；TestCenter及MPW只负责人工意图与结果展示。无第二套ModuleCatalog、Host、Scheduler、MDS或流程编排器。虚拟设备与本地回显软件测试不作为工业HIL、物理联锁或可靠性长稳证据。
+
+## 17. Connector通道规约软件测试工作台（待最终独立Windows验证）
+
+- [真实Connector测试页 `e6f89e6`](https://github.com/oudream/cx-visual-x3/commit/e6f89e6748a9deeb64a896704ec879ba9f5a04a6)、[统一模块分页 `f7886c5`](https://github.com/oudream/cx-visual-x3/commit/f7886c57b5a34af7e0822c9c367ca97675f4a286)：从正式MHS Effective读取严格1 Channel/1 Protocol，装配原MCNConnectorModule、FTRVirtualChannel以及MPALengthFrameProtocol，实际发送CRC长度帧并从虚拟Peer解码回传；记录Session、完成次数、故意丢响应超时及Stop/Restart。
+- [Connector UIA `aeea460`](https://github.com/oudream/cx-visual-x3/commit/aeea4608d4f3c627a04aef345e694bbfa355ed5b)：通过真实WPF Invoke/Value/Toggle控件验证未Start拒绝、成功回环、故障超时、恢复、Stop后的拒绝与重启。不以发送ACK代表真实设备业务完成。
+- [独立Windows验收工作流](https://github.com/oudream/cx-visual-x3/actions/workflows/testcenter-connector-loop-ui-windows.yml)：本段写入时**未核实最终PASS**，须按固定SHA检查真实Workflows和UIA报告，不提前列已验收。
+- **使用路径**：TestCenter → 专有测试 → 模块测试 → Connector → Virtual规约回环。正式FCM设置Channel=Virtual、Protocol=LengthFrame，保存/生效；运行仅为本机软件Peer测试，不支持Modbus TCP在Virtual Channel下伪装真实设备。PointTable/DataMapping可在原正式配置页编辑和检验，但本专项不宣称其运行数据Owner完整贯通。
+
+## 18. 五类模块真实闭环状态与剩余不可替代项
+
+| 模块 | 已验证的软件能力 | 尚未完成 |
+|---|---|---|
+| Compute | CPU RAW/MHS Effective/MEM/MOC/MRK、真实结果和Trace、WPF UIA | RAW/结果持久化自动重放、通用GPU/AI/CT等专业Provider全类、工业数据精度/性能 |
+| Simulation | 虚拟轴Step经MRK推进，虚拟时间、故障拒绝/恢复，WPF UIA | 实时/加速/回放、多设备场景、确定性快照等全规格 |
+| Service | MLC进程内生命周期、真实请求/响应/幂等，WPF UIA | HTTP/RPC部署、外部MES/ERP、业务认证及长期服务验收 |
+| Connector | 正式MHS/MCN/FTR/MPA软件回环代码及UIA测试 | 当前专项最终PASS待查；真实物理Channel/PointTable/MDS完整贯通及HIL |
+| Driver | 五类FCM/MFM配置、Driver接口声明可查 | **专业SDK实机控制与采集、设备完成语义、HIL、安全联锁和长稳**；无实机不能宣称达成 |
+
+**工作原则**：不把“有页面、编译通过、Virtual回应或流程候选”误写成工业设备执行完成。G1专项与工业G2/G3必须分别取证。
