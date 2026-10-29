@@ -171,6 +171,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Math.Abs(recomputed.Plane.PointMm.Z-restored.Plane.PointMm.Z)<1e-10 &&
                     recomputed.Mesh.Mesh.TriangleIndices.SequenceEqual(restored.Mesh.Mesh.TriangleIndices),
                     "复算形成新结果身份且几何量值一致");
+                var continued=restored.RecomputeWithSliceRectangle(folder,sliceRoi,.49,.51,
+                    CancellationToken.None);
+                Check(continued.Plane.ResultId!=restored.Plane.ResultId&&
+                    continued.Source.Signature==restored.Source.Signature&&
+                    continued.RoiSignature==restored.RoiSignature&&
+                    continued.ParameterSignature==restored.ParameterSignature&&
+                    continued.Plane.SampleCount==9,
+                    "跨MEM工程Frame对象重开后仍能从原物理切片ROI继续拟合并保留原值参数");
+                var wrongFrame=new FVOVolumeSpatialFrame(1,1,1,21,30,40,
+                    new double[]{1,0,0,0,1,0,0,0,1},true);
+                using(var wrongVolume=source.LoadVolume(folder,CancellationToken.None))
+                {
+                    wrongVolume.SetSpatialFrame(wrongFrame);
+                    var wrongRoi=FVOSliceImageBuilder.RectangleToPhysical(wrongVolume,6,6,6,
+                        FVOSlicePlane.XY,5,5,6,6);
+                    Reject<InvalidOperationException>(()=>restored.RecomputeWithSliceRectangle(
+                        folder,wrongRoi,.49,.51,CancellationToken.None));
+                }
+                Reject<OperationCanceledException>(()=>restored.RecomputeWithSliceRectangle(
+                    folder,sliceRoi,.49,.51,new CancellationToken(true)));
                 var editedRoi=restored.RecomputeWithMeshRoi(folder,
                     restored.SelectedVertexIndices.Reverse().ToArray(),CancellationToken.None);
                 Check(editedRoi.Plane.ResultId!=restored.Plane.ResultId&&
