@@ -240,7 +240,7 @@ namespace CxVisual.Professional.Vision
             bool? flowPassed = null, string planFingerprint = null,
             string capabilityVersion = null, DateTime? completedUtc = null,
             long? acceptedRegionPixelArea = null,
-            FIMImageBuffer enhancedImage = null)
+            FIMImageBuffer enhancedImage = null, FIMImageBuffer thresholdMask = null)
         {
             if (runId == Guid.Empty) throw new ArgumentException("必须有真实FlowId", "runId");
             if (string.IsNullOrWhiteSpace(sourceId))
@@ -294,6 +294,17 @@ namespace CxVisual.Professional.Vision
                 values.Add(new CxVisionResultItem(runId,source,
                     "EnhancedImage","EnhancedPixels",CxVisionResultKind.Image,
                     "FIM中值滤波增强图",null,image:enhancedImage));
+            }
+            if (thresholdMask != null)
+            {
+                if (thresholdMask.Width != inspection.Width ||
+                    thresholdMask.Height != inspection.Height ||
+                    thresholdMask.PixelFormat != FIMPixelFormat.Gray8)
+                    throw new ArgumentException("阈值Mask格式或尺寸与专业结果不匹配",
+                        "thresholdMask");
+                values.Add(new CxVisionResultItem(runId, source,
+                    "ThresholdMask", "ThresholdMask", CxVisionResultKind.Mask,
+                    "独立阈值分割Mask（区域面积筛选前）", null, image: thresholdMask));
             }
             if (graySum.HasValue)
                 values.Add(new CxVisionResultItem(runId, source, "GraySum",
