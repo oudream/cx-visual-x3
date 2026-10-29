@@ -261,3 +261,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **当前真实GL单独通过**：`--volume-gpu-smoke`退出0，日志`3.3.0 NVIDIA 576.02; replay=3; elapsedMs=762`。此入口实际检查原生鼠标、Raymarch像素、FGE Mesh上传像素差、两VBO独立清理、MVI绑定、样式零重传及隐藏/删除释放。截图`gpu-raymarch.png`为实际GL framebuffer。透明混合完整顺序、拾取和工业G5未据此验收。
 - **需求原文补齐**：用户目标附件完整R01～R90已归档到架构Assets，原附件SHA256及格式去转义说明保留；R5附录C回填原先缺失36条，需求原文存在性和实现/验收分离。唯一总体架构仍是原V2.0 R5，没有新建V3总纲。
 - 后续执行从[新聊天续接与大工作包交接](CxVisual_通用三维视觉工作台%23新聊天续接与大工作包交接_20261029.md)进入：先核实本提交CI和关闭WPF截图门禁，再承接A/B包现有成果，推进交互ROI→专业结果→组合显示→保存重开的完整业务包；不重复现有圆柱、多Case或多Mesh。完整26能力/90条要求仍未完成。
+
+### 10.17 固定CI、Studio断言修正及本机WPF重复验证
+
+- `5a8a9eec`实际10个工作流9成功：CT3D B [40876838837](https://github.com/oudream/cx-visual-x3/actions/runs/40876838837)的结构/DAG、Release、Headless（明确含Schema1 PASS）、真实WPF及截图、Debug全部成功；TestCenter `40876838827`、Decision `40876838889`、Runtime `40876838810`、Engineering `40876838787`均成功。Studio S1 `40876838916`失败不掩盖，实际编译成功，失败是旧配置三卡断言。
+- Studio默认现有Vision、CT3D与MDS生命周期三项配置，测试另注册Automation后应为四卡。修正旧`Children.Count==3`为四卡，并额外确认真实MDS Editor存在，仍要求1～3列响应式容器，不降低为任意数量。完整本机`--shell-self-test`退出0，**61 PASS、0 FAIL**，`studio-self-test.log`已记录；生产配置注册行为未变。
+- 本机三维PNG曾在ApplicationIdle延后执行后一次通过，整窗178931字节、四视图135806字节，已查看实际切片/十字线/设置内容；但**重复验证仍出现全黑**，显式等待ContentRendered也未解决。不能据这一次通过宣称根因已定位或稳定修复；所有临时App启动/首帧等待代码均已撤回，保留原像素门禁。本机渲染/会话因素仍待诊断，与上列固定SHA CI真实G3成功分别记录，亦不替代独立GL framebuffer门禁。
+- 本轮正式修改只修正Studio已有配置贡献的测试预期，新提交Windows CI另按SHA查询。R5全部26能力/90需求、工业精度、完整ROI/Studio/CAD/动画仍需后续真实交付，不能据收敛修复标记平台完成。

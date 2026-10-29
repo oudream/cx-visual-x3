@@ -1949,7 +1949,9 @@ namespace CxVisual.Studio
                     Assert(root!=null&&
                         exists(root,typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>))&&
                         exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
-                        exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>))&&
+                        exists(root,typeof(MPWConfigEditorControl<
+                            CxVisual.Mechanism.Data.RuntimeData.MDSDataLifecycleEngineeringOptions>)),
                         "第三个专业并未通过注册接入同一个真实配置页面");
                     // WPF AvalonDock document content can be hosted through a
                     // ControlTemplate. LogicalTreeHelper alone misses visual-only
@@ -1969,7 +1971,9 @@ namespace CxVisual.Studio
                             .OfType<System.Windows.DependencyObject>())visit(child);
                     };
                     visit(root);
-                    Assert(panels.Any(g=>g.Children.Count==3&&g.Columns>=1&&g.Columns<=3),
+                    // 默认已有Vision、CT3D和MDS生命周期三个Section；
+                    // 再注册Automation后应为四张卡，列数仍按可用宽度限制在1~3。
+                    Assert(panels.Any(g=>g.Children.Count==4&&g.Columns>=1&&g.Columns<=3),
                         "配置组合未使用可响应布局的统一1/2/3列容器");
                     string rootDir=System.IO.Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
