@@ -76,8 +76,9 @@ namespace CxVisual.Professional.Vision
                 throw new ArgumentException("vision.segment.raw_size_mismatch");
             var image=new FIMImageBuffer(w,h,
                 bpp==1?FIMPixelFormat.Gray8:FIMPixelFormat.Gray16,source);
-            FIMImageBuffer mask=FIMImageOperations.Threshold(image,_threshold,
-                bpp==1?255:65535);
+            FIMImageBuffer mask=FIMImageOperations.ThresholdInRegion(image,_threshold,
+                bpp==1?255:65535,FIMPixelRegion.Entire(image),
+                null,token).Mask;
             token.ThrowIfCancellationRequested();
             context.Data.Adapters.Register<FIMImageBuffer>(null,immutable:true,
                 kind:FDTDataKind.Image,
