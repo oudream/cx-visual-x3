@@ -18,6 +18,7 @@ namespace CxVisual.TestCenter.UI
         private double _planePlanarity=0.08;
         private long _caseRequestEpoch;
         private string _professionalProjectPath,_professionalStoreToken;
+        private int _professionalCaseIndex;
         private CT3DAssetReference _professionalSource;
         public CT3DAnalysisCase LastOpenedProfessionalCase {get;private set;}
         private bool CanSaveProfessionalCase {get{return _volume!=null&&_volume.HasRawSource&&
@@ -57,6 +58,7 @@ namespace CxVisual.TestCenter.UI
             var priorSource=_professionalSource;
             var roi=_planeRoi==null?null:(int[])_planeRoi.Clone();double ratio=_planePlanarity;
             string savedToken=null;
+            int capturedCaseIndex=_professionalCaseIndex;
             var saved=await Task.Run(()=>
             {
                 var source=CT3DAssetReference.Import(root,raw,info,frame,
@@ -87,9 +89,17 @@ namespace CxVisual.TestCenter.UI
                 {
                     if(expectedStore!=null&&engineering.StoreToken!=expectedStore)
                         throw new MEMStoreConflictException(full);
-                    var owner=expectedStore==null?engineering.AddPage("三维分析").RootContent:
-                        engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
-                        .Single(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId));
+                    MEMContent owner;
+                    if(expectedStore==null)owner=engineering.AddPage("三维分析").RootContent;
+                    else
+                    {
+                        var owners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                            .Where(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId))
+                            .ToArray();
+                        if(capturedCaseIndex<0||capturedCaseIndex>=owners.Length)
+                            throw new InvalidDataException("当前三维Case索引在已保存工程中不存在。");
+                        owner=owners[capturedCaseIndex];
+                    }
                     CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,root,analysis,cancellation);
                     cancellation.ThrowIfCancellationRequested();
                     engineering.SaveAsAsync(full,cancellation).GetAwaiter().GetResult();
@@ -111,12 +121,20 @@ namespace CxVisual.TestCenter.UI
                 if(restore)RestoreProfessionalCase(saved);
                 _professionalSource=saved.Source;
                 _professionalProjectPath=full;_professionalStoreToken=savedToken;
+                _professionalCaseIndex=expectedStore==null?0:capturedCaseIndex;
             }
             _status.Text=(restore?"专业案例已保存（工业不确定度未评定）：":
                 "专业快照已保存；当前视图已改变，未覆盖当前分析：")+full;
         }
 
-        public async Task OpenProfessionalCaseAsync(string projectFile,CancellationToken cancellation)
+        public Task OpenProfessionalCaseAsync(string projectFile,CancellationToken cancellation)
+        {
+            return OpenProfessionalCaseAsync(projectFile,0,cancellation);
+        }
+
+        /// <summary>选择同一MEM工程内的指定专业Case；其余Case保持原工程事实不丢失。</summary>
+        public async Task OpenProfessionalCaseAsync(string projectFile,int caseIndex,
+            CancellationToken cancellation)
         {
             Dispatcher.VerifyAccess();
             string full=Path.GetFullPath(projectFile),root=Path.GetDirectoryName(full);
@@ -131,8 +149,9 @@ namespace CxVisual.TestCenter.UI
                     {
                         var owners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
                             .Where(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId)).ToArray();
-                        if(owners.Length!=1)throw new InvalidDataException("该入口需要恰好一个三维分析案例。");
-                        var value=CT3DAnalysisPersistence.Open(engineering,engineering.GetAddress(owners[0]),root,cancellation);
+                        if(caseIndex<0||caseIndex>=owners.Length)
+                            throw new ArgumentOutOfRangeException("caseIndex","三维案例索引不存在。");
+                        var value=CT3DAnalysisPersistence.Open(engineering,engineering.GetAddress(owners[caseIndex]),root,cancellation);
                         loaded=value.Source.LoadVolume(root,cancellation);
                         openedToken=engineering.StoreToken;
                         return value;
@@ -144,6 +163,7 @@ namespace CxVisual.TestCenter.UI
                 LoadVolume(loaded);loaded=null;
                 RestoreProfessionalCase(analysis);
                 _professionalProjectPath=full;_professionalStoreToken=openedToken;
+                _professionalCaseIndex=caseIndex;
             }
             finally{if(loaded!=null)loaded.Dispose();}
         }
