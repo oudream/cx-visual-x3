@@ -126,7 +126,7 @@ func (server *HttpServer) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Server.Shutdown(ctx); err != nil {
-		server.Logger.Printf("ERROR, HttpServer Forced To Shutdown: ", err)
+		server.Logger.Printf("ERROR, HttpServer Forced To Shutdown: %v", err)
 	}
 	server.Logger.Println("HttpServer Shutting Down complete")
 }

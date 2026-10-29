@@ -117,6 +117,6 @@ func checkSysSetting() error {
 		influxdbReport.Status == program.IOStatusSuccess {
 		return nil
 	}
-	return fmt.Errorf("load mqtt.status[%d] mqtt.status[%d] mqtt.status[%d] mqtt.status[%d]",
+	return fmt.Errorf("load mqtt.status[%d] redis.status[%d] influxdb.status[%d]",
 		mqttReport.Status, redisReport.Status, influxdbReport.Status)
 }
