@@ -28,11 +28,16 @@
   <Grid x:Name="ViewportRoot" Grid.Column="0" ClipToBounds="True" Background="#1D2430"
    MouseLeftButtonDown="OnMouseDown" MouseLeftButtonUp="OnMouseUp" MouseMove="OnMouseMove"
    MouseWheel="OnMouseWheel" MouseLeave="OnMouseLeave" SizeChanged="OnViewportSizeChanged">
-   <Image x:Name="PixelImage" Stretch="None" HorizontalAlignment="Left"
-     VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"
-     SnapsToDevicePixels="True" IsHitTestVisible="False">
-    <Image.RenderTransform><MatrixTransform x:Name="ImageTransform"/></Image.RenderTransform>
-   </Image>
+   <!-- 大图原生Image.Width/Height不得扩大Grid的DesiredSize，
+        否则ViewportRoot会因6144x3072图片参与布局而裁剪显示。
+        绝对定位Canvas不参与像素尺寸Measure，缩放仍由MVI Matrix负责。 -->
+   <Canvas IsHitTestVisible="False" ClipToBounds="False">
+    <Image x:Name="PixelImage" Stretch="None" HorizontalAlignment="Left"
+      VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"
+      SnapsToDevicePixels="True" IsHitTestVisible="False">
+     <Image.RenderTransform><MatrixTransform x:Name="ImageTransform"/></Image.RenderTransform>
+    </Image>
+   </Canvas>
    <TextBlock x:Name="OriginalPaneLabel" Text="原图" Foreground="#E6F1FD" Background="#99162231"
       HorizontalAlignment="Left" VerticalAlignment="Top" Padding="7,3" Margin="5"
       Visibility="Collapsed" IsHitTestVisible="False"/>
@@ -57,11 +62,13 @@
     MouseLeftButtonDown="OnSecondaryMouseDown" MouseLeftButtonUp="OnSecondaryMouseUp"
     MouseMove="OnSecondaryMouseMove" MouseWheel="OnSecondaryMouseWheel"
     SizeChanged="OnSecondaryViewportSizeChanged">
-    <Image x:Name="SecondaryPixelImage" Stretch="None" HorizontalAlignment="Left"
-     VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"
-     SnapsToDevicePixels="True" IsHitTestVisible="False">
-     <Image.RenderTransform><MatrixTransform x:Name="SecondaryImageTransform"/></Image.RenderTransform>
-    </Image>
+    <Canvas IsHitTestVisible="False" ClipToBounds="False">
+     <Image x:Name="SecondaryPixelImage" Stretch="None" HorizontalAlignment="Left"
+      VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"
+      SnapsToDevicePixels="True" IsHitTestVisible="False">
+      <Image.RenderTransform><MatrixTransform x:Name="SecondaryImageTransform"/></Image.RenderTransform>
+     </Image>
+    </Canvas>
     <Canvas x:Name="SecondaryOverlayCanvas" IsHitTestVisible="False"/>
     <Canvas IsHitTestVisible="False">
      <Polyline x:Name="SecondaryDraftPolyline" Stroke="#FFFFD157" StrokeThickness="1.5"
