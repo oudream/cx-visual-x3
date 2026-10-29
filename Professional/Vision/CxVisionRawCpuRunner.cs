@@ -210,7 +210,8 @@ namespace CxVisual.Professional.Vision
                     var result=await flow.Completion.ConfigureAwait(false);
                     if(result.State!=MRKFlowState.Completed)
                         throw new InvalidOperationException("MRK未完成："+result.State+
-                            (result.Error==null?"":" / "+result.Error.Message));
+                            (result.Error==null?"":" / "+result.Error.ToString()),
+                            result.Error);
                     object raw;
                     if(!result.Results.TryGetValue("w"+inspect.ToString("N"),out raw))
                         throw new InvalidOperationException("MRK结果缺失");
