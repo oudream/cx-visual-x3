@@ -916,6 +916,26 @@ namespace CxVisual.TestCenter.UI
                     Check(frame.Scene.AdditionalMeshCount==0&&
                         frame.Scene.AdditionalMeshTriangleCount==0,
                         "多对象显示资源清理必须完整释放全部附加几何");
+                    var multiScene=new MVI3DSceneState();
+                    Guid multiMesh=multiScene.Add(MVI3DSceneKind.Mesh,"ct3d:mesh:extra",1);
+                    Guid multiCad=multiScene.Add(MVI3DSceneKind.Cad,"cad:assembly:extra",1);
+                    frame.Scene.BindAdditionalMeshes(multiScene,item=>previewMesh);
+                    Check(frame.Scene.AdditionalMeshCount==2,
+                        "真实WPF场景须从MVI同时加载Mesh与CAD专业显示对象");
+                    multiScene.SetVisibility(multiCad,false);
+                    Check(frame.Scene.AdditionalMeshCount==1&&
+                        frame.Scene.AdditionalMeshTriangleCount==previewMesh.TriangleCount,
+                        "MVI隐藏CAD必须从WPF Viewport3D释放该显示实例");
+                    multiScene.SetOpacity(multiMesh,.28);
+                    Check(frame.Scene.AdditionalMeshCount==1,
+                        "MVI透明度更新不得创建重复Mesh显示实例");
+                    multiScene.Remove(multiMesh);
+                    Check(frame.Scene.AdditionalMeshCount==0,
+                        "MVI删除专业引用须卸载WPF Mesh");
+                    frame.Scene.BindAdditionalMeshes(null,null);
+                    Check(frame.Scene.AdditionalMeshCount==0,
+                        "解绑MVI会话必须解除引用与显示资源");
+
                     FGEMeshRayHit picked;
                     var bounds=meshResult.Mesh;
                     double rayX=(bounds.BoundsMin.X+bounds.BoundsMax.X)*.5;
