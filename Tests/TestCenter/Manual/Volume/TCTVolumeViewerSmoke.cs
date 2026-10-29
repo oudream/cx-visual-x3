@@ -818,6 +818,18 @@ namespace CxVisual.TestCenter.UI
                               frame.SurfaceDisplayedPointCount,
                             "有真实GPU时Surface也必须提交到GL framebuffer");
                     Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
+                    var scene=frame.ViewState.Scene3D;
+                    Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
+                    scene.SetOrganization(sphereSurface,"surface","measurement-session");
+                    scene.SetOrganization(selectedSurface,"analysis","measurement-session");
+                    long groupedRevision=scene.Revision;
+                    scene.SetGroupVisibility("measurement-session",false);
+                    Check(scene.Revision==groupedRevision+1&&scene.SelectedId==null&&
+                        frame.SurfaceDisplayedPointCount==0,
+                        "MVI整组隐藏应即时清除真实WPF Surface叠加及测量选择");
+                    scene.SetGroupVisibility("measurement-session",true);
+                    Check(frame.SurfaceDisplayedPointCount>100,
+                        "整组恢复应重用专业Surface而不是重新提取RAW");
                     frame.ViewState.Scene3D.SetVisibility(selectedSurface,false);
                     Check(frame.SurfaceDisplayedPointCount==0 &&
                           (!frame.IsGpuVolumeRendering ||
