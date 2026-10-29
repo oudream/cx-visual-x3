@@ -948,6 +948,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             x.Target.BlockId==repeated.InspectBlockId).Id;
                         MEMContent editable=reopened.Find(contentId) as MEMContent;
                         Check(editable!=null,"R1重开Content必须可供原MOC编辑器编辑");
+                        MOCFlowBuilder.Edit(reopened,editable,
+                            b=>b.RemoveExposedOutput("ThresholdMask"));
+                        int missingOutputRevision=reopened.Revision;
+                        Reject<InvalidOperationException>(()=>
+                            CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                reopened,contentId,settings,151,input,
+                                "r1/camera/frame-001",0,CancellationToken.None)
+                                    .GetAwaiter().GetResult(),
+                            "R1结果出口被删除后不得再冒充原MOC正式定义");
+                        Check(reopened.Revision==missingOutputRevision,
+                            "R1缺少结果出口时重跑不能修改工程");
+                        MOCFlowBuilder.Edit(reopened,editable,
+                            b=>b.ExposeOutput("ThresholdMask",
+                                repeated.SegmentBlockId,"ThresholdMask"));
                         MOCFlowBuilder.Edit(reopened,editable,b=>b.Disconnect(toBreak));
                         int editedRevision=reopened.Revision;
                         Reject<InvalidOperationException>(()=>
