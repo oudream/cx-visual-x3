@@ -334,6 +334,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         n.Kind==MEMNodeKind.Content);
                     MOLWiringDefinition wiring=MOLWiringCodec.Get(content);
                     Check(wiring!=null && wiring.Blocks.Count==3 &&
+                        wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea") &&
                         wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==2 &&
                         wiring.Blocks.Any(x=>x.Id==result.MeasureBlockId &&
                             x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId),
