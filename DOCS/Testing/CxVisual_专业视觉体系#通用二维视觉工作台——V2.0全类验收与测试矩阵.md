@@ -496,3 +496,21 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | STD-FLOW-07 | 旧MHS Effective变更或撤权时模板在创建工程页前拒绝，`MEMRevision`不增加 | G2反证已提交，G4待跑 |
 
 **真实门禁**：`studio-shell-windows.yml`中`--shell-self-test`覆盖模块中心WPF；`module-center-cpu-windows.yml`中`--module-center-cpu-self-test`运行上述真实MRK、保存重开与配置失效测试，另须全工程Windows Release/x64编译及ArchitectureSmoke相关回归。没有对应最新SHA运行日志之前，不得宣称G3/G4/G5成功。
+
+## 30. V2D图像无损RAW写入与工作台导出专项（2026-10-29）
+
+**源代码**：`Foundation/Imaging/IO/FIMRawImageWriter.cs`、`FIMImagingTests.VerifyRawExport`、`TCTManualImageViewerFrame.ExportActiveRawFile`及`TCTImageViewerSmoke`导出回环。全部为已编写自动测试，**未取得固定最新master SHA下Windows实际执行结果**。
+
+| 测试编号 | 正反场景与必须验证的真实数值 | 证据 |
+|---|---|---|
+| RAW-W-01 | Gray16宽2高2 Stride6原图紧排输出8字节，Reader回读0x1234/0xBC9A，源图仍不可变 | G2已写、G4待执行 |
+| RAW-W-02 | 选择保留Stride/大端后输出12字节，填充0xAA/BB、0xCC/DD原样保持；Reader大端回读逐字节与源帧一致 | G2已写、G4待执行 |
+| RAW-W-03 | Float32 1.0大端为3F800000，Reader回读1.0；Bgr24常规导出不偷换RGB顺序 | G2已写、G4待执行 |
+| RAW-W-04 | Bgr24大端未经明确逐通道格式声明拒绝；不可写Stream、非法RAW文件状态有明确异常 | G2已写、G4待执行 |
+| RAW-W-05 | 已取消的写入不产生数据；默认拒绝覆盖原文件并保留3字节旧内容，明确允许覆盖时以原子替换输出正确新图 | G2已写、G4待执行 |
+| RAW-W-06 | 取消文件覆盖不破坏目标RAW，不留下同目录tmp残留，写入输出流不由Writer擅自Dispose | G2已写、G4待执行 |
+| RAW-W-07 | 真实WPF输出页找到`TCT.Imaging.ExportActiveRaw`，原Gray16 4x4导出逐字节回环，像素(3,3)=16 | G2已写、G5待执行 |
+| RAW-W-08 | 切换到Result后导出的是Result像素(3,3)=0，原图仍为16；PNG视口截图与RAW原像素按钮彼此独立 | G2已写、G5待执行 |
+
+**门禁**：Windows Release/x64 .NET Framework4.8（FIM编译项必须包含`FIMRawImageWriter.cs`）、`CxVisual.Tests.ArchitectureSmoke.exe --imaging`与默认回归、`CxVisual.TestCenter.exe --imaging-viewer-smoke`。512MiB边界、大尺寸实机磁盘吞吐、故障注入与Windows原子替换的故障恢复需另行性能/资源测试；硬件HIL仍未验证。没有匹配提交的实际CI结论，不登记G3/G4/G5通过。
+
