@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Professional.Vision
@@ -124,6 +125,37 @@ namespace CxVisual.Professional.Vision
                 }
             }
             finally { await engine.StopAsync().ConfigureAwait(false); }
+        }
+
+        /// <summary>
+        /// 通用二维图窗/SDK共用拆分式专业预览：FIM原图→临时MEM定义→
+        /// MOC正式编译与版本发布→MRK/MDS执行→RunSummary。
+        /// 无RAW文件中转；本API不把预览工程持久化，也不替代生产发布审核。
+        /// </summary>
+        public static async Task<CxVisionRunSummary> RunSeparatedProjectPreviewAsync(
+            FIMImageBuffer image,CxVisionInspectionOptions options,string sourceId,
+            int medianRadius,CancellationToken cancellation)
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(options==null)throw new ArgumentNullException("options");
+            if(string.IsNullOrWhiteSpace(sourceId))
+                throw new ArgumentException("来源身份不能为空","sourceId");
+            cancellation.ThrowIfCancellationRequested();
+            using(var project=MEMEngineering.Create("二维视觉拆分式预览"))
+            {
+                try
+                {
+                    CxVisionCpuRun run=await CxVisionRawCpuRunner
+                        .ExecuteSeparatedMeasuredImageAsync(project,options,1,
+                            image,sourceId,medianRadius,cancellation).ConfigureAwait(false);
+                    cancellation.ThrowIfCancellationRequested();
+                    return run.Evidence;
+                }
+                finally
+                {
+                    project.Close(true);
+                }
+            }
         }
 
         private static MRKExecutionPlan BuildCpuInspectionPlan(
