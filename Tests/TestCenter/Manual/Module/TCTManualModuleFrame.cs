@@ -34,6 +34,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTSimulationStepPanel _simulationPanel;
         private readonly TCTServiceRequestPanel _servicePanel;
         private readonly TCTConnectorLoopPanel _connectorPanel;
+        private readonly TCTDriverReadinessPanel _driverPanel;
         private ContentControl _editorHost {get{return _center.EditorHost;}}
         private TabControl _pages {get{return _center.Pages;}}
         private Action<string[], string[]> _project;
@@ -107,6 +108,16 @@ namespace CxVisual.TestCenter.UI
                         "TCT.Module.Page.service-requests");
                     _pages.Items.Add(tab);
                 }
+                if(kind==MFMModuleKind.Driver)
+                {
+                    var page=new MPWModuleCenterPage("driver-probe",
+                        "设备与SDK真实环境预检",new string[0]);
+                    var tab=new TabItem {Header=page.Label,Tag=page};
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,"MPWDocumentTabStyle");
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                        "TCT.Module.Page.driver-probe");
+                    _pages.Items.Add(tab);
+                }
                 if(kind==MFMModuleKind.Connector)
                 {
                     var page=new MPWModuleCenterPage("connector-echo","Virtual规约回环",new string[0]);
@@ -169,6 +180,7 @@ namespace CxVisual.TestCenter.UI
         public TCTSimulationStepPanel SimulationTestPanel {get{return _simulationPanel;}}
         public TCTServiceRequestPanel ServiceTestPanel {get{return _servicePanel;}}
         public TCTConnectorLoopPanel ConnectorTestPanel {get{return _connectorPanel;}}
+        public TCTDriverReadinessPanel DriverTestPanel {get{return _driverPanel;}}
         public void SelectModuleKind(MFMModuleKind kind)
         {
             if (IsBusy) throw new InvalidOperationException("当前模块操作尚未结束或服务/通道仍在运行");
@@ -214,6 +226,7 @@ namespace CxVisual.TestCenter.UI
             _simulationPanel=new TCTSimulationStepPanel(_service,()=>HasUnsavedDraft);
             _servicePanel=new TCTServiceRequestPanel(_service,()=>HasUnsavedDraft);
             _connectorPanel=new TCTConnectorLoopPanel(_service,()=>HasUnsavedDraft);
+            _driverPanel=new TCTDriverReadinessPanel(_service,()=>HasUnsavedDraft);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
             _service.RegisterAssembly(typeof(MFMDriverModuleConfiguration).Assembly);
@@ -407,6 +420,8 @@ namespace CxVisual.TestCenter.UI
                     _editorHost.Content=_servicePanel;
                 else if(kind==MFMModuleKind.Connector&&SelectedModulePage=="connector-echo")
                     _editorHost.Content=_connectorPanel;
+                else if(kind==MFMModuleKind.Driver&&SelectedModulePage=="driver-probe")
+                    _editorHost.Content=_driverPanel;
                 else {
                     _editorHost.Content=next;
                     next.ConfigureWorkspaceProjection(fields,categories,true);
@@ -434,6 +449,7 @@ namespace CxVisual.TestCenter.UI
             _simulationPanel.Bind(kind==MFMModuleKind.Simulation?id:null);
             _servicePanel.Bind(kind==MFMModuleKind.Service?id:null);
             _connectorPanel.Bind(kind==MFMModuleKind.Connector?id:null);
+            _driverPanel.Bind(kind==MFMModuleKind.Driver?id:null);
             _refreshDeclaredCapabilities=() => {
                 // A declaration projection is not an MOC Provider, Ready or authorization fact.
                 // The authoritative MFM descriptor is derived from the real FCM draft.
