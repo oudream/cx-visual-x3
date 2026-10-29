@@ -306,6 +306,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 var provider=new CxVisionThresholdProvider(
                     Options(CxVisionPixelDepth.Bits8,200),17);
+                MRKResolvedCapability inspectCapability;
+                Check(provider.TryResolve(CxVisionThresholdProvider.CapabilityId,
+                        out inspectCapability) &&
+                    inspectCapability.DataOutputs.ContainsKey("Inspection") &&
+                    inspectCapability.DataOutputs["Inspection"]==
+                        typeof(CxVisionInspectionResult) &&
+                    provider.DescribeCapabilities().Single().Ports.Any(x=>
+                        x.MemberId=="Inspection" &&
+                        x.TypeId==CxVisionAcceptedRegionMeasureProvider.InspectionTypeId),
+                    "专业Inspection必须正式声明并冻结MDS具名结果，不能只用CLR StepResult");
                 var measure=new CxVisionAcceptedRegionMeasureProvider(provider);
                 var declaration=measure.DescribeCapabilities().Single();
                 Check(declaration.Id==CxVisionAcceptedRegionMeasureProvider.CapabilityId &&
