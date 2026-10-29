@@ -48,6 +48,7 @@ namespace CxVisual.Professional.Vision
         public string ReleaseVersion{get{return "vision.cpu.threshold.v1/config:"+
             _configRevision.ToString(CultureInfo.InvariantCulture);}}
         private readonly CxVisionThresholdPipeline _pipeline;
+        private readonly CxVisionInspectionOptions _capturedOptions;
         private readonly CxVisionPixelDepth _depth;
         private readonly long _configRevision;
         private readonly IMRKCapabilityResolver _fallback;
@@ -111,13 +112,35 @@ namespace CxVisual.Professional.Vision
             _capturedEffectiveVersion=capturedEffectiveVersion;
         }
 
+        /// <summary>
+        /// 捕获已固定的专业参数副本。若来源为MHS Effective，先重新核对授权和版本，
+        /// 不能用此副本在授权撤销或配置更新后继续生成新的拆分式工程。
+        /// </summary>
+        public CxVisionInspectionOptions CaptureInspectionOptions()
+        {
+            string version;
+            if(!TryGetCapabilityVersion(CapabilityId,out version))
+                throw new InvalidOperationException("vision.provider.version_unavailable");
+            return CopyOptions(_capturedOptions);
+        }
+
+        private static CxVisionInspectionOptions CopyOptions(CxVisionInspectionOptions value)
+        {
+            return new CxVisionInspectionOptions {
+                PixelDepth=value.PixelDepth,GrayThreshold=value.GrayThreshold,
+                MinDefectArea=value.MinDefectArea,MaxDefectArea=value.MaxDefectArea,
+                UseAi=value.UseAi,AiModelName=value.AiModelName
+            };
+        }
+
         public CxVisionThresholdProvider(CxVisionInspectionOptions options,long configRevision,
             IMRKCapabilityResolver fallback=null)
         {
             if(options==null)throw new ArgumentNullException("options");
             if(configRevision<0)throw new ArgumentOutOfRangeException("configRevision");
-            _pipeline=new CxVisionThresholdPipeline(options);
-            _depth=options.PixelDepth;
+            _capturedOptions=CopyOptions(options);
+            _pipeline=new CxVisionThresholdPipeline(_capturedOptions);
+            _depth=_capturedOptions.PixelDepth;
             _configRevision=configRevision;
             _fallback=fallback;
             _capability=new MRKResolvedCapability(ExecuteAsync,
