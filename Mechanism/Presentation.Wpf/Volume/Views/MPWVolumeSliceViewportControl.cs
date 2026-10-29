@@ -37,6 +37,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private FVOVolumeData _volume;
         private MVIVolumeViewState _state;
         private bool _positioning;
+        private bool _selectingRoi;
+        private int _roiStartX,_roiStartY;
+        public event Action<FVOPhysicalSliceRectangle> PhysicalRoiSelected;
         public event EventHandler<MPWVolumeVoxelInspectedEventArgs> VoxelInspected;
 
         public MPWVolumeSliceViewportControl(FVOSlicePlane plane,MPWImageViewerControl viewer)
@@ -74,6 +77,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 throw new ArgumentException("体数据与会话状态必须同时绑定或解绑。");
             if(IsMouseCaptured)ReleaseMouseCapture();
             _positioning=false;
+            _selectingRoi=false;
             _volume=volume;
             _state=state;
             RefreshOverlay();
@@ -105,6 +109,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             return true;
         }
 
+        /// <summary>当前切片二维像素ROI转换为物理毫米结果，原值由FVO提供。</summary>
+        public FVOPhysicalSliceRectangle SelectRectangleRoi(int left,int top,int right,int bottom)
+        {
+            if(_volume==null||_state==null||Viewer.ActiveImage==null)
+                throw new InvalidOperationException("尚未绑定有效三维切片。");
+            var value=_state.MapRectangleRoi(Plane,Math.Min(left,right),Math.Min(top,bottom),
+                Math.Max(left,right),Math.Max(top,bottom),_volume);
+            var handler=PhysicalRoiSelected;
+            if(handler!=null)handler(value);
+            return value;
+        }
+
         /// <summary>实际滚轮和开发者API使用同一函数，不依赖测试窗体。</summary>
         public bool HandleWheel(int delta,ModifierKeys modifiers)
         {
@@ -123,7 +139,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             if((Keyboard.Modifiers&ModifierKeys.Alt)!=0)return; // 沿用MPW图像平移。
             Image image=GetPixelImage();
-            if(image==null||image.Source==null||!TryPosition(e,image))return;
+            if(image==null||image.Source==null)return;
+            if((Keyboard.Modifiers&ModifierKeys.Shift)!=0)
+            {
+                int x,y;
+                if(!TryPixel(e,image,out x,out y))return;
+                _roiStartX=x;_roiStartY=y;
+                _selectingRoi=true;
+                CaptureMouse();e.Handled=true;return;
+            }
+            if(!TryPosition(e,image))return;
             _positioning=true;
             CaptureMouse();
             e.Handled=true;
@@ -131,6 +156,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         private void OnPointerUp(object sender,MouseButtonEventArgs e)
         {
+            if(_selectingRoi)
+            {
+                _selectingRoi=false;
+                Image image=GetPixelImage();
+                int x,y;
+                if(image!=null&&TryPixel(e,image,out x,out y))
+                    SelectRectangleRoi(_roiStartX,_roiStartY,x,y);
+                if(IsMouseCaptured)ReleaseMouseCapture();
+                e.Handled=true;return;
+            }
             if(!_positioning)return;
             _positioning=false;
             if(IsMouseCaptured)ReleaseMouseCapture();
@@ -141,6 +176,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             if(_volume==null||_state==null)return;
             Image image=GetPixelImage();
+            if(_selectingRoi&&e.LeftButton!=MouseButtonState.Pressed)
+            {
+                _selectingRoi=false;
+                if(IsMouseCaptured)ReleaseMouseCapture();
+            }
             if(_positioning)
             {
                 if(e.LeftButton!=MouseButtonState.Pressed)
@@ -166,6 +206,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             if(handler!=null)handler(this,new MPWVolumeVoxelInspectedEventArgs(x,y,z,
                 _volume.GetScalarByOriginalIndex(x,y,z),
                 x*_volume.SpacingX,y*_volume.SpacingY,z*_volume.SpacingZ));
+        }
+
+        private static bool TryPixel(MouseEventArgs e,Image image,out int x,out int y)
+        {
+            x=0;y=0;
+            if(image.ActualWidth<=0||image.ActualHeight<=0||image.Source==null)return false;
+            Point pt=e.GetPosition(image);
+            if(!IsFinite(pt.X)||!IsFinite(pt.Y))return false;
+            if(pt.X<0||pt.Y<0||pt.X>=image.ActualWidth||pt.Y>=image.ActualHeight)return false;
+            x=Math.Max(0,Math.Min(image.Source.PixelWidth-1,
+                (int)Math.Floor(pt.X*image.Source.Width/image.ActualWidth)));
+            y=Math.Max(0,Math.Min(image.Source.PixelHeight-1,
+                (int)Math.Floor(pt.Y*image.Source.Height/image.ActualHeight)));
+            return true;
         }
 
         private bool TryPosition(MouseEventArgs e,Image image)
