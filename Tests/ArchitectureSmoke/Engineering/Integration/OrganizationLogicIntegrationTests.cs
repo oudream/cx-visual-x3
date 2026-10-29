@@ -3901,7 +3901,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 Guid a=Guid.Empty,b=Guid.Empty,c=Guid.Empty;
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>{
-                    a=builder.Step("capture");b=builder.Step("inspect");c=builder.Step("save");
+                    a=builder.Step("capture",new[]{
+                        new MPCPortDescriptor("ExternalIn",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("ExternalOut",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    b=builder.Step("inspect");c=builder.Step("save");
+                    builder.ExposeInput("Input",a,"ExternalIn");
+                    builder.ExposeOutput("Output",a,"ExternalOut");
                     builder.Connect(a,"Done",b,"Start");
                     builder.Connect(b,"Done",c,"Start");
                     builder.Move(a,30,40);builder.Move(b,360,140);builder.Move(c,690,220);
@@ -3911,6 +3916,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var snapshot=MOCWiringFragment.Capture(initial,new[]{a,b});
                 Check(snapshot.Blocks.Count==2&&snapshot.Links.Count==1,
                     "selection copied edges crossing outside selection");
+                var publicRoundtrip=MOCWiringFragment.FromPayload(snapshot.ToPayload());
+                Check(publicRoundtrip.FlowInputs.ContainsKey("Input")&&
+                    publicRoundtrip.FlowOutputs.ContainsKey("Output")&&
+                    publicRoundtrip.FlowInputs["Input"].BlockId==a&&
+                    publicRoundtrip.FlowOutputs["Output"].BlockId==a,
+                    "clipboard roundtrip dropped selected child public input/output");
+                var partial=MOCWiringFragment.Capture(initial,new[]{b});
+                Check(partial.FlowInputs.Count==0&&partial.FlowOutputs.Count==0&&
+                    MOCWiringFragment.FromPayload(partial.ToPayload()).FlowInputs.Count==0,
+                    "partial selection leaked unselected flow public endpoint");
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>{
                     builder.MoveMany(new[]{a,b},12,17);
                     builder.Align(new[]{a,b},MOCBlockAlignment.Left);

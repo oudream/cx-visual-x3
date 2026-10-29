@@ -19,6 +19,8 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly IReadOnlyDictionary<Guid,MOLStateMachineDefinition> _stateMachines;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
         private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
+        private readonly IReadOnlyDictionary<string,MOLBlockEndpoint> _flowInputs;
+        private readonly IReadOnlyDictionary<string,MOLBlockEndpoint> _flowOutputs;
         private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
         {
             var ids=new HashSet<Guid>(selected);
@@ -52,6 +54,12 @@ namespace CxVisual.Mechanism.Orchestration
                 top+=height+24;
             }
             _positions=new ReadOnlyDictionary<Guid,MOLBlockPosition>(layout);
+            _flowInputs=new ReadOnlyDictionary<string,MOLBlockEndpoint>(
+                definition.FlowInputs.Where(x=>ids.Contains(x.Value.BlockId))
+                    .ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal));
+            _flowOutputs=new ReadOnlyDictionary<string,MOLBlockEndpoint>(
+                definition.FlowOutputs.Where(x=>ids.Contains(x.Value.BlockId))
+                    .ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal));
         }
         public IReadOnlyList<MOLControlBlock> Blocks {get{return _blocks;}}
         public IReadOnlyList<MOLLink> Links {get{return _links;}}
@@ -63,6 +71,8 @@ namespace CxVisual.Mechanism.Orchestration
         {get{return _stateMachines;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
+        public IReadOnlyDictionary<string,MOLBlockEndpoint> FlowInputs {get{return _flowInputs;}}
+        public IReadOnlyDictionary<string,MOLBlockEndpoint> FlowOutputs {get{return _flowOutputs;}}
         /// <summary>受V2 Codec和4MB限制的剪贴板传输格式，绝不作为工程真源保存。</summary>
         public byte[] ToPayload()
         {
@@ -73,7 +83,9 @@ namespace CxVisual.Mechanism.Orchestration
                 p=>(IDictionary<string,string>)p.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
                 positions,_groups,parameters,_policies.ToDictionary(x=>x.Key,x=>x.Value),
-                _stateMachines.ToDictionary(x=>x.Key,x=>x.Value));
+                _stateMachines.ToDictionary(x=>x.Key,x=>x.Value),
+                _flowInputs.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal),
+                _flowOutputs.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal));
             return MOLWiringCodec.Serialize(wiring);
         }
         public static MOCWiringFragment FromPayload(byte[] payload)
