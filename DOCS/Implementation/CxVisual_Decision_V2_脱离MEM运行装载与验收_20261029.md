@@ -22,3 +22,10 @@
 - 归档采用 SHA-256 检测意外损坏，并重新计算来源 Manifest 指纹，逐 Content 核验 Logic 字节、引用及能力声明闭包；对截断、版本错误、格式越界和来源不匹配拒绝加载。
 - **SHA-256 不是发布者签名。** 工业生产发布必须由 Host 附加可信签名、反回滚、权限、设备互锁与 Stage/Activate 授权；当前不宣称这部分已完成。
 - ArchitectureSmoke 在关闭工程会话之后执行确定性归档、加载、V1 Loop/V2 共享 Content 语义与 SourceMap 验证，以及损坏/截断载荷负例。
+
+## 固定提交与 Windows 真实验收
+
+- MEM 脱离编译：[717c44c32bfc](https://github.com/oudream/cx-visual-x3/commit/717c44c32bfc3b9fd1e23531216cdf00d66ad4a4)，[Decision Windows 40886959550](https://github.com/oudream/cx-visual-x3/actions/runs/40886959550) **Success**；同 SHA 的 Unified Runtime、Engineering Organization、Studio S1、Module Center CPU RAW 工作流均已成功。
+- 持久化归档：[337c41ae9ca4](https://github.com/oudream/cx-visual-x3/commit/337c41ae9ca40ade256bd4b89eb3131abb05ae88)，编译期局部重名修复：[80b27ff27868](https://github.com/oudream/cx-visual-x3/commit/80b27ff278683bd6bae1c26847c0eded526befa1)。[Decision Windows 40888831599](https://github.com/oudream/cx-visual-x3/actions/runs/40888831599) **Success**：静态边界检查、.NET Framework 4.8 x64 全量 Build、`ArchitectureSmoke --decision`、默认 ArchitectureSmoke 均成功。
+- 对应 ArchitectureSmoke 已真实执行版本化二进制确定性、关闭工程后归档重载、V1 Loop / V2 Shared Content 编译 SourceMap 对齐、载荷损坏与截断拒绝测试。
+- 以上证据不等于 Host 可信发布签名、跨进程独立服务部署、设备 HIL 或生产安全互锁验收；这些仍为后续必须交付的独立门禁。
