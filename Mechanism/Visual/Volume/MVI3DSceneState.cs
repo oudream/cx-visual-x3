@@ -192,6 +192,27 @@ namespace CxVisual.Mechanism.Visual
             return true;
         }
 
+        /// <summary>专业来源提交新Revision时，批量撤销旧版本的可视实例；
+        /// 不删除MEM工程对象或来源资产。结果整体一次通知。</summary>
+        public int RemoveOlderSourceRevisions(string sourceRef,long currentRevision)
+        {
+            if(string.IsNullOrWhiteSpace(sourceRef))
+                throw new ArgumentException("来源引用不能为空。","sourceRef");
+            if(currentRevision<0)throw new ArgumentOutOfRangeException("currentRevision");
+            int count=0;
+            for(int i=_items.Count-1;i>=0;i--)
+            {
+                MVI3DSceneItem item=_items[i];
+                if(!string.Equals(item.SourceRef,sourceRef,StringComparison.Ordinal)||
+                    item.SourceRevision>=currentRevision)continue;
+                _items.RemoveAt(i);
+                if(_selected==item.Id)_selected=null;
+                count++;
+            }
+            if(count!=0)ChangedNow();
+            return count;
+        }
+
         public void Remove(Guid id)
         {
             int index=FindIndex(id);
