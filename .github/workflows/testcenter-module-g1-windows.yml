@@ -1,0 +1,74 @@
+name: TestCenter Module Center Four G1 Real WPF UI Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Module/**'
+      - 'Tests/TestCenter/Verification/TCTCpuComputeUiSmoke.cs'
+      - 'Tests/TestCenter/Verification/TCTSimulationStepUiSmoke.cs'
+      - 'Tests/TestCenter/Verification/TCTServiceRequestUiSmoke.cs'
+      - 'Tests/TestCenter/Verification/TCTConnectorLoopUiSmoke.cs'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Professional/Simulation/Modules/PSMAxisLinearModel.cs'
+      - 'Professional/Vision/CxVisionRawCpuRunner.cs'
+      - '.github/workflows/testcenter-module-g1-windows.yml'
+jobs:
+  four-real-software-loops:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore real TestCenter dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter dependency Restore failed' }
+      - name: Build actual x64 .NET Framework 4.8 TestCenter
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /m:1 /nr:false /t:Build /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter G1 Build failed' }
+      - name: Run four real operator WPF UIA flows on the same SHA
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $dir=Split-Path $exe
+          $checks=@(
+            @{Argument='--module-cpu-ui-automation';Report='TestCenter-Cpu-UIA-Report.txt';Label='PASS TCT.Compute.UIA'},
+            @{Argument='--module-simulation-ui-automation';Report='TestCenter-Simulation-UIA-Report.txt';Label='PASS TCT.Simulation.UIA'},
+            @{Argument='--module-service-ui-automation';Report='TestCenter-Service-UIA-Report.txt';Label='PASS TCT.Service.UIA'},
+            @{Argument='--module-connector-ui-automation';Report='TestCenter-Connector-UIA-Report.txt';Label='PASS TCT.Connector.UIA'}
+          )
+          foreach($check in $checks) {
+            $report=Join-Path $dir $check.Report
+            Remove-Item $report -ErrorAction SilentlyContinue
+            $p=Start-Process -FilePath $exe -ArgumentList @($check.Argument) -PassThru
+            if(-not $p.WaitForExit(120000)) {
+              try{$p.Kill()}catch{}
+              throw "Module G1 UIA timed out: $($check.Argument)"
+            }
+            $p.Refresh()
+            if(Test-Path $report){Get-Content $report}
+            if($p.ExitCode -ne 0){throw "Module G1 UIA failed: $($check.Argument) exit=$($p.ExitCode)"}
+            if(-not(Test-Path $report)){throw "G1 UIA missing report: $($check.Report)"}
+            $lines=@(Get-Content $report)
+            if(@($lines|Where-Object {$_.StartsWith($check.Label)}).Count -ne 1 -or
+               @($lines|Where-Object {$_.StartsWith('FAIL')}).Count -ne 0) {
+              throw "Missing true WPF G1 acceptance evidence for $($check.Argument)"
+            }
+          }
+          Write-Host 'PASS Four G1 real WPF operator flows: Compute, Simulation, Service, Connector'
+      - name: Archive same-commit real UIA results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testcenter-four-modules-real-g1-uia
+          path: |
+            Output/Debug/x64/TestCenter-Cpu-UIA-Report.txt
+            Output/Debug/x64/TestCenter-Simulation-UIA-Report.txt
+            Output/Debug/x64/TestCenter-Service-UIA-Report.txt
+            Output/Debug/x64/TestCenter-Connector-UIA-Report.txt
+          if-no-files-found: warn
