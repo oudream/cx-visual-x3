@@ -44,7 +44,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _sdkFile=new TextBox {Width=360,Margin=new Thickness(4),
             ToolTip="仅查询本机文件版本，不加载DLL，不代表Vendor SDK已装配或可执行"};
         private readonly Button _probe=new Button {Content="读取真实设备环境（只读）",
-            Margin=new Thickness(4),Padding=new Thickness(10,5)};
+            Margin=new Thickness(4),Padding=new Thickness(10,5,10,5)};
         private readonly TextBlock _summary=new TextBlock {
             Margin=new Thickness(4),TextWrapping=TextWrapping.Wrap
         };
