@@ -53,8 +53,13 @@ jobs:
           if ($pass -lt 58 -or $fail -ne 0) {
             throw "Expected at least 58 PASS and 0 FAIL; actual $pass PASS / $fail FAIL"
           }
+          # B5 acceptance: keep genuine orchestration/debug checks mandatory,
+          # rather than allowing the generic shell PASS count to mask omissions.
           foreach ($required in @('S1-04 共用MPW主题及Dock视觉不修改工程',
-                                   'S1界面设计真实WPF浅深主题和中央工作区截图')) {
+                                   'S1界面设计真实WPF浅深主题和中央工作区截图',
+                                   'P0-4 运行计划工程身份与Revision失效拒绝',
+                                   'P0-4 跨页面MRK来源恢复与双Flow轨迹身份隔离',
+                                   'P0-4 Studio真实CPU候选按钮到MRK运行及跨根页面/过期拒绝')) {
             if (-not @($passed | Where-Object { $_.Line.Contains($required) }).Count) {
               throw "Required real WPF STA assertion missing: $required"
             }
