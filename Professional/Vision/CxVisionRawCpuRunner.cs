@@ -264,6 +264,93 @@ namespace CxVisual.Professional.Vision
                 splitOptions:options,suppliedPixels:raw);
         }
 
+        /// <summary>
+        /// R1 CASE-01/02/07：已保存并重开的MOL拆分式流程，直接重新绑定同源
+        /// FIM内存图像，不借用临时RAW文件或重新生成工程节点。
+        /// 结果含本次真实执行像素快照，供Studio/嵌入Viewer安全投影。
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteSavedSeparatedMeasuredImageAsync(
+            MEMEngineeringSession session, Guid contentId,
+            CxVisionInspectionOptions options, long revision,
+            FIMImageBuffer image, string sourceId, int medianRadius,
+            CancellationToken cancellation)
+        {
+            if(contentId==Guid.Empty)
+                throw new ArgumentException("必须指定已保存的工程Content","contentId");
+            if(options==null)throw new ArgumentNullException("options");
+            if(image==null)throw new ArgumentNullException("image");
+            if(string.IsNullOrWhiteSpace(sourceId))
+                throw new ArgumentException("必须提供稳定图像来源","sourceId");
+            if(medianRadius<0||medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            cancellation.ThrowIfCancellationRequested();
+            byte[] raw=CxVisionImageInterop.ToPackedRawPixels(image,options.PixelDepth);
+            var provider=new CxVisionThresholdProvider(options,revision);
+            return ExecuteCoreAsync(session,provider,sourceId,image.Width,image.Height,
+                cancellation,true,contentId,medianRadius,true,options,
+                suppliedPixels:raw,captureSourceImage:true);
+        }
+
+        /// <summary>
+        /// 固定链重开必须验证确切连接、端口和公开出口，而非只比节点数。
+        /// 自由编辑的其他MOL拓扑应走通用MOC编译，不能冒用固定链快速重跑API。
+        /// </summary>
+        private static void ValidateSavedMeasuredWiring(MOLWiringDefinition wiring,
+            Guid raw,Guid enhanced,Guid segmented,Guid inspected,Guid measured,
+            bool splitNodes)
+        {
+            var required=new List<Tuple<Guid,string,Guid,string,MPCPortKind>>();
+            Action<Guid,string,Guid,string,MPCPortKind> add=(from,output,to,input,kind)=>
+                required.Add(Tuple.Create(from,output,to,input,kind));
+            Guid first=enhanced!=Guid.Empty?enhanced:
+                splitNodes?segmented:inspected;
+            add(raw,"Done",first,"Start",MPCPortKind.Control);
+            add(raw,"Pixels",first,"RawPixels",MPCPortKind.Data);
+            if(enhanced!=Guid.Empty)
+            {
+                Guid downstream=splitNodes?segmented:inspected;
+                add(enhanced,"Done",downstream,"Start",MPCPortKind.Control);
+                add(enhanced,"EnhancedPixels",downstream,"RawPixels",MPCPortKind.Data);
+            }
+            if(splitNodes)
+            {
+                add(segmented,"Done",inspected,"Start",MPCPortKind.Control);
+                add(segmented,"ThresholdMask",inspected,"ThresholdMask",MPCPortKind.Data);
+            }
+            add(inspected,"Done",measured,"Start",MPCPortKind.Control);
+            add(inspected,"Inspection",measured,"Inspection",MPCPortKind.Data);
+            if(wiring.EntryBlockId!=raw || wiring.Links.Count!=required.Count ||
+               wiring.FlowInputs.Count!=0 || wiring.FlowOutputs.Count!=
+                   (splitNodes?2:1)+(enhanced!=Guid.Empty?1:0))
+                throw new InvalidOperationException("vision.saved.wiring_changed");
+            foreach(var expected in required)
+            {
+                if(!wiring.Links.Any(l=>l.Kind==expected.Item5 &&
+                    l.Source.BlockId==expected.Item1 &&
+                    l.Source.PortMemberId==expected.Item2 &&
+                    l.Target.BlockId==expected.Item3 &&
+                    l.Target.PortMemberId==expected.Item4 &&
+                    string.IsNullOrEmpty(l.ConditionId)))
+                    throw new InvalidOperationException("vision.saved.wiring_changed");
+            }
+            var exits=new List<Tuple<string,Guid,string>> {
+                Tuple.Create("AcceptedRegionPixelArea",measured,"Area")
+            };
+            if(splitNodes)exits.Add(
+                Tuple.Create("ThresholdMask",segmented,"ThresholdMask"));
+            if(enhanced!=Guid.Empty)exits.Add(
+                Tuple.Create("EnhancedPixels",enhanced,"EnhancedPixels"));
+            foreach(var expected in exits)
+            {
+                MOLBlockEndpoint endpoint;
+                if(!wiring.FlowOutputs.TryGetValue(expected.Item1,out endpoint) ||
+                   endpoint.BlockId!=expected.Item2 ||
+                   endpoint.PortMemberId!=expected.Item3)
+                    throw new InvalidOperationException("vision.saved.output_changed");
+            }
+            wiring.ValidateExecutable();
+        }
+
         private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation,
@@ -393,6 +480,10 @@ namespace CxVisual.Professional.Vision
                        savedThreshold!=splitOptions.GrayThreshold)
                         throw new InvalidOperationException("vision.saved.threshold_changed");
                 }
+                // 禁止重连数据/控制边或重指向结果端口后，仍作为原固定链执行。
+                Guid sourceBlock=rawBlocks[0].Id;
+                ValidateSavedMeasuredWiring(wiring,sourceBlock,enhance,segmentation,
+                    inspect,measure,splitNodes);
                 pageId=parent.Id;
                 entryContentId=content.Id;
             }
