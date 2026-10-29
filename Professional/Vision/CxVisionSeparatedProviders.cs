@@ -125,7 +125,7 @@ namespace CxVisual.Professional.Vision
                 new MRKExecutionOutput(typeof(CxVisionInspectionResult)),
                 dataOutputs:new Dictionary<string,Type>{{"Inspection",typeof(CxVisionInspectionResult)}},
                 inputs:new[]{
-                    new MRKCapabilityInput("ThresholdMask",typeof(FIMImageBuffer)),
+                    new MRKCapabilityInput("ThresholdMask",typeof(object)),
                     new MRKCapabilityInput("RuleVersion",typeof(string))
                 });
         }
