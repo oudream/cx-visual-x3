@@ -115,6 +115,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(!scene3d.TrySelectSource("cad:assembly:fixture",out sourceSelection),
                     "不可见CAD对象不能由资源引用选中");
                 scene3d.SetVisibility(cadRef,true);
+                Guid staleOne=scene3d.Add(MVI3DSceneKind.Measurement,
+                    "ct3d:measurement:source",1,"frame:stable");
+                Guid staleTwo=scene3d.Add(MVI3DSceneKind.Surface,
+                    "ct3d:measurement:source",2,"frame:stable");
+                Guid latest=scene3d.Add(MVI3DSceneKind.Measurement,
+                    "ct3d:measurement:source",3,"frame:stable");
+                scene3d.Select(staleTwo);
+                long beforeInvalidation=scene3d.Revision;
+                int invalidated=scene3d.RemoveOlderSourceRevisions(
+                    "ct3d:measurement:source",3);
+                MVI3DSceneItem currentItem;
+                Check(invalidated==2&&scene3d.Revision==beforeInvalidation+1&&
+                    scene3d.SelectedId==null&&scene3d.TryGet(latest,out currentItem)&&
+                    !scene3d.TryGet(staleOne,out currentItem),
+                    "来源Revision整体淘汰旧Surface/Measurement，保留最新实例且只通知一次");
+                Check(scene3d.RemoveOlderSourceRevisions("ct3d:measurement:source",3)==0,
+                    "重复来源版本失效不得产生冗余修改");
+                scene3d.Remove(latest);
                 scene3d.Remove(cadRef);
                 scene3d.Remove(maskRef);
                 scene3d.Remove(resultRef);
