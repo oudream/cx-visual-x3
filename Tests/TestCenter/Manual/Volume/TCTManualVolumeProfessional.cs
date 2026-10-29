@@ -119,6 +119,7 @@ namespace CxVisual.TestCenter.UI
             _planeRoi=null;
             LastOpenedProfessionalCase=null;
             _professionalProjectPath=null;_professionalStoreToken=null;
+            _professionalCaseIndex=0;
             _professionalSource=null;
             _meshPreview=null;
             LastSphereFit=null;
