@@ -419,3 +419,10 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 `98912b4c972c9737ceab09dc7f016da92de9b657` 的[Imaging Windows #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) **success**，包括重新启用“自动直方图+专业CPU Mask/轮廓7px²同页”的真实WPF Smoke，确认分离统计与专业处理取消域后不再回归；`73ecd00be782463c3ada7095de410e400458e5a7` 的[Imaging Windows #40829769427](https://github.com/oudream/cx-visual-x3/actions/runs/40829769427) **success**，且保留手动ROI修改取消旧操作、内部发布轮廓不自取消。两次实际成功不可等价为真实现场6144×3072图像完整人眼截图。
 
 [fb3bcc3](https://github.com/oudream/cx-visual-x3/commit/fb3bcc36116d74d9b1168db3915b9fb5bee8cc67)、[8a225fb](https://github.com/oudream/cx-visual-x3/commit/8a225fbf31003ffa922c19d7f6749f20b7d4546b)：追加每条窗宽/窗位滑条上下端点可见刻度，动态更新`255/65535`；[18f0c93](https://github.com/oudream/cx-visual-x3/commit/18f0c93d1a2eeef37fec398e7dce28f001071ce7) + [267db43](https://github.com/oudream/cx-visual-x3/commit/267db43581d6adfa4270ca9fda980df88464c7fe)补UIA端点绑定。新固定SHA必须重新通过Imaging Windows才能宣称这批刻度验收已完成。
+
+## 23. V2D-12/21：复用FIM轮廓作为按需专业Run结果（2026-10-29）
+
+- **代码固定提交**：[28e2f0d](https://github.com/oudream/cx-visual-x3/commit/28e2f0da4a17d04c9a45bdd111378dcb5845fae0)、[e7228b8](https://github.com/oudream/cx-visual-x3/commit/e7228b84f2d2925b96b2416338753663da8b9c0f)；**自动测试新增**：[d5ff3df](https://github.com/oudream/cx-visual-x3/commit/d5ff3df9342d021b2bb5d3cca6b6129f490e10fb)。
+- **Owner与复用**：`FIMImageMaskContours.Trace`保有0/255掩码追踪及孔洞计算唯一算法实现，`FGEPoint2D`仍为既有几何坐标；PVC `CxVisionRunSummary.WithThresholdMaskContours`仅消费已提交MRK `ThresholdMask`，按需投影为只读`CxVisionContourSnapshot`及`CxVisionResultKind.Contour`，继承RunId、SourceId和原OutputPort，不新建MDS/Graph/工程状态。
+- **设计边界**：不自动生成所有大图轮廓；`maxBoundaryEdges`最多2000000，支持CancellationToken；顶点为原图像素**边界**坐标，正面积外环、负面积孔洞。当前是**阈值Mask全部命中像素**的轮廓，不能冒充Inspection面积筛选后的区域或mm²标定结果；无Mask的旧Plan明确拒绝。图窗可选择消费这种产物，但本阶段没有声称完成Studio/MPW界面接线。
+- **状态**：源码及正反自动测试文件已在master（G2）；截至本条登记，**Windows .NET48构建、Imaging --imaging专项、全回归和真实WPF/UIA未核验**，不可登记G3/G4/G5通过。后续须按包含上述代码的固定SHA复核工作流及实际数字输出。
