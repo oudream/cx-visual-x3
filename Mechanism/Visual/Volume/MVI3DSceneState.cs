@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Text;
+using System.Threading;
+using CxVisual.Mechanism.Core;
 
 namespace CxVisual.Mechanism.Visual
 {
@@ -228,6 +232,32 @@ namespace CxVisual.Mechanism.Visual
             ChangedNow();
         }
 
+        /// <summary>完整验证后一次替换显示快照；不承接资产所有权。</summary>
+        internal void RestoreItems(IReadOnlyList<MVI3DSceneItem> items,Guid? selected)
+        {
+            if(items==null||items.Count>256)throw new InvalidDataException("三维场景项目数量无效。");
+            var ids=new HashSet<Guid>();
+            bool selectedExists=!selected.HasValue;
+            foreach(MVI3DSceneItem item in items)
+            {
+                if(item==null||item.Id==Guid.Empty||!ids.Add(item.Id)||
+                    !Enum.IsDefined(typeof(MVI3DSceneKind),item.Kind)||
+                    string.IsNullOrWhiteSpace(item.SourceRef)||item.SourceRef.Length>1024||
+                    item.SourceRevision<0||
+                    (item.SpatialFrameRef!=null&&item.SpatialFrameRef.Length>1024))
+                    throw new InvalidDataException("三维Scene资源身份或版本无效。");
+                CheckOrganization(item.LayerKey,item.GroupKey);
+                CheckOpacity(item.Opacity);
+                if(selected.HasValue&&selected.Value==item.Id)
+                    selectedExists=item.Visible;
+            }
+            if(!selectedExists)throw new InvalidDataException("三维Scene选中对象不存在或不可见。");
+            _items.Clear();
+            foreach(MVI3DSceneItem item in items)_items.Add(item);
+            _selected=selected;
+            ChangedNow();
+        }
+
         private int FindIndex(Guid id)
         {
             int index=_items.FindIndex(x=>x.Id==id);
@@ -246,6 +276,129 @@ namespace CxVisual.Mechanism.Visual
             _revision=checked(_revision+1);
             EventHandler handler=Changed;
             if(handler!=null)handler(this,EventArgs.Empty);
+        }
+    }
+
+    /// <summary>只将Scene视觉引用存进既有MEM Visual Aspect；保存/Undo由MEM持有。</summary>
+    public static class MVI3DSceneLayoutPersistence
+    {
+        public const string ProviderId="mvi.scene3d.layout";
+        private const int Magic=0x3349564d;
+        private const int Schema=1;
+        private static readonly UTF8Encoding StrictUtf8=new UTF8Encoding(false,true);
+
+        public static MRIObjectAddress Commit(MEMEngineeringSession engineering,MEMContent owner,
+            int expectedRevision,MVI3DSceneState scene,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(owner==null||engineering.Find(owner.Id)!=owner)
+                throw new ArgumentException("Scene布局须登记在当前MEM Content。","owner");
+            if(scene==null)throw new ArgumentNullException("scene");
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
+            var snapshot=scene.Snapshot();
+            if(snapshot.Count>256)throw new InvalidOperationException("Scene布局超过256引用预算。");
+            byte[] payload;
+            using(var memory=new MemoryStream())
+            {
+                using(var w=new BinaryWriter(memory,StrictUtf8,true))
+                {
+                    w.Write(Magic);w.Write(Schema);
+                    w.Write(snapshot.Count);
+                    w.Write(scene.SelectedId.HasValue);
+                    if(scene.SelectedId.HasValue)w.Write(scene.SelectedId.Value.ToByteArray());
+                    foreach(MVI3DSceneItem item in snapshot)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        w.Write(item.Id.ToByteArray());w.Write((int)item.Kind);
+                        WriteText(w,item.SourceRef,1024);w.Write(item.SourceRevision);
+                        WriteText(w,item.SpatialFrameRef??"",1024);
+                        w.Write(item.Visible);w.Write(item.Opacity);
+                        WriteText(w,item.LayerKey,128);WriteText(w,item.GroupKey??"",128);
+                    }
+                }
+                payload=memory.ToArray();
+            }
+            if(payload.Length>262144)throw new InvalidOperationException("场景Visual Aspect超过256KiB预算。");
+            cancellation.ThrowIfCancellationRequested();
+            engineering.Edit("提交三维Scene可视配置",expectedRevision,edit=>
+            {
+                edit.SetAspect(owner,new MPMAspect(MPMAspectKind.Visual,ProviderId,Schema,payload,true));
+                return true;
+            }).RequireValue();
+            return engineering.GetAddress(owner);
+        }
+
+        /// <summary>资源校验由实际Asset/Result Owner提供；任何未解析的Ref拒绝整体恢复。</summary>
+        public static void Open(MEMEngineeringSession engineering,MRIObjectAddress address,
+            MVI3DSceneState destination,Func<MVI3DSceneItem,bool> resolveSource,
+            CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(destination==null)throw new ArgumentNullException("destination");
+            if(resolveSource==null)throw new ArgumentNullException("resolveSource");
+            var owner=engineering.Resolve(address) as MEMContent;
+            if(owner==null)throw new InvalidDataException("MEM场景Content不存在。");
+            MPMAspect aspect=null;
+            foreach(MPMAspect candidate in owner.Aspects)
+                if(candidate.Kind==MPMAspectKind.Visual&&candidate.ProviderId==ProviderId)
+                {
+                    if(aspect!=null)throw new InvalidDataException("重复三维Scene Aspect。");
+                    aspect=candidate;
+                }
+            if(aspect==null||aspect.SchemaVersion!=Schema||aspect.Payload.Length>262144)
+                throw new InvalidDataException("三维Scene布局不存在或Schema无效。");
+            var items=new List<MVI3DSceneItem>();
+            Guid? selected;
+            using(var memory=new MemoryStream(aspect.Payload,false))
+            using(var r=new BinaryReader(memory,StrictUtf8,true))
+            {
+                if(r.ReadInt32()!=Magic||r.ReadInt32()!=Schema)
+                    throw new InvalidDataException("三维Scene数据头无效。");
+                int count=r.ReadInt32();
+                if(count<0||count>256)throw new InvalidDataException("三维Scene数量超限。");
+                selected=r.ReadBoolean()?new Guid(ReadExact(r,16)): (Guid?)null;
+                for(int i=0;i<count;i++)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    Guid id=new Guid(ReadExact(r,16));
+                    MVI3DSceneKind kind=(MVI3DSceneKind)r.ReadInt32();
+                    string source=ReadText(r,1024);long revision=r.ReadInt64();
+                    string frame=ReadText(r,1024);bool visible=r.ReadBoolean();
+                    double opacity=r.ReadDouble();string layer=ReadText(r,128);
+                    string group=ReadText(r,128);
+                    var item=new MVI3DSceneItem(id,kind,source,revision,
+                        frame.Length==0?null:frame,visible,opacity,
+                        layer,group.Length==0?null:group);
+                    if(!resolveSource(item))
+                        throw new InvalidDataException("三维Scene专业资源已失效："+source);
+                    items.Add(item);
+                }
+                if(memory.Position!=memory.Length)
+                    throw new InvalidDataException("三维Scene存在多余负载。");
+            }
+            cancellation.ThrowIfCancellationRequested();
+            destination.RestoreItems(items,selected);
+        }
+
+        private static byte[] ReadExact(BinaryReader reader,int size)
+        {
+            byte[] bytes=reader.ReadBytes(size);
+            if(bytes.Length!=size)throw new EndOfStreamException("三维场景数据被截断。");
+            return bytes;
+        }
+        private static void WriteText(BinaryWriter writer,string value,int maxLength)
+        {
+            if(value==null||value.Length>maxLength)throw new ArgumentException("三维Scene文本超限。");
+            byte[] bytes=StrictUtf8.GetBytes(value);
+            if(bytes.Length>maxLength*4)throw new ArgumentException("三维Scene编码超预算。");
+            writer.Write(bytes.Length);writer.Write(bytes);
+        }
+        private static string ReadText(BinaryReader reader,int maxLength)
+        {
+            int count=reader.ReadInt32();
+            if(count<0||count>maxLength*4)throw new InvalidDataException("三维Scene文本长度无效。");
+            return StrictUtf8.GetString(ReadExact(reader,count));
         }
     }
 }
