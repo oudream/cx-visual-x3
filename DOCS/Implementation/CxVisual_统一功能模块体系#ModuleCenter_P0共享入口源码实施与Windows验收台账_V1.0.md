@@ -274,3 +274,11 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 
 **Driver的真实工业闭环尚未完成。** 无特定设备型号、专业SDK许可/二进制、硬件连接、设备回读接口、操作安全授权与真实HIL，不能把Configuration/OS枚举/SDK文件存在或简单通信ACK判定为设备Ready/物理动作Completed。下一步的Driver专业Provider必须基于实际SDK和对应DeviceRef执行发现、打开、参数/状态Readback、操作/采集、完成确认、Stop/Dispose、失联恢复，再逐条取得TFD/DRV-A证据；危险运动/X-Ray操作还需真实硬件联锁、可控测试场与授权。这个G2/G3依赖不能由Windows云Runner或虚拟设备代替。
 
+## 20. Driver只读预检Windows G1实证（2026-10-29）
+
+- [初次Driver预检 UIA #40812877023](https://github.com/oudream/cx-visual-x3/actions/runs/40812877023)：**Failure**，WPF Button Padding 误用不可用的 `Thickness(double,double)` 构造，编译报 CS7036；[修复 c67b843](https://github.com/oudream/cx-visual-x3/commit/c67b843ca50e7a026f6c8974f6f4eb3b0deafcc0)。
+- [第二次Driver预检 UIA #40813165814](https://github.com/oudream/cx-visual-x3/actions/runs/40813165814)：**Failure**，完整Windows编译成功，首次未配置拒绝正确；之后测试在旧WPF工作区外用另一个MHS服务保存并生效配置，旧实例配置缓存未刷新，导致等待正例超时。修复为 [fea6f24](https://github.com/oudream/cx-visual-x3/commit/fea6f24baa3d8897c2ec21e8db4d93da717d2b2f)：真实关闭/重新打开测试工作区，从持久化MHS Effective重新读取。
+- [Driver环境预检真实WPF UIA #40813621209](https://github.com/oudream/cx-visual-x3/actions/runs/40813621209)，提交 `fea6f24baa3d8897c2ec21e8db4d93da717d2b2f`：**Success**。真正Windows x64 .NET48 TestCenter依赖构建、UIAutomation模块打开/Tab选中/SDK路径输入/Probe点击、正式MHS Effective重读、缺失设备与SDK的安全拒绝均通过。原始报告明确 `PASS Driver.G1.UIA`、`Effective=v2`、`DeviceReady=False`、`PhysicalActionVerified=False`、`HIL=NOT_RUN`。
+- [同阶段全量TestCenter Windows #40813165822](https://github.com/oudream/cx-visual-x3/actions/runs/40813165822)：**Success**。它对应修复了WPF Thickness的旧SHA，不等于Driver后续UIA新SHA的全量运行结论，具体时间与覆盖应区分。
+
+**结论**：Driver的“正式配置→真实环境证据查询→明确拒绝假设备就绪”的G1测试界面操作已验收。**不是**“Driver真实动作/采集→设备Readback→物理完成”的G2闭环。当前未提供可连接的目标设备、厂商SDK/许可和HIL安全环境，硬件动作不能凭软件测试伪造；真正工业闭环必须在已授权设备与具体专业Provider上执行、记录实机控制/采集/回读/停机/安全联锁、实测时间戳/资源释放并取得G2/G3日志。
