@@ -463,3 +463,12 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **Studio自测**：`Applications/Studio/StudioShellSelfTests.cs` 真实Gray8 5×3四节点Mask命中4、接受面积3px²、MOL 4块3数据边、Mask与Area具名输出；7×7中值5节点孤立噪点剔除，保留RAW字节；MHS配置快照不可变、变更Effective后旧Provider无法新建工程、非法半径零写入。测试与生产直接共用同一入口。
 - **提交**：[Provider快照](https://github.com/oudream/cx-visual-x3/commit/48b80816f68046f495012caa2fb4bdf79847d4e7)、[受控拆分Runner](https://github.com/oudream/cx-visual-x3/commit/4efd2873a63dde1f81827d2eebf711b071b80afa)、[Studio入口](https://github.com/oudream/cx-visual-x3/commit/ac8f8573fdb77e14ce1e5dc508b15b915363e34d)、[Studio测试](https://github.com/oudream/cx-visual-x3/commit/af1c2ab36063f609fafbea08094f1ae9568f4a39)。
 - **未宣称**：本次只完成代码与本地源码静态一致性检查（G2）。**针对这批最新提交的Windows x64/.NET48编译、Studio CPU-only和全量WPF测试日志尚未取得**；不可登记G3/G4/G5通过。设备驱动、HIL、生产发布授权与运行期恢复仍不在此交付范围。
+
+## 28. V2D-18/19/24：Studio独立算子统一发现、MOC签名门禁和正式MEM节点插入（2026-10-29）
+
+- **实现源**：`Applications/Studio/StudioShell.ModuleCenter.cs`重用既有MOC目录和`MFMModuleDescriptor`，将`CxVisionThresholdProvider`、`CxVisionBinaryThresholdProvider`、`CxVisionMaskRegionsProvider`、`CxVisionAcceptedRegionMeasureProvider`四类真实CPU软件能力登记为同一Compute模块，无第二能力注册表；页面自动展示端口描述、运行解析状态，不将软件Resolver视为设备授权。
+- **单一编辑入口**：`MainWindow.AddStudioVisionCapabilityToFlow`接受原MEM工程、现有Content、已读取生效配置的Provider及Capability ID。先经`CaptureInspectionOptions`核对MHS Effective变更/撤权、现有MOC Catalog、运行解析和`MOCBindingContractInspector`静态合同，再调用唯一`MOCFlowBuilder.Edit`生成正式Block。阈值输入`Threshold`和区域输入`RuleVersion`来自有效配置并写入MOL持久参数；Mask/Inspection等图像实际输入不做隐式自动接线，工程师必须到原MOL编排界面完成连接和发布。
+- **类型边界**：MOC此阶段对专业TypeId采用CLR `object`映射，只对白名单`ThresholdMask`/ `Inspection`的单个`MDC_BIND_OBJECT_UNVERIFIED`允许已存在的PVC强类型运行校验；任何其他`Rejected`或`Unknown`均拒绝修改MEM。不得冒称全自定义类型静态编译验证已经完成。
+- **自测**：`StudioShellSelfTests`真实WPF模块中心过滤Compute得到四类真实Provider、验证其强类型语义端口；CPU-only独立MEM会话经生产同一入口插入分割、连通区域、面积三个节点，核实3个ID及阈值/区域规则固定、所有图像输入仍未自动连接。未知能力和MHS生效版本过期必须在工程Revision未变化前拒绝。
+- **提交**：[统一目录及流程入口](https://github.com/oudream/cx-visual-x3/commit/e46e6b70db71f762d441cf28cf495a5dd28edb29)、[Studio目录测试](https://github.com/oudream/cx-visual-x3/commit/0516f34a3da5afa91d2be1259acc9bac469259b3)、[原子编辑单入口](https://github.com/oudream/cx-visual-x3/commit/6923e5fb570835097fc7c5efa1f912c1474a5846)、[真实MOL节点/拒绝测试](https://github.com/oudream/cx-visual-x3/commit/57cf1400f8c5aa6f40c42b120def906d45c27335)。
+- **验收状态**：代码与测试源已写master，未取得与本提交匹配的Windows x64编译、Studio `--module-center-cpu-self-test`及全S1 WPF日志，现登记G2；完整四节点在Studio画布中的交互连线、配置Schema统一编辑、Image/Mask/Contour可视选择和产品级发布仍为下一阶段待完成。
