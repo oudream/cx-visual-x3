@@ -970,6 +970,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "static handoff must retain the original MOC execution compiler and SourceMap");
                 Check(resolver.Calls==1 && resolver.Executions==0,
                     "compile-local resolver cache must pin one delegate without running it");
+                var firstOrigin=compiled.SourceMap.Find(action.Id).Single();
+                MOCStepOrigin resolvedOrigin;
+                Check(compiled.SourceMap.TryResolve(firstOrigin.StepId,out resolvedOrigin) &&
+                    resolvedOrigin.BlockId==action.Id &&
+                    object.Equals(resolvedOrigin.ContentAddress,firstOrigin.ContentAddress) &&
+                    compiled.SourceMap.Find(action.Id)[0].StepId==firstOrigin.StepId,
+                    "extracted static SourceMap must retain original step ID and Core Block address");
                 var oldManifest=staticManifest;
                 var changed=MOLControlBlock.Action("vision.gray16");
                 MOLLogicCodec.Set(session,content,new MOLLogicDefinition(changed));

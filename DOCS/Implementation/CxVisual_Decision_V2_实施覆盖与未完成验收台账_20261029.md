@@ -124,3 +124,7 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 ## 19. D05强类型控制表达式与状态机语义抽取（Phase 2A）
 
 `MDCPlanSemantics.cs`提供`MDCPlanExpression/BranchArm/LoopRule/CatchRule/WaitRule/ExitRule/StateRule/TransitionRule/BlockGuard`及只读`MDCPlanSemanticIndex`。复用唯一Core/MOL源，保留V1复合条件和结构化异常/动态循环规则、V2状态机正交区域/转移Guard的全部主要静态属性；不提供运行求值或第二种解释器，仍保留完整Codec payload作为无损溯源。测试用真正Core工程V1 If/Loop/Foreach/具名Catch/Wait/Throw、V2新StateMachine+复合Guard以及原有真实连线，验证只读内容与执行隔离。独立纯Plan lowering与项目合并仍待后续阶段，Windows结果须以后续固定SHA验收。
+
+## 20. SourceMap静态对象从原MOC运行编译器文件中无损分离
+
+将`MOCStepOrigin`和`MOCSourceMap`原样迁入`MOCSourceMap.cs`，保留历史namespace、构造与公开属性；原`MOCEngineeringCompiler`及`MOCTraceView`继续使用它们，不引入新映射真源。新增`MDCDecisionTests`正向TryResolve/Find一致性测试，并将其加入Decision Windows CI Runtime-free检查清单。此举降低后续27项目融合的源码耦合，但仍是同程序集的文件级重构，不能当成实际DLL分离和工程无环完成。

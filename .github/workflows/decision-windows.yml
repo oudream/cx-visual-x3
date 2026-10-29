@@ -25,6 +25,7 @@ jobs:
         run: |
           $pure = @(
             'Mechanism/Orchestration/MOCCapabilityCatalog.cs',
+            'Mechanism/Orchestration/MOCSourceMap.cs',
             'Mechanism/Orchestration/MDCDecisionService.cs',
             'Mechanism/Orchestration/MDCObjectiveSelection.cs',
             'Mechanism/Orchestration/MDCResourceBudgetPlanner.cs',

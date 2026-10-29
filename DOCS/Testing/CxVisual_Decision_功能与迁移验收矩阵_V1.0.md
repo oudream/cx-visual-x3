@@ -464,3 +464,12 @@ CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明
 | MDC-104 | Phase2A整个语义层源码无MRK依赖；新增与既有Decision/ArchitectureSmoke及ModuleCenter回归同时成功 |
 
 强调仅为纯静态语义描述和软件测试；动态执行、时序、State上下文及PLC/CT仿真仍归MRK/专业Host，暂无完整独立Loader验收。
+
+### SourceMap纯静态源码抽离（MDC-105～106）
+
+| Case | 断言 |
+|---|---|
+| MDC-105 | `MOCSourceMap.cs`完全不依赖MRK Execution类型并被Windows依赖防回流门禁覆盖；源码分离后保持原public类型、程序集和签名 |
+| MDC-106 | 原MOC编译的`SourceMap.Find`和`TryResolve`继续以同一StepId、ContentAddress和原BlockId返回对应SourceMap Origin，动态Loop/子流程正式回归不退化 |
+
+未宣称跨程序集迁移完成，真实执行Trace和SourceMap映射仍以原Studio/MRK测试为依据。

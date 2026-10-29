@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/>
     <Compile Include="MOCEngineeringCompiler.cs"/>
+    <Compile Include="MOCSourceMap.cs"/>
     <Compile Include="MOCCapabilityCatalog.cs"/>
     <Compile Include="MOCCapabilityCatalog.Runtime.cs"/>
     <Compile Include="MDCDecisionService.cs"/>

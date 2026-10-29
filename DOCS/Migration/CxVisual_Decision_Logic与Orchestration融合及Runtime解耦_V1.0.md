@@ -293,3 +293,9 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 在Phase 1的原Block/Link/Port/Policy描述式IR上，新增`MDCPlanSemanticIndex`及`MDCPlanSemanticCompiler`：静态、无MRK引用地复制原复合条件、分支Case、Loop/ForEach、Try/Catch/Finally、Wait/Throw及V2状态层级/转移Guard/优先级，组合结构和值语义。所有实体仍带原Content/Block/State身份；此层不执行表达式、不推断现场信号。新增Windows Runtime-free源码扫描目标，避免后续回流执行层。
 
 **未完成**：真正可让独立MRK Loader消费的全量指令格式、子流程参数/返回/异常与状态机完整运行等价、原MOC编译器的Runtime编译引用移除、旧程序集兼容迁移与27项目融合。不能因已有`MDCPlanSemanticIndex`而宣称D05全部lowering结束。
+
+### P0 SourceMap纯静态Owner边界实装
+
+从历史`MOCEngineeringCompiler.cs`中抽出原样的`MOCStepOrigin`和`MOCSourceMap`到`Mechanism/Orchestration/MOCSourceMap.cs`；不改Namespace/程序集/公开API、排序语义、StepId、ContentAddress、BlockId、CallPath、Iteration或Role。目标是让后续Decision可独立持有“编译步骤来源描述”，而MRK Transition→MOCTraceView、运行Plan及实际监控继续归Host/Runtime适配。CI额外禁止新的MOCSourceMap静态文件导入MRK。
+
+**只完成文件级边界，不等于** SourceMap已进入独立Decision.dll，也未移除Orchestration对Runtime项目的引用，仍需原编译器等价测试、Trace乱序/Drop/Loop/子流程映射回归后才可改最终工程归属。
