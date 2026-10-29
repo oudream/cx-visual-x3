@@ -244,3 +244,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`d7dcab1`](https://github.com/oudream/cx-visual-x3/commit/d7dcab135a6d5c2d84f272aef2c3fbea3f807e46) 修复WPF多Case回归中的错误测试状态恢复：重新打开不同Case会创建当前`FVOVolumeData/FVOVolumeSpatialFrame`，测试在异步保存Frame变化后错误恢复旧案例的Frame对象，触发专业ROI过期保护。改为恢复当前Case捕获的Frame，未削弱正式失效检测。对应[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994) **SUCCESS**，覆盖实际Windows 3D WPF验证；[TestCenter Command 40865538105](https://github.com/oudream/cx-visual-x3/actions/runs/40865538105) **SUCCESS**；全量TestCenter .NET48同时仍需记录其最终独立UIA结论。
 - [`3e186a3`](https://github.com/oudream/cx-visual-x3/commit/3e186a3487a34a4315761c864ecc55d3f6b70bc0)后续Windows全工程编译通过，但其WPF Smoke因上述Frame测试逻辑失败；不得将其标为全绿。修复以后按上述固定SHA升级。
 - 仍未将`AppData/Cases/CT3D/V04Schema1`外部旧版固定二进制样本误写为已验证；仍无实际工业量具G5精度认证。
+
+
+### 10.15 A包严格验收门禁追踪（2026-10-29）
+
+- [`422242c`](https://github.com/oudream/cx-visual-x3/commit/422242ce9fcc3e164a03ffb53a9a37a100332e4b)新增`CXVISUAL_CT3D_REQUIRE_LEGACY_FIXTURE=1`：执行正式Schema1跨版本验收时，如旧DLL生成的RAW、`schema1.cxproj`及`artifacts/ct3d`任一缺失，抛`FileNotFoundException`明确失败；普通ArchitectureSmoke仍明确SKIP，不能称兼容通过。严禁新算法伪造旧DLL固定二进制资产。
+- 对应`master@0a06f4e`的Config公共底座与Config L1均SUCCESS（Runs `40865796814`/`40865796654`），但这些不是G5，也不覆盖工业准确度验收。`d7dcab1`的Imaging SUCCESS（`40865537994`），TestCenter Windows .NET48 run `40865538045`失败于一般`--ui-automation`超时，最后阶段为`InteractManualModule`；其`--connector-ui-automation`、Graphics窗口与前置部分已通过。属于MFM/TestCenter公共UIA待排，不可冒充A包算法失败，也不能标整体UIA成功。
+- 继续区分：A包源码闭环、G1/G2/G3固定SHA已取得部分成功；严格历史格式fixture、真实工业标准件（G5）及Studio完整专业场景操作仍未取得证据。禁止标记完整验收。
