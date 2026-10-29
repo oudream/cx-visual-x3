@@ -426,3 +426,12 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **Owner与复用**：`FIMImageMaskContours.Trace`保有0/255掩码追踪及孔洞计算唯一算法实现，`FGEPoint2D`仍为既有几何坐标；PVC `CxVisionRunSummary.WithThresholdMaskContours`仅消费已提交MRK `ThresholdMask`，按需投影为只读`CxVisionContourSnapshot`及`CxVisionResultKind.Contour`，继承RunId、SourceId和原OutputPort，不新建MDS/Graph/工程状态。
 - **设计边界**：不自动生成所有大图轮廓；`maxBoundaryEdges`最多2000000，支持CancellationToken；顶点为原图像素**边界**坐标，正面积外环、负面积孔洞。当前是**阈值Mask全部命中像素**的轮廓，不能冒充Inspection面积筛选后的区域或mm²标定结果；无Mask的旧Plan明确拒绝。图窗可选择消费这种产物，但本阶段没有声称完成Studio/MPW界面接线。
 - **状态**：源码及正反自动测试文件已在master（G2）；截至本条登记，**Windows .NET48构建、Imaging --imaging专项、全回归和真实WPF/UIA未核验**，不可登记G3/G4/G5通过。后续须按包含上述代码的固定SHA复核工作流及实际数字输出。
+
+## 24. V2D-12/18/19/21/23：独立Mask→Region→Measurement工程链（2026-10-29）
+
+- **正式新增**：`Professional/Vision/CxVisionSeparatedProviders.cs` 两个Provider：`CxVisionBinaryThresholdProvider`接收RAW/宽高/固定阈值，复用FIM带取消阈值算法并产生原图尺寸0/255 Gray8 Mask；`CxVisionMaskRegionsProvider`消费真实Mask，复用`CxVisionThresholdPipeline`四邻域连通域与面积筛选，输出原`CxVisionInspectionResult`，不建第二套连通域逻辑。明确Mask包含筛选前全部命中像素，Region仅包含面积规则接收区域。
+- **MOC/运行**：新增`CxVisionRawCpuRunner.ExecuteSeparatedMeasuredAsync`及`ExecuteSavedSeparatedMeasuredAsync`，可选半径0(4节点)或1..3(5节点FIM中值)。使用既有MEM/MOL编辑、MOC FlowBuilder编译、MOCProjectRelease发布和MRK/MDS原子执行、Trace、具名`ThresholdMask`/`AcceptedRegionPixelArea`出口；既有2/3/4节点旧入口保持原签名和默认行为。新Runner以`SegmentBlockId`和同Run `ThresholdMask`返回真实节点/产物身份。
+- **参数与版本**：分割节点持阈值/位深版本；区域节点持面积上下限和配置Revision形成的`RuleVersion`，作为正式MOC `string`参数，重开时与持久规则比较，不一致在编译发布前拒绝。自定义Mask TypeId由MOC映射`object`并由PVC进行FIMImageBuffer/Gray8/0或255强校验；不把CLR类型冒充公共TypeId。
+- **专业结果**：复用`CxVisionRunSummary.FromInspection`，增加可选同Run `ThresholdMask`投影；可继续按需调用已存在`WithThresholdMaskContours`获得孔洞/轮廓。未另建Result仓库。
+- **关键提交**：[Provider首次实现](https://github.com/oudream/cx-visual-x3/commit/9c278278670ff294afbfe38ad1b4d8d58594393f)、[MEM/MOC完整执行](https://github.com/oudream/cx-visual-x3/commit/a75b2d23a138de9d9bb8a9efdee2e3f6c31b2521)、[Mask Result投影](https://github.com/oudream/cx-visual-x3/commit/34c531e2d29b0166da9034574b89f79fba0214af)、[工程规则固定](https://github.com/oudream/cx-visual-x3/commit/755d8491e49c6a9358f5a49095ea1dbb7d89f6da)、[实测用例源码](https://github.com/oudream/cx-visual-x3/commit/4ef84c0d5001399fc1fbc41fa5a4f52820150598)、[Mask端口编译映射](https://github.com/oudream/cx-visual-x3/commit/a7636b1e31dd5bf14277fbc968e604b5caacc975)。
+- **严格状态**：提交了正式代码和可执行测试，但尚未取得匹配最新SHA的Windows MSBuild/ArchitectureSmoke/UIA结果，暂记G2（新代码在仓库）而非G3/G4/G5。分割/连通域尚未接入Studio通用可视算子面板；32M像素中间副本/峰值和实际设备样本性能待测；整套`VisionRunResult`、长期Artifact/Frame引用及实时流仍非已交付。
