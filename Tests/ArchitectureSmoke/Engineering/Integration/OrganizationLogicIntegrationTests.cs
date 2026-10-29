@@ -2288,6 +2288,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         page.RootContent.Id,provider);
                     Check(repeat.Succeeded&&repeat.Plan.InputDefaults.Count==2,
                         "G06 CPU Vision lost Port and parameters after real .cxproj reopen");
+                    // B1-B3 vertical regression: the reopened MEM project, not the
+                    // original in-memory builder, must drive the real Vision Provider.
+                    MOCTraceView reopenedTrace;
+                    var reopenedRun=Execute(repeat.Plan,
+                        repeat.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),
+                        out reopenedTrace);
+                    var reopenedImage=reopenedRun.Results.ContainsKey(
+                        "w"+inspect.ToString("N"))?
+                        reopenedRun.Results["w"+inspect.ToString("N")]
+                            as CxVisionInspectionResult:null;
+                    Check(reopenedRun.State==MRKFlowState.Completed&&
+                        reopenedImage!=null&&reopenedImage.ConfigRevision==12&&
+                        reopenedImage.ThresholdPixelCount==4&&
+                        reopenedImage.Regions.Count==1&&
+                        reopenedImage.Regions[0].PixelArea==3&&
+                        reopenedTrace.Events.Any(x=>x.Origin.BlockId==inspect&&
+                            x.Transition.State==MRKStepState.Completed),
+                        "B1-B3 reopened engineering failed real Vision CPU execution or SourceMap");
                 }
                 var invalidSource=new TestResolver().Register("vision.test.source",
                     (ctx,token)=>Task.FromResult((object)new byte[]{210,210}));
