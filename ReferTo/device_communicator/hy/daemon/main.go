@@ -1,0 +1,398 @@
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"gogo/common/utilities"
+	"gogo/hy/common/daemonc"
+	"gogo/hy/common/monitorc"
+	"gogo/hy/common/program"
+	"log"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+)
+
+var (
+	_myProgram *program.Program
+	_logger    *log.Logger
+	_title     = utilities.NewLoggerTitles("MAIN")
+	// only main thread call
+	_thisQueue monitorc.CodeStack
+)
+
+const (
+	minute5 = 5 * 60 * 1000
+)
+
+func exitPidFiles(programs []program.Program) {
+	for i := 0; i < len(programs); i++ {
+		a := &programs[i]
+		if a.ID == program.DefaultProgramIdDaemon {
+			continue
+		}
+		name := utilities.FileSystemGetFileNameOnly(a.Path)
+		if pid := program.LoadProgramRunPid(*_workDir, name); pid > 0 {
+			err := program.KillProcess(pid)
+			if err != nil {
+				_logger.Printf(_title.Error+"Kill[ %s ] Fail. err= %s", name, err)
+			} else {
+				_logger.Printf(_title.Error+"Kill[ %s ] Success", name)
+			}
+		}
+	}
+}
+
+// FOO=bar bash -c 'SomeCommand SomeArgs | SomeCommand2'
+// https://stackoverflow.com/questions/10856129/setting-an-environment-variable-before-a-command-in-bash-is-not-working-for-the
+func main() {
+	flag.Parse()
+
+	if !utilities.FileSystemConfirmWorkDir(_workDir) {
+		return
+	}
+
+	if program.IsProgramHadRun(*_workDir, program.DefaultProgramNameDaemon) {
+		fmt.Println(_title.Error + "Fatal Run, daemon had run!!!")
+		os.Exit(-2)
+		return
+	}
+
+	// init db
+	iRowsAffected, err := program.InitDb(*_workDir)
+	if err != nil {
+		fmt.Printf(_title.Error+"Fatal program.InitDb, err: %s,  Program Will Exit.\n", err)
+		os.Exit(-3)
+		return
+	}
+
+	_myProgram, err = program.GetProgramById(*_workDir, program.DefaultProgramIdDaemon)
+	if err != nil {
+		_logger.Printf(_title.Error+"Fatal _myProgram=GetProgramById( %d ), err=%s, Program Will Exit.\n", program.DefaultProgramIdDaemon, err)
+		os.Exit(-3)
+		return
+	}
+
+	_logger, err = utilities.InitLogger(utilities.LoggerConfig{
+		FilePath: filepath.Join(_myProgram.GetLogPrefixPath(*_workDir) + ".sys"),
+		IsStdOut: true,
+	})
+	if err != nil {
+		fmt.Print(_title.Error + "Fatal initLogger, Program Will Exit!!!")
+		os.Exit(-4)
+		return
+	}
+	_logger.Printf(_title.Info+"work dir: %s\n", *_workDir)
+	_logger.Printf(_title.Info+"Read _myProgram Complete, %s\n", utilities.JsonLogString(_myProgram))
+	_logger.Printf(_title.Info+"InitDb Complete, rows affected: %d \n", iRowsAffected)
+
+	err = initConfig()
+	if err != nil {
+		_logger.Printf(_title.Error+"Fatal initConfig [ %s ], Program Will Exit.\n", err)
+		os.Exit(-5)
+		return
+	}
+	_logger.Printf(_title.Info+"Read Config Complete, %d _programs\n", len(_programs))
+	for i := 0; i < len(_programs); i++ {
+		prog := &_programs[i]
+		_logger.Printf(_title.Info+"Read Program Complete, %s\n", utilities.JsonLogString(prog))
+	}
+
+	ticker := time.NewTicker(1000 * time.Millisecond)
+	//cbr:c + break 通知守护进程退出的管道
+	cbr := make(chan bool)
+
+	csg := make(chan os.Signal)
+	// 订阅系统信号:ctrl+c
+	signal.Notify(csg, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	//从管道csg抓取系统信号：:ctrl+c，并从管道cbr发出消息
+	go func() {
+		for s := range csg {
+			switch s {
+			case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT:
+				_logger.Println(_title.Info+"接收到信號-退出: ", s)
+				_logger.Println(_title.Info + "开始退出..")
+				// 發出退出信號
+				ticker.Stop()
+				cbr <- true
+				_logger.Println(_title.Info + "Ticker stopped")
+			default:
+				_logger.Println(_title.Info+"接收到信號-other: ", s)
+			}
+		}
+	}()
+
+	// exit pid of file ( in dir pid )
+	exitPidFiles(_programs)
+
+	bSysSetting := false
+	err = checkSysSetting()
+	if err != nil {
+		_logger.Printf(_title.Error+"Check DB[ mqtt, redis, influxdb ] Connected Status Fail, err: %s.\n", err)
+	} else {
+		bSysSetting = true
+	}
+	_logger.Println(_title.Info + "Run Program List:")
+	cae := make(chan program.Event)
+	for i := 0; i < len(_programs); i++ {
+		a := _programs[i]
+		if a.ID == program.DefaultProgramIdDaemon {
+			continue
+		}
+		// sys setting no good, only run inspector and monitor
+		if !bSysSetting && a.ID != program.DefaultProgramIdCommServer &&
+			a.ID != program.DefaultProgramIdMonitor && a.ID != program.DefaultProgramIdMosquitto &&
+			a.ID != program.DefaultProgramIdRedis {
+			_logger.Printf(_title.Error+"Check DB[ mqtt, redis, influxdb ] Connected Status Fail, program[ %s ] can not be run.\n", a.Path)
+			continue
+		}
+		if a.FirstWaitTime > 0 {
+			time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
+		}
+		go daemonc.RunProgram(a, cae, findProgramById, _logger, *_workDir)
+		_logger.Println(_title.Info + "Run Program: " + a.Path)
+	}
+
+	// 实现监控数据帧处理接口DealMonFrame的结构体，绑定守护进程对监控数据帧处理函数DealMonFrameData的具体逻辑
+	dealC := DealMonC{}
+	// MonC，设置好监控数据帧处理结构体
+	monC, err := monitorc.NewMonC(*_monitorHost, *_monitorPort, &dealC)
+	if err != nil {
+		_logger.Println(_title.Error, "NewUdpC Fail,", err)
+	}
+	var dtCheck int64
+
+	programStatuses := make(map[int64]*program.Status)
+	programStatuses[program.DefaultProgramIdDaemon] = &program.Status{
+		Id:          program.DefaultProgramIdDaemon,
+		Pid:         os.Getpid(),
+		IsRun:       true,
+		LastRunTime: time.Now().UnixMilli(),
+	}
+
+	program.SaveSelfPidFile(*_workDir, program.DefaultProgramNameDaemon)
+	_logger.Printf(_title.Info+"%s Start, %s.\n", program.DefaultProgramNameDaemon, *_workDir)
+
+	var dtHeartbeat int64
+	dtRecovery := time.Now().UnixMilli() + minute5
+	bRunning := true
+	for bRunning {
+		select {
+		// os.Signal
+		case <-cbr:
+			_logger.Println(_title.Info + "执行清理..")
+			_logger.Println(_title.Info + "结束退出..")
+			daemonc.DaemonRun = false
+			for ProgramId, pid := range _runProgramIds {
+				if pid > 0 {
+					proc, err2 := os.FindProcess(pid)
+					if err2 == nil && proc != nil {
+						_ = proc.Kill()
+						a, err := findProgramById(ProgramId)
+						if err == nil {
+							program.DeleteProgramPidFile(*_workDir, a.GetFileName())
+						}
+						//time.Sleep(time.Millisecond * 100)
+					}
+				}
+			}
+			bRunning = false
+
+		// ticker
+		case <-ticker.C:
+			dtNow := utilities.TimeGetCurrentMsepoch()
+			if dtNow-dtCheck > 3000 {
+				err := monC.CheckChannel()
+				if err != nil {
+					_logger.Println(_title.Error, "NewUdpC Fail,", err)
+				}
+				dtCheck = dtNow
+			}
+			if dtNow-dtHeartbeat > 10000 {
+				monC.SendProgramHeartbeat(program.Heartbeat{ProgramId: program.DefaultProgramIdDaemon, PId: os.Getpid(), Healthy: 0})
+				dtHeartbeat = dtNow
+			}
+			if dtNow-dtRecovery > 0 {
+				recoveryPrograms(cae)
+				dtRecovery += minute5
+			}
+
+		// monC 监视客户端协程管道
+		case rData := <-monC.C:
+			if rData.Err == nil {
+				monC.Frame.Unmarshal(rData.Data)
+				for !_thisQueue.IsEmpty() {
+					if codeMessage, ok := _thisQueue.Pop(); ok {
+						// Employ ProgramDiff
+						if codeMessage.Code == monitorc.CCodeProgramDiffEmployReq {
+							var ad program.Diff
+							err = json.Unmarshal(codeMessage.Data, &ad)
+							if err == nil {
+								_logger.Printf(_title.Info+"program diff-employ %s program[%s](%d)", ad.Action, ad.Program.Path, ad.Program.ID)
+								// sync to _programs
+								var bKill = false
+								var bRun = false
+								if ad.Action == program.ActionInsert {
+									addProgram(ad.Program)
+									bRun = true
+								} else if ad.Action == program.ActionUpdate {
+									oldEnabled, newEnabled, err := updateProgram(ad.Program)
+									if err != nil {
+										_logger.Printf(_title.Info+"program diff-employ %s program[%s](%d) updateProgram err: %s\n", ad.Action, ad.Program.Path, ad.Program.ID, err)
+									} else {
+										bKill = true
+										bRun = newEnabled && oldEnabled != newEnabled
+									}
+								} else {
+									deleteProgram(ad.ID)
+									bKill = true
+								}
+								// sync to daemonc
+								if bKill {
+									if pid, ok := _runProgramIds[ad.ID]; ok {
+										proc, err := os.FindProcess(pid)
+										if err == nil && proc != nil {
+											_ = proc.Kill()
+											delete(_runProgramIds, ad.ID)
+											if bRun {
+												time.Sleep(time.Millisecond * 200)
+											}
+											_logger.Printf(_title.Info+"program diff-employ %s and kill program[%s](%d)", ad.Action, ad.Path, ad.ID)
+										}
+									}
+								}
+								if bRun {
+									go daemonc.RunProgram(ad.Program, cae, findProgramById, _logger, *_workDir)
+									_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
+								}
+							} else {
+								_logger.Printf(_title.Info+"program diff-employ fail, json unmarshal err: ", err)
+							}
+
+							// Request Status Of Programs
+						} else if codeMessage.Code == monitorc.CCodeProgramStatusReq {
+							var statuses []*program.Status
+							for _, status := range programStatuses {
+								statuses = append(statuses, status)
+							}
+							if len(statuses) > 0 {
+								data, err := json.Marshal(statuses)
+								if err == nil {
+									_, _ = monC.Send(monitorc.CCodeProgramStatusResp, data)
+								}
+							}
+
+							// Employ Result of Checking Dbs
+						} else if codeMessage.Code == monitorc.CCodeCheckDbsEmployReq {
+							var dbsState monitorc.DbsState
+							//var info Register
+							buf := bytes.NewBuffer(codeMessage.Data)
+							err = binary.Read(buf, monitorc.Endian, &dbsState)
+							if err != nil {
+								fmt.Println("checkDbsEmployReq Fail, binary.Read failed:", err)
+							}
+							if dbsState.InfluxdbState && dbsState.MqttState && dbsState.RedisState {
+								recoveryPrograms(cae)
+								dtRecovery += minute5
+							}
+
+						} else if codeMessage.Code == monitorc.CCodeDaemonRestartProgramReq {
+							var ad program.Diff
+							err = json.Unmarshal(codeMessage.Data, &ad)
+							if err == nil {
+								_logger.Printf(_title.Info+"daemon restart program req, program[%s](%d)", ad.Path, ad.ID)
+								bProgramHasRun := false
+								if pid, ok := _runProgramIds[ad.ID]; ok {
+									proc, err := os.FindProcess(pid)
+									if err == nil && proc != nil {
+										_ = proc.Kill()
+										delete(_runProgramIds, ad.ID)
+										_logger.Printf(_title.Info+"daemon restart program req, send kill signal to program[%s](%d)", ad.Path, ad.ID)
+									}
+									bProgramHasRun = pid > 0
+								}
+								if !bProgramHasRun && ad.Enabled == program.ENABLE {
+									go daemonc.RunProgram(ad.Program, cae, findProgramById, _logger, *_workDir)
+									_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
+								}
+							} else {
+								_logger.Printf(_title.Info+"daemon kill req fail, json unmarshal err: ", err)
+							}
+						}
+					}
+				}
+			} else {
+
+			}
+
+		// daemon 守护协程管道
+		case programEvent := <-cae:
+			aProgram, err := findProgramById(programEvent.Status.Id)
+			if err != nil {
+				aProgram.MaxCount = -1
+				aProgram.MaxError = -1
+			}
+			aInfo := fmt.Sprintf(" ( id:%d; pid:%d; 启动次数:%d/%d; 失败次数:%d/%d )。",
+				programEvent.Status.Id, programEvent.Status.Pid, programEvent.Status.StartCount, aProgram.MaxCount, programEvent.Status.ErrorCount, aProgram.MaxError)
+			if programEvent.Status.Id > 0 {
+				_runProgramIds[programEvent.Status.Id] = 0
+			}
+			switch programEvent.Event {
+			case program.EventMaxError:
+				_logger.Println(_title.Info + aProgram.Path + "退出，失败次数太多，不再守护。" + aInfo)
+			case program.EventMaxCount:
+				_logger.Println(_title.Info + aProgram.Path + "退出，启动次数太多，不再守护。" + aInfo)
+			case program.EventStart:
+				if programEvent.Status.IsRun {
+					_runProgramIds[programEvent.Status.Id] = programEvent.Status.Pid
+					if aProgram.ID > program.DefaultProgramIdDaemon && aProgram.ID < program.DefaultProgramIdCore {
+						_ = program.SaveProgramPidFile(*_workDir, utilities.FileSystemGetFileNameOnly(aProgram.GetFileName()), programEvent.Status.Pid)
+					}
+					_logger.Println(_title.Info + aProgram.Path + " 启动成功。" + aInfo)
+				} else {
+					_logger.Println(_title.Info + aProgram.Path + " 启动失败。" + aInfo + programEvent.Message)
+				}
+			case program.EventExit:
+				if programEvent.Status.ErrorCount > 0 {
+					_logger.Println(_title.Info + fmt.Sprintf(aProgram.Path+"退出，运行时长：%d。", time.Now().Unix()-programEvent.Status.LastRunTime) + aInfo)
+				} else {
+					_logger.Println(_title.Info + aProgram.Path + "退出，运行时间太短" + aInfo + programEvent.Message)
+				}
+			}
+			programStatuses[programEvent.Status.Id] = &programEvent.Status
+			if existProgram(programEvent.Status.Id) {
+				monC.SendProgramEvent(programEvent)
+			}
+		}
+	}
+
+	program.ExitProgramRun(*_workDir, program.DefaultProgramNameDaemon)
+	_logger.Println(_title.Info + "Daemon End")
+}
+
+func recoveryPrograms(cae chan program.Event) {
+	ps := getPrograms()
+	for i := 0; i < len(ps); i++ {
+		a := ps[i]
+		if a.ID == program.DefaultProgramIdDaemon {
+			continue
+		}
+		bProgramHasRun := false
+		if pid, ok := _runProgramIds[a.ID]; ok {
+			bProgramHasRun = pid > 0
+		}
+		// run program
+		if !bProgramHasRun {
+			if a.FirstWaitTime > 0 {
+				time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
+			}
+			go daemonc.RunProgram(a, cae, findProgramById, _logger, *_workDir)
+			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
+		}
+	}
+}
