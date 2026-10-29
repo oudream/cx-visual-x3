@@ -14,15 +14,20 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DFeatureMeasurement
     {
         internal CT3DFeatureMeasurement(string kind,double valueMm,double rmsMm,
-            Guid featureId,string sourceRef,long revision,string sourceSignature)
+            Guid featureId,string sourceRef,long revision,string sourceSignature,
+            FVOVolumeSpatialFrame frame,string algorithmVersion,string parameterSignature,string roiSignature)
         {
             if(string.IsNullOrWhiteSpace(kind)||featureId==Guid.Empty||
                 string.IsNullOrWhiteSpace(sourceRef)||string.IsNullOrWhiteSpace(sourceSignature)||
-                revision<1||double.IsNaN(valueMm)||double.IsInfinity(valueMm)||
+                revision<1||frame==null||string.IsNullOrWhiteSpace(algorithmVersion)||
+                string.IsNullOrWhiteSpace(parameterSignature)||
+                double.IsNaN(valueMm)||double.IsInfinity(valueMm)||
                 double.IsNaN(rmsMm)||double.IsInfinity(rmsMm)||rmsMm<0)
                 throw new ArgumentException("专业测量来源或数值无效。");
             Kind=kind;ValueMm=valueMm;RmsResidualMm=rmsMm;FeatureResultId=featureId;
             SourceRef=sourceRef;SourceRevision=revision;SourceSignature=sourceSignature;
+            SpatialFrame=frame;AlgorithmVersion=algorithmVersion;
+            ParameterSignature=parameterSignature;RoiSignature=roiSignature;
         }
         public string Kind {get;private set;}
         public double ValueMm {get;private set;}
@@ -32,6 +37,10 @@ namespace CxVisual.Professional.CT3D
         public string SourceRef {get;private set;}
         public long SourceRevision {get;private set;}
         public string SourceSignature {get;private set;}
+        public FVOVolumeSpatialFrame SpatialFrame {get;private set;}
+        public string AlgorithmVersion {get;private set;}
+        public string ParameterSignature {get;private set;}
+        public string RoiSignature {get;private set;}
         public bool HasEvaluatedUncertainty {get{return false;}}
     }
 
@@ -141,23 +150,29 @@ namespace CxVisual.Professional.CT3D
             if(Kind==CT3DAnalysisKind.MeshPlane)
             {
                 values.Add(new CT3DFeatureMeasurement("plane.rms-residual",Plane.RmsResidualMm,
-                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
                 values.Add(new CT3DFeatureMeasurement("plane.max-absolute-residual",Plane.MaxAbsoluteResidualMm,
-                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
             }
             if(Kind==CT3DAnalysisKind.SurfaceCylinder)
             {
                 values.Add(new CT3DFeatureMeasurement("cylinder.radius",Cylinder.RadiusMm,
-                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
                 values.Add(new CT3DFeatureMeasurement("cylinder.diameter",Cylinder.DiameterMm,
-                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
             }
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
             {
                 values.Add(new CT3DFeatureMeasurement("sphere.radius",Sphere.RadiusMm,
-                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
                 values.Add(new CT3DFeatureMeasurement("sphere.diameter",Sphere.DiameterMm,
-                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature,
+                    Source.SpatialFrame,AlgorithmVersion,ParameterSignature,RoiSignature));
             }
             return values.AsReadOnly();
         }
