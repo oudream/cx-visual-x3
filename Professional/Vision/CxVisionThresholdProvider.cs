@@ -284,7 +284,8 @@ namespace CxVisual.Professional.Vision
                 inputs:new[]{
                     new MRKCapabilityInput("RawPixels",typeof(byte[])),
                     new MRKCapabilityInput("Width",typeof(int)),
-                    new MRKCapabilityInput("Height",typeof(int))
+                    new MRKCapabilityInput("Height",typeof(int)),
+                    new MRKCapabilityInput("Radius",typeof(int))
                 });
         }
 
@@ -304,6 +305,8 @@ namespace CxVisual.Professional.Vision
                         "int",MPCPortKind.Data,required:true),
                     new MPCPortDescriptor("Height",MPCPortDirection.Input,
                         "int",MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("Radius",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true),
                     new MPCPortDescriptor("EnhancedPixels",MPCPortDirection.Output,
                         "byte[]",MPCPortKind.Data)
                 })};
@@ -312,11 +315,13 @@ namespace CxVisual.Professional.Vision
         private Task<object> ExecuteAsync(MRKExecutionContext context,CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
-            object raw,width,height;
+            object raw,width,height,radius;
             if(!context.BoundInputs.TryGetValue("RawPixels",out raw) ||
                 !context.BoundInputs.TryGetValue("Width",out width) ||
                 !context.BoundInputs.TryGetValue("Height",out height) ||
-                !(raw is byte[]) || !(width is int) || !(height is int))
+                !context.BoundInputs.TryGetValue("Radius",out radius) ||
+                !(raw is byte[]) || !(width is int) || !(height is int) ||
+                !(radius is int) || (int)radius!=_radius)
                 throw new InvalidOperationException("vision.enhance.required_typed_inputs");
             int w=(int)width,h=(int)height;
             long pixels=(long)w*h;
