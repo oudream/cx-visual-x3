@@ -27,6 +27,9 @@ namespace CxVisual.Professional.Vision
         public Guid PageId {get;internal set;}
         public Guid FlowId {get;internal set;}
         public Guid InspectBlockId {get;internal set;}
+        /// <summary>Only present for the independent Mask segmentation node.</summary>
+        public Guid SegmentBlockId {get;internal set;}
+        public FIMImageBuffer ThresholdMask {get;internal set;}
         /// <summary>Only present for opt-in FIM median enhancement flow.</summary>
         public Guid EnhanceBlockId {get;internal set;}
         public FIMImageBuffer EnhancedImage {get;internal set;}
@@ -90,12 +93,12 @@ namespace CxVisual.Professional.Vision
                 MRKExecutionPlan plan,long revision)
             {
                 return principal==Principal && revision==1 && plan!=null &&
-                    (plan.Steps.Count>=2 && plan.Steps.Count<=4);
+                    (plan.Steps.Count>=2 && plan.Steps.Count<=5);
             }
             public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
             {
                 return revision==1 && plan!=null &&
-                    (plan.Steps.Count>=2 && plan.Steps.Count<=4);
+                    (plan.Steps.Count>=2 && plan.Steps.Count<=5);
             }
         }
         public static byte[] ReadRaw(string path,int width,int height,
@@ -188,10 +191,42 @@ namespace CxVisual.Professional.Vision
                 contentId,medianRadius);
         }
 
+        /// <summary>
+        /// 真实可编排拆分链：RAW → [FIM中值] → 阈值Mask → 独立四邻域Region → 面积。
+        /// 不更改旧一体化检测入口；配置与阈值随Provider版本固定。
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteSeparatedMeasuredAsync(
+            MEMEngineeringSession session,CxVisionInspectionOptions options,long revision,
+            string path,int width,int height,int medianRadius,CancellationToken cancellation)
+        {
+            if(options==null)throw new ArgumentNullException("options");
+            if(medianRadius<0 || medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            var vision=new CxVisionThresholdProvider(options,revision);
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,
+                medianRadius:medianRadius,splitNodes:true,splitOptions:options);
+        }
+
+        /// <summary>同一已保存MEM/MOL拆分工作链，重新绑定RAW/Provider并验证节点参数。</summary>
+        public static Task<CxVisionCpuRun> ExecuteSavedSeparatedMeasuredAsync(
+            MEMEngineeringSession session,Guid contentId,CxVisionInspectionOptions options,
+            long revision,string path,int width,int height,int medianRadius,
+            CancellationToken cancellation)
+        {
+            if(contentId==Guid.Empty)throw new ArgumentException("工程Content不能为空","contentId");
+            if(options==null)throw new ArgumentNullException("options");
+            if(medianRadius<0 || medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            var vision=new CxVisionThresholdProvider(options,revision);
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true,
+                contentId,medianRadius,true,options);
+        }
+
         private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation,
-            bool includeMeasurement,Guid? existingContentId=null,int medianRadius=0)
+            bool includeMeasurement,Guid? existingContentId=null,int medianRadius=0,
+            bool splitNodes=false,CxVisionInspectionOptions splitOptions=null)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -207,12 +242,19 @@ namespace CxVisual.Professional.Vision
                 new CxVisionAcceptedRegionMeasureProvider(vision) : null;
             IMRKVersionedCapabilityResolver resolver=includeMeasurement ?
                 (IMRKVersionedCapabilityResolver)measureProvider : vision;
+            CxVisionMaskRegionsProvider regions=splitNodes ?
+                new CxVisionMaskRegionsProvider(splitOptions,vision.ConfigurationRevision,resolver) : null;
+            if(regions!=null)resolver=regions;
+            CxVisionBinaryThresholdProvider segment=splitNodes ?
+                new CxVisionBinaryThresholdProvider(vision.PixelDepth,
+                    splitOptions.GrayThreshold,resolver) : null;
+            if(segment!=null)resolver=segment;
             CxVisionMedianEnhanceProvider enhancement=medianRadius>0 ?
                 new CxVisionMedianEnhanceProvider(vision.PixelDepth,medianRadius,resolver) : null;
             if(enhancement!=null)resolver=enhancement;
             var source=new RawProvider(pixels,resolver);
             Guid pageId=Guid.Empty,entryContentId=Guid.Empty;
-            Guid inspect=Guid.Empty,measure=Guid.Empty,enhance=Guid.Empty;
+            Guid inspect=Guid.Empty,measure=Guid.Empty,enhance=Guid.Empty,segmentation=Guid.Empty;
             if(existingContentId.HasValue)
             {
                 // Validate persisted definition before any MOC publication or MRK work.
@@ -224,23 +266,28 @@ namespace CxVisual.Professional.Vision
                     parent==null || parent.Kind!=MEMNodeKind.Page)
                     throw new InvalidOperationException("vision.saved.invalid_content");
                 MOLWiringDefinition wiring=MOLWiringCodec.Get(content);
-                if(wiring==null || wiring.Blocks.Count!=(medianRadius>0?4:3) ||
-                    wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)!=(medianRadius>0?3:2) ||
+                if(wiring==null || wiring.Blocks.Count!=(splitNodes?(medianRadius>0?5:4):(medianRadius>0?4:3)) ||
+                    wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)!=(splitNodes?(medianRadius>0?4:3):(medianRadius>0?3:2)) ||
                     !wiring.FlowOutputs.ContainsKey("AcceptedRegionPixelArea") ||
                     (medianRadius>0 && !wiring.FlowOutputs.ContainsKey("EnhancedPixels")))
                     throw new InvalidOperationException("vision.saved.requires_three_node_wiring");
                 var rawBlocks=wiring.Blocks.Where(x=>x.CapabilityId==InputId).ToArray();
-                var inspectBlocks=wiring.Blocks.Where(x=>
-                    x.CapabilityId==CxVisionThresholdProvider.CapabilityId).ToArray();
+                var inspectBlocks=wiring.Blocks.Where(x=>x.CapabilityId==
+                    (splitNodes?CxVisionMaskRegionsProvider.CapabilityId:
+                        CxVisionThresholdProvider.CapabilityId)).ToArray();
+                var segmentBlocks=wiring.Blocks.Where(x=>
+                    x.CapabilityId==CxVisionBinaryThresholdProvider.CapabilityId).ToArray();
                 var measureBlocks=wiring.Blocks.Where(x=>
                     x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId).ToArray();
                 var enhanceBlocks=wiring.Blocks.Where(x=>
                     x.CapabilityId==CxVisionMedianEnhanceProvider.CapabilityId).ToArray();
                 if(rawBlocks.Length!=1 || inspectBlocks.Length!=1 || measureBlocks.Length!=1 ||
-                    enhanceBlocks.Length!=(medianRadius>0?1:0))
+                    enhanceBlocks.Length!=(medianRadius>0?1:0) ||
+                    segmentBlocks.Length!=(splitNodes?1:0))
                     throw new InvalidOperationException("vision.saved.capability_mismatch");
                 inspect=inspectBlocks[0].Id;
                 measure=measureBlocks[0].Id;
+                if(splitNodes)segmentation=segmentBlocks[0].Id;
                 if(medianRadius>0)
                 {
                     enhance=enhanceBlocks[0].Id;
@@ -263,7 +310,7 @@ namespace CxVisual.Professional.Vision
                 IReadOnlyDictionary<string,string> parameters;
                 string declaredWidth,declaredHeight;
                 int expectedWidth,expectedHeight;
-                if(!wiring.Parameters.TryGetValue(inspect,out parameters) ||
+                if(!wiring.Parameters.TryGetValue(splitNodes?segmentation:inspect,out parameters) ||
                     !parameters.TryGetValue("Width",out declaredWidth) ||
                     !parameters.TryGetValue("Height",out declaredHeight) ||
                     !int.TryParse(declaredWidth,NumberStyles.Integer,
@@ -272,6 +319,16 @@ namespace CxVisual.Professional.Vision
                         CultureInfo.InvariantCulture,out expectedHeight) ||
                     expectedWidth!=width || expectedHeight!=height)
                     throw new InvalidOperationException("vision.saved.image_dimensions_changed");
+                if(splitNodes)
+                {
+                    string thresholdText;
+                    int savedThreshold;
+                    if(!parameters.TryGetValue("Threshold",out thresholdText) ||
+                       !int.TryParse(thresholdText,NumberStyles.Integer,
+                           CultureInfo.InvariantCulture,out savedThreshold) ||
+                       savedThreshold!=splitOptions.GrayThreshold)
+                        throw new InvalidOperationException("vision.saved.threshold_changed");
+                }
                 pageId=parent.Id;
                 entryContentId=content.Id;
             }
@@ -284,9 +341,22 @@ namespace CxVisual.Professional.Vision
                 entryContentId=page.RootContent.Id;
                 MOCFlowBuilder.Edit(session,page.RootContent,b=>{
                     Guid raw=b.Step(source.DescribeCapabilities().Single());
-                    inspect=b.Step(vision.DescribeCapabilities().Single());
-                    b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
-                    b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
+                    inspect=b.Step(splitNodes?
+                        regions.DescribeCapabilities().Single():vision.DescribeCapabilities().Single());
+                    if(splitNodes)
+                    {
+                        segmentation=b.Step(segment.DescribeCapabilities().Single());
+                        b.SetParameter(segmentation,"Width",width.ToString(CultureInfo.InvariantCulture));
+                        b.SetParameter(segmentation,"Height",height.ToString(CultureInfo.InvariantCulture));
+                        b.SetParameter(segmentation,"Threshold",
+                            splitOptions.GrayThreshold.ToString(CultureInfo.InvariantCulture));
+                        b.ExposeOutput("ThresholdMask",segmentation,"ThresholdMask");
+                    }
+                    else
+                    {
+                        b.SetParameter(inspect,"Width",width.ToString(CultureInfo.InvariantCulture));
+                        b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
+                    }
                     if(enhancement!=null)
                     {
                         enhance=b.Step(enhancement.DescribeCapabilities().Single());
@@ -295,14 +365,23 @@ namespace CxVisual.Professional.Vision
                         b.SetParameter(enhance,"Radius",medianRadius.ToString(CultureInfo.InvariantCulture));
                         b.Connect(raw,"Done",enhance,"Start",MPCPortKind.Control);
                         b.Connect(raw,"Pixels",enhance,"RawPixels",MPCPortKind.Data);
-                        b.Connect(enhance,"Done",inspect,"Start",MPCPortKind.Control);
-                        b.Connect(enhance,"EnhancedPixels",inspect,"RawPixels",MPCPortKind.Data);
+                        b.Connect(enhance,"Done",splitNodes?segmentation:inspect,
+                            "Start",MPCPortKind.Control);
+                        b.Connect(enhance,"EnhancedPixels",splitNodes?segmentation:inspect,
+                            "RawPixels",MPCPortKind.Data);
                         b.ExposeOutput("EnhancedPixels",enhance,"EnhancedPixels");
                     }
                     else
                     {
-                        b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
-                        b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                        b.Connect(raw,"Done",splitNodes?segmentation:inspect,
+                            "Start",MPCPortKind.Control);
+                        b.Connect(raw,"Pixels",splitNodes?segmentation:inspect,
+                            "RawPixels",MPCPortKind.Data);
+                    }
+                    if(splitNodes)
+                    {
+                        b.Connect(segmentation,"Done",inspect,"Start",MPCPortKind.Control);
+                        b.Connect(segmentation,"ThresholdMask",inspect,"ThresholdMask",MPCPortKind.Data);
                     }
                     if(includeMeasurement)
                     {
@@ -316,7 +395,13 @@ namespace CxVisual.Professional.Vision
             string rawVersion;
             source.TryGetCapabilityVersion(InputId,out rawVersion);
             var versions=new Dictionary<string,string>(StringComparer.Ordinal) {
-                {InputId,rawVersion},{CxVisionThresholdProvider.CapabilityId,version}};
+                {InputId,rawVersion}};
+            if(splitNodes)
+            {
+                versions.Add(CxVisionBinaryThresholdProvider.CapabilityId,segment.ReleaseVersion);
+                versions.Add(CxVisionMaskRegionsProvider.CapabilityId,regions.ReleaseVersion);
+            }
+            else versions.Add(CxVisionThresholdProvider.CapabilityId,version);
             if(includeMeasurement)
                 versions.Add(CxVisionAcceptedRegionMeasureProvider.CapabilityId,
                     CxVisionAcceptedRegionMeasureProvider.Version);
@@ -374,6 +459,14 @@ namespace CxVisual.Professional.Vision
                             inspection,cancellation))
                             throw new InvalidOperationException("工程区域面积与算法结果不一致");
                     }
+                    FIMImageBuffer thresholdMask=null;
+                    if(splitNodes)
+                    {
+                        thresholdMask=result.GetCommittedOutput<FIMImageBuffer>("ThresholdMask");
+                        if(thresholdMask.PixelFormat!=FIMPixelFormat.Gray8 ||
+                           thresholdMask.Width!=width || thresholdMask.Height!=height)
+                            throw new InvalidOperationException("工程二值Mask格式或尺寸不正确");
+                    }
                     FIMImageBuffer enhancedImage=null;
                     if(enhancement!=null)
                     {
@@ -386,6 +479,10 @@ namespace CxVisual.Professional.Vision
                             imageBytes);
                     }
                     var trace=compiled.ReadTrace(flow,0);
+                    if(splitNodes && !trace.Events.Any(e=>
+                        e.Origin.BlockId==segmentation &&
+                        e.Transition.State==MRKStepState.Completed))
+                        throw new InvalidOperationException("独立分割节点完成Trace缺失");
                     if(enhancement!=null && !trace.Events.Any(e=>
                         e.Origin.BlockId==enhance &&
                         e.Transition.State==MRKStepState.Completed))
@@ -400,6 +497,7 @@ namespace CxVisual.Professional.Vision
                         throw new InvalidOperationException("MRK真实完成Trace缺失");
                     return new CxVisionCpuRun {
                         PageId=pageId,FlowId=result.FlowId,InspectBlockId=inspect,
+                        SegmentBlockId=segmentation,ThresholdMask=thresholdMask,
                         EnhanceBlockId=enhance,EnhancedImage=enhancedImage,
                         MeasureBlockId=measure,AcceptedRegionPixelArea=acceptedArea,
                         EngineeringRevision=snapshot.Revision,Fingerprint=candidate.Fingerprint,
@@ -408,7 +506,8 @@ namespace CxVisual.Professional.Vision
                             planFingerprint:candidate.Fingerprint,capabilityVersion:version,
                             completedUtc:result.CompletedUtc,
                             acceptedRegionPixelArea:acceptedArea,
-                            enhancedImage:enhancedImage),
+                            enhancedImage:enhancedImage,
+                             thresholdMask:thresholdMask),
                         Trace=trace.Events.Take(300).Select(e=>new CxVisionCpuTrace {
                             Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
                             BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
