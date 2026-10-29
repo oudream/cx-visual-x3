@@ -6,7 +6,7 @@ using CxVisual.Foundation.Volume;
 
 namespace CxVisual.Professional.CT3D
 {
-    public enum CT3DAnalysisKind { MeshPlane=1, SurfaceSphere=2 }
+    public enum CT3DAnalysisKind { MeshPlane=1, SurfaceSphere=2, SurfaceCylinder=3 }
     /// <summary>由已拟合专业Feature派生的只读毫米测量；共享原Feature身份与来源，
     /// 不是以显示网格估算的独立工业计量认证值。</summary>
     public sealed class CT3DFeatureMeasurement
@@ -50,6 +50,12 @@ namespace CxVisual.Professional.CT3D
             Kind=CT3DAnalysisKind.SurfaceSphere;Source=source;Surface=surface;Sphere=sphere;
             SelectedVertexIndices=Array.AsReadOnly(new int[0]);
         }
+        internal CT3DAnalysisCase(CT3DAssetReference source,CT3DSurfaceSamples surface,
+            CT3DCylinderFitResult cylinder)
+        {
+            Kind=CT3DAnalysisKind.SurfaceCylinder;Source=source;Surface=surface;Cylinder=cylinder;
+            SelectedVertexIndices=Array.AsReadOnly(new int[0]);
+        }
         public CT3DAnalysisKind Kind {get;private set;}
         public CT3DAssetReference Source {get;private set;}
         /// <summary>仅MeshPlane种类具有Mesh和Plane；SurfaceSphere种类具有Surface和Sphere。</summary>
@@ -57,12 +63,14 @@ namespace CxVisual.Professional.CT3D
         public CT3DPlaneFitResult Plane {get;private set;}
         public CT3DSurfaceSamples Surface {get;private set;}
         public CT3DSphereFitResult Sphere {get;private set;}
+        public CT3DCylinderFitResult Cylinder {get;private set;}
         public ReadOnlyCollection<int> SelectedVertexIndices {get;private set;}
         public double MaxPlanarityRatio {get;private set;}
         public double MaxInPlaneCondition {get;private set;}
         public int MaximumTriangles {get;private set;}
         public string AlgorithmVersion {get{return Kind==CT3DAnalysisKind.MeshPlane
-            ? "ct3d.voxel-mesh-plane/1":"ct3d.surface-sphere/1";}}
+            ? "ct3d.voxel-mesh-plane/1":Kind==CT3DAnalysisKind.SurfaceSphere
+            ? "ct3d.surface-sphere/1":"ct3d.surface-cylinder-axis/1";}}
         /// <summary>同一专业结果的派生Feature测量，重开时从保存并验证的原值结果确定性恢复。
         /// ROI平面的残差是质量量，不冒充有基准的距离或GD&T。</summary>
         public IReadOnlyList<CT3DFeatureMeasurement> GetFeatureMeasurements()
@@ -74,6 +82,13 @@ namespace CxVisual.Professional.CT3D
                     Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
                 values.Add(new CT3DFeatureMeasurement("plane.max-absolute-residual",Plane.MaxAbsoluteResidualMm,
                     Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+            }
+            if(Kind==CT3DAnalysisKind.SurfaceCylinder)
+            {
+                values.Add(new CT3DFeatureMeasurement("cylinder.radius",Cylinder.RadiusMm,
+                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                values.Add(new CT3DFeatureMeasurement("cylinder.diameter",Cylinder.DiameterMm,
+                    Cylinder.RmsResidualMm,Cylinder.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
             }
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
             {
@@ -87,6 +102,26 @@ namespace CxVisual.Professional.CT3D
         public string Unit {get{return "mm";}}
         /// <summary>现有残差/拓扑证据不构成工业计量不确定度评定。</summary>
         public bool HasEvaluatedMeasurementUncertainty {get{return false;}}
+
+        /// <summary>采用固定物理轴向约束拟合，尚不代表自动圆柱识别或工业精度。</summary>
+        public static CT3DAnalysisCase AnalyzeCylinder(string root,CT3DAssetReference source,
+            float threshold,int sampleStep,int maximumPoints,FVOPhysicalPoint3D axisDirection,
+            CancellationToken cancellation,double maximumConditionNumber=10000000)
+        {
+            if(source==null)throw new ArgumentNullException("source");
+            if(!source.SpatialFrame.IsCalibrated)
+                throw new InvalidOperationException("ct3d.precision.unavailable");
+            using(var volume=source.LoadVolume(root,cancellation))
+            using(var lease=volume.AcquireOriginalScalarLease())
+            {
+                var surface=CT3DSurfaceSphereAnalysis.SampleBoundary(lease,source.SourceRef,
+                    source.Revision,threshold,sampleStep,maximumPoints,cancellation);
+                var cylinder=CT3DSurfaceCylinderAnalysis.FitCylinder(surface,axisDirection,
+                    maximumConditionNumber,cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                return new CT3DAnalysisCase(source,surface,cylinder);
+            }
+        }
 
         public static CT3DAnalysisCase AnalyzeSphere(string root,CT3DAssetReference source,
             float threshold,int sampleStep,int maximumPoints,CancellationToken cancellation,
@@ -161,6 +196,9 @@ namespace CxVisual.Professional.CT3D
 
         public CT3DAnalysisCase Recompute(string root,CancellationToken cancellation)
         {
+            if(Kind==CT3DAnalysisKind.SurfaceCylinder)
+                return AnalyzeCylinder(root,Source,Surface.Threshold,Surface.SampleStep,
+                    Surface.MaximumPoints,Cylinder.AxisDirection,cancellation,Cylinder.MaximumConditionNumber);
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
                 return AnalyzeSphere(root,Source,Surface.Threshold,Surface.SampleStep,
                     Surface.MaximumPoints,cancellation,Sphere.MaximumConditionNumber);
