@@ -531,3 +531,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **门禁依赖**：`.github/workflows/imaging-foundation-windows.yml`按`Professional/Vision/**`、`Tests/ArchitectureSmoke/Integration/Vision/**`触发，`--vision-results`/`--imaging`/默认回归；`module-center-cpu-windows.yml`与`studio-shell-windows.yml`负责Studio真实入口。当前无匹配新提交SHA的成功日志，故G3～G5均待证。
 
+### 31.1 R1正式Run多类型CSV输出与双宿主验收（2026-10-30）
+
+| 编号 | 可执行正反例 | 当前状态 |
+|---|---|---|
+| R1-E01 | Gray16真实MRK重跑，同Run导出Image/Mask/Region/Contour/Measurement的ID、Source、版本及测量单位；不能把图像像素误称为CSV附件 | G2测试已编码，G3/G4待执行 |
+| R1-E02 | 恶意`SourceId = =SUM(1,2)`输出为安全文本；结果项身份不一致或重复必须拒绝 | G2测试已编码，G3/G4待执行 |
+| R1-E03 | CSV默认禁止覆盖已有证据；原子覆盖后内容属于新Run；已取消时不能破坏已有文件 | G2测试已编码，G3/G4待执行 |
+| R1-E04 | WPF TestCenter实际操作页存在`TCT.Imaging.ExportCpuRunCsv`，导出实际面积7px²及RunId/SourceId；参数变更后旧Run导出拒绝 | G2测试已编码，G3/G5待执行 |
+| R1-E05 | Studio统一结果面板存在`Studio.ModuleCenter.ExportRunCsv`，导出前核对ProjectId与原图Source，不复制第二套输出逻辑 | G2 UI自测已编码，G3/G5待执行 |
+
+**执行门禁**：`CxVisual.Unified.sln` Release/x64；`ArchitectureSmoke --vision-results`、`--imaging`、默认全回归；`TestCenter --imaging-viewer-smoke`；`Studio --module-center-cpu-self-test`和`--shell-self-test`，应检查相关工作流固定SHA及实际日志。本文仍不声称任何新提交已通过Windows实际执行。
+
