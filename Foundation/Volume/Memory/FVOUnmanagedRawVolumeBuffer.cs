@@ -30,13 +30,20 @@ namespace CxVisual.Foundation.Volume
             if(expectedLength<=0 || new FileInfo(filePath).Length!=expectedLength)
                 throw new InvalidDataException("RAW文件长度与原始体素数据不一致。");
             MemoryMappedFile mapping=null;
+            FileStream sourceStream=null;
             MemoryMappedViewAccessor accessor=null;
             FVOUnmanagedRawVolumeBuffer buffer=null;
             bool acquired=false;
             try
             {
-                mapping=MemoryMappedFile.CreateFromFile(filePath,FileMode.Open,null,0,
-                    MemoryMappedFileAccess.Read);
+                // 路径重载默认共享策略不能与专业来源Hash读锁并存。
+                // 显式只读/共享读：允许多个读者，同时禁止映射期间改写或删除原文件。
+                sourceStream=new FileStream(filePath,FileMode.Open,FileAccess.Read,FileShare.Read);
+                if(sourceStream.Length!=expectedLength)
+                    throw new InvalidDataException("RAW文件长度在映射前发生变化。");
+                mapping=MemoryMappedFile.CreateFromFile(sourceStream,null,expectedLength,
+                    MemoryMappedFileAccess.Read,HandleInheritability.None,false);
+                sourceStream=null; // 所有权由MemoryMappedFile接管。
                 accessor=mapping.CreateViewAccessor(0,expectedLength,MemoryMappedFileAccess.Read);
                 byte* pointer=null;
                 accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
@@ -51,6 +58,7 @@ namespace CxVisual.Foundation.Volume
             }
             catch
             {
+                if(sourceStream!=null)sourceStream.Dispose();
                 if(buffer!=null)buffer.Dispose();
                 else
                 {

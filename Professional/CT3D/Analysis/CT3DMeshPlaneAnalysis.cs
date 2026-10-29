@@ -11,9 +11,9 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DPlaneFitResult
     {
         internal CT3DPlaneFitResult(CT3DVoxelBoundaryMeshResult source,
-            FNUPcaPlaneResult fit)
+            FNUPcaPlaneResult fit,Guid? resultId=null)
         {
-            ResultId=Guid.NewGuid();
+            ResultId=resultId??Guid.NewGuid();
             SourceMeshResultId=source.ResultId;
             SourceRef=source.SourceRef;
             SourceRevision=source.SourceRevision;

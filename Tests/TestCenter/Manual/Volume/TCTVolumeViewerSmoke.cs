@@ -878,6 +878,7 @@ namespace CxVisual.TestCenter.UI
                     if(sphereVolume!=null)sphereVolume.Dispose();
                     frame.LoadDemo();
                 }
+                VerifyProfessionalPersistence(frame);
                 Check(frame.LastMeshPlaneFit==null,
                     "切换Volume必须撤销过期平面Measurement专业结果");
                 Check(frame.MeshDisplayedTriangleCount==0 && frame.LastVoxelMesh==null,
@@ -903,6 +904,79 @@ namespace CxVisual.TestCenter.UI
                 window.Close();
             }
         }
+        private static void VerifyProfessionalPersistence(TCTManualVolumeViewerFrame frame)
+        {
+            string root=Path.Combine(Path.GetTempPath(),"CxVisual-CT3D-WPF-V04-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                const int n=12;byte[] raw=new byte[n*n*n*2];
+                for(int z=5;z<=6;z++)for(int y=5;y<=6;y++)for(int x=5;x<=6;x++)
+                {int offset=(x+y*n+z*n*n)*2;raw[offset]=0xa4;raw[offset+1]=0x06;}
+                string path=Path.Combine(root,"source.raw"),project=Path.Combine(root,"analysis.cxproj");
+                File.WriteAllBytes(path,raw);
+                var info=new FVORawVolumeInfo(n,n,n,1,1,1,FVORawVoxelFormat.UInt16,"source.raw");
+                var volume=FVORawVolumeLoader.Load(path,info,64,System.Threading.CancellationToken.None);
+                volume.SetRawBuffer(FVORawVolumeLoader.MapRawBuffer(volume,System.Threading.CancellationToken.None));
+                volume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,20,30,40,new double[]{1,0,0,0,1,0,0,0,1},true));
+                frame.LoadVolume(volume);
+                frame.AnalyzeCurrentVolumeMesh(1000,100);
+                frame.AnalyzeCurrentMeshPlaneTopZ();
+                Check(FindVisualByAutomationId<Button>(frame,"TCT.Volume.SaveProfessionalCase")!=null &&
+                    FindVisualByAutomationId<Button>(frame,"TCT.Volume.OpenProfessionalCase")!=null,
+                    "真实工作台具有专业案例保存/重开按钮");
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                Guid sourceId=frame.LastOpenedProfessionalCase.Source.Id;
+                AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                Check(frame.LastOpenedProfessionalCase.Source.Id==sourceId,
+                    "同一案例再次保存保持稳定资产身份并使用MEM存储Token替换");
+                frame.LoadDemo();
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                var restored=frame.LastOpenedProfessionalCase;
+                Check(restored!=null && frame.Volume.HasOriginalRawData &&
+                    frame.MeshDisplayedTriangleCount==48 && frame.LastMeshPlaneFit.SampleCount==9 &&
+                    frame.LastMeshPlaneFit.ResultId==restored.Plane.ResultId && frame.ViewState.Scene3D.Count==3,
+                    "真实WPF重开恢复原值、Mesh、稳定Measurement引用与三对象Scene");
+                Guid planeId=restored.Plane.ResultId;
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
+                Check(frame.LastMeshPlaneFit.ResultId==planeId,"重复重开不改变结果身份");
+                frame.AnalyzeCurrentMeshPlaneTopZ();
+                Check(frame.LastMeshPlaneFit.SourceMeshResultId==restored.Mesh.ResultId,
+                    "重开结果能继续作为专业工具输入");
+                var oldFrame=frame.Volume.SpatialFrame;
+                frame.Volume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,21,30,40,
+                    new double[]{1,0,0,0,1,0,0,0,1},true));
+                bool invalidated=false;
+                try{frame.AnalyzeCurrentMeshPlaneTopZ();}catch(InvalidOperationException){invalidated=true;}
+                Check(invalidated,"标定Frame改变后旧Mesh不可继续测量");
+                frame.Volume.SetSpatialFrame(oldFrame);
+                using(var external=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
+                {external.Rename(external.Project,"外部编辑");external.Save();}
+                bool conflict=false;
+                try{AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));}
+                catch(CxVisual.Mechanism.Core.MEMStoreConflictException){conflict=true;}
+                Check(conflict,"外部编辑后旧工作台保存必须报告StoreToken冲突");
+                var late=frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None);
+                frame.LoadDemo();bool discarded=false;
+                try{AwaitProfessional(late);}catch(OperationCanceledException){discarded=true;}
+                Check(discarded && frame.LastMeshPlaneFit==null && frame.LastOpenedProfessionalCase==null,
+                    "晚到案例不得覆盖已经切换的新Volume");
+            }
+            finally{frame.LoadDemo();Directory.Delete(root,true);}
+        }
+
+        private static void AwaitProfessional(System.Threading.Tasks.Task task)
+        {
+            if(!task.IsCompleted)
+            {
+                var dispatcher=System.Windows.Threading.Dispatcher.CurrentDispatcher;
+                var pump=new System.Windows.Threading.DispatcherFrame();
+                task.ContinueWith(t=>dispatcher.BeginInvoke(new Action(()=>pump.Continue=false)));
+                System.Windows.Threading.Dispatcher.PushFrame(pump);
+            }
+            task.GetAwaiter().GetResult();
+        }
+
         private static T FindVisualByAutomationId<T>(DependencyObject root,string id)
             where T:DependencyObject
         {

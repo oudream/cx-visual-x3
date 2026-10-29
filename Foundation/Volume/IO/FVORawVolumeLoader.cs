@@ -75,6 +75,24 @@ namespace CxVisual.Foundation.Volume
         {
             // --- 1. 从文件名推断 RAW 的宽高深、体素间距和数据格式，例如 2500x2500x100、sp1x1x1。
             var info = InferInfo(filePath);
+            return Load(filePath, info, maxInteractiveAxis, cancellationToken);
+        }
+
+        /// <summary>从持久化的显式RAW元数据加载；内容寻址文件不需要在文件名重复尺寸。</summary>
+        public static FVOVolumeData Load(string filePath, FVORawVolumeInfo info,
+            int maxInteractiveAxis, CancellationToken cancellationToken)
+        {
+            if (info == null) throw new ArgumentNullException("info");
+            if (info.Width <= 0 || info.Height <= 0 || info.Depth <= 0 ||
+                !FVOFrameworkCompat.IsFinite(info.SpacingX) || info.SpacingX <= 0 ||
+                !FVOFrameworkCompat.IsFinite(info.SpacingY) || info.SpacingY <= 0 ||
+                !FVOFrameworkCompat.IsFinite(info.SpacingZ) || info.SpacingZ <= 0 ||
+                !Enum.IsDefined(typeof(FVORawVoxelFormat), info.Format))
+                throw new ArgumentException("RAW尺寸、间距或标量格式无效。", "info");
+            long expected = checked((long)info.Width * info.Height * info.Depth * GetBytesPerVoxel(info.Format));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (new FileInfo(filePath).Length != expected)
+                throw new InvalidDataException("RAW字节长度与固定元数据不一致。");
             // --- 2. 3D 交互显示使用最多 512 轴长的降采样体，原始尺寸仍写入 FVOVolumeData 做坐标和物理比例。
             maxInteractiveAxis = FVOFrameworkCompat.Clamp(maxInteractiveAxis, 64, MaxInteractiveAxis);
             var targetWidth = Math.Min(info.Width, maxInteractiveAxis);

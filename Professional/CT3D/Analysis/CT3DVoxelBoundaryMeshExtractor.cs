@@ -23,9 +23,10 @@ namespace CxVisual.Professional.CT3D
     public sealed class CT3DVoxelBoundaryMeshResult
     {
         internal CT3DVoxelBoundaryMeshResult(FGETriangleMesh3D mesh,float threshold,
-            FVOVolumeSpatialFrame frame,string sourceRef,long sourceRevision,bool touchesBoundary)
+            FVOVolumeSpatialFrame frame,string sourceRef,long sourceRevision,bool touchesBoundary,
+            Guid? resultId=null)
         {
-            ResultId=Guid.NewGuid();
+            ResultId=resultId??Guid.NewGuid();
             Mesh=mesh;Threshold=threshold;SpatialFrame=frame;
             SourceRef=sourceRef;SourceRevision=sourceRevision;
             TouchesVolumeBoundary=touchesBoundary;

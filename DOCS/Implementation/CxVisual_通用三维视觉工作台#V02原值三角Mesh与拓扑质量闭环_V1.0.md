@@ -81,3 +81,72 @@
 - **不得跨版本误标**：`3a27e161`之后补充的“±1mm偏差、绝对值及跨Frame拒绝”专项断言，以及其后的文档/CI路径补强，不属于固定SHA `24497fe2`已执行的测试内容，须等待后续工作流证据。
 - **触发修复**：原`imaging-foundation-windows.yml`没有监听`CT3DVoxelMeshTests.cs`等CT3D专项测试文件，因此仅提交测试改动不会触发Imaging专项。提交`dc58b341`将CT3D Mesh、CT3DVolumeLoad、MPWVolumeSource、MVIVolumeView四个现有专项测试文件纳入Windows push路径过滤；对应提交的完整CI需按最新Run查询。
 - **边界仍在**：局部端面PCA拟合的RMS和点到面偏差是基于体素阶梯面/来源标定的算法数值，不代表工业量具溯源、表面法向选择、圆柱/CAD配准或GD&T工业报告已通过。
+
+## 十、V04 首个专业结果保存重开与复算闭环（2026-10-29）
+
+### 10.1 正式实现与Owner
+
+本包接续V03，不新增项目、第三方SDK、工程树或任务运行器。开始核对并快进远端`ea771b64`，按用户收敛要求再次同步至`de448ccb`，保留全部V04改动；本包最终提交及CI以实际Git/Run为准。
+
+| 位置 | 已实现的行为 |
+|---|---|
+| FVO `FVORawVolumeLoader.Load(path, info, maxAxis, token)` | 从固定元数据加载内容寻址RAW，无需依赖文件名；验证维度/格式/Spacing及精确字节长度，保持预览与原值分离 |
+| FVO `FVOUnmanagedRawVolumeBuffer.Map` | 显式FileAccess.Read/FileShare.Read映射；Hash校验读锁与原值映射可以共存，映射存续期间拒绝写入/删除，释放仍由SafeHandle与原值Lease负责 |
+| CT3D `Persistence/CT3DAssetReference.cs` | 稳定Guid、Revision、源SHA256/长度、显式尺寸/标量类型、原始Frame；签名覆盖身份/数据/标定；流式Import和Hash、有取消、受控相对路径及只读映射加载 |
+| CT3D `Persistence/CT3DAnalysisCase.cs` | 真实RAW→现有体素Mesh→局部顶点ROI→现有PCA平面；保留配方/阈值/预算/质量参数，可Headless复算；不自建Case Session或Runtime |
+| CT3D `Persistence/CT3DAnalysisPersistence.cs` | 专业小描述存既有MEMContent的Data Aspect；Mesh/ROI/平面量值写内容寻址`.analysis`外部制品；结果身份、来源、Frame、mm、残差、参数及算法版本保存重开 |
+| TestCenter `TCTManualVolumePersistence.cs` | 后台调用上述正式API；可见保存/重开按钮及同源Commands；原值/Mesh/Measurement恢复MVI引用并由MPW显示；重复保存复用MEM StoreToken，外部编辑冲突拒绝，晚到读取不覆盖新Volume |
+
+这是**专业局部制品协议**：持久化权威仍是MEM，文件IO只服务CT3D Payload；未新增全局Artifact仓库、Core通用外部资源类型或MDS私有Heap。`CT3DAssetReference`目前仅支持小端Byte/UInt16/Float32 RAW及来源Frame，不冒称CAD/点云/4D统一引用已经完成。
+
+### 10.2 资源、失败与精度合同
+
+- RAW使用分块流式Hash/复制和既有只读文件映射，不把多GB原值嵌入工程或强制读入托管数组。Mesh结果目前有256MiB制品预算、现有200万三角上限、3～30000顶点ROI上限；完整峰值内存/显存与>2GB压力仍待实测。
+- 元数据和Payload各有Schema；来源签名同时包含SourceId/Revision/Hash及Frame值，来源改变或结果文件损坏/丢失均拒绝加载，不回退R8预览。
+- 结果临时写入→Flush/Hash→内容寻址定位→核对来源/expectedRevision→MEM事务登记。取消/冲突不修改工程；工程提交后不再谎报取消回滚。失败可能保留未引用的完整共享制品，不擅自删除共享文件；临时文件在退出路径清理。
+- 重开保留原ResultId和SourceMeshResultId，使用同一FNU算法核验保存的ROI及毫米平面/残差；复算产生新ResultId且固定源/参数不变。Frame对象可重新构造，来源签名稳定；这不是已实现通用FGE Frame图。
+- 原值Frame标定仅接受调用方明确提供的来源。`HasEvaluatedMeasurementUncertainty=false`，阶梯Mesh/端面示例不成为工业GD&T或标准件准确度认证。
+- 窗口更换Volume/关闭后在途Open只释放结果，不回填旧Scene。保存已经完成而视图切换不撤回磁盘事实。当前UI一次选择一个专业Case，保存后可再次保存；不同已有工程须先打开，避免无条件覆盖。
+
+### 10.3 实际本地验收与证据
+
+当前机器具备VS2022 MSBuild、.NET Framework 4.8及真实OpenGL驱动；本地日志在`Output/CT3D-V04/`，属于工作树验收，不替代GitHub固定SHA CI。
+
+| 验证 | 本轮已观察结果 | 范围 |
+|---|---|---|
+| Release x64 Unified Build | 同步`de448ccb`后Build成功，0错误 | `convergence-build.log`；本次增量构建0警告，之前重新编译保留既有警告，不宣称全仓Rebuild零警告 |
+| ArchitectureSmoke `--volume` | PASS，包含新`CT3DAnalysisPersistenceTests` | 固定UInt16原值、原值映射共享保护、Mesh/平面保存重开/复算、Undo/Redo、取消/版本冲突、源/制品改变和丢失、非法路径/长度/ROI及未标定拒绝 |
+| `--imaging`、`--concurrency` | PASS | 二维共用底座与F19回归 |
+| ArchitectureSmoke默认 | 正常Windows权限下PASS | 沙箱首次在既有MEM File.Replace被拒绝；未改Core保存规则，正常权限重跑日志`default-unsandboxed.log`通过 |
+| 结构及Owner DAG | PASS | 28工程结构；依赖脚本审计29个csproj/118引用，无新增逆向边/环 |
+| `--volume-viewer-smoke` | 同步后最终重跑PASS | 真WPF窗口、保存/重复保存/重开、原值与48三角Mesh/9点平面、稳定引用、继续拟合、晚到结果拒绝、Frame改变失效与外部StoreToken冲突反例；`convergence-workbench.png` |
+| `--graphics-viewer-smoke` | PASS | 共用图元/MEM编辑的真实窗口回归 |
+| `--volume-gpu-smoke` | PASS，OpenGL `3.3.0 NVIDIA 576.02`，3次重装载，Raymarch PNG | `gpu.log/gpu-raymarch.png`；只证明该GPU/驱动上的既有体绘、原生鼠标与重建路径；**不证明新Mesh混合深度、全部显卡或工业计量通过** |
+
+新测试接入`--volume`与默认回归，本包CT3D/Program.cs改动由现有Imaging过滤器触发。GitHub令牌缺少`workflow`权限，首次推送因尝试增加新测试单文件监听被拒绝；已从未推送提交中撤下该过滤器修改，功能和测试接线保留。以后仅修改此新测试文件时需同时满足现有触发路径或手动运行。最终GitHub Run按对应SHA实际状态升级，不把本地PASS当作CI已经成功。
+
+### 10.4 实际SDK使用与后续入口
+
+调用方先准备可信`rawInfo/calibratedFrame`与目录内真实`source.raw`，可使用：
+
+```csharp
+var source = CT3DAssetReference.Capture(root, "source.raw", rawInfo,
+    calibratedFrame, 1, cancellation);
+var analysis = CT3DAnalysisCase.Analyze(root, source, 1000, 50000,
+    CT3DAnalysisCase.SelectTopVoxelFace, cancellation);
+MRIObjectAddress address;
+using (var engineering = MEMEngineering.Create("三维分析"))
+{
+    var owner = engineering.AddPage("三维").RootContent;
+    address = CT3DAnalysisPersistence.Commit(engineering, owner,
+        engineering.Revision, root, analysis, cancellation);
+    engineering.SaveAs(Path.Combine(root, "analysis.cxproj"));
+}
+using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj")))
+{
+    var restored = CT3DAnalysisPersistence.Open(engineering, address, root, cancellation);
+    var recomputed = restored.Recompute(root, cancellation);
+}
+```
+
+下一工作包继续扩展Surface/球/通用Feature/Measurement的持久合同、正式Studio装配及交互ROI；CAD/GD&T/缺陷/壁厚/动画、通用Artifact/Frame图、跨工程导入重映射、全量26能力与缺证的90需求索引均未完成。保留主文R5 E/F/G的完整目标，不缩减为此首包。

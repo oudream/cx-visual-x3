@@ -71,6 +71,8 @@ namespace CxVisual.TestCenter.UI
             AddButton(actions,"离散球体分析","TCT.Volume.AnalyzeSphere",StartSurfaceSphereFromUi);
             AddButton(actions,"生成三角Mesh","TCT.Volume.ExtractMesh",StartVoxelMeshFromUi);
             AddButton(actions,"+Z端面拟合示例","TCT.Volume.FitTopPlane",StartMeshPlaneTopZFromUi);
+            AddButton(actions,"保存专业案例","TCT.Volume.SaveProfessionalCase",SaveProfessionalCaseDialog);
+            AddButton(actions,"重开专业案例","TCT.Volume.OpenProfessionalCase",OpenProfessionalCaseDialog);
             AddButton(actions,"相机复位","TCT.Volume.ResetCamera",Reset3DCamera);
             AddButton(actions,"演示体","TCT.Volume.Demo",LoadDemo);
             actions.Children.Add(new TextBlock { Text="窗位",VerticalAlignment=VerticalAlignment.Center,

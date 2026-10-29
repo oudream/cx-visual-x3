@@ -35,7 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--command-center") >= 0) { CommandCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--numerics-benchmark") >= 0) { FNUNumericsBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--numerics") >= 0) { FNUNumericsTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); CT3DVoxelMeshTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); CT3DVoxelMeshTests.Run(); CT3DAnalysisPersistenceTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); RuntimeVisionImageInteropTests.Run(); RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--decision") >= 0) { MDCDecisionTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--vision-results") >= 0) { RuntimeVisionResultTests.Run(); RuntimeVisionArtifactsTests.Run(); return 0; }
@@ -113,7 +113,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FVOVolumeTests.Run();
                 MVIVolumeViewTests.Run();
                 CT3DRenderingTests.Run();
-                CT3DVolumeLoadTests.Run(); CT3DVoxelMeshTests.Run();
+                CT3DVolumeLoadTests.Run(); CT3DVoxelMeshTests.Run(); CT3DAnalysisPersistenceTests.Run();
                 MPWVolumeSourceTests.Run();
                 FIMImagingTests.Run();
                 MVIImageSessionTests.Run();

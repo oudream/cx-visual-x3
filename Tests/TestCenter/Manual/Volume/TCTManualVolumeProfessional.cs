@@ -112,6 +112,10 @@ namespace CxVisual.TestCenter.UI
             _meshSceneItemId=null;
             _planeSceneItemId=null;
             LastMeshPlaneFit=null;
+            _planeRoi=null;
+            LastOpenedProfessionalCase=null;
+            _professionalProjectPath=null;_professionalStoreToken=null;
+            _professionalSource=null;
             _meshPreview=null;
             LastSphereFit=null;
             LastVoxelMesh=null;
@@ -170,6 +174,8 @@ namespace CxVisual.TestCenter.UI
                 result.Mesh,volume.SpatialFrame,volume.OriginalWidth,volume.OriginalHeight,
                 volume.OriginalDepth,50000);
             // 重生成Mesh时必须作废依赖旧Mesh的平面特征和MVI测量引用。
+            LastOpenedProfessionalCase=null;
+            _planeRoi=null;
             if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
             _planeSceneItemId=null;
             LastMeshPlaneFit=null;
@@ -198,13 +204,17 @@ namespace CxVisual.TestCenter.UI
         {
             if(_state==null || _volume==null || LastVoxelMesh==null)
                 throw new InvalidOperationException("请先从原始RAW建立三角Mesh并选择局部面片。");
-            if(LastVoxelMesh.SourceRevision!=_sphereEpoch ||
+            if(LastVoxelMesh.SourceRevision!=(LastOpenedProfessionalCase==null
+                ? _sphereEpoch:LastOpenedProfessionalCase.Source.Revision) ||
                !Object.ReferenceEquals(LastVoxelMesh.SpatialFrame,_volume.SpatialFrame))
                 throw new InvalidOperationException("原始Volume或空间Frame已变化，旧Mesh不能用于拟合。");
             CT3DPlaneFitResult result=CT3DMeshPlaneAnalysis.FitSelectedVertices(
                 LastVoxelMesh,selectedVertexIndices,maxPlanarityRatio);
             if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
             LastMeshPlaneFit=result;
+            _planeRoi=new int[selectedVertexIndices.Count];
+            for(int i=0;i<_planeRoi.Length;i++)_planeRoi[i]=selectedVertexIndices[i];
+            _planePlanarity=maxPlanarityRatio;
             _planeSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Measurement,
                 "ct3d:plane:"+result.ResultId.ToString("N"),result.SourceRevision,
                 "volume:physical-frame");

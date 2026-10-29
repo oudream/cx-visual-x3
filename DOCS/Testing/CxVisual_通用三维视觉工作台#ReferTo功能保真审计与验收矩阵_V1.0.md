@@ -63,3 +63,17 @@
 - 全控件 UIA：按钮/滑杆/曲线/勾选、键盘输入与空数据、错误 RAW、取消加载、重入等对照旧版逐项反证。
 - 大 RAW：预览交互时间、原始高精度切片、切换与并发取消、内存占用和文件映射关闭资源。
 - 2D 旧 HALCON：十字线位置、物理坐标、平移缩放和 3D 空间切片范围的真实截图比对。
+
+## 五、V04专业结果持久化增量（2026-10-29）
+
+此项是R5目标的新增专业闭环，不将其伪称ReferTo旧版已有功能。详细源码/本地证据/未验证项统一见[V02记录第十节](../Implementation/CxVisual_通用三维视觉工作台%23V02原值三角Mesh与拓扑质量闭环_V1.0.md)。
+
+| 验收ID | 正常路径 | 边界/异常 | 实际入口 |
+|---|---|---|---|
+| V04-01 | UInt16原值→稳定资产/Frame签名→Mesh→9点端面 | R8/未标定、尺寸长度不匹配、超ROI、非法路径、取消拒绝 | `CT3DAnalysisPersistenceTests`，`--volume`及默认 |
+| V04-02 | MEM提交→Undo/Redo→保存关闭→重开保留ResultId/ROI/mm/残差→新ID复算 | expectedRevision冲突、源变化/缺失、制品Hash损坏/缺失、临时文件清理 | 同上 |
+| V04-03 | 真WPF保存/再次保存→重开原值/Mesh/Measurement→继续使用工具 | Volume切换使晚到Open丢弃；Frame变化和外部StoreToken冲突拒绝 | `--volume-viewer-smoke` |
+| V04-04 | 校验读锁与RAW映射共存、读原值1700 | 映射有效期内并发改写必须拒绝，释放后可回收 | `--volume` |
+| V04-05 | 现有GL真实Raymarch/原生鼠标/3次装载 | 回退不得算GPU通过 | 本机`--volume-gpu-smoke` PASS，NVIDIA OpenGL 3.3/576.02；不外推新Mesh深度或工业精度 |
+
+Windows本地Build/Headless/WPF/GPU与GitHub CI分开登记；推送后只依据对应SHA Run升级CI。本包未完成完整三维ROI编辑、Studio专业工作区、通用Artifact注册、CAD/GD&T或工业标准件精度验收。

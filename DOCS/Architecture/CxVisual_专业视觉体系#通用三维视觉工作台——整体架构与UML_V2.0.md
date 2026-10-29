@@ -11,6 +11,8 @@
 
 ---
 
+> **2026-10-29 V04源码增量**：`CT3DAssetReference/CT3DAnalysisCase/CT3DAnalysisPersistence`已在原CT3D项目实现首个RAW来源/Frame→Mesh/局部平面→MEM Aspect＋外部制品→保存重开/复算闭环；TestCenter消费正式API并恢复MVI/MPW。是局部实装，不提升全部候选类/ADR。实际命令、CI与硬件适用范围只在[既有V02台账第十节](../Implementation/CxVisual_通用三维视觉工作台%23V02原值三角Mesh与拓扑质量闭环_V1.0.md)维护；本机既有GPU Raymarch专项通过不等于新Mesh混合深度或工业量具验收。
+
 ## 0. 读者导览：5 分钟理解全局
 
 **一句话定位：** 以高精度三维数据为真源，让工业工程师在一个统一工作空间中完成**导入→空间标定→观察→重建/表面确定→拟合/配准→测量/GD&T→CAD 对比→缺陷与材料分析→判定/报告→重放与自动化**，同时支持独立应用、Studio 嵌入和 Headless SDK。
@@ -736,12 +738,12 @@ sequenceDiagram
 |---|---|---|---|
 | **C01 原始精度** | 原始体素/SourceRevision→无损标量或`PrecisionUnavailable` | FVO：`FVOVolumeData`【E/R】 | 只有R8预览不得作计量；UInt16/Float32数值、同句柄及错误ByteLength反例 |
 | **C02 空间与单位** | Voxel/Spacing/Origin/Direction→Physical→Part/CAD Frame | FVO来源Frame【E】；通用Frame身份/链【N】；FGE/FNU数学、CT3D基准 | 手系、单位、方向、体素中心、奇异变换拒绝；往返残差有阈值 |
-| **C03 身份/结果** | MEM资源Ref+SourceRevision+算法上下文→ResultRef/有效性 | MEM真源【E】；CT3D CaseSession【N】 | 旧输入失效标Stale；不得创建第二份Project/Undo/体数据 |
+| **C03 身份/结果** | MEM资源Ref+SourceRevision+算法上下文→ResultRef/有效性 | MEM真源【E】；V04 RAW资产/Frame签名、Mesh/平面身份与重开【E局部】；通用Session【N】 | 旧输入变化/缺失拒绝，通用Stale图传播待补；不建第二Project/Undo |
 | **C04 Scene/交互** | SourceRef+Frame+MVI状态→可视Scene/选择/相机 | SceneState/SceneItem/Camera/VolumeView【E】；完整工具/ViewSession【N】 | 多视图一致、坐标回环与Undo；不得持有专业数值真值 |
 | **C05 GPU资源** | 预览+设置+ViewSnapshot→GL帧/显式Fallback错误 | `MPWVolumeOpenGlControl/MPWVolumeRenderHost`【E/R】 | Context线程、半初始化/重复关闭/失败恢复；WPF切面不算Raymarch |
 | **C06 参数变化** | `CT3DRenderingParameterValues`→LUT/Uniform/Scene Flags+Revision | Settings/ChangeSet与MPWVolumeRenderScheduler【E/R】；完整版本向量【N】 | 校验失败整体拒绝；Uniform-only不上传LUT；已提交/已应用/已呈现版本分开 |
 | **C07 专业算法** | 输入Ref+Frame+Params+取消→Surface/Fit/Measure等Result+Quality | 离散边界/Mesh/球/局部平面【E】；完整算法族见E.5【N/P】 | 退化、不收敛、精度缺失和取消不得成功提交；Headless正反例 |
-| **C08 工程交付** | 专业结果Ref→MEM持久化/MRK任务→重开与报告 | 既有MEM/MRK/MDS/诊断【E】；3D纵切片【P】 | 版本/授权/Trace可追溯；不自建第二套运行与消息体系 |
+| **C08 工程交付** | 专业结果Ref→MEM持久化/MRK任务→重开与报告 | 既有MEM/MRK/MDS【E】；V04 Mesh/平面保存重开/复算【E局部】；完整任务/报告【P】 | Source/Frame/Hash及MEM StoreToken校验；通用Artifact/Studio交付尚未完成 |
 
 **已确认可查的正式API**：`CT3DVolumeLoadService.LoadRawPreviewAsync`、`MVIVolumeViewState.SetSlices`、`CT3DRenderingSettings.ApplyParameters`/`ApplyParametersWithChangeSet`、`MPWVolumeOpenGlControl.SetVolume`/`UpdateTransfer`/`CaptureFrame`。**`CaptureCaseSnapshot`、`ProjectScene`、`EnqueueRender`、`PrecisionUnavailable`均属拟议接口/语义，待Owner/测试批准**。如现有真实签名有差异，必须以源文件为准，不凭文档补造方法。
 
@@ -900,7 +902,7 @@ sequenceDiagram
 | 22 | 多材料/部件 | R41 | CT3D/FVO | CT3D/ [拟新增] | P | 材料边界、分部件统计、标签一致性 |
 | 23 | 算法实验调试 | R42 | CT3D/FLD/TestCenter | Tests/TestCenter/Manual/Volume/ | 测试基础E；专业调试P | 输入输出/中间结果/性能/取消/异常 |
 | 24 | 批量自动化 | R43 | MRK/CT3D/Inspection | MRK/Execution/ [既有运行] | 平台底座E；3D链P | 重复性、版本固定、故障恢复、真实任务 |
-| 25 | 数据输出报告 | R44 | CT3D/Inspection/MPW | FVO/IO/FVOObliqueSliceExporter.cs | PNG/Raw切面E；完整交付P | 网格/CAD/报告/视频及可复核来源 |
+| 25 | 数据输出报告 | R44 | CT3D/Inspection/MPW | FVO/IO/FVOObliqueSliceExporter.cs；CT3D/Persistence/ | PNG/Raw切面E；V04 Mesh/平面制品与MEM保存重开E；完整交付P | CAD/报告/视频、跨工程重映射与通用Artifact |
 | 26 | SDK/插件扩展 | R45、R59；R60～62未来约束 | MLC/CT3D/专业 | CT3D/ + MLC/Modules/ | 平台机制E；完整3D SDK P；本阶段不开发AI | Schema/授权/ABI、厂商对象隔离；AI只留模型/质量扩展点 |
 
 **矩阵补充说明：** `...26项能力映射与实施验收_V0.1.md`仅作历史，本章是唯一26项状态表。追踪记录至少包含RequirementId、原文/截图Hash、Owner、SourcePath、CaseId、CI-SHA、硬件证据、状态/日期。当前可见R11～R64，不据此推断完整需求只有64条；历史90索引中的其余36项仍待来源核实。
@@ -1337,7 +1339,8 @@ flowchart LR
 
 | 建议类 | Owner / 状态 | 关键字段与操作 | 谁可以修改/提交 |
 |---|---|---|---|
-| `CT3DAssetReference` | CT3D【N】 | AssetId、TypeId、SourceRevision、ContentHash、FrameReference、可选MRIObjectAddress | 是专业数据引用值，不是新工程节点；重开保留身份，复制显示不产生新资产 |
+| `CT3DAssetReference` | CT3D【E/R，V04局部】 | 当前Id/Revision/ContentHash、RAW尺寸/格式、SpatialFrame及整体Signature；通用TypeId/FrameRef扩展仍候选 | RAW专业引用值；不新增工程节点，不能冒充完整CAD/点云资产SDK |
+| `CT3DAnalysisCase`、`CT3DAnalysisPersistence` | CT3D【E，V04首包】 | 真实RAW→Mesh→局部平面；ROI/参数/质量；MEM提交/制品校验/保存重开与复算 | 无第二Case库/任务系统；局部二进制Schema不替代完整通用Artifact及Result合同 |
 | `CT3DInputBinding` | CT3D【N】 | RoleId、类型化资产引用、可选ROI/子元素引用 | 操作Schema验证输入角色/数量/类型；拒绝裸字符串文件路径当完整身份 |
 | `CT3DCaseDefinition` | CT3D【N】 | 输入、专业操作/参数、基准/ROI/规则引用、输出策略 | 专业Schema DTO存MEMContent的既有声明中；不自带Save/Undo |
 | `CT3DCaseSession` | CT3D【N】 | `OpenInputs/Resolve/Execute/CaptureSnapshot/Close`；已打开资产及结果的临时索引 | 不引用MVI/MPW；委托已有数据Owner取Lease；关闭后等待任务/租约，不能代替MRK调度 |
@@ -1621,6 +1624,8 @@ sequenceDiagram
 | R5-E 工业高阶能力 | CAD/配准/偏差/GD&T/缺陷/厚度逐条纵切片 | 真实SDK与样本、计量依据及误差、Inspection规则/复核/报告、MRK批任务 |
 
 上述次序允许独立的数值和GPU专项交错推进，不要求等全部LOD完成才验证专业计算。每包在既有项目内按需要实现必要类型，配套正反例、固定SHA Windows证据与适用的G1～G5；本附录不构成一次性迁移全部候选类的代码授权。
+
+**V04推进状态**：R5-A已有RAW/Mesh/平面局部闭环实装，复用现有MEMContent/Aspect/事务/StoreToken，未新增Core公共资源协议或FGE Frame Owner。来源/标定数值签名、取消、Hash/缺源和MEM保存冲突已写入自动化；通用Result、Surface/球持久化、交互ROI、跨工程重映射、Studio装配仍保留后续目标，不能将R5-A整包标为完成。
 
 
 ---
