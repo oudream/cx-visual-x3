@@ -1,0 +1,58 @@
+name: TestCenter Connector MCN FTR MPA Real WPF UI Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Module/TCTConnectorLoopPanel.cs'
+      - 'Tests/TestCenter/Manual/Module/TCTManualModuleFrame.cs'
+      - 'Tests/TestCenter/Verification/TCTConnectorLoopUiSmoke.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Mechanism/Connectivity/Connectors/**'
+      - 'Mechanism/Connectivity/Protocols/**'
+      - '.github/workflows/testcenter-connector-loop-ui-windows.yml'
+jobs:
+  connector-mcn-uia:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter packages
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0){throw 'TestCenter Restore failed'}
+      - name: Build real TestCenter and Channel Protocol dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Build /m:1 /nr:false /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0){throw 'TestCenter Connector Build failed'}
+      - name: Execute actual WPF UIA Channel Protocol roundtrip timeout restart
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $report=Join-Path (Split-Path $exe) 'TestCenter-Connector-UIA-Report.txt'
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--module-connector-ui-automation' -PassThru
+          if(-not $p.WaitForExit(120000)){
+            try{$p.Kill()}catch{}
+            throw 'Connector MCN/FTR/MPA real WPF UIA timeout'
+          }
+          $p.Refresh()
+          if(Test-Path $report){Get-Content $report}
+          if($p.ExitCode -ne 0){throw "Connector real WPF UIA failed: $($p.ExitCode)"}
+          if(-not (Test-Path $report)){throw 'Connector evidence report missing'}
+          $lines=Get-Content $report
+          if(@($lines|Where-Object {$_ -like 'PASS TCT.Connector.UIA*'}).Count -ne 1 -or
+             @($lines|Where-Object {$_ -like 'FAIL*'}).Count -ne 0){
+             throw 'MCN/FTR/MPA actual echo/timeout/stop/restart not verified'
+          }
+      - name: Archive Connector Channel Protocol genuine result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testcenter-connector-mcn-ftr-mpa-uia
+          path: Output/Debug/x64/TestCenter-Connector-UIA-Report.txt
+          if-no-files-found: warn
