@@ -1,0 +1,36 @@
+# Supervision — 原 Go Monitor / Daemon 保真迁移
+
+此目录是可独立构建的 **Go 模块**，不是 `CxVisual.Mechanism.Lifecycle` 的重命名，也不包含第二套 C# Host。
+
+## 来源与迁移范围
+
+- 原仓库：`oudream/device_communicator`
+- 原仓固定提交：`18b5313d8c0c350f3a8cc723f57120cf9e551156`
+- 用户上传源码：`device_communicator.zip`（本次迁移交叉核验来源；ZIP 为 CRLF，Git Blob 为 LF，源码语义一致）
+- 保留原 `module gogo`、原 `hy/monitor`、`hy/daemon`、`hy/common/{monitorc,daemonc,program}`、`common/{channels,models,utilities}` 共 8 个本地 Go 包，以及 `go.mod/go.sum`。
+- 迁入 55 份原始 Go 源码。未复制原 IoT HTTP Server、数据采集业务、生产数据库、密钥、用户配置、可执行文件等不属于两个入口编译闭包的文件。
+
+## 构建（在本目录运行）
+
+```bash
+go mod download
+go build -o ./out/monitor ./hy/monitor
+go build -o ./out/daemon ./hy/daemon
+go test ./hy/monitor ./hy/daemon ./hy/common/monitorc ./hy/common/daemonc ./hy/common/program ./common/channels ./common/models ./common/utilities
+```
+
+Go 模块含 `github.com/mattn/go-sqlite3`，请在目标系统提供可用的 CGO/C 工具链和 SQLite3 编译条件。**仅编译通过不等于数据库驱动在目标 OS 可工作。** `go.mod` 为旧仓版本（Go 1.19）；当前不做依赖升级。
+
+## 原有部署语义
+
+- Monitor：`hy/monitor`，提供运行状态、心跳/UDP 和 HTTP `GET /programs_status`；从工作目录读取 `conf/sys.config.*`。
+- Daemon：`hy/daemon`，按工作目录的进程数据库启动与守护所配置的子程序；涉及进程终止/重启，**不得在 CI 中无隔离直接运行**。
+- 两者原有 `-d` 参数指定工作目录。原代码使用 `db/`、`log/`、`backup/` 等目录，且数据库中程序条目需对应部署机器环境。请在隔离环境准备真实配置与程序清单。
+- 部署示例配置不含秘密或现场地址。不要将真实 `conf/`、`db/`、`log/`、API 令牌、生产设备地址提交到此公开仓库。
+
+## 与 CxVisual 的关系
+
+- Go 进程监视/守护仍由本服务独立承担。
+- Service 模块 C# 基类已迁入 `Mechanism/Core/Modules/Service`，不是 Go 进程监督者。
+- CxVisual Runtime/Transport 的统一观测接入尚未实施，不得宣称已完成双向控制、鉴权、统一状态或真实设备验收。
+- GitHub Actions `.github/workflows/supervision-migration.yml` 负责 Windows C# 检查和 Windows/macOS/Linux Go 构建。自动编译结果与实机部署验收分别记录。
