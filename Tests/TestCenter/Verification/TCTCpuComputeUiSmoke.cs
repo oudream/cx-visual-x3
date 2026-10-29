@@ -131,8 +131,13 @@ namespace CxVisual.TestCenter.UI
                 Check(panel.LastReport==null,"Invalid file returned fake result");
                 await Set(hwnd,"TCT.Cpu.Width","5");
                 await Click(hwnd,"TCT.Cpu.Run");
-                await Until(()=>!panel.IsRunning&&panel.LastReport!=null,
+                await Until(()=>!panel.IsRunning&&
+                    (panel.LastReport!=null ||
+                     panel.StatusMessage.StartsWith("CPU检测失败") ||
+                     panel.StatusMessage.StartsWith("CPU检测已取消")),
                     "real CPU inspection completion");
+                if(panel.LastReport==null)
+                    throw new InvalidOperationException("真实CPU执行未产生结果："+panel.StatusMessage);
                 var first=panel.LastReport;
                 Check(first.Inspection.ThresholdPixelCount==4 &&
                     first.Inspection.Regions.Count==1&&
@@ -159,9 +164,13 @@ namespace CxVisual.TestCenter.UI
                 Check(hasResults,"Actual WPF grids do not contain real region/Trace rows");
                 // Repeat through the same UI must produce a new actual MRK execution.
                 await Click(hwnd,"TCT.Cpu.Run");
-                await Until(()=>!panel.IsRunning&&panel.LastReport!=null&&
-                    panel.LastReport.FlowId!=first.FlowId,
+                await Until(()=>!panel.IsRunning&&
+                    ((panel.LastReport!=null&&panel.LastReport.FlowId!=first.FlowId) ||
+                     panel.StatusMessage.StartsWith("CPU检测失败") ||
+                     panel.StatusMessage.StartsWith("CPU检测已取消")),
                     "repeat real execution");
+                if(panel.LastReport==null||panel.LastReport.FlowId==first.FlowId)
+                    throw new InvalidOperationException("重复CPU执行无新FlowId："+panel.StatusMessage);
                 var second=panel.LastReport;
                 Check(second.Inspection.Regions.Count==1 &&
                     second.CompletedTraceEvents>0&&second.PageId!=first.PageId,
