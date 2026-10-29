@@ -5,7 +5,6 @@ import (
 	"gogo/common/utilities"
 	"gogo/internal/monitorc"
 	"gogo/internal/program"
-	"time"
 )
 
 var (
@@ -72,7 +71,7 @@ func dealProgramDaemonEvent(e *program.Event) {
 		}
 	case program.EventExit:
 		if e.Status.ErrorCount > 0 {
-			msg = fmt.Sprintf(path+"退出，运行时长：%d。", time.Now().Unix()-e.Status.LastRunTime) + desc
+			msg = fmt.Sprintf("%s退出，运行时长：%d秒。", path, elapsedRunSeconds(utilities.TimeGetCurrentMsepoch(), e.Status.LastRunTime)) + desc
 		} else {
 			msg = path + "退出，运行时间太短" + desc + e.Message
 		}
@@ -85,4 +84,13 @@ func dealProgramDaemonEvent(e *program.Event) {
 	if updateDaemonStatus(&e.Status) > 0 {
 		thisQueue.Push(monitorc.CodeMessage{Code: monitorc.CCodeProgramDaemonEventPost})
 	}
+}
+
+ // elapsedRunSeconds converts the daemon start timestamp (milliseconds)
+ // to seconds, without producing a negative value on clock rollback.
+func elapsedRunSeconds(nowMs, startedAtMs int64) int64 {
+	if nowMs <= startedAtMs || startedAtMs <= 0 {
+		return 0
+	}
+	return (nowMs - startedAtMs) / 1000
 }
