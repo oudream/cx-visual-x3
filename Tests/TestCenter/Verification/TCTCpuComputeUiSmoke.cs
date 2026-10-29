@@ -220,6 +220,9 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("FIM增强未产生真实Run："+panel.StatusMessage);
                 var enhanced=panel.LastReport;
                 Check(enhanced.EnhancedImage!=null &&
+                    panel.PreviewImage!=null &&
+                    panel.PreviewImage.GetGrayValue(0,0)==0 &&
+                    panel.PreviewImage.GetGrayValue(3,3)==210 &&
                     enhanced.EnhanceBlockId!=Guid.Empty &&
                     enhanced.MeasureBlockId!=Guid.Empty &&
                     enhanced.Inspection.ThresholdPixelCount==5 &&
