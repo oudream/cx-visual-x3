@@ -367,6 +367,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
                     Check(restored.Kind==CT3DAnalysisKind.SurfaceCylinder&&
                         restored.ParameterSignature==caseValue.ParameterSignature&&
+                        restored.RoiSignature==caseValue.RoiSignature&&
+                        restored.RoiSignature!=null&&restored.RoiSignature.Length==64&&
+                        restored.GetFeatureMeasurements().All(m=>m.RoiSignature==restored.RoiSignature)&&
                         restored.Cylinder.SelectedPointIndices.SequenceEqual(sidewall)&&
                         restored.Cylinder.HasExplicitSidewallRoi&&
                         restored.Cylinder.ResultId==caseValue.Cylinder.ResultId&&
@@ -381,6 +384,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var changedRoi=restored.RecomputeWithCylinderRoi(folder,
                         sidewall.Reverse().ToArray(),CancellationToken.None);
                     Check(changedRoi.Cylinder.ResultId!=restored.Cylinder.ResultId&&
+                        changedRoi.RoiSignature!=restored.RoiSignature&&
                         changedRoi.ParameterSignature!=restored.ParameterSignature&&
                         changedRoi.Cylinder.SelectedPointIndices.Count==sidewall.Length,
                         "侧壁ROI修改须使圆柱Feature与配方指纹更新");
