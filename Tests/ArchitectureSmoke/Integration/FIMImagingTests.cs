@@ -390,7 +390,105 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FIMImageFilters.Apply(red, FIMNeighborhoodFilter.Mean, 1), "彩色未支持拒绝");
             Throws<ArgumentOutOfRangeException>(() =>
                 FIMImageFilters.Apply(impulse, FIMNeighborhoodFilter.Mean, 20), "非法大半径");
+            VerifyRawExport();
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
+        }
+
+        /// <summary>真实FIM RAW导出：Stride、小端/大端、物理像素、原子覆盖与取消。</summary>
+        private static void VerifyRawExport()
+        {
+            byte[] original = {
+                0x34,0x12, 0x78,0x56, 0xAA,0xBB,
+                0x9A,0xBC, 0x00,0x00, 0xCC,0xDD
+            };
+            var image = new FIMImageBuffer(2,2,FIMPixelFormat.Gray16,original,6);
+            using (var compact = new MemoryStream())
+            {
+                FIMRawImageWriter.Write(compact,image);
+                Assert(compact.ToArray().SequenceEqual(new byte[]{
+                    0x34,0x12,0x78,0x56, 0x9A,0xBC,0x00,0x00
+                }),"RAW紧排导出必须跳过Stride填充");
+                compact.Position=0;
+                FIMImageBuffer reopened=FIMRawImageReader.Load(
+                    compact,2,2,FIMPixelFormat.Gray16);
+                Assert(reopened.GetGrayValue(0,0)==0x1234 &&
+                    reopened.GetGrayValue(0,1)==0xBC9A,
+                    "RAW紧排回读Gray16小端必须数值不变");
+            }
+            using (var preserved = new MemoryStream())
+            {
+                FIMRawImageWriter.Write(preserved,image,bigEndian:true,preserveStride:true);
+                Assert(preserved.ToArray().SequenceEqual(new byte[]{
+                    0x12,0x34,0x56,0x78,0xAA,0xBB,
+                    0xBC,0x9A,0x00,0x00,0xCC,0xDD
+                }),"RAW大端转换不能更改Stride填充或翻转错误的通道");
+                preserved.Position=0;
+                FIMImageBuffer restored=FIMRawImageReader.Load(preserved,2,2,
+                    FIMPixelFormat.Gray16,6,bigEndian:true);
+                Assert(restored.CopyPixels().SequenceEqual(original) &&
+                    image.CopyPixels().SequenceEqual(original),
+                    "RAW有填充/大端回环必须逐字节一致且源像素不变");
+            }
+            var floatImage=new FIMImageBuffer(1,1,FIMPixelFormat.GrayFloat32,
+                new byte[]{0,0,0x80,0x3f});
+            using(var encoded=new MemoryStream())
+            {
+                FIMRawImageWriter.Write(encoded,floatImage,bigEndian:true);
+                Assert(encoded.ToArray().SequenceEqual(new byte[]{0x3f,0x80,0,0}),
+                    "RAW Float32大小端变换不正确");
+                encoded.Position=0;
+                Assert(Math.Abs(FIMRawImageReader.Load(encoded,1,1,
+                    FIMPixelFormat.GrayFloat32,bigEndian:true).GetGrayValue(0,0)-1)<1e-6,
+                    "RAW Float32大端回环像素失真");
+            }
+            var rgb=new FIMImageBuffer(1,1,FIMPixelFormat.Bgr24,new byte[]{1,2,3});
+            Throws<NotSupportedException>(()=>FIMRawImageWriter.Write(
+                new MemoryStream(),rgb,bigEndian:true),"不明确的多通道大端必须拒绝");
+            using(var packedRgb=new MemoryStream())
+            {
+                FIMRawImageWriter.Write(packedRgb,rgb);
+                Assert(packedRgb.ToArray().SequenceEqual(new byte[]{1,2,3}),
+                    "Bgr24原始通道排列不能暗中转RGB");
+            }
+            Throws<ArgumentException>(()=>FIMRawImageWriter.Write(
+                new MemoryStream(new byte[0],writable:false),image),"只读输出流必须拒绝");
+            using(var cancellation=new CancellationTokenSource())
+            {
+                cancellation.Cancel();
+                using(var output=new MemoryStream())
+                {
+                    Throws<OperationCanceledException>(()=>FIMRawImageWriter.Write(
+                        output,image,cancellationToken:cancellation.Token),
+                        "预取消RAW写入必须拒绝");
+                    Assert(output.Length==0,"预取消后输出流应保持为空");
+                }
+            }
+            string path=Path.Combine(Path.GetTempPath(),
+                "fim-export-"+Guid.NewGuid().ToString("N")+".raw");
+            try
+            {
+                File.WriteAllBytes(path,new byte[]{7,8,9});
+                Throws<IOException>(()=>FIMRawImageWriter.SaveFile(path,image),
+                    "未允许覆盖时不得替换已有RAW文件");
+                Assert(File.ReadAllBytes(path).SequenceEqual(new byte[]{7,8,9}),
+                    "拒绝覆盖不得改变已有文件");
+                FIMRawImageWriter.SaveFile(path,image,overwrite:true);
+                Assert(File.ReadAllBytes(path).SequenceEqual(new byte[]{
+                    0x34,0x12,0x78,0x56,0x9A,0xBC,0,0}),
+                    "同目录临时文件原子覆盖后的RAW像素必须准确");
+                using(var cancellation=new CancellationTokenSource())
+                {
+                    cancellation.Cancel();
+                    Throws<OperationCanceledException>(()=>FIMRawImageWriter.SaveFile(
+                        path,image,overwrite:true,cancellationToken:cancellation.Token),
+                        "取消不得覆盖已写好的RAW");
+                }
+                Assert(File.ReadAllBytes(path).Length==8 &&
+                    !Directory.GetFiles(Path.GetDirectoryName(path),
+                        "."+Path.GetFileName(path)+".*.tmp").Any(),
+                    "导出取消后不能留下未清理的临时文件");
+            }
+            finally {if(File.Exists(path))File.Delete(path);}
         }
 
         private static bool Near(double x, double y) { return Math.Abs(x - y) < 0.0000001; }
