@@ -124,7 +124,10 @@ namespace CxVisual.Professional.Vision
             _capability=new MRKResolvedCapability(ExecuteAsync,
                 new MRKExecutionOutput(typeof(CxVisionInspectionResult)),
                 dataOutputs:new Dictionary<string,Type>{{"Inspection",typeof(CxVisionInspectionResult)}},
-                inputs:new[]{new MRKCapabilityInput("ThresholdMask",typeof(FIMImageBuffer))});
+                inputs:new[]{
+                    new MRKCapabilityInput("ThresholdMask",typeof(FIMImageBuffer)),
+                    new MRKCapabilityInput("RuleVersion",typeof(string))
+                });
         }
         public string ReleaseVersion
         {
@@ -139,6 +142,8 @@ namespace CxVisual.Professional.Vision
                 "Vision/Segmentation",new[]{
                     new MPCPortDescriptor("ThresholdMask",MPCPortDirection.Input,
                         CxVisionBinaryThresholdProvider.MaskTypeId,MPCPortKind.Data,required:true),
+                    new MPCPortDescriptor("RuleVersion",MPCPortDirection.Input,
+                        "string",MPCPortKind.Data,required:true),
                     new MPCPortDescriptor("Inspection",MPCPortDirection.Output,
                         CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,MPCPortKind.Data)
                 })};
@@ -146,6 +151,11 @@ namespace CxVisual.Professional.Vision
         private Task<object> ExecuteAsync(MRKExecutionContext context,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            object ruleVersion;
+            if(!context.BoundInputs.TryGetValue("RuleVersion",out ruleVersion) ||
+               !(ruleVersion is string) ||
+               !string.Equals((string)ruleVersion,ReleaseVersion,StringComparison.Ordinal))
+                throw new InvalidOperationException("vision.regions.rule_version_mismatch");
             object source;
             if(!context.BoundInputs.TryGetValue("ThresholdMask",out source) ||
                !(source is FIMImageBuffer))
