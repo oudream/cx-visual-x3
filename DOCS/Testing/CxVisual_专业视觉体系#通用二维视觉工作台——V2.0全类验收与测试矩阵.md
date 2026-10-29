@@ -365,3 +365,16 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ### 20.3 UI-ALG-M02最终固定SHA核实
 
 `a6f43b8d0016c4ca08e6aa95e7a6c1428d74fcec`：[TestCenter Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787) **success**，真正原MPW/MVI图窗像素级验证通过；[Module Center CPU RAW #40821146764](https://github.com/oudream/cx-visual-x3/actions/runs/40821146764) **success**。以上属WPF UIA + CPU软件自动测试，不等于真实相机/AI/GPU/工业设备现场HIL，也未实现独立分割与区域Provider。
+
+## 21. UI-IMG-22～26：6144×3072大图显示、滑条和自动直方图缺陷回归（2026-10-29）
+
+| ID | 自动化正/反场景 | 固定证据与限制 |
+|---|---|---|
+| UI-IMG-22 | MPW原图/双图均不允许像素`Image.Width/Height`撑大`ViewportRoot`；4096×2048实际WPF窗口测量Fit=Min(viewW/W,viewH/H)、ImageTransform矩阵及中心偏移，图像可完整进入视口 | [Imaging #40828542464](https://github.com/oudream/cx-visual-x3/actions/runs/40828542464) success，用户6144真实机器截图仍待复核 |
+| UI-IMG-23 | Gray16滑条0～65535、Gray8为0～255；足够宽数字输入、可见范围文字、数值同步，窗口操作不得修改原始像素 | 已新增AutomationId和WPF Smoke；最新固定SHA CI待完成 |
+| UI-IMG-24 | 打开FIM原图即自动排入异步256档直方图，不需按钮也不跳右侧页签；ROI/换图旧请求作废，同图显示窗/Gamma变化不重扫原像素 | [Imaging #40828384405](https://github.com/oudream/cx-visual-x3/actions/runs/40828384405) success（较早版本统计页自动）；完整“开图即计算”后续CI待验 |
+| FIM-HIST-01 | Gray16带行Padding、ROI闭区间、65535常量直方图、Bin末端、准确均值/方差和预取消；Gray8和非整数通道旧结果兼容 | [Imaging #40828384405](https://github.com/oudream/cx-visual-x3/actions/runs/40828384405) success，首次旧SHA编译CS0128已修正 |
+| UI-IMG-25 | Task.Run内显式捕获用户切图/变ROI造成的预期取消，不发布失败旧统计；公共FIM算法继续按正式合同抛OCE供上层处理 | 源码已提交，最新CI待验；若VS设置全局“在抛出时中断OperationCanceledException”，仍可能按调试器设置停在Throw |
+| UI-IMG-26 | 6144×3072=18874368原始像素，Gray16统计扫描变成逐行一遍、65536整数频数再聚合256档，不用显示窗计算原像素；实际大图性能需要有机器基准值 | 算法优化代码和测试已提交，不臆造毫秒性能指标 |
+
+**仍需**：用户实际6144×3072源图的Fit截图、完整最新SHA Windows UIA和性能实测；上一工作流success不能自动推断当前最终HEAD验收通过。
