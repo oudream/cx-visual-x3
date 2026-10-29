@@ -113,9 +113,36 @@ namespace CxVisual.Studio
                     Assert(center.VisibleCapabilities.Any(x=>!x.Kind.HasValue&&x.Demonstration),
                         "演示CPU流程不能被混入真实专业模块身份");
                     center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute);
-                    Assert(center.VisibleCapabilityCount==1 &&
-                        center.VisibleCapabilities[0].Id==CxVisionThresholdProvider.CapabilityId,
-                        "Compute类别必须只展示真实CPU视觉算法Provider");
+                    string[] requiredVision={
+                        CxVisionThresholdProvider.CapabilityId,
+                        CxVisionBinaryThresholdProvider.CapabilityId,
+                        CxVisionMaskRegionsProvider.CapabilityId,
+                        CxVisionAcceptedRegionMeasureProvider.CapabilityId
+                    };
+                    Assert(center.VisibleCapabilityCount==4 &&
+                        requiredVision.All(id=>center.VisibleCapabilities.Count(x=>
+                            x.Id==id && x.Resolved && x.Described &&
+                            x.ModuleId=="studio.development.cpu.vision" &&
+                            !x.Demonstration)==1),
+                        "Compute应通过唯一MOC/MFM目录发现四个真实专业节点");
+                    var segmentPorts=center.VisibleCapabilities.Single(x=>
+                        x.Id==CxVisionBinaryThresholdProvider.CapabilityId);
+                    var regionPorts=center.VisibleCapabilities.Single(x=>
+                        x.Id==CxVisionMaskRegionsProvider.CapabilityId);
+                    var measurePorts=center.VisibleCapabilities.Single(x=>
+                        x.Id==CxVisionAcceptedRegionMeasureProvider.CapabilityId);
+                    Assert(segmentPorts.InputPorts.Any(x=>x.StartsWith("Threshold : int")) &&
+                        segmentPorts.OutputPorts.Any(x=>
+                            x.StartsWith("ThresholdMask : "+CxVisionBinaryThresholdProvider.MaskTypeId)) &&
+                        regionPorts.InputPorts.Any(x=>
+                            x.StartsWith("ThresholdMask : "+CxVisionBinaryThresholdProvider.MaskTypeId)) &&
+                        regionPorts.InputPorts.Any(x=>x.StartsWith("RuleVersion : string")) &&
+                        regionPorts.OutputPorts.Any(x=>x.StartsWith("Inspection : "+
+                            CxVisionAcceptedRegionMeasureProvider.InspectionTypeId)) &&
+                        measurePorts.InputPorts.Any(x=>x.StartsWith("Inspection : "+
+                            CxVisionAcceptedRegionMeasureProvider.InspectionTypeId)) &&
+                        measurePorts.OutputPorts.Any(x=>x.StartsWith("Area : long")),
+                        "独立Mask→Region→Area正式端口与MOC能力目录不一致");
                     center.SetSelectedKind(null);
                     center.SetSelectedKind(CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver);
                     Assert(center.VisibleCapabilityCount==0,
@@ -176,10 +203,14 @@ namespace CxVisual.Studio
                         effectiveStatus.Text.Contains("vision.cpu.threshold.v1/config:"),
                         "未通过真实MHS Effective快照刷新软件Provider版本："+
                         effectiveStatus.Text);
-                    Assert(center.VisibleCapabilities.Any(x=>
-                        x.Id==CxVisionThresholdProvider.CapabilityId&&x.Resolved&&
-                        x.Kind==CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute),
-                        "加载MHS有效配置后不应丢失MOC/MFM软件计算能力");
+                    Assert(new[]{
+                        CxVisionThresholdProvider.CapabilityId,
+                        CxVisionBinaryThresholdProvider.CapabilityId,
+                        CxVisionMaskRegionsProvider.CapabilityId,
+                        CxVisionAcceptedRegionMeasureProvider.CapabilityId
+                    }.All(id=>center.VisibleCapabilities.Any(x=>x.Id==id&&x.Resolved&&
+                        x.Kind==CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute)),
+                        "加载MHS有效配置后丢失独立分割区域或面积Provider");
                     Button addFlow=actions.FirstOrDefault(x=>
                         System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                         "Studio.ModuleCenter.AddToFlow");
