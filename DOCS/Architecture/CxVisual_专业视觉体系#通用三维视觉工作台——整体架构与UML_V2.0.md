@@ -1647,7 +1647,7 @@ sequenceDiagram
 
 ### F.2 UML 01｜主领域对象的身份、组合与依赖（概念图）
 
-\`\`\`mermaid
+```mermaid
 classDiagram
 direction LR
 class MEMContent {
@@ -1701,13 +1701,13 @@ MVI3DSceneState "1" *-- "*" MVI3DSceneItem : 仅会话组合
 MVI3DSceneItem --> AssetReference : 不拥有数据
 MVI3DSceneItem --> SpatialFrameRef : 仅引用
 MPWViewport ..> MVI3DSceneState : 消费不可变快照
-\`\`\`
+```
 
 **依赖规则**：图中关系是逻辑合同，不意味着 CT3D 静态引用 MEM/MVI/MPW 程序集。由现有宿主组合根解析 AssetRef、调度专业运算、投影 ResultRef；Foundation 不调用专业层；MPW 不成为专业数据真源。外部 Artifact 注册/校验/原子提交继续交给 MEM 既有机制扩展合同，不设第二份CT3D资产仓库。
 
 ### F.3 UML 02｜专业操作和模式组合，不引入万能 Processor
 
-\`\`\`mermaid
+```mermaid
 classDiagram
 direction TB
 class ProfessionalOperation {
@@ -1747,7 +1747,7 @@ ProfessionalOperation --> OperationContext
 ProfessionalOperation --> ProfessionalResult
 ProfessionalOperation --> OperationPolicy
 ExistingRuntime ..> ProfessionalOperation : 通过宿主适配
-\`\`\`
+```
 
 该接口只是表达**参数化输入、受控执行、质量、取消的一致形态**。不建议实施成运行期任意object输入输出、基类反射分派或另起CT3D调度引擎；已有静态高性能函数可先用薄适配包裹，不强制所有算法继承抽象类。耗时计算的中间状态/进度由已有MRK/FCR等机制接入。
 
@@ -1801,7 +1801,7 @@ ExistingRuntime ..> ProfessionalOperation : 通过宿主适配
 
 ### F.7 UML 03｜用户在四视图选择ROI到保存重开的端到端时序
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
 autonumber
 actor User as 工程师
@@ -1839,9 +1839,9 @@ UI->>MEM: Load并校验Artifact/依赖/版本
 MEM-->>UI: 有效/过期/缺失的ResultRef状态
 UI->>MVI: 恢复视图引用/工具定义
 UI-->>User: 恢复结果或显示需重算的诊断
-\`\`\`
+```
 
-**二维复用关键**：显示切片的像素坐标应经 \`FVOSliceSamplingMap\` 回到原体素/物理Frame；厚层/弯曲切面需标注多值/近似采样语义，不能当作唯一3D点。UI可复用2D成熟ROI交互，但不能以2D显示像素代替三维源采样。
+**二维复用关键**：显示切片的像素坐标应经 `FVOSliceSamplingMap` 回到原体素/物理Frame；厚层/弯曲切面需标注多值/近似采样语义，不能当作唯一3D点。UI可复用2D成熟ROI交互，但不能以2D显示像素代替三维源采样。
 
 ### F.8 六条必须做成自动化的架构反证
 
