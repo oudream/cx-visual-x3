@@ -306,6 +306,37 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
                     throw new InvalidOperationException(
                         "统计页未自动生成256档直方图或改写了源像素");
+                autoStatsTabs.SelectedIndex=4;
+                window.UpdateLayout();
+                Button exportRawAction=FindControl<Button>(frame,"TCT.Imaging.ExportActiveRaw");
+                if(exportRawAction==null || !exportRawAction.IsEnabled)
+                    throw new InvalidOperationException("RAW无损导出真实工作台按钮缺失");
+                string exported=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-FIM-WpfRaw-"+Guid.NewGuid().ToString("N")+".raw");
+                try
+                {
+                    frame.ExportActiveRawFile(exported);
+                    FIMImageBuffer restoredRaw=FIMRawImageReader.LoadFile(exported,4,4,
+                        FIMPixelFormat.Gray16);
+                    if(!restoredRaw.CopyPixels().SequenceEqual(image.CopyPixels()) ||
+                        restoredRaw.GetGrayValue(3,3)!=16 ||
+                        frame.Viewer.Session.Original.GetGrayValue(3,3)!=16)
+                        throw new InvalidOperationException(
+                            "TestCenter活动原图RAW导出与Gray16原像素回环不一致");
+                    var resultRaw=new FIMImageBuffer(4,4,FIMPixelFormat.Gray16,
+                        Enumerable.Repeat((byte)0,32).ToArray());
+                    frame.Viewer.ShowResult(resultRaw);
+                    frame.ExportActiveRawFile(exported,overwrite:true);
+                    FIMImageBuffer outputRaw=FIMRawImageReader.LoadFile(exported,4,4,
+                        FIMPixelFormat.Gray16);
+                    if(outputRaw.GetGrayValue(3,3)!=0 ||
+                       frame.Viewer.Session.Original.GetGrayValue(3,3)!=16 ||
+                       frame.Viewer.Session.Result.GetGrayValue(3,3)!=0)
+                        throw new InvalidOperationException(
+                            "TestCenter结果槽RAW导出错误读取原图或改变原图");
+                    frame.Viewer.SelectOriginal();
+                }
+                finally {if(File.Exists(exported))File.Delete(exported);}
                 autoStatsTabs.SelectedIndex=0;
                 // 大图不允许用Image.DesiredSize撑大WPF Grid而裁掉边界：
                 // Fit必须严格匹配实际可见ViewportRoot，含正确的中心平移。
