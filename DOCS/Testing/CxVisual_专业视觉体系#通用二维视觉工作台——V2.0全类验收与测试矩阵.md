@@ -384,3 +384,7 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 固定`8ff63f336b68b70736e88ad9c59cf155d2a57035` 的[Imaging #40828887469](https://github.com/oudream/cx-visual-x3/actions/runs/40828887469) **failure**，WPF旧CPU Mask轮廓7px²回归受影响；不允许跳过轮廓验收。修复`98912b4c972c9737ceab09dc7f016da92de9b657`将自动Histogram的CancellationTokenSource/Epoch与Mask轮廓、区域操作分开，守护轮廓发布期间的内部图层选中；真实原图变更仍使旧处理请求失效。
 
 **最新待复测**：[Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) / [TestCenter #40829484729](https://github.com/oudream/cx-visual-x3/actions/runs/40829484729)。必须同时通过自动直方图、Gray16统计、407? 无此项、CPU Mask→轮廓7px²和原像素保持反证，才将UI-IMG-27标完成。
+
+### 21.2 自动统计与轮廓原有G4回归重新通过
+
+[Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) 固定`98912b4` **success**；[Imaging #40829769427](https://github.com/oudream/cx-visual-x3/actions/runs/40829769427) 固定`73ecd00` **success**。覆盖大图Fit、原像素不变、自动直方图、ROI/Mask轮廓与7px²面积、取消域互不抢占。额外窗宽/窗位滑块端点直接标注且带自动化ID的新增代码[267db43](https://github.com/oudream/cx-visual-x3/commit/267db43581d6adfa4270ca9fda980df88464c7fe)还需以自身或后继固定SHA Windows实测验收，不能继承前述成功。
