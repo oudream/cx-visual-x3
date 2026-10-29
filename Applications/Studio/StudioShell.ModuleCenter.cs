@@ -482,6 +482,46 @@ namespace CxVisual.Studio
                 }
             };
             actions.Children.Add(addFlow);
+            var newVisionFlow=new Button {
+                Content="新建已连线视觉流程",Padding=new Thickness(11,5,11,5),
+                Margin=new Thickness(3,1,6,1),
+                ToolTip="使用当前MHS Effective创建独立Mask→Region→Measurement工程页，公开RAW、尺寸与结果端口，之后可在原MOL画布自由编辑"
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(newVisionFlow,
+                "Studio.ModuleCenter.CreateVisionFlow");
+            newVisionFlow.Click+=(sender,args)=>{
+                try
+                {
+                    if(!effectiveLoaded || selectedProvider==null)
+                        throw new InvalidOperationException("请先读取MHS Effective配置");
+                    if(_logicRunning)
+                        throw new InvalidOperationException("运行中的工程不能插入视觉流程");
+                    if(loadedProjectId!=_viewModel.ProjectSession.Project.Id ||
+                       loadedScopeKey!=CurrentStudioVisionScopeKey())
+                        throw new InvalidOperationException("工程或配置Scope已变化");
+                    StudioVisionFlowTemplate created=CreateStudioSeparatedVisionFlow(
+                        _viewModel.ProjectSession,selectedProvider);
+                    var page=_viewModel.ProjectSession.Find(created.PageId) as MEMPage;
+                    if(page==null)throw new InvalidOperationException("新建工程页丢失");
+                    _viewModel.ActivePage=page;
+                    RefreshScene();
+                    OpenStudioDocument("doc.flow");
+                    effectiveStatus.Text="已创建可编辑三节点Vision流程页；Block="+
+                        created.MaskBlockId.ToString("N").Substring(0,8)+"/"+
+                        created.RegionBlockId.ToString("N").Substring(0,8)+"/"+
+                        created.MeasureBlockId.ToString("N").Substring(0,8)+
+                        "。RAW/宽/高为公开输入，结果已公开；打开MOL即可拖线/编辑/保存。";
+                }
+                catch(UnauthorizedAccessException)
+                {
+                    effectiveStatus.Text="MHS配置授权已撤销，禁止建立Vision流程。";
+                }
+                catch(Exception ex)
+                {
+                    effectiveStatus.Text="视觉流程创建失败："+ex.Message;
+                }
+            };
+            actions.Children.Add(newVisionFlow);
             var rawRow=new WrapPanel {Margin=new Thickness(4,3,4,2)};
             rawRow.Children.Add(new TextBlock {Text="RAW宽",VerticalAlignment=VerticalAlignment.Center});
             var imageWidth=new TextBox {Text="5",Width=64,Margin=new Thickness(5,0,10,0)};
