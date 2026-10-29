@@ -30,6 +30,7 @@
     <Compile Include="MDCResourceBudgetPlanner.cs"/>
     <Compile Include="MDCStaticCatalogSnapshot.cs"/>
     <Compile Include="MDCRecommendationService.cs"/>
+    <Compile Include="MDCProjectImpactAnalyzer.cs"/>
     <Compile Include="MOCBuildService.cs"/>
     <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
   <ItemGroup>

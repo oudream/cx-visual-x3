@@ -304,3 +304,15 @@ flowchart LR
 | MDC-44 | 同一能力重复专业记录或传入不存在的能力Id被拒绝 |
 
 全部属于静态软件验证，不能据此宣称专业实机HIL/安全授权通过。明确`MDCRecommendationResult.RequireCurrent(stamp,inputHash)`在正式Core编辑前由Host/Studio调用，环境变更不能由Decision自行嗅探。
+
+### D10工程能力影响分析（软件验证范围）
+
+| Case | 验收断言 |
+|---|---|
+| MDC-45 | 同一真实MEM快照中的V1 MOL Action，变更Capability后精确定位ContentId/BlockId |
+| MDC-46 | V2 MOLWiring真实节点对应被移除能力，定位原BlockId |
+| MDC-47 | 父Content通过Invoke引用被影响子Content，影响集保守向上传播 |
+| MDC-48 | 与变更无关的Content不误标；目录无变化时没有无故影响 |
+| MDC-49 | 无法读取的逻辑Schema、引用缺失、分析预算溢出须IsComplete=false，不能报告为“安全” |
+
+D10首批只对Core快照和静态能力声明作分析。工程实际运行差异、专业算法性能或现场事故原因，仍须MRK事实、MDS数据和专业Owner证据。

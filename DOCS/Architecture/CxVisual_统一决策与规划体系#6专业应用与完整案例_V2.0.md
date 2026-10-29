@@ -190,3 +190,7 @@ var allowed = decision.Assess(
 同一`MDCRecommendationService.Recommend`可处理代表性CPU/GPU候选，不需要为Vision或CT3D再写一套选择引擎。专业Host负责提供语义端口、可信资源上下界与各目标的Measured证据；Decision负责：匹配、硬约束排除、Unknown保留、Pareto与明确首选，随后生成结构化原因。模拟负例：GPU方案延迟1ms但最小显存需要大于剩余容量，必须Rejected；缺专业证据的候选必须Unknown；静态端口类型错误不能因性能快而获选；证据或Host预算版本变化后旧推荐不能直接提交Core Edit。
 
 这只证明专业软件合同组合能力，**没有验证真实CT设备、GPU的性能或X-Ray工业产线节拍**。真实生产优化收益需要专业基准、现场证据及相同硬件环境实测。
+
+## L. Decision分析专业能力升级的真实工程影响（D10第一批）
+
+场景：旧Vision算法`vision.old`升级静态Schema，同时GPU专业能力`gpu.backend`被移除，工程中的V1 Logic与V2 MOLWiring分别使用两者；上层子流程Invoke引用其中一个Content。Decision先从旧/新MOC只读目录计算能力变化，再读取`MEMProjectSnapshot`并返回原ContentId/BlockId和所有受影响的上层ContentId。开发者可据此提示“这些工程节点需要复核/重新编译”，不能在现场生产Plan运行中直接热替换，也不能把所有Project都当作受影响。实际测试以Windows ArchitectureSmoke真实Core实例为证。

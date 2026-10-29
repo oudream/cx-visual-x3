@@ -175,3 +175,9 @@ flowchart LR
 **AOP边界**：MRK观察/指标、Decision解释/性能、Studio展示可共用CorrelationId/诊断码和脱敏机制；不因审计/优化把决策计算插进每帧实时运行路径。异常处理必须保留真实根异常及设备确认状态。
 
 **验收**：REV-06～08/10/12与RUN-01～12；至少对虚拟、纯CPU、实际设备三类设独立测试等级，不能由一个Headless绿色CI证明硬件安全。
+
+## 13. D10工程变更影响集：从能力变更定位到Core节点（新增静态源码）
+
+`MDCCatalogImpactAnalyzer.Compare`先得到能力的Added/Removed/Modified；`MDCProjectImpactAnalyzer.Analyze(MEMProjectSnapshot,changes)`进一步读取**原Core快照**中的V1 MOL逻辑树与V2 MOLWiring定义，返回`DirectBlocks(ContentId,BlockId,CapabilityId,ChangeKind)`和`AffectedContentIds`，将受影响子Content保守传播至引用它的父流程。V2状态机进入/退出能力也列入直接受影响节点；所有结果只引用原Content/Block，不另造持久工程Graph或运行Step状态。
+
+诊断必须区分`IsComplete`与`UnknownContentIds`：逻辑Schema无法解码、引用Content缺失或分析预算溢出时，不得用“未找到受影响节点”解释为安全。现有功能没有直接改Core、不执行MRK、不加载设备、不删除旧Revision；Studio仍需要在实际UI中接入点击定位，Host发布仍须真实复核。这是工程定义影响范围，**不是已证明运行故障根因，也不是虚拟仿真或历史Trace重放**。

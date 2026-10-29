@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ResourcePlanningFeedsSelection();
             CatalogFingerprintVersionAndImpact();
             EndToEndStaticRecommendation();
+            ProjectCapabilityImpactUsesCoreSnapshot();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -540,6 +541,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MDCResourceBudget[0],new[] {profiles[0],profiles[0]}); }
             catch(ArgumentException) { duplicate=true; }
             Check(duplicate,"duplicate professional evidence must be rejected");
+        }
+
+        private static void ProjectCapabilityImpactUsesCoreSnapshot()
+        {
+            var session = MEMEngineering.Create("decision-impact");
+            try
+            {
+                var v1 = session.AddPage("V1");
+                var legacyBlock = MOLControlBlock.Action("vision.old");
+                MOLLogicCodec.Set(session, v1.RootContent,
+                    new MOLLogicDefinition(legacyBlock));
+                var v2 = session.AddPage("V2");
+                var wiredBlock = MOLControlBlock.Action("gpu.backend");
+                MOLWiringCodec.Set(session, v2.RootContent,
+                    new MOLWiringDefinition(wiredBlock.Id,
+                        new[] { wiredBlock },
+                        new Dictionary<Guid, IEnumerable<MPCPortDescriptor>> {
+                            { wiredBlock.Id, new MPCPortDescriptor[0] }
+                        }, new MOLLink[0]));
+                var parent = session.AddPage("Parent");
+                MOLLogicCodec.Set(session, parent.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.InvokeContent(v1.RootContent.Id)));
+                var previous = new MDCStaticCatalogSnapshot(new[] {
+                    new MOCCapabilityDescriptor("vision.old", "Old", "Vision"),
+                    new MOCCapabilityDescriptor("gpu.backend", "GPU", "Compute")
+                });
+                var updated = new MDCStaticCatalogSnapshot(new[] {
+                    new MOCCapabilityDescriptor("vision.old", "Updated", "Vision")
+                });
+                var changes = MDCCatalogImpactAnalyzer.Compare(previous, updated);
+                var report = MDCProjectImpactAnalyzer.Analyze(session.GetSnapshot(), changes);
+                Check(report.IsComplete && report.DirectBlocks.Count == 2,
+                    "both legacy and V2 changed capabilities must map to real Core blocks");
+                Check(report.DirectBlocks.Any(x => x.ContentId == v1.RootContent.Id &&
+                    x.BlockId == legacyBlock.Id && x.Change == MDCCatalogChangeKind.Modified),
+                    "legacy V1 BlockId must be preserved for user navigation");
+                Check(report.DirectBlocks.Any(x => x.ContentId == v2.RootContent.Id &&
+                    x.BlockId == wiredBlock.Id && x.Change == MDCCatalogChangeKind.Removed),
+                    "V2 BlockId should identify removed capability use");
+                Check(report.AffectedContentIds.Contains(parent.RootContent.Id),
+                    "changed subflow must propagate to referring parent Content");
+                Check(report.AffectedContentIds.Contains(v2.RootContent.Id),
+                    "direct V2 content must be included");
+                Check(report.AffectedContentIds.Count == 3,
+                    "unrelated engineering content must not be marked affected");
+            }
+            finally { session.Close(true); }
         }
 
     }

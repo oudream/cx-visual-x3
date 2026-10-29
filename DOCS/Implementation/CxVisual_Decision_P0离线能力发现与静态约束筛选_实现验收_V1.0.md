@@ -88,3 +88,7 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 十二、专业开发者轻量一调用推荐门面
 
 新增`MDCRecommendationService.cs`；将同一`MOCCapabilityCatalog`的MPC候选、已实现`MDCResourceBudgetPlanner`硬预算及`MDCChoiceService` Pareto组合，返回统一`MDCRecommendationResult`，无需创建新的执行引擎/模块注册表。完整输入指纹进一步纳入专业指标和资源证据，使工程版本不变时改变资源预算或实测结果也能拒绝旧推荐。`MDCDecisionTests.EndToEndStaticRecommendation`检验端口错、显存超限、缺证据、前沿首选、版本/指标变化。此阶段还未让六专业Studio全部自动使用门面，仍待专门WPF/生产用例。
+
+## 十三、D10能力变更到工程节点/子流程的影响映射
+
+新增`MDCProjectImpactAnalyzer.cs`，只读遍历`MEMProjectSnapshot`，复用`MOLLogicCodec`与`MOLWiringCodec`支持老V1和正式V2编排；识别受影响的直接BlockId、ContentId及调用其的上级Content，不复制MRK SourceMap/Trace。对于坏Schema/找不到目标Content/安全预算限制明确标`IsComplete=false`，防止错误当作“无影响”。ArchitectureSmoke新增使用真实Core工程会话、V1+V2逻辑以及Invoke上游关系的正反测试。具体Windows结果以提交SHA对应Run为准，尚未接入Studio可视影响定位UI。
