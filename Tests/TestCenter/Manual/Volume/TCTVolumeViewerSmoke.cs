@@ -1035,6 +1035,16 @@ namespace CxVisual.TestCenter.UI
                 frame.LoadVolume(volume);
                 var viewport=FindVisualByAutomationId<MPWVolumeFourViewWorkbenchControl>(
                     frame,"MPW.Volume.FourViewWorkbench").GetViewport(FVOSlicePlane.XY);
+                var inspected=viewport.InspectVoxel(1,2,3);
+                Check(inspected.X==1&&inspected.Y==2&&inspected.Z==3&&
+                    Math.Abs(inspected.PhysicalX-21)<1e-9&&
+                    Math.Abs(inspected.PhysicalY-32)<1e-9&&
+                    Math.Abs(inspected.PhysicalZ-43)<1e-9,
+                    "真实MPW切片悬停与SDK须使用FVO物理Frame原点而非简单Spacing乘法");
+                bool badVoxelRejected=false;
+                try{viewport.InspectVoxel(-1,0,0);}
+                catch(ArgumentOutOfRangeException){badVoxelRejected=true;}
+                Check(badVoxelRejected,"原始体素索引越界不得返回伪造的物理测量坐标");
                 FVOPhysicalSliceRectangle reported=null;
                 Action<FVOPhysicalSliceRectangle> roiListener=value=>reported=value;
                 var workbenchRoi=FindVisualByAutomationId<MPWVolumeFourViewWorkbenchControl>(
