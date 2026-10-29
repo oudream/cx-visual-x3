@@ -23,6 +23,12 @@ func registerEvents(api *gin.RouterGroup, provider EventProvider) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})
 			return
 		}
+		// A local reverse proxy can hide the remote peer behind 127.0.0.1.
+		// Fail closed when forwarding headers are present until proper auth exists.
+		if c.GetHeader("Forwarded") != "" || c.GetHeader("X-Forwarded-For") != "" || c.GetHeader("X-Real-IP") != "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})
+			return
+		}
 		ip := net.ParseIP(host)
 		if ip == nil || !ip.IsLoopback() {
 			c.JSON(http.StatusForbidden, gin.H{"error": "local_access_required"})

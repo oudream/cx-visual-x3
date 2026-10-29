@@ -47,6 +47,14 @@ func TestEventRouteLocalOnly(t *testing.T) {
 			t.Fatalf("large program ID missing: %s", w.Body.String())
 		}
 	}
+	w := httptest.NewRecorder()
+	forwarded := httptest.NewRequest(http.MethodGet, "/api/v1/events?limit=3", nil)
+	forwarded.RemoteAddr = "127.0.0.1:12345"
+	forwarded.Header.Set("X-Forwarded-For", "203.0.113.99")
+	router.ServeHTTP(w, forwarded)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("forwarded external client bypassed local-only access: %d", w.Code)
+	}
 	if calls != 2 {
 		t.Fatalf("provider should only run for permitted requests, called %d times", calls)
 	}
