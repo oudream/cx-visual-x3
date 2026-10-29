@@ -350,3 +350,8 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | UI-ALG-M01 | TestCenter Compute可手动选择中值0或1—3；真实WPF用户Run产生新四节点FlowId、Trace、增强图与5px²，0保持旧三节点兼容 | [Compute UIA #40820622091](https://github.com/oudream/cx-visual-x3/actions/runs/40820622091) 首轮登记待验，不能冒称已通过 |
 
 仍未通过独立四节点的“增强→阈值Mask→区域组件→测量”所有细分专业算子目标：目前是RAW入口 + 中值增强 + 一体化阈值与连通域 + 面积测量四个真实工程节点。无需将设计候选的四个CapabilityId冒充现有实现。
+
+### 20.1 Gray16与MPW图像预览新增反证
+
+- **ALG-M05**：Gray16小端7×7 RAW，中心4000与孤立60000构造，通过实际FIM Median1和三节点下游产生同Run Gray16图/5px²面积，源RAW原始字节不变。固定`3ed5a1526d21d3a1862d432384f47854943c47d1`，[Imaging Windows #40820986353](https://github.com/oudream/cx-visual-x3/actions/runs/40820986353) success，[Engineering #40820986454](https://github.com/oudream/cx-visual-x3/actions/runs/40820986454) success。
+- **UI-ALG-M02**：TestCenter Compute选择中值增强后，原`MPWImageViewerControl`创建并显示已提交的同Run FIM图；Run切换/模块切换清除旧预览，半径0仍走三节点。Smoke断言实际显示图像在(0,0)=0、(3,3)=210。固定提交`382a8f7cab5d7f466ac267ad0f73447be0ba91eb`，后续合并新HEAD的[Compute UIA #40821146787](https://github.com/oudream/cx-visual-x3/actions/runs/40821146787)首轮待验，绝不将既有纯逻辑UIA通过等价为新图窗验收。
