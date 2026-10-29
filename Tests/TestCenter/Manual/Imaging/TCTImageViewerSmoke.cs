@@ -305,6 +305,30 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "统计页未自动生成256档直方图或改写了源像素");
                 autoStatsTabs.SelectedIndex=0;
+                // 大图不允许用Image.DesiredSize撑大WPF Grid而裁掉边界：
+                // Fit必须严格匹配实际可见ViewportRoot，含正确的中心平移。
+                FIMImageBuffer fitProbe=new FIMImageBuffer(4096,2048,
+                    FIMPixelFormat.Gray8,new byte[4096*2048]);
+                frame.SetOriginal(fitProbe);
+                window.UpdateLayout();
+                frame.Viewer.FitToWindow();
+                FrameworkElement viewport=frame.Viewer.FindName("ViewportRoot") as FrameworkElement;
+                MatrixTransform fitMatrix=frame.Viewer.FindName("ImageTransform") as MatrixTransform;
+                if(viewport==null || fitMatrix==null ||
+                    viewport.ActualWidth<=0 || viewport.ActualHeight<=0)
+                    throw new InvalidOperationException("大图实际WPF视口未布置");
+                double expectedFit=Math.Min(viewport.ActualWidth/fitProbe.Width,
+                    viewport.ActualHeight/fitProbe.Height);
+                double fitScale=frame.Viewer.PrimaryViewportScale;
+                if(Math.Abs(fitScale-expectedFit)>1e-7 ||
+                    Math.Abs(fitMatrix.Matrix.M11-fitScale)>1e-7 ||
+                    Math.Abs(fitMatrix.Matrix.OffsetX-
+                        (viewport.ActualWidth-fitProbe.Width*fitScale)/2)>1e-5 ||
+                    Math.Abs(fitMatrix.Matrix.OffsetY-
+                        (viewport.ActualHeight-fitProbe.Height*fitScale)/2)>1e-5)
+                    throw new InvalidOperationException(
+                        "大图没有按真正可见视口居中完整Fit，或被WPF原生Image尺寸撑开");
+                frame.SetOriginal(image);
                 // 用户反馈：窗位、灰阶不能只存在底层API；必须通过可见WPF入口生效。
                 TabControl displayTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
                 displayTabs.SelectedIndex=1;
