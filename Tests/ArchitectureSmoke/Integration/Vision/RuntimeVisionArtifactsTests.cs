@@ -58,6 +58,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ProjectBackedMedianEnhancement();
             ProjectBackedSeparatedNodes();
             SeparatedGray16AndInputSafety();
+            SeparatedMemoryImagePreview();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
         }
@@ -780,6 +781,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             finally{if(File.Exists(path))File.Delete(path);}
+        }
+
+        /// <summary>
+        /// 直接从内存FIM Gray16且带Stride进入真实MEM/MOC/MRK，不能经临时RAW文件伪造。
+        /// 与旧一体化同样本对照，并验证不改原图和拒绝空来源、错误位深、取消。
+        /// </summary>
+        private static void SeparatedMemoryImagePreview()
+        {
+            byte[] padded={0xF4,0x01,0xF4,0x01,77,88,0,0,0,0,77,88};
+            var image=new FIMImageBuffer(2,2,FIMPixelFormat.Gray16,padded,6);
+            var options=Options(CxVisionPixelDepth.Bits16,400);
+            byte[] packed=CxVisionImageInterop.ToPackedRawPixels(image,CxVisionPixelDepth.Bits16);
+            Check(packed.SequenceEqual(new byte[]{0xF4,0x01,0xF4,0x01,0,0,0,0}) &&
+                image.CopyPixels().SequenceEqual(padded),
+                "FIM内存RAW必须清除Stride padding而保留16位小端及原始像素");
+            var split=CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                image,options,"camera-gray16/frame-1",0,CancellationToken.None)
+                .GetAwaiter().GetResult();
+            var old=CxVisionDataFlow.RunCpuInspectionPreviewAsync(
+                image,options,"camera-gray16/frame-1",CancellationToken.None)
+                .GetAwaiter().GetResult();
+            var mask=split.Items.Single(x=>x.Kind==CxVisionResultKind.Mask);
+            var area=split.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement);
+            var legacyArea=old.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement);
+            Check(split.RunId!=Guid.Empty && split.RunId!=old.RunId &&
+                split.SourceId=="camera-gray16/frame-1" &&
+                mask.SourceId==split.SourceId && mask.RunId==split.RunId &&
+                mask.Image.PixelFormat==FIMPixelFormat.Gray8 &&
+                mask.Image.GetGrayValue(0,0)==255 && mask.Image.GetGrayValue(1,1)==0 &&
+                area.IntegerValue==2 && legacyArea.IntegerValue==2 &&
+                split.Items.Single(x=>x.Name=="阈值命中像素数").IntegerValue==2 &&
+                image.GetGrayValue(0,0)==500 && image.CopyPixels().SequenceEqual(padded),
+                "拆分内存工程与原MRK路径的Gray16/Stride数值不等价或源图被改写");
+            Reject<ArgumentException>(()=>CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                image,Options(CxVisionPixelDepth.Bits8,100),"bad",0,
+                CancellationToken.None).GetAwaiter().GetResult(),
+                "拆分内存API不能隐式将16位降至8位");
+            Reject<ArgumentException>(()=>CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                image,options," ",0,CancellationToken.None).GetAwaiter().GetResult(),
+                "未声明SourceId不能产生正式Run");
+            Reject<ArgumentOutOfRangeException>(()=>
+                CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                    image,options,"valid",4,CancellationToken.None)
+                .GetAwaiter().GetResult(),
+                "非法中值半径不得创建假工程结果");
+            using(var cancel=new CancellationTokenSource())
+            {
+                cancel.Cancel();
+                Reject<OperationCanceledException>(()=>
+                    CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
+                        image,options,"cancel",0,cancel.Token)
+                    .GetAwaiter().GetResult(),
+                    "预取消的拆分工程不能返回Run");
+            }
         }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
