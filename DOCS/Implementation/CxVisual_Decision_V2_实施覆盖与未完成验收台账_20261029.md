@@ -58,3 +58,7 @@
 | P1 | 完整性能、并发、压力、设备验证 | 固定硬件/工作量基线，p50/p95/PeakMemory、取消/稳定性、HIL签署 |
 
 **完成定义**：需求→真实对象/Owner→开发者API→实际使用→自动测试→WindowsCI→适用专业真实联调/现场证据齐备，才可对对应能力宣称完整。文档或几个正向Smoke的存在不能替代最终验收。
+
+## 06. D06外部副作用安全策略首批切片（软件阶段）
+
+`MDCRecoverySafetyAssessor`纯静态判断专业OperationEffect与实际ACK收据，拒绝非幂等Unknown重试、保留未验证Idempotency/Host权限为Unknown，对无外部副作用或已证明的合格操作给出**策略资格**。ArchitectureSmoke新增MDC-50～55，真实设备动作数为0。完整“策略制定与协调”（设备主备切换、执行窗口、动态恢复、资源重新规划）与专业HIL仍未完成。本批提交/Windows验收状态按实际CI登记，不因存在此类就将D06标记完整。

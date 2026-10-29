@@ -181,3 +181,7 @@ flowchart LR
 `MDCCatalogImpactAnalyzer.Compare`先得到能力的Added/Removed/Modified；`MDCProjectImpactAnalyzer.Analyze(MEMProjectSnapshot,changes)`进一步读取**原Core快照**中的V1 MOL逻辑树与V2 MOLWiring定义，返回`DirectBlocks(ContentId,BlockId,CapabilityId,ChangeKind)`和`AffectedContentIds`，将受影响子Content保守传播至引用它的父流程。V2状态机进入/退出能力也列入直接受影响节点；所有结果只引用原Content/Block，不另造持久工程Graph或运行Step状态。
 
 诊断必须区分`IsComplete`与`UnknownContentIds`：逻辑Schema无法解码、引用Content缺失或分析预算溢出时，不得用“未找到受影响节点”解释为安全。现有功能没有直接改Core、不执行MRK、不加载设备、不删除旧Revision；Studio仍需要在实际UI中接入点击定位，Host发布仍须真实复核。这是工程定义影响范围，**不是已证明运行故障根因，也不是虚拟仿真或历史Trace重放**。
+
+## 14. 工业外部副作用与重试静态判断（D06部分实现）
+
+在真实Run出现PLC ACK未知、运动设备超时或结果可能已提交时，Runtime保留`Unknown/RequiresReconciliation`事实，不得将“超时”自动翻译成“ConfirmedFailed”。Decision的`MDCRecoverySafetyAssessor`基于专业Effect与Host提供的事实，返回是否静态具备重试资格，以及对账/权限/幂等证明缺口；**不会主动触达设备、发送命令或改变原MRK执行策略**。Studio/运营人员后续可据ReasonCode明确看到为什么不能直接重试。静态Allowed不是现场许可，工业HIL和授权Owner签署仍为独立门禁。

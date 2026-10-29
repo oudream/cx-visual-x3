@@ -192,3 +192,11 @@ flowchart TB
 `MDCRecommendationService`将D02（端口硬判断）、D03/D04（目标和Pareto）、D07（资源需求上下界）组合成单次纯调用。执行顺序：静态目录Stamp校验 → 已知端口Hard结果 → 专业自有Hard条件和资源区间评估 → 未知条件保留 → 只对完全可比较且具有实测证据的Feasible候选排序。无专业Profile时返回Unknown；不存在`目标重要所以突破安全硬约束`的特殊分支。即使选出首选，Host/MRK仍拥有生产可执行性最终检查。
 
 门面的完整输入指纹覆盖端口、方案证据、目标与资源快照；Core、Policy、Catalog、Environment版本另由MDCDecisionVersionStamp追踪。SDK需在执行Core编辑或发布操作前重新校验；只比较ProjectRevision是不够的。
+
+## 16. D06安全恢复策略：外部ACK/副作用的静态重试资格（新增源码）
+
+`MDCRecoverySafetyAssessor.AssessRetry(effect,receipt,verifiedIdempotency,hostApproved)`仅提供**静态策略资格和理由**，不会实际调度、重发命令或自行获取设备状态。专业Owner须显式声明`MDCOperationEffect`（Pure/IdempotentExternal/NonIdempotentExternal/Unknown），真实运行Host提供`MDCOperationReceipt`（NotSent/ConfirmedNoEffect/ConfirmedApplied/AcknowledgmentUnknown）。
+
+硬安全规则：已确认动作完成 → Rejected；尚未发出 → 属正常首次调度而非重试；ACK不确定时即使声明幂等也至少Unknown，非幂等则Rejected并要求真实设备对账；权限缺失、幂等证据缺失 → Unknown；非幂等即使收到“未动作”确认，仍需专业Owner另外审批。Pure操作或已验证幂等+Host批准且设备确认未动作时，`Allowed`**仅代表当前静态策略资格**，真正执行仍需MRK/Host按最新权限/资源/状态再校验。
+
+本功能复用`MDCAssessment`/ReasonCode与现有MRK执行策略Owner，不建立Decision专属重试线程、运行状态机或第二个CommandCenter。不能用此接口直接替代PLC/运动安全联锁。

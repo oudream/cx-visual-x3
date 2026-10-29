@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CatalogFingerprintVersionAndImpact();
             EndToEndStaticRecommendation();
             ProjectCapabilityImpactUsesCoreSnapshot();
+            RetrySafetyRequiresRealAcknowledgment();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -607,6 +608,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             }
             finally { session.Close(true); }
+        }
+
+        private static void RetrySafetyRequiresRealAcknowledgment()
+        {
+            var decision = new MDCRecoverySafetyAssessor();
+            var pure = decision.AssessRetry(MDCOperationEffect.Pure,
+                MDCOperationReceipt.ConfirmedNoEffect, false, false);
+            Check(pure.Verdict == MDCVerdict.Allowed,
+                "pure computation should be statically eligible for Runtime-controlled retry");
+            var unknownAck = decision.AssessRetry(MDCOperationEffect.NonIdempotentExternal,
+                MDCOperationReceipt.AcknowledgmentUnknown, false, true);
+            Check(unknownAck.Verdict == MDCVerdict.Rejected &&
+                unknownAck.ReasonCodes.Contains("MDC_RETRY_RECONCILIATION_REQUIRED"),
+                "unknown external command receipt cannot be treated as failed");
+            var idemUnknownAck = decision.AssessRetry(MDCOperationEffect.IdempotentExternal,
+                MDCOperationReceipt.AcknowledgmentUnknown, true, true);
+            Check(idemUnknownAck.Verdict == MDCVerdict.Unknown,
+                "declared idempotency cannot bypass an unknown device acknowledgement");
+            var unauthorized = decision.AssessRetry(MDCOperationEffect.IdempotentExternal,
+                MDCOperationReceipt.ConfirmedNoEffect, true, false);
+            Check(unauthorized.Verdict == MDCVerdict.Unknown,
+                "unapproved external operation cannot be automatically retried");
+            var unproven = decision.AssessRetry(MDCOperationEffect.IdempotentExternal,
+                MDCOperationReceipt.ConfirmedNoEffect, false, true);
+            Check(unproven.Verdict == MDCVerdict.Unknown,
+                "unverified idempotency cannot permit retry");
+            var suitable = decision.AssessRetry(MDCOperationEffect.IdempotentExternal,
+                MDCOperationReceipt.ConfirmedNoEffect, true, true);
+            Check(suitable.Verdict == MDCVerdict.Allowed &&
+                suitable.Outcomes[0].Id == "MDC_RETRY_POLICY_ELIGIBLE",
+                "verified idempotent retry can be static policy eligible");
+            var external = decision.AssessRetry(MDCOperationEffect.NonIdempotentExternal,
+                MDCOperationReceipt.ConfirmedNoEffect, true, true);
+            Check(external.Verdict == MDCVerdict.Unknown,
+                "non-idempotent side effects need further professional approval");
+            var already = decision.AssessRetry(MDCOperationEffect.Pure,
+                MDCOperationReceipt.ConfirmedApplied, true, true);
+            Check(already.Verdict == MDCVerdict.Rejected,
+                "already completed operations are not a retry candidate");
+            var notSent = decision.AssessRetry(MDCOperationEffect.IdempotentExternal,
+                MDCOperationReceipt.NotSent, true, true);
+            Check(notSent.Verdict == MDCVerdict.Rejected,
+                "normal first dispatch must not be disguised as retry");
+            var unknownEffect = decision.AssessRetry(MDCOperationEffect.Unknown,
+                MDCOperationReceipt.ConfirmedNoEffect, true, true);
+            Check(unknownEffect.Verdict == MDCVerdict.Unknown,
+                "unknown side effects remain unknown");
         }
 
     }

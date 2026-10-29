@@ -328,3 +328,16 @@ D10首批只对Core快照和静态能力声明作分析。工程实际运行差�
 | 真实Core V1/V2/Invoke工程影响分析 | [cd2c012e](https://github.com/oudream/cx-visual-x3/commit/cd2c012e8e1851c0da39ea5ea89fead57b2a2a13) / [Run 40823510242](https://github.com/oudream/cx-visual-x3/actions/runs/40823510242) | 同上成功 |
 
 **MDC-49反向补验**：后续增补无关内容/空变更/失效Invoke的自动测试，必须另登记实际SHA/Run，未验证前仍不能将此项视为通过。以上软件证据等级Automated，不代表全部Studio/TetsCenter及专业设备HIL/Field已完成。[实施覆盖与未完成台账](../Implementation/CxVisual_Decision_V2_实施覆盖与未完成验收台账_20261029.md)作为动态状态导航。
+
+### D06安全重试静态资格（新增负例）
+
+| Case | 预期 |
+|---|---|
+| MDC-50 | 已知无外部副作用且确认失败，可作为Runtime控制下静态重试候选 |
+| MDC-51 | 非幂等外部命令ACK未知，Rejected并要求对账，绝不自动重发 |
+| MDC-52 | 已声明幂等但ACK未知，至少Unknown，不能自动获选 |
+| MDC-53 | 未取得Host批准、未证实幂等、未知副作用分别Unknown |
+| MDC-54 | 已确认成功、尚未发送不得伪装为Retry |
+| MDC-55 | 非幂等动作即使“确认未完成”，仍需要专业额外批准 |
+
+此测试只验证决策结果和ReasonCode，不能代替实际PLC、轴运动、人工许可、通信故障注入或HIL。代码未在MRK引擎里发起任何重试，不会改变现有运行策略。
