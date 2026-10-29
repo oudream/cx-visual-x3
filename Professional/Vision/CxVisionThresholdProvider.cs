@@ -121,6 +121,9 @@ namespace CxVisual.Professional.Vision
             _fallback=fallback;
             _capability=new MRKResolvedCapability(ExecuteAsync,
                 new MRKExecutionOutput(typeof(CxVisionInspectionResult)),
+                // 既有StepResult保留；额外以MDS具名Inspection输出支撑下游测量。
+                dataOutputs:new Dictionary<string,Type>{
+                    {"Inspection",typeof(CxVisionInspectionResult)} },
                 inputs:new[]{
                     new MRKCapabilityInput("RawPixels",typeof(byte[])),
                     new MRKCapabilityInput("Width",typeof(int)),
@@ -184,6 +187,7 @@ namespace CxVisual.Professional.Vision
             context.Data.Adapters.Register<CxVisionInspectionResult>(
                 CxVisionDataFlow.CopyResult,kind:FDTDataKind.Object,
                 sizeEstimator:result=>checked(128L+result.Regions.Count*64L));
+            context.Data.Return("Inspection",outcome);
             return Task.FromResult((object)outcome);
         }
     }
