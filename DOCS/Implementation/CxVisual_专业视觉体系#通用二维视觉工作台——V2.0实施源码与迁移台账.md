@@ -491,3 +491,27 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **真实测试源码**：`StudioShellSelfTests.VerifyCpuVisionFileClosure`检查3 Block/4 Link/3输入/3输出、MHS锁定值、`ValidateExecutable`、官方MOL Codec序列化往返、既有`MOCFlowBuilder.Move`继续编辑、真工程SaveAs→Close→Open复原；以`MOCProjectRelease.Prepare`编译并用`MRKExecutionEngine.StartFlow`外部绑定5×3 RAW核验真实Mask与3px²，MHS失效后必须拒绝且工程Revision不增加。
 - **提交**：[三节点工程生成](https://github.com/oudream/cx-visual-x3/commit/07c4c845b19d4cf4f33f7d5fb0eb2dd557f5dbce)、[模块中心按钮](https://github.com/oudream/cx-visual-x3/commit/8e40f0c976a1bc350429ea52e9e8ec72566e63cf)、[完整MOL与失效测试](https://github.com/oudream/cx-visual-x3/commit/870d6fd2015672be5c17601dc30d5bbe9b974c31)、[磁盘重开测试](https://github.com/oudream/cx-visual-x3/commit/a533267d94b3559f48de802cdb2e618cc8e12459)、[MOC→MRK真执行回归](https://github.com/oudream/cx-visual-x3/commit/4bcf81097fdd7508454165c19589a063aa6e56fe)。
 - **严格验收**：上述是已提交**生产源码及真实测试代码**，尚未拿到匹配此批SHA的Windows .NET Framework 4.8构建及S1 CPU STA/Headless运行成功证据；状态暂为G2。仍需真实CI G3/G4/G5；其他工作包括GUI输入绑定编辑便利性、工业大图预算、Artifact长期身份、现场硬件HIL。
+
+## 31. V2D-01/02/22/24：无损RAW图像输出与ReferTo成熟保存行为保真（2026-10-29）
+
+### 31.1 真实旧源码→当前Owner映射
+
+| 旧源码/实际能力 | x3现有对应 | 本次增构及不迁移内容 |
+|---|---|---|
+| `ReferTo/Vision/CxECT2DViewer/MainForm.cs`：打开文件、实际保存TIF/PNG/JPG回归 | MPW WPF文件显示与`SavePng`/视口截图；TCT输出页 | 不移植旧WinForms窗体；新增单独**RAW原像素**导出，不将PNG视口当原数据 |
+| `ReferTo/Vision/CxECTImageWinForms/Controls/ImageViewerControl.cs`：`SaveCurrentImage`、原图/结果图、直方图、视口与ROI | FIMImageBuffer + MVIImageSession + MPWImageViewerControl + TCT工作台 | 原图/结果沿用MVI唯一会话；新RAW API读取当前活动FIM图像，不读取显示映射，ROI/Overlay不偷偷写进RAW |
+| `ReferTo/Vision/CxECTImageWinForms/Halcon/ImageFrameStore.cs`：HObject Clone/Dispose所有权 | FIMImageBuffer构造复制、MVI Original/Result会话 | 不为RAW保存额外引入HObject或HalconDotNet，旧句柄规则留给后续HALCON Provider |
+| `ReferTo/Vision/CxECTImageWinForms/Halcon/ImagePresentationProcessor.cs`：临时显示变换与小缓存 | MVI显示/变换状态及FIM像素处理 | RAW始终基于独立的原像素，不能从窗宽窗位/旋转的显示投影误导出 |
+| `ReferTo/Vision/Halcon/HalconHelper_Export.cs`：HALCON HObject、产品灰度分析与导出相关工具 | FIM通用RAW流API、PVC专业Pipeline | 保留HALCON历史代码作为专业参考，不复制产品专用`get_product_meangray`到纯FIM |
+
+原有`DOCS/Migration/CxVisual_基础图像与体数据体系#成熟源码迁移——S0主体归属与逐文件台账_V1.0.md`覆盖旧`ReferTo/Vision` 213 blob/92 C#，属2026-10-25静态审计，**不是全部功能逐项移植/运行通过**；本次是其中图像保存/所有权能力的逐文件再核实与具体增构，不冒充完成全部213个文件。
+
+### 31.2 生产源码与API
+
+- `Foundation/Imaging/IO/FIMRawImageWriter.cs`：`Write(Stream,FIMImageBuffer,bool bigEndian=false,bool preserveStride=false,CancellationToken=default)`按行读取FIM只读数据，输出紧排小端或带Stride和填充的无损RAW；Gray16/GrayFloat32大端只交换像素字节、不篡改Padding；Bgr24/Bgra32保留原通道顺序，未知多通道大端明确拒绝。复用`FIMRawImageReader`同一512MiB单帧限制，不为整帧额外复制一次字节数组。仅Writer所在FIM程序集可用`FIMImageBuffer.CopyStorageRow`读取带填充行，未开放可写共享指针。
+- `FIMRawImageWriter.SaveFile`：同目录临时文件、Flush与`File.Move/File.Replace`，不允许未授权覆盖（`overwrite=false`），取消/出错删除临时文件；不隐式创建目录或在RAW文件名内伪造宽高/位深/标定。
+- `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs`：开发者`ExportActiveRawFile`读取真实MVI当前活动Image（Original或Result）；输出页`TCT.Imaging.ExportActiveRaw`调用同一API。现有PNG图像和带标注视口截图按钮不更改，状态文本明确输出宽高/像素格式/实际紧排Stride及RAW无元数据警告。
+- **来源与依赖**：仅修改FIM和TCT现有项目，不新建工程、不新增HALCON DLL/Adapter/第二导出数据所有权；AI依用户要求暂不开发。
+- **提交**：[FIM有填充行安全访问](https://github.com/oudream/cx-visual-x3/commit/34eba439ef40776e039f0250e9d0c73a4c8a5d42)、[RAW写入与原子保存](https://github.com/oudream/cx-visual-x3/commit/ced230e68f829ca0ed27473b1a4963b5dd957f45)、[正式编译清单](https://github.com/oudream/cx-visual-x3/commit/651a6f48044474064a19feb938f1ba1ab7f628f0)、[Foundation回环正反测试](https://github.com/oudream/cx-visual-x3/commit/71eda19a5f7f84aaed63a0c456db9b71b999845d)、[WPF可用API/操作](https://github.com/oudream/cx-visual-x3/commit/d043c42a5e50d72c28b5e4f877e6417d653b75c1)、[输出页按钮](https://github.com/oudream/cx-visual-x3/commit/9bbce8c75873a1a26132a6797b6cbc9e829f7f5a)、[WPF真回环测试](https://github.com/oudream/cx-visual-x3/commit/ea7e7ec35cbbe1f018aa93da2ccfadcba819e4e0)。
+- **验收**：截止本条，只核对GitHub代码与.csproj源码状态，尚未获得**匹配最新SHA**的Windows MSBuild/ArchitectureSmoke --imaging/ TestCenter --imaging-viewer-smoke运行日志，严格G2，不声称G3/G4/G5。当前RAW是无头数据格式；图像序列导出、带元数据封装、TIFF/PNG/JPG高保真编码、报告与现有HALCON硬件/SDK完整集成仍各自待按60条要求推进。
+
