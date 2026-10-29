@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Orchestration
@@ -196,6 +197,27 @@ namespace CxVisual.Mechanism.Orchestration
         public MOCCompiledPlan Compile(MEMProjectSnapshot snapshot, Guid entryContentId,
             IMRKCapabilityResolver resolver, IEnumerable<Guid> instancePath = null)
         {
+            return CompileCore(snapshot,entryContentId,resolver,instancePath,null);
+        }
+
+        /// <summary>Lower Decision's immutable canonical logic payload through the one
+        /// existing MRK compiler. The engineering snapshot supplies identity,
+        /// authorized Content references and SourceMap addresses, not logic bytes.</summary>
+        internal MOCCompiledPlan Compile(MEMProjectSnapshot snapshot,MDCDeclarativePlan plan,
+            IMRKCapabilityResolver resolver,IEnumerable<Guid> instancePath = null)
+        {
+            if(plan==null)throw new ArgumentNullException("plan");
+            if(snapshot==null || plan.ProjectId!=snapshot.ProjectId ||
+                plan.EngineeringRevision!=snapshot.Revision)
+                throw new InvalidOperationException("moc.plan.source_identity_changed");
+            return CompileCore(snapshot,plan.RootContentId,resolver,instancePath,
+                new MOCPlanLogicReader(plan));
+        }
+
+        private MOCCompiledPlan CompileCore(MEMProjectSnapshot snapshot, Guid entryContentId,
+            IMRKCapabilityResolver resolver, IEnumerable<Guid> instancePath,
+            MOCPlanLogicReader source)
+        {
             if (snapshot == null || resolver == null)
                 throw new ArgumentNullException("snapshot/resolver");
             MEMNodeSnapshot entry = snapshot.Find(entryContentId);
@@ -208,10 +230,11 @@ namespace CxVisual.Mechanism.Orchestration
             foreach (Guid id in path)
                 if (!known.ContainsKey(id)) throw new InvalidOperationException("moc.unknown_instance:" + id);
 
-            MOLWiringDefinition wired = MOLWiringCodec.Get(entry);
-            if (wired != null) return CompileWiring(snapshot, entry, path, wired, resolver);
+            MOLWiringDefinition wired = source==null ?
+                MOLWiringCodec.Get(entry) : source.Wiring(entry);
+            if (wired != null) return CompileWiring(snapshot, entry, path, wired, resolver,source);
 
-            var build = new Compilation(snapshot, resolver, path);
+            var build = new Compilation(snapshot, resolver, path,source);
             build.EmitContent(entry, new string[0], new Guid[0], null, 0);
             var compiled = new MRKExecutionPlanCompiler().Compile(
                 "moc." + snapshot.ProjectId.ToString("N") + "." + entryContentId.ToString("N") +
@@ -275,7 +298,8 @@ namespace CxVisual.Mechanism.Orchestration
 
         private static string WireId(Guid blockId) {return "w"+blockId.ToString("N");}
         private static IDictionary<string,string> BuildPublicExports(
-            MOLWiringDefinition wiring,IMRKCapabilityResolver resolver,MEMProjectSnapshot snapshot=null)
+            MOLWiringDefinition wiring,IMRKCapabilityResolver resolver,MEMProjectSnapshot snapshot=null,
+            MOCPlanLogicReader source=null)
         {
             var exports=new Dictionary<string,string>(StringComparer.Ordinal);
             foreach(var pair in wiring.FlowOutputs)
@@ -289,7 +313,8 @@ namespace CxVisual.Mechanism.Orchestration
                     if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
                         "N",out id))throw new InvalidOperationException("moc.flow_export_child_id");
                     var target=snapshot.Find(id);
-                    var nested=target==null?null:MOLWiringCodec.Get(target);
+                    var nested=target==null?null:(source==null ?
+                        MOLWiringCodec.Get(target):source.Wiring(target));
                     MOLBlockEndpoint endpoint;
                     if(nested==null||!nested.FlowOutputs.TryGetValue(pair.Value.PortMemberId,out endpoint))
                         throw new InvalidOperationException("moc.flow_export_child_missing:"+pair.Key);
@@ -316,7 +341,7 @@ namespace CxVisual.Mechanism.Orchestration
         }
         private static IEnumerable<MRKExecutionInput> InternalDataInputs(
             MOLWiringDefinition wiring,Guid blockId,IMRKCapabilityResolver resolver,
-            MEMProjectSnapshot snapshot=null)
+            MEMProjectSnapshot snapshot=null,MOCPlanLogicReader source=null)
         {
             foreach(var link in wiring.Links.Where(l=>l.Target.BlockId==blockId&&
                 (l.Kind==MPCPortKind.Data||l.Kind==MPCPortKind.Stream)))
@@ -333,7 +358,8 @@ namespace CxVisual.Mechanism.Orchestration
                     if(!Guid.TryParseExact(producer.CapabilityId.Substring("moc.invoke:".Length),
                         "N",out childId))throw new InvalidOperationException("moc.nested_source_id");
                     var content=snapshot.Find(childId);
-                    var child=content==null?null:MOLWiringCodec.Get(content);
+                    var child=content==null?null:(source==null ?
+                        MOLWiringCodec.Get(content):source.Wiring(content));
                     if(child==null||!child.FlowOutputs.ContainsKey(from.MemberId))
                         throw new InvalidOperationException("moc.nested_source_unpublished:"+from.MemberId);
                 }
@@ -357,7 +383,7 @@ namespace CxVisual.Mechanism.Orchestration
         // Recursively adapt a persisted nested Content; all execution still belongs to MRK.
         private static void BuildDeepFlow(MEMProjectSnapshot snapshot,MEMNodeSnapshot content,
             IMRKCapabilityResolver resolver,IDictionary<string,MRKFlowCompileDefinition> catalog,
-            HashSet<Guid> active)
+            HashSet<Guid> active,MOCPlanLogicReader source)
         {
             string id=content.Id.ToString("N");
             if(catalog.ContainsKey(id))return;
@@ -365,7 +391,7 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.subflow.recursive_or_too_deep");
             try
             {
-                var wiring=MOLWiringCodec.Get(content);
+                var wiring=source==null ? MOLWiringCodec.Get(content):source.Wiring(content);
                 if(wiring==null)throw new InvalidOperationException("moc.subflow.requires_v2");
                 wiring.ValidateExecutable();
                 if(wiring.StateMachines.Values.Any(m=>m.States.Any(st=>
@@ -400,7 +426,7 @@ namespace CxVisual.Mechanism.Orchestration
                         .Distinct(StringComparer.Ordinal).ToArray();
                     var inputs=new List<MRKExecutionInput>();
                     inputs.AddRange(ExposedInputs(wiring,block.Id));
-                    inputs.AddRange(InternalDataInputs(wiring,block.Id,resolver,snapshot));
+                    inputs.AddRange(InternalDataInputs(wiring,block.Id,resolver,snapshot,source));
                     string childId=null;
                     if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                     {
@@ -413,7 +439,7 @@ namespace CxVisual.Mechanism.Orchestration
                         var nested=snapshot.Find(nestedId);
                         if(nested==null||nested.Kind!=MEMNodeKind.Content)
                             throw new InvalidOperationException("moc.deep.missing_content");
-                        BuildDeepFlow(snapshot,nested,resolver,catalog,active);
+                        BuildDeepFlow(snapshot,nested,resolver,catalog,active,source);
                         childId=nestedId.ToString("N");
                     }
                     MOLStepPolicy stepPolicy;
@@ -438,14 +464,14 @@ namespace CxVisual.Mechanism.Orchestration
                             subflowId:childId));
                 }
                 catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
-                    BuildPublicExports(wiring,resolver,snapshot)));
+                    BuildPublicExports(wiring,resolver,snapshot,source)));
             }
             finally{active.Remove(content.Id);}
         }
 
         private static void AppendDeepOrigins(MEMProjectSnapshot snapshot,MEMNodeSnapshot content,
             string prefix,Guid[] calls,Guid[] instancePath,ICollection<MOCStepOrigin> output,
-            HashSet<Guid> active)
+            HashSet<Guid> active,MOCPlanLogicReader source)
         {
             if(!active.Add(content.Id))throw new InvalidOperationException("moc.origin.recursion");
             try
@@ -470,7 +496,7 @@ namespace CxVisual.Mechanism.Orchestration
                             content.StorageRootId,content.Id,instancePath),block.Id,
                             calls,null,"InvokeEnter"));
                     var nextCalls=calls.Concat(new[]{block.Id}).ToArray();
-                    if(MOLWiringCodec.Get(nested).FlowOutputs.Count>0)
+                    if((source==null ? MOLWiringCodec.Get(nested):source.Wiring(nested)).FlowOutputs.Count>0)
                     {
                         string commit=step+".__commit";
                         if(!output.Any(x=>x.StepId==commit))
@@ -478,13 +504,14 @@ namespace CxVisual.Mechanism.Orchestration
                                 nested.StorageRootId,nested.Id,instancePath),block.Id,
                                 nextCalls,null,"InvokeCommit"));
                     }
-                    AppendDeepOrigins(snapshot,nested,step+".",nextCalls,instancePath,output,active);
+                    AppendDeepOrigins(snapshot,nested,step+".",nextCalls,instancePath,output,active,source);
                 }
             }
             finally{active.Remove(content.Id);}
         }
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
-            Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
+            Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver,
+            MOCPlanLogicReader source)
         {
             wiring.ValidateExecutable();
             var blocks=wiring.Blocks.ToDictionary(x=>x.Id);
@@ -540,7 +567,8 @@ namespace CxVisual.Mechanism.Orchestration
                             throw new InvalidOperationException("moc.invoke.source_id");
                         var content=snapshot.Find(contentId);
                         if(content==null)throw new InvalidOperationException("moc.invoke.missing_source_content");
-                        published=MOLWiringCodec.Get(content);
+                        published=source==null ?
+                            MOLWiringCodec.Get(content):source.Wiring(content);
                         if(published==null||!published.FlowOutputs.ContainsKey(from.MemberId))
                             throw new InvalidOperationException("moc.invoke.unknown_output:"+from.MemberId);
                     }
@@ -633,14 +661,15 @@ namespace CxVisual.Mechanism.Orchestration
                     var target=snapshot.Find(targetId);
                     if(target==null||target.Kind!=MEMNodeKind.Content)
                         throw new InvalidOperationException("moc.invoke.missing_content");
-                    var nested=MOLWiringCodec.Get(target);
+                    var nested=source==null ?
+                        MOLWiringCodec.Get(target):source.Wiring(target);
                     if(nested==null)throw new InvalidOperationException("moc.invoke.requires_v2");
                     nested.ValidateExecutable();
                     childId=targetId.ToString("N");
                     if(nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
                             "moc.invoke:",StringComparison.Ordinal)))
                         BuildDeepFlow(snapshot,target,resolver,subflowDefinitions,
-                            new HashSet<Guid>());
+                            new HashSet<Guid>(),source);
                     // 每次调用单独命名运行默认值；依赖MRK入口Gate做类型安全映射。
                     // 既不扩散子Content全局变量，也不将参数改为并行Graph。
                     foreach(var nestedValues in nested.Parameters)
@@ -672,7 +701,7 @@ namespace CxVisual.Mechanism.Orchestration
                                     stepPolicy.Idempotent);
                             var innerInputs=new List<MRKExecutionInput>();
                             innerInputs.AddRange(ExposedInputs(nested,b.Id));
-                            innerInputs.AddRange(InternalDataInputs(nested,b.Id,resolver));
+                            innerInputs.AddRange(InternalDataInputs(nested,b.Id,resolver,snapshot,source));
                             IReadOnlyDictionary<string,string> values;
                             if(nested.Parameters.TryGetValue(b.Id,out values))
                             foreach(var parameter in values)
@@ -693,7 +722,7 @@ namespace CxVisual.Mechanism.Orchestration
                         }).ToArray();
                         subflowDefinitions.Add(childId,
                             new MRKFlowCompileDefinition(childId,innerSteps,
-                                BuildPublicExports(nested,resolver)));
+                                BuildPublicExports(nested,resolver,snapshot,source)));
                     }
                     if(nested.FlowOutputs.Count>0)
                         origins.Add(new MOCStepOrigin(stepIds[block.Id]+".__commit",
@@ -712,7 +741,7 @@ namespace CxVisual.Mechanism.Orchestration
                     if(nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
                         "moc.invoke:",StringComparison.Ordinal)))
                         AppendDeepOrigins(snapshot,target,stepIds[block.Id]+".",
-                            new[]{block.Id},instancePath,origins,new HashSet<Guid>());
+                            new[]{block.Id},instancePath,origins,new HashSet<Guid>(),source);
                 }
                 MOLStepPolicy configuration;
                 MRKExecutionPolicy executionPolicy=null;
@@ -743,7 +772,7 @@ namespace CxVisual.Mechanism.Orchestration
             string planId="moc."+snapshot.ProjectId.ToString("N")+"."+
                 entry.Id.ToString("N")+".r"+
                 snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired";
-            var publicExports=BuildPublicExports(wiring,resolver,snapshot);
+            var publicExports=BuildPublicExports(wiring,resolver,snapshot,source);
             var compiled=subflowDefinitions.Count==0?
                 new MRKExecutionPlanCompiler().Compile(planId,requests,transientResolver,
                     publicExports):
@@ -786,11 +815,13 @@ namespace CxVisual.Mechanism.Orchestration
             internal readonly List<MOCStepOrigin> Origins = new List<MOCStepOrigin>();
             internal readonly MOCResolver Resolver;
             private readonly MEMProjectSnapshot _snapshot;
+            private readonly MOCPlanLogicReader _source;
             private readonly Guid[] _instances;
             private int _serial;
             private readonly HashSet<Guid> _activeContents = new HashSet<Guid>();
-            internal Compilation(MEMProjectSnapshot snapshot, IMRKCapabilityResolver resolver, Guid[] instances)
-            { _snapshot = snapshot; Resolver = new MOCResolver(resolver); _instances = instances; }
+            internal Compilation(MEMProjectSnapshot snapshot, IMRKCapabilityResolver resolver, Guid[] instances,
+                MOCPlanLogicReader source)
+            { _snapshot = snapshot; _source=source; Resolver = new MOCResolver(resolver); _instances = instances; }
             private string NewId(MOLControlBlock block)
             {
                 return "m" + (++_serial).ToString(CultureInfo.InvariantCulture) +
@@ -906,7 +937,8 @@ namespace CxVisual.Mechanism.Orchestration
                     throw new InvalidOperationException("moc.recursive_or_deep_subflow");
                 try
                 {
-                    var logic = MOLLogicCodec.Get(content);
+                    var logic = _source==null ?
+                        MOLLogicCodec.Get(content):_source.Structured(content);
                     if (logic == null) throw new InvalidOperationException("moc.content_logic_missing:" + content.Id);
                     return Emit(logic.Root, content, after, calls, scope, depth + 1);
                 }

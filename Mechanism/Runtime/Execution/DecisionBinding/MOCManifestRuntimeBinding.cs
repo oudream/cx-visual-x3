@@ -36,8 +36,8 @@ namespace CxVisual.Mechanism.Orchestration
         {
             if(plan==null)throw new ArgumentNullException("plan");
             plan.RequireCurrent(project,catalog);
-            return Bind(project,plan.SourceManifest,catalog,resolver,
-                professionalTypes,allowUnverifiedLegacyContracts,expectedCapabilityVersions);
+            return BindCore(project,plan.SourceManifest,catalog,resolver,
+                professionalTypes,allowUnverifiedLegacyContracts,expectedCapabilityVersions,plan);
         }
 
         /// <summary>
@@ -51,6 +51,18 @@ namespace CxVisual.Mechanism.Orchestration
             IReadOnlyDictionary<string,Type> professionalTypes = null,
             bool allowUnverifiedLegacyContracts = false,
             IReadOnlyDictionary<string,string> expectedCapabilityVersions = null)
+        {
+            return BindCore(project,manifest,catalog,resolver,professionalTypes,
+                allowUnverifiedLegacyContracts,expectedCapabilityVersions,null);
+        }
+
+        private MOCCompiledPlan BindCore(MEMProjectSnapshot project,
+            MDCStaticSourceManifest manifest,MDCStaticCatalogSnapshot catalog,
+            IMRKCapabilityResolver resolver,
+            IReadOnlyDictionary<string,Type> professionalTypes,
+            bool allowUnverifiedLegacyContracts,
+            IReadOnlyDictionary<string,string> expectedCapabilityVersions,
+            MDCDeclarativePlan plan)
         {
             if(project == null) throw new ArgumentNullException("project");
             if(manifest == null) throw new ArgumentNullException("manifest");
@@ -66,10 +78,12 @@ namespace CxVisual.Mechanism.Orchestration
             // A correct Runtime CLR signature cannot compensate for a stale or
             // incompatible port declaration inside the original MOL Content.
             var preflight = new MDCStaticBuildPreflight();
+            MOCPlanLogicReader planSource=plan==null?null:new MOCPlanLogicReader(plan);
             foreach(var content in manifest.Contents)
             {
                 MEMNodeSnapshot node = project.Find(content.ContentId);
-                MOLWiringDefinition wiring = MOLWiringCodec.Get(node);
+                MOLWiringDefinition wiring = planSource==null?
+                    MOLWiringCodec.Get(node):planSource.Wiring(node);
                 if(wiring == null) continue; // V1 structural logic remains Core-owned.
                 var assessment=preflight.Assess(wiring,catalog);
                 if(assessment.Verdict == MDCVerdict.Rejected)
@@ -163,8 +177,13 @@ namespace CxVisual.Mechanism.Orchestration
             // Keep *one* MOC compiler and its existing MRK binding/SourceMap
             // semantics. Actual Host authorization and live resource leases
             // remain required when this plan is published/executed.
-            MOCCompiledPlan compiled = new MOCEngineeringCompiler().Compile(
-                project,manifest.RootContentId,pinned);
+            // Static Plan is the source of V1/V2 Logic bytes, including all
+            // reachable subflows. MEM is consulted only for identities/addresses.
+            // Legacy manifest-only callers retain their original path.
+            var compiler=new MOCEngineeringCompiler();
+            MOCCompiledPlan compiled = plan==null ?
+                compiler.Compile(project,manifest.RootContentId,pinned) :
+                compiler.Compile(project,plan,pinned);
             if(compiled.ProjectId != manifest.ProjectId ||
                 compiled.EngineeringRevision != manifest.EngineeringRevision)
                 throw new InvalidOperationException("moc.bind.compiled_source_version_changed");

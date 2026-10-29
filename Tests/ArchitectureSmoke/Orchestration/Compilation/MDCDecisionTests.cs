@@ -61,6 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticBranchScenarioExploration();
             StaticSourceManifestPreservesCoreRevisionAndClosure();
             ManifestRuntimeBindingHandoffAndSafety();
+            ImmutablePlanExecutionLoweringParity();
             VersionPinnedRuntimeHandoffRejectsDrift();
             DeclarativePlanPreservesV1V2Semantics();
             RuntimeBindingContractConsistency();
@@ -1209,6 +1210,72 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "real MOL V2 Builder must retain original compiled SourceMap and one pinned resolver");
 
 
+            }
+            finally {session.Close(true);}
+        }
+
+        /// <summary>One MRK lowering pipeline for both legacy and immutable Plan
+        /// sources; check V1 dynamic control and V2 port wiring without execution.</summary>
+        private static void ImmutablePlanExecutionLoweringParity()
+        {
+            var session=MEMEngineering.Create("decision-plan-real-lowering");
+            try
+            {
+                var page=session.AddPage("LegacyLoop");
+                var action=MOLControlBlock.Action("vision.gray16");
+                var loop=MOLControlBlock.Repeat(MOLLoopMode.For,7,action);
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(loop));
+                var wiringPage=session.AddPage("Wired");
+                Guid wiredBlock=Guid.Empty;
+                MOCFlowBuilder.Edit(session,wiringPage.RootContent,flow=>{
+                    wiredBlock=flow.Step("vision.gray16");
+                });
+                var catalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.gray16","Gray16","Vision")
+                });
+                var snapshot=session.GetSnapshot();
+                var staticCompiler=new MDCDeclarativePlanCompiler();
+                var binder=new MOCManifestRuntimeBinding();
+                var sourceCompiler=new MOCEngineeringCompiler();
+                foreach(Guid entry in new[]{page.RootContent.Id,wiringPage.RootContent.Id})
+                {
+                    var staticPlan=staticCompiler.Compile(snapshot,entry,catalog);
+                    var legacyResolver=new ProbeResolver();
+                    var planResolver=new ProbeResolver();
+                    var direct=sourceCompiler.Compile(snapshot,entry,legacyResolver);
+                    var lowered=binder.Bind(snapshot,staticPlan,catalog,planResolver);
+                    Check(direct.Plan.Id==lowered.Plan.Id &&
+                        direct.ProjectId==lowered.ProjectId &&
+                        direct.EngineeringRevision==lowered.EngineeringRevision &&
+                        direct.SourceMap.Steps.Count==lowered.SourceMap.Steps.Count &&
+                        direct.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)
+                            .SequenceEqual(lowered.SourceMap.Steps.Keys.OrderBy(x=>x,StringComparer.Ordinal)),
+                        "immutable Plan and legacy Core lowering must preserve MRK plan identity/SourceMap");
+                    Check(planResolver.Calls==1 && planResolver.Executions==0,
+                        "Plan loader must resolve one capability without executing its delegate");
+                }
+                var loopPlan=staticCompiler.Compile(snapshot,page.RootContent.Id,catalog);
+                Check(loopPlan.Contents.Single().Semantics.Loops.Any(x=>
+                    x.BlockId==loop.Id && x.MaxIterations==7),
+                    "dynamic loop remains a single immutable Plan control instead of being expanded");
+                var wiringPlan=staticCompiler.Compile(snapshot,wiringPage.RootContent.Id,catalog);
+                Check(wiringPlan.Contents.Single().Blocks.Single().BlockId==wiredBlock,
+                    "V2 wiring BlockId must preserve real source identity");
+                var tampered=wiringPlan.Contents.Single().CopyCanonicalLogicPayload();
+                tampered[tampered.Length-1]=(byte)(tampered[tampered.Length-1]^1);
+                var again=binder.Bind(snapshot,wiringPlan,catalog,new ProbeResolver());
+                Check(again.SourceMap.Find(wiredBlock).Count==1,
+                    "mutating an exported Plan payload copy must not alter later lowering");
+                MOCFlowBuilder.Edit(session,wiringPage.RootContent,flow=>{
+                    flow.Step("vision.gray16");
+                });
+                bool stale=false;
+                var probe=new ProbeResolver();
+                try {binder.Bind(session.GetSnapshot(),wiringPlan,catalog,probe);}
+                catch(InvalidOperationException ex)
+                {stale=ex.Message.StartsWith("decision.source_manifest.stale",StringComparison.Ordinal);}
+                Check(stale && probe.Calls==0,
+                    "stale engineering source cannot be lowered after a Content edit");
             }
             finally {session.Close(true);}
         }
