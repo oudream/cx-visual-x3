@@ -22,7 +22,7 @@ namespace CxVisual.TestCenter.UI
         public CT3DAnalysisCase LastOpenedProfessionalCase {get;private set;}
         private bool CanSaveProfessionalCase {get{return _volume!=null&&_volume.HasRawSource&&
             ((LastVoxelMesh!=null&&LastMeshPlaneFit!=null&&_planeRoi!=null)||
-             (LastSurfaceSamples!=null&&LastSphereFit!=null));}}
+             (LastSurfaceSamples!=null&&(LastSphereFit!=null||LastCylinderFit!=null)));}}
 
         public async Task SaveProfessionalCaseAsync(string projectFile,CancellationToken cancellation)
         {
@@ -32,6 +32,8 @@ namespace CxVisual.TestCenter.UI
             bool saveSphere=LastSurfaceSamples!=null&&LastSphereFit!=null&&
                 (LastMeshPlaneFit==null||_state.Scene3D.SelectedId==_surfaceSceneItemId||
                  _state.Scene3D.SelectedId==_sphereSceneItemId);
+            bool saveCylinder=LastSurfaceSamples!=null&&LastCylinderFit!=null&&
+                (LastSphereFit==null||_state.Scene3D.SelectedId==_sphereSceneItemId);
             string full=Path.GetFullPath(projectFile),root=Path.GetDirectoryName(full);
             string expectedStore=string.Equals(full,_professionalProjectPath,StringComparison.OrdinalIgnoreCase)
                 ? _professionalStoreToken:null;
@@ -46,8 +48,9 @@ namespace CxVisual.TestCenter.UI
             var previous=LastVoxelMesh;
             var previousPlane=LastMeshPlaneFit;
             var previousSurface=LastSurfaceSamples;var previousSphere=LastSphereFit;
+            var previousCylinder=LastCylinderFit;
             if(!Object.ReferenceEquals(_volume.SpatialFrame,
-                saveSphere?previousSurface.SpatialFrame:previous.SpatialFrame))
+                (saveSphere||saveCylinder)?previousSurface.SpatialFrame:previous.SpatialFrame))
                 throw new InvalidOperationException("来源Frame已变化，请重新分析后保存。");
             var capturedScene=_state.Scene3D;
             long capturedSceneRevision=capturedScene.Revision;
@@ -64,10 +67,13 @@ namespace CxVisual.TestCenter.UI
                         checked(priorSource.Revision+1),cancellation,priorSource.Id);
                 var analysis=saveSphere?CT3DAnalysisCase.AnalyzeSphere(root,source,previousSurface.Threshold,
                     previousSurface.SampleStep,previousSurface.MaximumPoints,cancellation,previousSphere.MaximumConditionNumber):
+                    saveCylinder?CT3DAnalysisCase.AnalyzeCylinder(root,source,previousSurface.Threshold,
+                    previousSurface.SampleStep,previousSurface.MaximumPoints,previousCylinder.AxisDirection,
+                    cancellation,previousCylinder.MaximumConditionNumber):
                     CT3DAnalysisCase.Analyze(root,source,previous.Threshold,
                         Math.Max(12,previous.Mesh.TriangleCount),mesh=>roi,cancellation,ratio);
                 // 保存的是当前视图所选几何，源文件变化不能让旧ROI悄悄指向另一片网格。
-                if(saveSphere)
+                if(saveSphere||saveCylinder)
                 {
                     if(!previousSurface.Points.SequenceEqual(analysis.Surface.Points))
                         throw new InvalidOperationException("RAW与当前Surface点集不一致，请重新分析。");
@@ -95,6 +101,7 @@ namespace CxVisual.TestCenter.UI
             bool restore=sameVolume&&Object.ReferenceEquals(_volume.SpatialFrame,frame)&&
                 Object.ReferenceEquals(LastVoxelMesh,previous)&&Object.ReferenceEquals(LastMeshPlaneFit,previousPlane)&&
                 Object.ReferenceEquals(LastSurfaceSamples,previousSurface)&&Object.ReferenceEquals(LastSphereFit,previousSphere)&&
+                Object.ReferenceEquals(LastCylinderFit,previousCylinder)&&
                 _state!=null&&Object.ReferenceEquals(_state.Scene3D,capturedScene)&&
                 capturedScene.Revision==capturedSceneRevision;
             if(sameVolume)
@@ -148,6 +155,11 @@ namespace CxVisual.TestCenter.UI
                 RestoreSurfaceSphereCase(analysis);
                 return;
             }
+            if(analysis.Kind==CT3DAnalysisKind.SurfaceCylinder)
+            {
+                RestoreSurfaceCylinderCase(analysis);
+                return;
+            }
             _meshPreview=CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering.MPWVolumeSurfaceProjection.ProjectMesh(
                 analysis.Mesh.Mesh,_volume.SpatialFrame,_volume.OriginalWidth,
                 _volume.OriginalHeight,_volume.OriginalDepth,50000);
@@ -171,6 +183,30 @@ namespace CxVisual.TestCenter.UI
             RaiseStateChanged();
         }
 
+        private void RestoreSurfaceCylinderCase(CT3DAnalysisCase analysis)
+        {
+            var points=CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering.MPWVolumeSurfaceProjection.Project(
+                analysis.Surface.Points,_volume.SpatialFrame,_volume.OriginalWidth,_volume.OriginalHeight,
+                _volume.OriginalDepth,8000);
+            if(_surfaceSceneItemId.HasValue)_state.Scene3D.Remove(_surfaceSceneItemId.Value);
+            if(_sphereSceneItemId.HasValue)_state.Scene3D.Remove(_sphereSceneItemId.Value);
+            _surfacePreviewPoints=points;LastSurfaceSamples=analysis.Surface;
+            LastSphereFit=null;LastCylinderFit=analysis.Cylinder;
+            foreach(var item in _state.Scene3D.Snapshot().Where(i=>i.Kind==MVI3DSceneKind.Volume))
+                _state.Scene3D.Remove(item.Id);
+            _state.Scene3D.Add(MVI3DSceneKind.Volume,analysis.Source.SourceRef,
+                analysis.Source.Revision,analysis.Source.Signature);
+            _surfaceSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Surface,
+                "ct3d:surface:"+analysis.Surface.ResultId.ToString("N"),analysis.Source.Revision,analysis.Source.Signature);
+            _sphereSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Measurement,
+                "ct3d:cylinder:"+analysis.Cylinder.ResultId.ToString("N"),analysis.Source.Revision,analysis.Source.Signature);
+            _state.Scene3D.Select(_sphereSceneItemId);
+            LastOpenedProfessionalCase=analysis;_professionalSource=analysis.Source;
+            UpdateSurfacePresentation();
+            _status.Text="已恢复圆柱毫米特征及Surface、来源、残差；工业不确定度未评定。";
+            RaiseStateChanged();
+        }
+
         private void RestoreSurfaceSphereCase(CT3DAnalysisCase analysis)
         {
             var points=CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering.MPWVolumeSurfaceProjection.Project(
@@ -178,7 +214,8 @@ namespace CxVisual.TestCenter.UI
                 _volume.OriginalDepth,8000);
             if(_surfaceSceneItemId.HasValue)_state.Scene3D.Remove(_surfaceSceneItemId.Value);
             if(_sphereSceneItemId.HasValue)_state.Scene3D.Remove(_sphereSceneItemId.Value);
-            _surfacePreviewPoints=points;LastSurfaceSamples=analysis.Surface;LastSphereFit=analysis.Sphere;
+            _surfacePreviewPoints=points;LastSurfaceSamples=analysis.Surface;
+            LastCylinderFit=null;LastSphereFit=analysis.Sphere;
             foreach(var item in _state.Scene3D.Snapshot().Where(i=>i.Kind==MVI3DSceneKind.Volume))
                 _state.Scene3D.Remove(item.Id);
             _state.Scene3D.Add(MVI3DSceneKind.Volume,analysis.Source.SourceRef,analysis.Source.Revision,analysis.Source.Signature);
