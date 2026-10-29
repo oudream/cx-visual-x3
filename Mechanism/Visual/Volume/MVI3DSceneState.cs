@@ -139,6 +139,22 @@ namespace CxVisual.Mechanism.Visual
             if(changed)ChangedNow();
         }
 
+        /// <summary>整组修改透明度；资源依然由原Owner持有，变更只发布一次。</summary>
+        public void SetGroupOpacity(string groupKey,double opacity)
+        {
+            if(string.IsNullOrWhiteSpace(groupKey))throw new ArgumentException("组标识不能为空。","groupKey");
+            CheckOpacity(opacity);
+            bool changed=false;
+            for(int i=0;i<_items.Count;i++)
+            {
+                MVI3DSceneItem item=_items[i];
+                if(item.GroupKey!=groupKey||item.Opacity==opacity)continue;
+                _items[i]=item.WithStyle(item.Visible,opacity);
+                changed=true;
+            }
+            if(changed)ChangedNow();
+        }
+
         private static void CheckOrganization(string layerKey,string groupKey)
         {
             if(string.IsNullOrWhiteSpace(layerKey)||layerKey.Length>128||
