@@ -1,0 +1,11 @@
+# Derived binaries and runtime files; production configuration/database must not enter this public repository.
+/out/
+/bin/
+/db/
+/log/
+/backup/
+/conf/
+/pid/
+*.exe
+*.test
+*.prof

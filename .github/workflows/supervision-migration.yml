@@ -63,4 +63,5 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then ext=".exe"; fi
           go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./hy/monitor
           go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./hy/daemon
-          echo "Built Monitor and Daemon for $RUNNER_OS"
+          go test -count=1 ./hy/common/monitorc ./hy/common/daemonc ./hy/common/program
+          echo "Built and smoke-tested Monitor and Daemon for $RUNNER_OS"
