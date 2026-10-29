@@ -1,0 +1,59 @@
+name: Supervision Migration / Lifecycle Removal Verification
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'Mechanism/Core/Modules/Service/**'
+      - 'Mechanism/Core/CxVisual.Mechanism.Core.csproj'
+      - 'Mechanism/Lifecycle/**'
+      - 'Applications/Runtime.Host/**'
+      - 'Tests/ArchitectureSmoke/**'
+      - 'Services/Supervision/**'
+      - '.github/workflows/supervision-migration.yml'
+  workflow_dispatch:
+jobs:
+  lifecycle-windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Verify migrated project structure
+        shell: pwsh
+        run: |
+          if (Test-Path 'Mechanism/Lifecycle/CxVisual.Mechanism.Lifecycle.csproj') { throw 'Legacy Lifecycle project remains' }
+          $core = Get-Content 'Mechanism/Core/CxVisual.Mechanism.Core.csproj' -Raw
+          foreach ($name in @('MLCServiceModuleBase.cs','MLCServiceModuleContracts.cs','MLCServiceModuleConfiguration.cs')) {
+            if (!(Test-Path "Mechanism/Core/Modules/Service/$name")) { throw "Missing $name" }
+            if (!$core.Contains("Modules\Service\$name")) { throw "Core project missing compile entry: $name" }
+          }
+          $projects = Get-ChildItem -Recurse -Filter '*.csproj' | Where-Object { $_.FullName -notmatch 'ReferTo' }
+          foreach ($p in $projects) {
+            if ((Get-Content $p.FullName -Raw) -match 'ProjectReference[^\r\n]*CxVisual\.Mechanism\.Lifecycle\.csproj') { throw "Stale reference: $($p.FullName)" }
+          }
+      - name: Build Core / Runtime Host / Architecture Smoke
+        shell: pwsh
+        run: |
+          foreach ($p in @('Mechanism/Core/CxVisual.Mechanism.Core.csproj','Applications/Runtime.Host/CxVisual.Runtime.Host.csproj','Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj')) {
+            & msbuild.exe $p /t:Restore,Build /p:Configuration=Debug /p:Platform=x64 /v:minimal
+            if ($LASTEXITCODE -ne 0) { throw "Build failed: $p" }
+          }
+  supervision-go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Verify Go module if imported
+        shell: bash
+        run: |
+          if [[ ! -f Services/Supervision/go.mod ]]; then
+            echo 'Go module not yet imported: status INCOMPLETE, not PASS'
+            exit 1
+          fi
+          cd Services/Supervision
+          go build ./hy/monitor
+          go build ./hy/daemon
