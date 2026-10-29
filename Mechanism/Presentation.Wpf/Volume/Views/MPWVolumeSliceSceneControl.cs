@@ -27,6 +27,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         // 独立于三刀/任意切Mesh，防止换层时清除专业可视点。
         private readonly ModelVisual3D _surfaceOverlay = new ModelVisual3D();
         private readonly ModelVisual3D _meshOverlay = new ModelVisual3D();
+        private readonly Dictionary<Guid,ModelVisual3D> _additionalMeshes=
+            new Dictionary<Guid,ModelVisual3D>();
+        private readonly Dictionary<Guid,int> _additionalMeshTriangles=
+            new Dictionary<Guid,int>();
+        public int AdditionalMeshCount {get{return _additionalMeshes.Count;}}
+        public int AdditionalMeshTriangleCount
+        {
+            get
+            {
+                int count=0;
+                foreach(int value in _additionalMeshTriangles.Values)count=checked(count+value);
+                return count;
+            }
+        }
         public int SurfaceMeshTriangleCount {get;private set;}
         private double _displaySx=1,_displaySy=1,_displaySz=1;
         public int SurfacePreviewPointCount {get;private set;}
@@ -178,6 +192,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
             ClearSurfaceMesh();
+            ClearAdditionalMeshes();
         }
 
         /// <summary>索引三角Mesh真正进入WPF Viewport3D，不退化为点云伪显示。</summary>
@@ -185,28 +200,76 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             Dispatcher.VerifyAccess();
             if(preview==null)throw new ArgumentNullException("preview");
-            if(preview.TriangleCount>50000)
-                throw new ArgumentOutOfRangeException("preview","超出WPF三角面渲染预算。");
+            if(preview.TriangleCount+AdditionalMeshTriangleCount>50000)
+                throw new ArgumentOutOfRangeException("preview","全部WPF三角面总量超过50000预算。");
+            _meshOverlay.Content=BuildMeshModel(preview,1);
+            SurfaceMeshTriangleCount=preview.TriangleCount;
+        }
+
+        private GeometryModel3D BuildMeshModel(MPWVolumeDisplayMesh preview,double opacity)
+        {
+            if(preview==null)throw new ArgumentNullException("preview");
+            if(double.IsNaN(opacity)||double.IsInfinity(opacity)||opacity<0||opacity>1)
+                throw new ArgumentOutOfRangeException("opacity");
             var positions=new Point3DCollection();
             foreach(Vector3 v in preview.Vertices)
             {
                 if(float.IsNaN(v.X)||float.IsNaN(v.Y)||float.IsNaN(v.Z)||
-                   Math.Abs(v.X)>.50001||Math.Abs(v.Y)>.50001||Math.Abs(v.Z)>.50001)
+                    float.IsInfinity(v.X)||float.IsInfinity(v.Y)||float.IsInfinity(v.Z)||
+                    Math.Abs(v.X)>.50001||Math.Abs(v.Y)>.50001||Math.Abs(v.Z)>.50001)
                     throw new ArgumentOutOfRangeException("preview");
                 positions.Add(new Point3D(v.X*_displaySx,-v.Y*_displaySy,v.Z*_displaySz));
             }
             var triangles=new Int32Collection();
             for(int i=0;i<preview.TriangleIndices.Count;i+=3)
             {
-                // 现有WPF三切面Y镜像导致手性翻转，需交换索引绕序。
                 triangles.Add(preview.TriangleIndices[i]);
                 triangles.Add(preview.TriangleIndices[i+2]);
                 triangles.Add(preview.TriangleIndices[i+1]);
             }
             var geometry=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
-            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(77,216,241)));
-            _meshOverlay.Content=new GeometryModel3D(geometry,material){BackMaterial=material};
-            SurfaceMeshTriangleCount=preview.TriangleCount;
+            byte alpha=(byte)Math.Round(opacity*255);
+            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(alpha,77,216,241)));
+            return new GeometryModel3D(geometry,material){BackMaterial=material};
+        }
+
+        /// <summary>多对象专用：可复用的Volume、Mesh、CAD三角面独立挂载在同一WPF 3D场景。
+        /// id由MVI或MEM资源实例提供，渲染层只持有显示几何，不管理专业资源。</summary>
+        public void SetAdditionalMesh(Guid id,MPWVolumeDisplayMesh preview,double opacity=1)
+        {
+            Dispatcher.VerifyAccess();
+            if(id==Guid.Empty)throw new ArgumentException("必须提供稳定场景实例Id。","id");
+            if(preview==null)throw new ArgumentNullException("preview");
+            int old=0;
+            _additionalMeshTriangles.TryGetValue(id,out old);
+            if(preview.TriangleCount>50000||
+                SurfaceMeshTriangleCount+AdditionalMeshTriangleCount-old+preview.TriangleCount>50000)
+                throw new ArgumentOutOfRangeException("preview","多对象Mesh总三角面预算超限。");
+            GeometryModel3D model=BuildMeshModel(preview,opacity);
+            ModelVisual3D item;
+            if(!_additionalMeshes.TryGetValue(id,out item))
+            {
+                item=new ModelVisual3D();
+                _additionalMeshes.Add(id,item);
+                _viewport.Children.Add(item);
+            }
+            item.Content=model;
+            _additionalMeshTriangles[id]=preview.TriangleCount;
+        }
+        public void RemoveAdditionalMesh(Guid id)
+        {
+            Dispatcher.VerifyAccess();
+            ModelVisual3D item;
+            if(!_additionalMeshes.TryGetValue(id,out item))return;
+            _viewport.Children.Remove(item);
+            _additionalMeshes.Remove(id);_additionalMeshTriangles.Remove(id);
+        }
+        public void ClearAdditionalMeshes()
+        {
+            Dispatcher.VerifyAccess();
+            foreach(ModelVisual3D item in _additionalMeshes.Values)
+                _viewport.Children.Remove(item);
+            _additionalMeshes.Clear();_additionalMeshTriangles.Clear();
         }
 
         public void ClearSurfaceMesh()
