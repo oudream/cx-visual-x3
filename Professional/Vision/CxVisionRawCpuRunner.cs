@@ -207,6 +207,23 @@ namespace CxVisual.Professional.Vision
                 medianRadius:medianRadius,splitNodes:true,splitOptions:options);
         }
 
+        /// <summary>
+        /// Studio等持有已读取MHS Effective的Host可使用此入口；运行仍采用该Provider
+        /// 的固定配置及版本栅栏，不构造失去MHS来源的新阈值Provider。
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteSeparatedMeasuredProviderAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider provider,
+            string path,int width,int height,int medianRadius,CancellationToken cancellation)
+        {
+            if(provider==null)throw new ArgumentNullException("provider");
+            if(medianRadius<0 || medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            cancellation.ThrowIfCancellationRequested();
+            CxVisionInspectionOptions options=provider.CaptureInspectionOptions();
+            return ExecuteCoreAsync(session,provider,path,width,height,cancellation,true,
+                medianRadius:medianRadius,splitNodes:true,splitOptions:options);
+        }
+
         /// <summary>同一已保存MEM/MOL拆分工作链，重新绑定RAW/Provider并验证节点参数。</summary>
         public static Task<CxVisionCpuRun> ExecuteSavedSeparatedMeasuredAsync(
             MEMEngineeringSession session,Guid contentId,CxVisionInspectionOptions options,
