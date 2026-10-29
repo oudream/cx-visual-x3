@@ -9,6 +9,7 @@ using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Runtime.Execution;
@@ -2288,6 +2289,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         page.RootContent.Id,provider);
                     Check(repeat.Succeeded&&repeat.Plan.InputDefaults.Count==2,
                         "G06 CPU Vision lost Port and parameters after real .cxproj reopen");
+                    // B2: feed the reopened canonical Core snapshot through the
+                    // runtime-free Decision Plan before the existing MRK adapter.
+                    // Source is a legacy test capability; the professional Vision
+                    // contract itself is still checked by the binding inspector.
+                    var staticVision=new MDCStaticCatalogSnapshot(new[]{
+                        new MOCCapabilityDescriptor("vision.test.source","Raw source",
+                            "Vision/Source",new[]{
+                                new MPCPortDescriptor("Pixels",MPCPortDirection.Output,
+                                    "byte[]",MPCPortKind.Data)}),
+                        provider.DescribeCapabilities().Single()
+                    });
+                    var purePlan=new MDCDeclarativePlanCompiler().Compile(
+                        reopened.GetSnapshot(),page.RootContent.Id,staticVision);
+                    Check(purePlan.ProjectId==reopened.Project.Id &&
+                        purePlan.RootContentId==page.RootContent.Id &&
+                        purePlan.Fingerprint.Length==64,
+                        "B2 canonical Decision Plan identity/fingerprint missing");
+                    var handoff=new MOCManifestRuntimeBinding().Bind(
+                        reopened.GetSnapshot(),purePlan,staticVision,provider,
+                        new Dictionary<string,Type>{{
+                            CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                            typeof(CxVisionInspectionResult)}},
+                        allowUnverifiedLegacyContracts:true);
+                    MOCTraceView pureTrace;
+                    var pureRun=Execute(handoff,
+                        handoff.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),
+                        out pureTrace);
+                    var pureImage=pureRun.Results.ContainsKey("w"+inspect.ToString("N"))?
+                        pureRun.Results["w"+inspect.ToString("N")]
+                            as CxVisionInspectionResult:null;
+                    Check(pureRun.State==MRKFlowState.Completed &&
+                        pureImage!=null && pureImage.ThresholdPixelCount==4 &&
+                        pureImage.Regions.Count==1 && pureImage.Regions[0].PixelArea==3 &&
+                        pureTrace.Events.Any(x=>x.Origin.BlockId==inspect &&
+                            x.Transition.State==MRKStepState.Completed),
+                        "B1-B3 pure Decision Plan handoff lost real Vision result/trace");
                     // B1-B3 vertical regression: the reopened MEM project, not the
                     // original in-memory builder, must drive the real Vision Provider.
                     MOCTraceView reopenedTrace;
