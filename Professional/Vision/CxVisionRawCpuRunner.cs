@@ -26,6 +26,9 @@ namespace CxVisual.Professional.Vision
         public Guid PageId {get;internal set;}
         public Guid FlowId {get;internal set;}
         public Guid InspectBlockId {get;internal set;}
+        /// <summary>Only populated for opt-in project measurement.</summary>
+        public Guid MeasureBlockId {get;internal set;}
+        public long? AcceptedRegionPixelArea {get;internal set;}
         public int EngineeringRevision {get;internal set;}
         public string Fingerprint {get;internal set;}
         public string ConfigVersion {get;internal set;}
@@ -82,11 +85,13 @@ namespace CxVisual.Professional.Vision
             public bool Authorize(string principal,MRKPlanPublishAction action,
                 MRKExecutionPlan plan,long revision)
             {
-                return principal==Principal && revision==1 && plan!=null && plan.Steps.Count==2;
+                return principal==Principal && revision==1 && plan!=null &&
+                    (plan.Steps.Count==2 || plan.Steps.Count==3);
             }
             public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
             {
-                return revision==1 && plan!=null && plan.Steps.Count==2;
+                return revision==1 && plan!=null &&
+                    (plan.Steps.Count==2 || plan.Steps.Count==3);
             }
         }
         public static byte[] ReadRaw(string path,int width,int height,
@@ -115,9 +120,28 @@ namespace CxVisual.Professional.Vision
                 return data;
             }
         }
-        public static async Task<CxVisionCpuRun> ExecuteAsync(
+        public static Task<CxVisionCpuRun> ExecuteAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation)
+        {
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,false);
+        }
+
+        /// <summary>
+        /// Opt-in project-backed RAW→Inspect→Measure with MOC source map and pinned versions.
+        /// No new graph or executor; original two-step API remains unchanged.
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteMeasuredAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider vision,
+            string path,int width,int height,CancellationToken cancellation)
+        {
+            return ExecuteCoreAsync(session,vision,path,width,height,cancellation,true);
+        }
+
+        private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
+            MEMEngineeringSession session,CxVisionThresholdProvider vision,
+            string path,int width,int height,CancellationToken cancellation,
+            bool includeMeasurement)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -129,9 +153,14 @@ namespace CxVisual.Professional.Vision
             // Validate before modifying the engineering project.
             byte[] pixels=ReadRaw(path,width,height,vision.PixelDepth,cancellation);
             cancellation.ThrowIfCancellationRequested();
-            var source=new RawProvider(pixels,vision);
-            var page=session.AddPage("CPU RAW检测 · "+Path.GetFileName(path));
-            Guid inspect=Guid.Empty;
+            CxVisionAcceptedRegionMeasureProvider measureProvider=includeMeasurement ?
+                new CxVisionAcceptedRegionMeasureProvider(vision) : null;
+            IMRKVersionedCapabilityResolver resolver=includeMeasurement ?
+                (IMRKVersionedCapabilityResolver)measureProvider : vision;
+            var source=new RawProvider(pixels,resolver);
+            var page=session.AddPage((includeMeasurement ?
+                "CPU RAW检测与面积测量 · " : "CPU RAW检测 · ")+Path.GetFileName(path));
+            Guid inspect=Guid.Empty,measure=Guid.Empty;
             MOCFlowBuilder.Edit(session,page.RootContent,b=>{
                 Guid raw=b.Step(source.DescribeCapabilities().Single());
                 inspect=b.Step(vision.DescribeCapabilities().Single());
@@ -139,11 +168,20 @@ namespace CxVisual.Professional.Vision
                 b.SetParameter(inspect,"Height",height.ToString(CultureInfo.InvariantCulture));
                 b.Connect(raw,"Done",inspect,"Start",MPCPortKind.Control);
                 b.Connect(raw,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                if(includeMeasurement)
+                {
+                    measure=b.Step(measureProvider.DescribeCapabilities().Single());
+                    b.Connect(inspect,"Done",measure,"Start",MPCPortKind.Control);
+                    b.Connect(inspect,"Inspection",measure,"Inspection",MPCPortKind.Data);
+                }
             });
             string rawVersion;
             source.TryGetCapabilityVersion(InputId,out rawVersion);
             var versions=new Dictionary<string,string>(StringComparer.Ordinal) {
                 {InputId,rawVersion},{CxVisionThresholdProvider.CapabilityId,version}};
+            if(includeMeasurement)
+                versions.Add(CxVisionAcceptedRegionMeasureProvider.CapabilityId,
+                    CxVisionAcceptedRegionMeasureProvider.Version);
             MEMProjectSnapshot snapshot=session.GetSnapshot();
             var candidate=MOCProjectRelease.Prepare(snapshot,page.RootContent.Id,source,versions);
             cancellation.ThrowIfCancellationRequested();
@@ -179,18 +217,36 @@ namespace CxVisual.Professional.Vision
                     if(inspection==null||inspection.Width!=width||inspection.Height!=height||
                         inspection.ConfigRevision!=vision.ConfigurationRevision)
                         throw new InvalidOperationException("检测结果与配置或输入尺寸不一致");
+                    long? acceptedArea=null;
+                    if(includeMeasurement)
+                    {
+                        object measured;
+                        if(!result.Results.TryGetValue("w"+measure.ToString("N"),out measured) ||
+                           !(measured is long))
+                            throw new InvalidOperationException("工程测量节点结果缺失或类型错误");
+                        acceptedArea=(long)measured;
+                        if(acceptedArea.Value!=CxVisionDataFlow.MeasureAcceptedPixelArea(
+                            inspection,cancellation))
+                            throw new InvalidOperationException("工程区域面积与算法结果不一致");
+                    }
                     var trace=compiled.ReadTrace(flow,0);
+                    if(includeMeasurement && !trace.Events.Any(e=>
+                        e.Origin.BlockId==measure &&
+                        e.Transition.State==MRKStepState.Completed))
+                        throw new InvalidOperationException("工程测量节点完成Trace缺失");
                     int completed=trace.Events.Count(e=>e.Origin.BlockId==inspect&&
                         e.Transition.State==MRKStepState.Completed);
                     if(completed==0||trace.LostCount!=0)
                         throw new InvalidOperationException("MRK真实完成Trace缺失");
                     return new CxVisionCpuRun {
                         PageId=page.Id,FlowId=result.FlowId,InspectBlockId=inspect,
+                        MeasureBlockId=measure,AcceptedRegionPixelArea=acceptedArea,
                         EngineeringRevision=snapshot.Revision,Fingerprint=candidate.Fingerprint,
                         ConfigVersion=version,Inspection=inspection,CompletedTraceEvents=completed,
                         Evidence=CxVisionRunSummary.FromInspection(result.FlowId,path,inspection,
                             planFingerprint:candidate.Fingerprint,capabilityVersion:version,
-                            completedUtc:result.CompletedUtc),
+                            completedUtc:result.CompletedUtc,
+                            acceptedRegionPixelArea:acceptedArea),
                         Trace=trace.Events.Take(300).Select(e=>new CxVisionCpuTrace {
                             Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
                             BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
