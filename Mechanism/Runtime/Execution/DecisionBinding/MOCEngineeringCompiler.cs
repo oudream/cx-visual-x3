@@ -341,7 +341,7 @@ namespace CxVisual.Mechanism.Orchestration
         }
         private static IEnumerable<MRKExecutionInput> InternalDataInputs(
             MOLWiringDefinition wiring,Guid blockId,IMRKCapabilityResolver resolver,
-            MEMProjectSnapshot snapshot=null,MOCPlanLogicReader source=null)
+            MEMProjectSnapshot snapshot=null,MOCPlanLogicReader planReader=null)
         {
             foreach(var link in wiring.Links.Where(l=>l.Target.BlockId==blockId&&
                 (l.Kind==MPCPortKind.Data||l.Kind==MPCPortKind.Stream)))
@@ -358,8 +358,8 @@ namespace CxVisual.Mechanism.Orchestration
                     if(!Guid.TryParseExact(producer.CapabilityId.Substring("moc.invoke:".Length),
                         "N",out childId))throw new InvalidOperationException("moc.nested_source_id");
                     var content=snapshot.Find(childId);
-                    var child=content==null?null:(source==null ?
-                        MOLWiringCodec.Get(content):source.Wiring(content));
+                    var child=content==null?null:(planReader==null ?
+                        MOLWiringCodec.Get(content):planReader.Wiring(content));
                     if(child==null||!child.FlowOutputs.ContainsKey(from.MemberId))
                         throw new InvalidOperationException("moc.nested_source_unpublished:"+from.MemberId);
                 }
@@ -383,7 +383,7 @@ namespace CxVisual.Mechanism.Orchestration
         // Recursively adapt a persisted nested Content; all execution still belongs to MRK.
         private static void BuildDeepFlow(MEMProjectSnapshot snapshot,MEMNodeSnapshot content,
             IMRKCapabilityResolver resolver,IDictionary<string,MRKFlowCompileDefinition> catalog,
-            HashSet<Guid> active,MOCPlanLogicReader source)
+            HashSet<Guid> active,MOCPlanLogicReader planReader)
         {
             string id=content.Id.ToString("N");
             if(catalog.ContainsKey(id))return;
@@ -391,7 +391,7 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.subflow.recursive_or_too_deep");
             try
             {
-                var wiring=source==null ? MOLWiringCodec.Get(content):source.Wiring(content);
+                var wiring=planReader==null ? MOLWiringCodec.Get(content):planReader.Wiring(content);
                 if(wiring==null)throw new InvalidOperationException("moc.subflow.requires_v2");
                 wiring.ValidateExecutable();
                 if(wiring.StateMachines.Values.Any(m=>m.States.Any(st=>
@@ -426,7 +426,7 @@ namespace CxVisual.Mechanism.Orchestration
                         .Distinct(StringComparer.Ordinal).ToArray();
                     var inputs=new List<MRKExecutionInput>();
                     inputs.AddRange(ExposedInputs(wiring,block.Id));
-                    inputs.AddRange(InternalDataInputs(wiring,block.Id,resolver,snapshot,source));
+                    inputs.AddRange(InternalDataInputs(wiring,block.Id,resolver,snapshot,planReader));
                     string childId=null;
                     if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                     {
@@ -439,7 +439,7 @@ namespace CxVisual.Mechanism.Orchestration
                         var nested=snapshot.Find(nestedId);
                         if(nested==null||nested.Kind!=MEMNodeKind.Content)
                             throw new InvalidOperationException("moc.deep.missing_content");
-                        BuildDeepFlow(snapshot,nested,resolver,catalog,active,source);
+                        BuildDeepFlow(snapshot,nested,resolver,catalog,active,planReader);
                         childId=nestedId.ToString("N");
                     }
                     MOLStepPolicy stepPolicy;
@@ -464,7 +464,7 @@ namespace CxVisual.Mechanism.Orchestration
                             subflowId:childId));
                 }
                 catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
-                    BuildPublicExports(wiring,resolver,snapshot,source)));
+                    BuildPublicExports(wiring,resolver,snapshot,planReader)));
             }
             finally{active.Remove(content.Id);}
         }
