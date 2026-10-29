@@ -126,8 +126,11 @@ namespace CxVisual.TestCenter.UI
                 // Negative: a mismatched width must fail without fake success.
                 await Set(hwnd,"TCT.Cpu.Width","6");
                 await Click(hwnd,"TCT.Cpu.Run");
-                await Until(()=>panel.StatusMessage.StartsWith("CPU检测失败"),
-                    "invalid RAW dimensions refused");
+                // Async WPF handler publishes failure text before its finally re-enables
+                // controls. Never start the valid retry while prior Run still owns _running.
+                await Until(()=>!panel.IsRunning &&
+                    panel.StatusMessage.StartsWith("CPU检测失败"),
+                    "invalid RAW dimensions refused and first Run fully settled");
                 Check(panel.LastReport==null,"Invalid file returned fake result");
                 await Set(hwnd,"TCT.Cpu.Width","5");
                 await Click(hwnd,"TCT.Cpu.Run");
