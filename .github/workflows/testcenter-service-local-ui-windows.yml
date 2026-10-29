@@ -1,0 +1,57 @@
+name: TestCenter Service MLC Real WPF UI Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Module/TCTServiceRequestPanel.cs'
+      - 'Tests/TestCenter/Manual/Module/TCTManualModuleFrame.cs'
+      - 'Tests/TestCenter/Verification/TCTServiceRequestUiSmoke.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Mechanism/Lifecycle/Modules/**'
+      - '.github/workflows/testcenter-service-local-ui-windows.yml'
+jobs:
+  service-mlc-uia:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter dependency graph
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) {throw 'TestCenter Restore failed'}
+      - name: Build actual TestCenter and Lifecycle dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Build /m:1 /nr:false /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) {throw 'Service WPF TestCenter build failed'}
+      - name: Execute real MLC lifecycle and Service request WPF UI Automation
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $report=Join-Path (Split-Path $exe) 'TestCenter-Service-UIA-Report.txt'
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--module-service-ui-automation' -PassThru
+          if(-not $p.WaitForExit(120000)) {
+            try {$p.Kill()} catch {}
+            throw 'Service real WPF UIA timeout'
+          }
+          $p.Refresh()
+          if(Test-Path $report){Get-Content $report}
+          if($p.ExitCode -ne 0){throw "Service real UIA failed: $($p.ExitCode)"}
+          if(-not (Test-Path $report)){throw 'Service UIA report missing'}
+          $lines=Get-Content $report
+          if(@($lines | Where-Object {$_ -like 'PASS TCT.Service.UIA*'}).Count -ne 1 -or
+             @($lines | Where-Object {$_ -like 'FAIL*'}).Count -ne 0) {
+             throw 'Service MLC real request/restart UIA assertion missing'
+          }
+      - name: Preserve genuine request and lifecycle test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testcenter-service-mlc-real-uia
+          path: Output/Debug/x64/TestCenter-Service-UIA-Report.txt
+          if-no-files-found: warn
