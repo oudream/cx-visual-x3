@@ -285,10 +285,9 @@ namespace CxVisual.Studio
                     if(page==null)throw new InvalidOperationException("请先选择有效工程页面");
                     Guid inserted=AddStudioVisionCapabilityToFlow(
                         _viewModel.ProjectSession,page.RootContent,selectedProvider,selected.Id);
-                    string version;
-                    if(!selectedProvider.TryGetCapabilityVersion(
-                        CxVisionThresholdProvider.CapabilityId,out version))
-                        throw new InvalidOperationException("MHS配置版本已经变化");
+                    // AddStudioVisionCapabilityToFlow已在正式MEM编辑之前核验生效版本。
+                    // 提交后只显示本次固定快照身份，不再抛出“拒绝”误报已提交的事务。
+                    string version=selectedProvider.ReleaseVersion;
                     RefreshScene();
                     OpenStudioDocument("doc.flow");
                     effectiveStatus.Text="已加入当前MEM主流程："+selected.Id+
