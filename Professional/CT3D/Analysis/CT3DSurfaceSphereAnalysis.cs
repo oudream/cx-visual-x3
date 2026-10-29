@@ -74,13 +74,16 @@ namespace CxVisual.Professional.CT3D
     {
         internal CT3DCylinderFitResult(FVOPhysicalPoint3D axisPoint,FVOPhysicalPoint3D axisDirection,
             double radius,double rms,double maxResidual,double condition,int count,
-            CT3DSurfaceSamples source,double limit,Guid? resultId=null)
+            CT3DSurfaceSamples source,double limit,IReadOnlyList<int> selectedIndices=null,Guid? resultId=null)
         {
             ResultId=resultId??Guid.NewGuid();AxisPoint=axisPoint;AxisDirection=axisDirection;
             RadiusMm=radius;RmsResidualMm=rms;MaxAbsoluteResidualMm=maxResidual;
             ConditionNumber=condition;SampleCount=count;SourceSurfaceResultId=source.ResultId;
             SourceRef=source.SourceRef;SourceRevision=source.SourceRevision;
             SpatialFrame=source.SpatialFrame;MaximumConditionNumber=limit;
+            var indices=new int[selectedIndices==null?0:selectedIndices.Count];
+            for(int i=0;i<indices.Length;i++)indices[i]=selectedIndices[i];
+            SelectedPointIndices=Array.AsReadOnly(indices);
         }
         public Guid ResultId {get;private set;}
         public Guid SourceSurfaceResultId {get;private set;}
@@ -96,6 +99,8 @@ namespace CxVisual.Professional.CT3D
         public double ConditionNumber {get;private set;}
         public double MaximumConditionNumber {get;private set;}
         public int SampleCount {get;private set;}
+        public ReadOnlyCollection<int> SelectedPointIndices {get;private set;}
+        public bool HasExplicitSidewallRoi {get{return SelectedPointIndices.Count!=0;}}
         public string Unit {get{return "mm";}}
         public string FitMethod {get{return "constrained-axis-circle-SVD";}}
         public bool HasEvaluatedUncertainty {get{return false;}}
@@ -107,6 +112,14 @@ namespace CxVisual.Professional.CT3D
         public static CT3DCylinderFitResult FitCylinder(CT3DSurfaceSamples surface,
             FVOPhysicalPoint3D axisDirection,double maxConditionNumber=10000000,
             CancellationToken cancellation=default(CancellationToken))
+        {
+            return FitCylinder(surface,axisDirection,null,maxConditionNumber,cancellation);
+        }
+
+        /// <summary>显式ROI只包含圆柱侧壁点；输入索引按原Surface固定顺序保存重开。</summary>
+        public static CT3DCylinderFitResult FitCylinder(CT3DSurfaceSamples surface,
+            FVOPhysicalPoint3D axisDirection,IReadOnlyList<int> selectedPointIndices,
+            double maxConditionNumber=10000000,CancellationToken cancellation=default(CancellationToken))
         {
             if(surface==null)throw new ArgumentNullException("surface");
             if(!surface.SpatialFrame.IsCalibrated||surface.TouchesVolumeBoundary)
@@ -124,15 +137,33 @@ namespace CxVisual.Professional.CT3D
             double tlen=Math.Sqrt(tx*tx+ty*ty);
             tx/=tlen;ty/=tlen;
             double tz=0,ux=ay*tz-az*ty,uy=az*tx-ax*tz,uz=ax*ty-ay*tx;
-            int n=surface.Count;
+            var selected=new List<int>();
+            if(selectedPointIndices==null)
+                for(int i=0;i<surface.Count;i++)selected.Add(i);
+            else
+            {
+                if(selectedPointIndices.Count<6||selectedPointIndices.Count>surface.Count)
+                    throw new ArgumentOutOfRangeException("selectedPointIndices");
+                var unique=new HashSet<int>();
+                foreach(int index in selectedPointIndices)
+                {
+                    if(index<0||index>=surface.Count)
+                        throw new ArgumentOutOfRangeException("selectedPointIndices");
+                    if(!unique.Add(index))
+                        throw new ArgumentException("圆柱侧壁ROI点索引必须互异。","selectedPointIndices");
+                    selected.Add(index);
+                }
+            }
+            int n=selected.Count;
             double ox=0,oy=0,oz=0;
-            foreach(FVOPhysicalPoint3D p in surface.Points){ox+=p.X;oy+=p.Y;oz+=p.Z;}
+            foreach(int index in selected)
+            {FVOPhysicalPoint3D p=surface.Points[index];ox+=p.X;oy+=p.Y;oz+=p.Z;}
             ox/=n;oy/=n;oz/=n;
             double[,] design=new double[n,3];double[] values=new double[n];
             for(int i=0;i<n;i++)
             {
                 if((i&255)==0)cancellation.ThrowIfCancellationRequested();
-                FVOPhysicalPoint3D p=surface.Points[i];
+                FVOPhysicalPoint3D p=surface.Points[selected[i]];
                 double dx=p.X-ox,dy=p.Y-oy,dz=p.Z-oz;
                 double x=dx*tx+dy*ty+dz*tz,y=dx*ux+dy*uy+dz*uz;
                 design[i,0]=2*x;design[i,1]=2*y;design[i,2]=1;
@@ -155,7 +186,7 @@ namespace CxVisual.Professional.CT3D
             return new CT3DCylinderFitResult(
                 new FVOPhysicalPoint3D(ox+cx*tx+cy*ux,oy+cx*ty+cy*uy,oz+cx*tz+cy*uz),
                 new FVOPhysicalPoint3D(ax,ay,az),radius,Math.Sqrt(sum/n),max,
-                fit.ConditionNumber,n,surface,maxConditionNumber);
+                fit.ConditionNumber,n,surface,maxConditionNumber,selectedPointIndices);
         }
     }
 
