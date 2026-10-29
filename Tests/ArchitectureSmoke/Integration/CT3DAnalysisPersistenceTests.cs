@@ -71,12 +71,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 originalArtifactPath=Directory.GetFiles(Path.Combine(folder,"artifacts","ct3d"),"*.analysis").Single();
                 revision=engineering.Revision;
                 Check(revision==before+1 && engineering.CanUndo,"工程由MEM统一事务提交");
-                int afterBatch=engineering.Revision;
-                Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.CommitAll(engineering,
-                    new[]{owner,secondOwner},afterBatch,folder,
-                    new[]{analysis,second},new CancellationToken(true)));
-                Check(engineering.Revision==afterBatch,
-                    "批量提交在取消时不能产生部分MEM结果或工程修订");
                 engineering.Undo().RequireValue();
                 Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
                 engineering.Redo().RequireValue();
@@ -244,6 +238,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<ArgumentException>(()=>CT3DAnalysisPersistence.CommitAll(engineering,
                     new[]{owner,owner},engineering.Revision,folder,
                     new[]{analysis,second},CancellationToken.None));
+                int afterBatch=engineering.Revision;
+                Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.CommitAll(engineering,
+                    new[]{owner,secondOwner},afterBatch,folder,
+                    new[]{analysis,second},new CancellationToken(true)));
+                Check(engineering.Revision==afterBatch,
+                    "批量提交在取消时不能产生部分MEM结果或工程修订");
+
                 engineering.Undo().RequireValue();
                 Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
                 engineering.Redo().RequireValue();
