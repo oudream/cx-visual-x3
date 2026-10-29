@@ -407,7 +407,8 @@ namespace CxVisual.Professional.Vision
                         Evidence=CxVisionRunSummary.FromInspection(result.FlowId,path,inspection,
                             planFingerprint:candidate.Fingerprint,capabilityVersion:version,
                             completedUtc:result.CompletedUtc,
-                            acceptedRegionPixelArea:acceptedArea),
+                            acceptedRegionPixelArea:acceptedArea,
+                            enhancedImage:enhancedImage),
                         Trace=trace.Events.Take(300).Select(e=>new CxVisionCpuTrace {
                             Sequence=e.Transition.Sequence,StepId=e.Transition.StepId,
                             BlockId=e.Origin.BlockId,State=e.Transition.State.ToString(),
