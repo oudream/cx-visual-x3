@@ -413,3 +413,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 [Imaging Windows #40828887469](https://github.com/oudream/cx-visual-x3/actions/runs/40828887469) 对固定`8ff63f3` 的首次全WPF Smoke结果为**failure**，日志在`TCTImageViewerSmoke`“真实CPU Mask→FIM轮廓→像素面积7链路错误或破坏原图”，而原先未自动计算直方图时该链路曾通过。逐源核对发现原`_analysisCancellation/_analysisEpoch`同时控制FIM统计、ROI处理和轮廓处理；新自动统计在`Session.Changed/Overlays.Changed`调用`CancelAnalysis`，有可能把刚生成Overlay时仍在执行的轮廓任务误取消（真实跨功能生命周期耦合）。
 
 已在[98912b4](https://github.com/oudream/cx-visual-x3/commit/98912b4c972c9737ceab09dc7f016da92de9b657)修复：统计独占`_histogramCancellation/_histogramEpoch`；统计重算只调用`CancelHistogram`、不取消Mask轮廓；原图真正变更仍保留`CancelAnalysis`，而`_publishingContours`守护内部AddOverlays/SelectOverlay，不因轮廓自身发布触发错误取消。原图、结果图和Run证据Owner不变。不删除失败记录、不放松旧Mask轮廓测试，后续[Imaging #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522)和[TestCenter #40829484729](https://github.com/oudream/cx-visual-x3/actions/runs/40829484729)必须重跑；首次登记in_progress。
+
+### 22.2 已通过的取消域隔离固定SHA及窗值刻度
+
+`98912b4c972c9737ceab09dc7f016da92de9b657` 的[Imaging Windows #40829484522](https://github.com/oudream/cx-visual-x3/actions/runs/40829484522) **success**，包括重新启用“自动直方图+专业CPU Mask/轮廓7px²同页”的真实WPF Smoke，确认分离统计与专业处理取消域后不再回归；`73ecd00be782463c3ada7095de410e400458e5a7` 的[Imaging Windows #40829769427](https://github.com/oudream/cx-visual-x3/actions/runs/40829769427) **success**，且保留手动ROI修改取消旧操作、内部发布轮廓不自取消。两次实际成功不可等价为真实现场6144×3072图像完整人眼截图。
+
+[fb3bcc3](https://github.com/oudream/cx-visual-x3/commit/fb3bcc36116d74d9b1168db3915b9fb5bee8cc67)、[8a225fb](https://github.com/oudream/cx-visual-x3/commit/8a225fbf31003ffa922c19d7f6749f20b7d4546b)：追加每条窗宽/窗位滑条上下端点可见刻度，动态更新`255/65535`；[18f0c93](https://github.com/oudream/cx-visual-x3/commit/18f0c93d1a2eeef37fec398e7dce28f001071ce7) + [267db43](https://github.com/oudream/cx-visual-x3/commit/267db43581d6adfa4270ca9fda980df88464c7fe)补UIA端点绑定。新固定SHA必须重新通过Imaging Windows才能宣称这批刻度验收已完成。
