@@ -1,0 +1,40 @@
+name: CxVisual Decision Windows .NET48 Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Core/**'
+      - 'Mechanism/Runtime/**'
+      - 'Tests/ArchitectureSmoke/**'
+      - 'DOCS/Architecture/CxVisual_统一决策与规划体系*'
+      - 'DOCS/Implementation/CxVisual_Decision_*'
+      - '.github/workflows/decision-windows.yml'
+
+jobs:
+  decision-contract:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build unified .NET Framework 4.8 x64 solution
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Decision unified Windows build failed' }
+      - name: Decision offline discovery and hard-constraint smoke
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe).Path
+          & $exe --decision
+          if ($LASTEXITCODE -ne 0) { throw 'Decision focused smoke failed' }
+      - name: ArchitectureSmoke full regression
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe).Path
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'ArchitectureSmoke default regression failed' }
