@@ -2306,12 +2306,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         purePlan.RootContentId==page.RootContent.Id &&
                         purePlan.Fingerprint.Length==64,
                         "B2 canonical Decision Plan identity/fingerprint missing");
+                    // The original G06 fixture uses a legacy StepResult-only
+                    // source. B2 strict binding instead requires a real named
+                    // MDS output contract; Unknown is never silently Allowed.
+                    var typedSource=new TestResolver().RegisterData(
+                        "vision.test.source",(ctx,token)=>{
+                            byte[] copy=(byte[])pixels.Clone();
+                            ctx.Data.Return("Pixels",copy);
+                            return Task.FromResult((object)copy);
+                        },new Dictionary<string,Type>{{"Pixels",typeof(byte[])}},
+                        new MRKCapabilityInput[0]);
+                    var typedVision=new CxVisionThresholdProvider(options,12,typedSource);
                     var handoff=new MOCManifestRuntimeBinding().Bind(
-                        reopened.GetSnapshot(),purePlan,staticVision,provider,
+                        reopened.GetSnapshot(),purePlan,staticVision,typedVision,
                         new Dictionary<string,Type>{{
                             CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
                             typeof(CxVisionInspectionResult)}},
-                        allowUnverifiedLegacyContracts:true);
+                        allowUnverifiedLegacyContracts:false);
                     MOCTraceView pureTrace;
                     var pureRun=Execute(handoff,
                         handoff.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),
