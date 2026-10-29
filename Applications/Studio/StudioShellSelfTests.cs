@@ -3475,6 +3475,45 @@ namespace CxVisual.Studio
                             restored.Parameters[authored.RegionBlockId]["RuleVersion"]==
                                 controls.ReleaseVersion,
                             "工程持久V2 Codec无法无损保存/还原真实视觉流程参数与连线");
+                        // 不靠静态Codec作假：用已有MOC发布候选编译唯一MEM真源，
+                        // 再由MRK/MDS实际运行外部RAW三输入，读取真实Mask/面积。
+                        var measuredProvider=new CxVisionAcceptedRegionMeasureProvider(provider);
+                        var regionsProvider=new CxVisionMaskRegionsProvider(
+                            provider.CaptureInspectionOptions(),provider.ConfigurationRevision,
+                            measuredProvider);
+                        var maskProvider=new CxVisionBinaryThresholdProvider(
+                            provider.PixelDepth,provider.CaptureInspectionOptions().GrayThreshold,
+                            regionsProvider);
+                        var versions=new Dictionary<string,string>(StringComparer.Ordinal) {
+                            {CxVisionBinaryThresholdProvider.CapabilityId,maskProvider.ReleaseVersion},
+                            {CxVisionMaskRegionsProvider.CapabilityId,regionsProvider.ReleaseVersion},
+                            {CxVisionAcceptedRegionMeasureProvider.CapabilityId,
+                                CxVisionAcceptedRegionMeasureProvider.Version}
+                        };
+                        var candidate=MOCProjectRelease.Prepare(
+                            session.GetSnapshot(),authoredPage.RootContent.Id,
+                            maskProvider,versions);
+                        Assert(candidate.Plan!=null && candidate.Fingerprint.Length==64,
+                            "完整三节点专业模板未通过真实MOC编译和来源指纹");
+                        var external=candidate.Plan.InputDefaults.ToDictionary(
+                            x=>x.Key,x=>x.Value,StringComparer.Ordinal);
+                        external.Add("RawPixels",new byte[]{
+                            210,210,0,0,0,210,0,0,0,0,0,0,0,0,250});
+                        external.Add("Width",5);external.Add("Height",3);
+                        var actualEngine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+                        try
+                        {
+                            var executed=actualEngine.StartFlow(candidate.Plan.Plan,external)
+                                .Completion.GetAwaiter().GetResult();
+                            Assert(executed.State==MRKFlowState.Completed &&
+                                executed.GetCommittedOutput<
+                                    CxVisual.Foundation.Imaging.FIMImageBuffer>("ThresholdMask")
+                                    .GetGrayValue(4,2)==255 &&
+                                executed.GetCommittedOutput<long>(
+                                    "AcceptedRegionPixelArea")==3,
+                                "独立MOL模板不能通过实际MRK/MDS算出4像素Mask和3px²面积");
+                        }
+                        finally { actualEngine.StopAsync(true).GetAwaiter().GetResult(); }
                         // 真正SaveAs → Close → Open，验证V2连线、输入出口和锁定参数。
                         string templateFile=Path.Combine(folder,"VisionTemplate.cxproj");
                         Guid persistedPage=Guid.Empty;
