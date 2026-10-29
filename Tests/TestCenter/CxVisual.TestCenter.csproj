@@ -96,6 +96,7 @@
     <Compile Include="Manual\Module\TCTCpuComputePanel.cs" />
     <Compile Include="Manual\Module\TCTSimulationStepPanel.cs" />
     <Compile Include="Manual\Module\TCTServiceRequestPanel.cs" />
+    <Compile Include="Manual\Module\TCTConnectorLoopPanel.cs" />
     <Compile Include="Verification\TCTCpuComputeUiSmoke.cs" />
     <Compile Include="Verification\TCTSimulationStepUiSmoke.cs" />
     <Compile Include="Verification\TCTServiceRequestUiSmoke.cs" />
