@@ -258,3 +258,19 @@ TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute�
 | Driver | 五类FCM/MFM配置、Driver接口声明可查 | **专业SDK实机控制与采集、设备完成语义、HIL、安全联锁和长稳**；无实机不能宣称达成 |
 
 **工作原则**：不把“有页面、编译通过、Virtual回应或流程候选”误写成工业设备执行完成。G1专项与工业G2/G3必须分别取证。
+
+## 19. Driver真实环境诊断与G2实机闭环前置门禁（2026-10-29）
+
+本轮核查最新主线及GitHub Actions：Compute [#40811544416](https://github.com/oudream/cx-visual-x3/actions/runs/40811544416)、全量TestCenter [#40811544428](https://github.com/oudream/cx-visual-x3/actions/runs/40811544428)、Simulation [#40807801093](https://github.com/oudream/cx-visual-x3/actions/runs/40807801093)、Service [#40808529672](https://github.com/oudream/cx-visual-x3/actions/runs/40808529672)、Connector [#40809446080](https://github.com/oudream/cx-visual-x3/actions/runs/40809446080) 分别为Success。注意它们是固定SHA的软件测试，不等于全类工业能力完成。
+
+### 本轮真实提交
+
+- [Driver预检页面及项目清单 00affbc](https://github.com/oudream/cx-visual-x3/commit/00affbc3cbb36c259b15be7fdfd35febb25df7ae)：仅使用原MHS OpenExisting读取Driver正式Effective；查看配置Enabled/DriverTypeId/DeviceRef、SDK DLL文件版本以及Windows的实际SerialPort COM枚举。**DLL文件存在/COM端口被列出均不等于SDK装配成功或物理操作完成**。
+- [共用模块中心分页 2c6db27](https://github.com/oudream/cx-visual-x3/commit/2c6db271e3100052e6b2a1fb345d04156d1f9371)：在原五类TestCenter模块配置工作台中新增Driver“设备与SDK真实环境预检”Tab，未造第二配置库/设备树/通道，也未向无Provider的环境发布DeviceReady。
+- [Driver真实UIA负例 b92b8c6](https://github.com/oudream/cx-visual-x3/commit/b92b8c68b1e1beacde3140a341031bbb1e11c755)：通过真实WPF UIAutomation按钮、Tab及字段在独立临时Scope下检查缺配置/SDK/设备时拒绝、正式FCM/MHS保存生效后仍不显示Ready/PhysicalCompleted；G1证明的是安全拒绝而不是实机执行。
+- [独立TestCenter CLI 4bc01c1](https://github.com/oudream/cx-visual-x3/commit/4bc01c170a66502484f7d13317795577763cba30)、[Windows工作流 aacf243](https://github.com/oudream/cx-visual-x3/commit/aacf243ea46aa4fdf6c17eb65698da64f1ed200d)：新增`--module-driver-readiness-ui-automation`与明确`HIL=NOT_RUN`的报告；[对应Windows Run #40812877023](https://github.com/oudream/cx-visual-x3/actions/runs/40812877023) 最终结果以Actions实际输出为准，记录时仍在运行。
+
+### 不能越过的验收门槛
+
+**Driver的真实工业闭环尚未完成。** 无特定设备型号、专业SDK许可/二进制、硬件连接、设备回读接口、操作安全授权与真实HIL，不能把Configuration/OS枚举/SDK文件存在或简单通信ACK判定为设备Ready/物理动作Completed。下一步的Driver专业Provider必须基于实际SDK和对应DeviceRef执行发现、打开、参数/状态Readback、操作/采集、完成确认、Stop/Dispose、失联恢复，再逐条取得TFD/DRV-A证据；危险运动/X-Ray操作还需真实硬件联锁、可控测试场与授权。这个G2/G3依赖不能由Windows云Runner或虚拟设备代替。
+
