@@ -536,3 +536,12 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 
 **下一道门禁**：取得匹配后续固定master SHA的Windows .NET Framework4.8 Release/x64编译与`--imaging`、`--vision-results`、默认架构回归；同时跑Studio `--module-center-cpu-self-test`、`--shell-self-test` 和TestCenter `--imaging-viewer-smoke`。未取得真实日志前**仅G2源码登记**；不以此前历史CI成功冒充本次通过，不标R1已交付。
 
+### 32.1 R1单Run多类型结构化结果出口（2026-10-30）
+
+- **专业Owner**：新增`Professional/Vision/CxVisionRunCsvExporter.cs`并纳入既有`CxVisual.Professional.Vision.csproj`。以不可变`CxVisionRunSummary`与`CxVisionResultItem`为唯一来源，`Write(TextWriter,...)`输出`vision.run.csv.v1`、RunId/SourceId/UTC完成时间/配置Revision/PlanFingerprint/CapabilityVersion/宽高、ResultItemId/OutputPort/Kind、数值/单位、Region bbox、Image格式/尺寸、Contour孔洞及点数。Image/Mask的像素字节不假装装入CSV，配合已有FIM RAW输出。
+- **安全与生命周期**：统一不变文化数值格式、RFC式引号/逗号/换行转义；用户控制的SourceId/Name等字段预防Excel公式注入；最大20000结果行；导出前验证每项RunId/SourceId、ItemId唯一及类型化产物存在。`SaveFile`使用同目录临时文件、Flush与原子替换，默认禁止覆盖旧证据，取消时不得破坏已有文件。
+- **两个操作宿主**：TestCenter已有输出页增加`TCT.Imaging.ExportCpuRunCsv`与`ExportCpuRunCsvFile`，导出前核对原MVI Source和当前有效Run；Studio原`ModuleCenter.ResultPanel`增加`Studio.ModuleCenter.ExportRunCsv`，核对当前ProjectId及MPW图窗Source，失效Run不得冒充当前工程结果。两端调用同一PVC API，不在UI复制CSV算法。
+- **真实测试源码**：`RuntimeVisionArtifactsTests.SavedMemoryVisionR1RoundTrip`核对含Mask/Contour/Region/Measurement同Run多类型输出、公式防护、覆盖拒绝、原子保存及取消；`TCTImageViewerSmoke`用实际WPF输出页导出7px²及Source/RunId，在修改CPU参数后断言旧Run禁止再次导出；Studio Shell UI自测登记新按钮存在。
+- **关键提交**：[专业CSV](https://github.com/oudream/cx-visual-x3/commit/593bf1c82df09f33806b1db0f657d2639b241b00)、[编译项](https://github.com/oudream/cx-visual-x3/commit/458fad15216711ddc34faa75331be68292de1979)、[Headless回归](https://github.com/oudream/cx-visual-x3/commit/675c356438f9cf9d6562da2072b3130e7a373041)、[TCT入口](https://github.com/oudream/cx-visual-x3/commit/4b27745fd9685d8e9f9cac0f45665801e7208b6f)、[TCT按钮](https://github.com/oudream/cx-visual-x3/commit/e33d12dbd8a36e634f5504ab56befa02f784efe6)、[WPF正反例](https://github.com/oudream/cx-visual-x3/commit/8effd01c40dfcbfb4d6e896889d429cf28a5bb21)、[Studio入口](https://github.com/oudream/cx-visual-x3/commit/0da6df012556b8368883adb165bfe8e8a592ff36)、[Studio自测](https://github.com/oudream/cx-visual-x3/commit/9e001704d886385ef21bb5fa97c0adc36d4d573e)。
+- **边界**：这是本Run结构化**文本导出**，不是正式长期Artifact/产品级审批报告；R1的同一Studio ROI→算法→保存重开→再次执行→导出全过程仍需真实WPF闭环与固定SHA Windows CI。只登记G2，不把源码测试当成通过。
+
