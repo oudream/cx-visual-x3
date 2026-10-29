@@ -31,6 +31,7 @@ namespace CxVisual.TestCenter.UI
         };
         private readonly MPWModuleCenterControl _center=new MPWModuleCenterControl();
         private readonly TCTCpuComputePanel _cpuPanel;
+        private readonly TCTSimulationStepPanel _simulationPanel;
         private ContentControl _editorHost {get{return _center.EditorHost;}}
         private TabControl _pages {get{return _center.Pages;}}
         private Action<string[], string[]> _project;
@@ -86,6 +87,15 @@ namespace CxVisual.TestCenter.UI
                         "TCT.Module.Page.cpu-test");
                     _pages.Items.Add(tab);
                 }
+                if(kind==MFMModuleKind.Simulation)
+                {
+                    var page=new MPWModuleCenterPage("simulation-step","虚拟轴MRK单步",new string[0]);
+                    var tab=new TabItem {Header=page.Label,Tag=page};
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,"MPWDocumentTabStyle");
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                        "TCT.Module.Page.simulation-step");
+                    _pages.Items.Add(tab);
+                }
                 _pages.SelectedIndex=0;
                 _center.SetSelectedKind(kind);
             }
@@ -121,7 +131,7 @@ namespace CxVisual.TestCenter.UI
         public bool HasUnsavedDraft { get { return _draftGuard != null && _draftGuard.HasUnsavedDraft; } }
         public string ActiveModuleId { get { return _activeId; } }
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
-        public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning); } }
+        public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning) || (_simulationPanel!=null&&_simulationPanel.IsBusy); } }
         public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
         // 只读当前正式MHS编辑草稿克隆，用于统一测试平台验证真实值与保存重开。
         public MCNConnectorConfiguration ConnectorDraftSnapshot()
@@ -134,6 +144,7 @@ namespace CxVisual.TestCenter.UI
         public string StatusMessage { get { return _status.Text; } }
         // Exposes the real Compute test surface for focused WPF UI automation.
         public TCTCpuComputePanel CpuTestPanel {get{return _cpuPanel;}}
+        public TCTSimulationStepPanel SimulationTestPanel {get{return _simulationPanel;}}
         public void SelectModuleKind(MFMModuleKind kind)
         {
             if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
@@ -176,6 +187,7 @@ namespace CxVisual.TestCenter.UI
                 "CxVisual", "TestCenter", "ModuleConfigurations");
             _service = new MHSConfigService(root);
             _cpuPanel=new TCTCpuComputePanel(_service,()=>HasUnsavedDraft);
+            _simulationPanel=new TCTSimulationStepPanel(_service,()=>HasUnsavedDraft);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
             _service.RegisterAssembly(typeof(MFMDriverModuleConfiguration).Assembly);
@@ -363,6 +375,8 @@ namespace CxVisual.TestCenter.UI
             _project = (fields, categories) => {
                 if(kind==MFMModuleKind.Compute&&SelectedModulePage=="cpu-test")
                     _editorHost.Content=_cpuPanel;
+                else if(kind==MFMModuleKind.Simulation&&SelectedModulePage=="simulation-step")
+                    _editorHost.Content=_simulationPanel;
                 else {
                     _editorHost.Content=next;
                     next.ConfigureWorkspaceProjection(fields,categories,true);
@@ -387,6 +401,7 @@ namespace CxVisual.TestCenter.UI
             };
             _activeId = id; _activeKind = kind;
             _cpuPanel.Bind(kind==MFMModuleKind.Compute?id:null);
+            _simulationPanel.Bind(kind==MFMModuleKind.Simulation?id:null);
             _refreshDeclaredCapabilities=() => {
                 // A declaration projection is not an MOC Provider, Ready or authorization fact.
                 // The authoritative MFM descriptor is derived from the real FCM draft.
@@ -483,6 +498,7 @@ namespace CxVisual.TestCenter.UI
         public void OnWorkspaceClosed()
         {
             _cpuPanel.Stop();
+            _simulationPanel.Stop();
             if (_activeEditor != null) _activeEditor.Dispose();
             _editorHost.Content = null;
             _activeEditor = null; _draftGuard = null; _validate = null;
