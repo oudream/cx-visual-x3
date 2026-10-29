@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SharedHeadlessPreviewApi();
             ProjectBackedMeasuredInspection();
             ProjectBackedMedianEnhancement();
+            Gray16MedianEnhancement();
             MviImageMaskProjection();
         }
 
@@ -532,6 +533,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(File.Exists(rawPath))File.Delete(rawPath);
                 if(File.Exists(projectPath))File.Delete(projectPath);
             }
+        }
+
+
+        /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
+        private static void Gray16MedianEnhancement()
+        {
+            string path=Path.Combine(Path.GetTempPath(),
+                "vision-median16-"+Guid.NewGuid().ToString("N")+".raw");
+            byte[] bytes=new byte[98];
+            for(int y=2;y<=4;y++)
+                for(int x=2;x<=4;x++)
+                {
+                    int offset=(y*7+x)*2;
+                    bytes[offset]=(byte)(4000&255);
+                    bytes[offset+1]=(byte)(4000>>8);
+                }
+            bytes[0]=(byte)(60000&255);
+            bytes[1]=(byte)(60000>>8);
+            File.WriteAllBytes(path,bytes);
+            try
+            {
+                var provider=new CxVisionThresholdProvider(
+                    Options(CxVisionPixelDepth.Bits16,2000),58);
+                var depth8=new CxVisionMedianEnhanceProvider(CxVisionPixelDepth.Bits8,1);
+                var depth16=new CxVisionMedianEnhanceProvider(CxVisionPixelDepth.Bits16,1);
+                Check(depth8.ReleaseVersion!=depth16.ReleaseVersion,
+                    "中值增强Provider发布版本没有固定像素位深");
+                using(var project=MEMEngineering.Create("四节点16位FIM"))
+                {
+                    try
+                    {
+                        var outcome=CxVisionRawCpuRunner.ExecuteEnhancedMeasuredAsync(
+                            project,provider,path,7,7,1,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Check(outcome.EnhancedImage!=null &&
+                            outcome.EnhancedImage.PixelFormat==FIMPixelFormat.Gray16 &&
+                            outcome.EnhancedImage.GetGrayValue(0,0)==0 &&
+                            outcome.EnhancedImage.GetGrayValue(3,3)==4000 &&
+                            outcome.Inspection.ThresholdPixelCount==5 &&
+                            outcome.AcceptedRegionPixelArea==5 &&
+                            outcome.Evidence.Items.Any(x=>
+                                x.Kind==CxVisionResultKind.Image &&
+                                x.Image.PixelFormat==FIMPixelFormat.Gray16) &&
+                            File.ReadAllBytes(path).SequenceEqual(bytes),
+                            "16位RAW在四节点增强期间被降位深/污染或统计错误");
+                    }
+                    finally {project.Close(true);}
+                }
+            }
+            finally {if(File.Exists(path))File.Delete(path);}
         }
 
         /// <summary>
