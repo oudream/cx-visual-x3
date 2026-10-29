@@ -209,3 +209,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - [`bab4a27`](https://github.com/oudream/cx-visual-x3/commit/bab4a2710fbf900a3b8b6a5fa36deb396851d70c)在既有`CT3DSurfaceSphereAnalysis.cs`增加`CT3DSurfaceCylinderAnalysis.FitCylinder`与`CT3DCylinderFitResult`。输入复用已验证的原值`CT3DSurfaceSamples`，指定物理轴向，正交投影后使用已有FNU SVD最小二乘拟合二维圆，输出轴线上点、单位轴向、半径、直径、毫米RMS/最大残差、条件数、Feature/Surface身份及来源Frame/Revision。拒绝零轴、未标定/截断数据、退化拟合，支持取消。
 - [`6335cd2`](https://github.com/oudream/cx-visual-x3/commit/6335cd28db2b64c20a4cf5341cd9fa48676a0be6)增加真实UInt16 RAW圆柱体素样本与轴向拟合测试，包含毫米尺寸范围、来源/Feature身份、非法轴向与预取消。**此算法处理6邻域离散表面，采样可能包含端面；工业侧壁ROI及剔除端盖仍未闭合**，不能声明通用自动圆柱拟合或工业计量精度通过。
 - 待续：将圆柱纳入Case/Artifact Schema完整保存重开和结果Measure统一入口；工程级跨Case编辑失效、ROI子元素稳定身份及真实Windows构建、UI/GPU/HIL门禁仍需实证。当前CI在该SHA检查时为`in_progress`。
+
+
+### 10.11 A包：圆柱Case/Measurement/MEM制品组合闭环
+
+- [`b4b7cce`](https://github.com/oudream/cx-visual-x3/commit/b4b7ccea8939e13a2ba2b613d26131d7f9fd65c5)将固定轴向圆柱纳入`CT3DAnalysisKind.SurfaceCylinder`、`AnalyzeCylinder`、`GetFeatureMeasurements`（Radius/Diameter）和`Recompute`。与原球/平面共用资产身份、量值和回归机制。
+- [`9cab710`](https://github.com/oudream/cx-visual-x3/commit/9cab710282c37077ead2e27510569b2c3a61e124)在既有`CT3DAnalysisPersistence`的V2制品Kind判别下增加圆柱写入/读回/使用原FNU计算复核并恢复原ResultId；未新建外部Repository。
+- [`d9a7bb0`](https://github.com/oudream/cx-visual-x3/commit/d9a7bb0169cbd5eab0b5bf939cf371f45c155c98)添加圆柱完整RAW→Surface→Feature→Measurement→MEM Save/Open→同源复算的专项断言；复算保持量值、更新Feature身份。
+- **数值边界**：当前轴向由用户/算法明确给定，边界采样仍混入端面，不将此版本冒充完整圆柱侧面ROI分离或工业级计量。固定SHA Windows测试在查询时`queued`，G1/G2须以随后日志确认。
