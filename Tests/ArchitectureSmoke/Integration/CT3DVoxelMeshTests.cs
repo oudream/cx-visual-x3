@@ -42,6 +42,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           mesh.SignedEnclosedVolume.Value>0 &&
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "体素外露表面解析面积24平方毫米、体积8立方毫米");
+                    // B包CPU真实三角拾取：必须命中原值毫米网格的最近面而非GPU预览图。
+                    FGEMeshRayHit rayHit;
+                    Check(FGEMeshRayIntersector.TryIntersect(mesh,
+                        new FGEPoint3D(25,35,50),new FGEVector3D(0,0,-1),
+                        out rayHit,CancellationToken.None)&&
+                        rayHit.TriangleIndex>=0&&rayHit.TriangleIndex<mesh.TriangleCount&&
+                        Math.Abs(rayHit.Point.Z-46.5)<1e-9&&
+                        Math.Abs(rayHit.Distance-3.5)<1e-9&&
+                        Math.Abs(rayHit.BarycentricU+rayHit.BarycentricV+rayHit.BarycentricW-1)<1e-9,
+                        "毫米Mesh射线应命中离相机最近的真实三角面且重心坐标有效");
+                    Check(!FGEMeshRayIntersector.TryIntersect(mesh,
+                        new FGEPoint3D(25,35,50),new FGEVector3D(0,0,1),
+                        out rayHit,CancellationToken.None)&&rayHit==null,
+                        "背离网格的射线不可虚构命中");
+                    bool invalidRay=false,cancelledRay=false;
+                    try{FGEMeshRayIntersector.TryIntersect(mesh,
+                        new FGEPoint3D(25,35,50),new FGEVector3D(0,0,0),
+                        out rayHit,CancellationToken.None);}
+                    catch(ArgumentOutOfRangeException){invalidRay=true;}
+                    try{FGEMeshRayIntersector.TryIntersect(mesh,
+                        new FGEPoint3D(25,35,50),new FGEVector3D(0,0,-1),
+                        out rayHit,new CancellationToken(true));}
+                    catch(OperationCanceledException){cancelledRay=true;}
+                    Check(invalidRay&&cancelledRay,
+                        "退化方向和取消不得返回伪造的专业Mesh拾取结果");
                     // 在FGE网格中选局部 +Z 面片ROI，不把整个封闭立方体拟合成平面。
                     var topFace=new List<int>();
                     var collinear=new List<int>();
