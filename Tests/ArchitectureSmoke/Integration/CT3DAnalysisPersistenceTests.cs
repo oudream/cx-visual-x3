@@ -56,6 +56,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     !m.HasEvaluatedUncertainty),
                 "平面RMS与最大偏差必须属于质量证据而非虚构Datum尺寸");
             var copy=CT3DAssetReference.Import(folder,raw,info,frame,7,CancellationToken.None,source.Id);
+            Check(copy.FrameSignature==source.FrameSignature&&copy.SpatialFrameRef==source.SpatialFrameRef,
+                "同资产同物理Frame在内容寻址RAW导入后保持稳定空间引用");
             Check(copy.ContentHash==source.ContentHash && File.ReadAllBytes(raw).SequenceEqual(bytes),
                 "内容寻址导入不改原始文件");
             string project=Path.Combine(folder,"analysis.cxproj");MRIObjectAddress address;
@@ -106,6 +108,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(var engineering=MEMEngineering.Open(project))
             {
                 var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
+                Check(restored.Source.FrameSignature==source.FrameSignature&&
+                    restored.Source.SpatialFrameRef==source.SpatialFrameRef,
+                    "MEM重建Frame对象后仍保留资产级稳定物理空间引用");
                 Check(restored.Source.Id==source.Id && restored.Source.Signature==source.Signature &&
                     restored.Source.Revision==7 && restored.Mesh.ResultId==analysis.Mesh.ResultId &&
                     restored.Plane.ResultId==analysis.Plane.ResultId &&
