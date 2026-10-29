@@ -132,11 +132,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 0x61,0x15, 0x62,0x15, 0x63,0x15, 77,88,
                 0x64,0x15, 0x65,0x15, 0x66,0x15, 77,88
             };
-            FIMImageBuffer padded=new FIMImageBuffer(3,2,FIMPixelFormat.Gray16,
+            FIMImageBuffer paddedAnalysisImage=new FIMImageBuffer(3,2,FIMPixelFormat.Gray16,
                 gray16Padded,8);
             FIMPixelRegion paddedRoi=new FIMPixelRegion(1,0,2,1);
-            FIMImageAnalysisResult fast=FIMImageAnalyzer.Analyze(padded,256,paddedRoi);
-            FIMImageStatistics reference=FIMImageAnalyzer.Calculate(padded,paddedRoi);
+            FIMImageAnalysisResult fast=FIMImageAnalyzer.Analyze(paddedAnalysisImage,256,paddedRoi);
+            FIMImageStatistics reference=FIMImageAnalyzer.Calculate(paddedAnalysisImage,paddedRoi);
             Assert(fast.Statistics.PixelCount==4 &&
                 fast.Statistics.Min==5474 && fast.Statistics.Max==5478 &&
                 Near(fast.Statistics.Mean,reference.Mean) &&
@@ -157,7 +157,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 histogramCancel.Cancel();
                 Throws<OperationCanceledException>(()=>
-                    FIMImageAnalyzer.Analyze(padded,256,null,histogramCancel.Token),
+                    FIMImageAnalyzer.Analyze(paddedAnalysisImage,256,null,histogramCancel.Token),
                     "已取消的整数频数统计不得提交直方图");
             }
             // 非矩形ROI：只统计精确掩膜包含的原图像素中心，而不是整块外接矩形。
