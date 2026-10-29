@@ -175,6 +175,8 @@ namespace CxVisual.Professional.CT3D
                                 w.Write(Cylinder.AxisDirection.X);
                                 w.Write(Cylinder.AxisDirection.Y);
                                 w.Write(Cylinder.AxisDirection.Z);
+                            w.Write(Cylinder.SelectedPointIndices.Count);
+                            foreach(int index in Cylinder.SelectedPointIndices)w.Write(index);
                             }
                         }
                     }
@@ -223,7 +225,8 @@ namespace CxVisual.Professional.CT3D
         /// <summary>采用固定物理轴向约束拟合，尚不代表自动圆柱识别或工业精度。</summary>
         public static CT3DAnalysisCase AnalyzeCylinder(string root,CT3DAssetReference source,
             float threshold,int sampleStep,int maximumPoints,FVOPhysicalPoint3D axisDirection,
-            CancellationToken cancellation,double maximumConditionNumber=10000000)
+            CancellationToken cancellation,double maximumConditionNumber=10000000,
+            IReadOnlyList<int> selectedPointIndices=null)
         {
             if(source==null)throw new ArgumentNullException("source");
             if(!source.SpatialFrame.IsCalibrated)
@@ -234,7 +237,7 @@ namespace CxVisual.Professional.CT3D
                 var surface=CT3DSurfaceSphereAnalysis.SampleBoundary(lease,source.SourceRef,
                     source.Revision,threshold,sampleStep,maximumPoints,cancellation);
                 var cylinder=CT3DSurfaceCylinderAnalysis.FitCylinder(surface,axisDirection,
-                    maximumConditionNumber,cancellation);
+                    selectedPointIndices,maximumConditionNumber,cancellation);
                 cancellation.ThrowIfCancellationRequested();
                 return new CT3DAnalysisCase(source,surface,cylinder);
             }
@@ -330,14 +333,28 @@ namespace CxVisual.Professional.CT3D
             if(Kind!=CT3DAnalysisKind.SurfaceCylinder)
                 throw new InvalidOperationException("仅圆柱结果可更新轴向约束。");
             return AnalyzeCylinder(root,Source,Surface.Threshold,Surface.SampleStep,
-                Surface.MaximumPoints,axisDirection,cancellation,Cylinder.MaximumConditionNumber);
+                Surface.MaximumPoints,axisDirection,cancellation,Cylinder.MaximumConditionNumber,
+                Cylinder.SelectedPointIndices.Count==0?null:Cylinder.SelectedPointIndices);
+        }
+
+        /// <summary>替换选定圆柱侧壁点集并使依赖Feature/Measurement重新计算。</summary>
+        public CT3DAnalysisCase RecomputeWithCylinderRoi(string root,
+            IReadOnlyList<int> selectedPointIndices,CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.SurfaceCylinder)
+                throw new InvalidOperationException("仅圆柱Case可修改侧壁ROI。");
+            if(selectedPointIndices==null)throw new ArgumentNullException("selectedPointIndices");
+            return AnalyzeCylinder(root,Source,Surface.Threshold,Surface.SampleStep,
+                Surface.MaximumPoints,Cylinder.AxisDirection,cancellation,
+                Cylinder.MaximumConditionNumber,selectedPointIndices);
         }
 
         public CT3DAnalysisCase Recompute(string root,CancellationToken cancellation)
         {
             if(Kind==CT3DAnalysisKind.SurfaceCylinder)
                 return AnalyzeCylinder(root,Source,Surface.Threshold,Surface.SampleStep,
-                    Surface.MaximumPoints,Cylinder.AxisDirection,cancellation,Cylinder.MaximumConditionNumber);
+                    Surface.MaximumPoints,Cylinder.AxisDirection,cancellation,Cylinder.MaximumConditionNumber,
+                    Cylinder.SelectedPointIndices.Count==0?null:Cylinder.SelectedPointIndices);
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
                 return AnalyzeSphere(root,Source,Surface.Threshold,Surface.SampleStep,
                     Surface.MaximumPoints,cancellation,Sphere.MaximumConditionNumber);
