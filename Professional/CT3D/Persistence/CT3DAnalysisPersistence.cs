@@ -83,6 +83,23 @@ namespace CxVisual.Professional.CT3D
             }
         }
 
+        /// <summary>从唯一MEM工程枚举所有CT3D专业Case；逐个复用Open的Hash/Frame/算法检验。
+        /// 任何一个来源损坏即整体失败，不返回似乎完整的部分测量集合。</summary>
+        public static IReadOnlyList<CT3DAnalysisCase> OpenAll(MEMEngineeringSession engineering,
+            string root,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            cancellation.ThrowIfCancellationRequested();
+            var result=new List<CT3DAnalysisCase>();
+            foreach(MEMContent owner in engineering.Project.DescendantsAndSelf().OfType<MEMContent>())
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if(owner.Aspects.Any(a=>a.Kind==MPMAspectKind.Data&&a.ProviderId==ProviderId))
+                    result.Add(Open(engineering,engineering.GetAddress(owner),root,cancellation));
+            }
+            return result.AsReadOnly();
+        }
+
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
         {
             // 元数据Aspect保持Schema1；结果制品V2增加明确种类，读取仍兼容已有V1 Mesh/平面。
