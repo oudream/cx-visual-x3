@@ -7,7 +7,7 @@ Foundation,CxVisual.Foundation.Volume,F12,Assembly-only skeleton,
 Foundation,CxVisual.Foundation.Data,F14 F15 F18 F21,Assembly-only skeleton,
 Foundation,CxVisual.Foundation.Infrastructure,F16 F19 F20,Implemented sample,
 Foundation,CxVisual.Foundation.Transport,F17,Channel runtime and FCM configuration implemented,CxVisual.Foundation.Data
-Mechanism,CxVisual.Mechanism.Core,M01-M08 M38 M39-Service,Implemented sample and Service module lifecycle,CxVisual.Foundation.Core
+Mechanism,CxVisual.Mechanism.Core,M01-M08 M38; Service module source moved from MLC,Implemented sample and Service module lifecycle,CxVisual.Foundation.Core
 Mechanism,CxVisual.Mechanism.Data,M09 M10 M35 M36,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Logic,M11 M12,Assembly-only skeleton,
 Mechanism,CxVisual.Mechanism.Connectivity,M13-M15,Connector Protocol PointTable DataMapping implemented,"CxVisual.Mechanism.Core, CxVisual.Foundation.Data, CxVisual.Foundation.Transport"
