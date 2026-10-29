@@ -128,3 +128,15 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 ## 20. SourceMap静态对象从原MOC运行编译器文件中无损分离
 
 将`MOCStepOrigin`和`MOCSourceMap`原样迁入`MOCSourceMap.cs`，保留历史namespace、构造与公开属性；原`MOCEngineeringCompiler`及`MOCTraceView`继续使用它们，不引入新映射真源。新增`MDCDecisionTests`正向TryResolve/Find一致性测试，并将其加入Decision Windows CI Runtime-free检查清单。此举降低后续27项目融合的源码耦合，但仍是同程序集的文件级重构，不能当成实际DLL分离和工程无环完成。
+
+## 21. D05静态Plan、控制语义与SourceMap解耦的固定Windows证据（2026-10-29）
+
+| 提交 | 实现范围 | Decision .NET48 | ModuleCenter CPU RAW |
+|---|---|---|---|
+| [c34e679d](https://github.com/oudream/cx-visual-x3/commit/c34e679db3771aaf10d63d9e902caf332b5182ba) | `MDCDeclarativePlan`首批Runtime-free结构索引、V1动态Loop/Branch/Try、V2边/端口/参数/策略、兼容绑定器 | [40835077828 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40835077828) | [40835077779 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40835077779) |
+| [f0af7af8](https://github.com/oudream/cx-visual-x3/commit/f0af7af8194a621f614cdc286ff63e9bccb98f34) | `MDCPlanSemanticIndex`结构化表达式/Branch/Loop/Catch/Wait/Exit/StateMachine强类型投影 | [40835739253 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40835739253) | [40835739229 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40835739229) |
+| [192a97eb](https://github.com/oudream/cx-visual-x3/commit/192a97ebbb372379925c17406658007f48a53ac0) | 原`MOCSourceMap`静态DTO原样独立源文件、保持SourceMap与Trace兼容 | [40836202294 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40836202294) | [40836202283 成功](https://github.com/oudream/cx-visual-x3/actions/runs/40836202283) |
+
+验证证据为Windows 2022 .NET Framework 4.8 x64构建、Decision专项和默认ArchitectureSmoke，并包含ModuleCenter CPU RAW已有WPF回归。真实CT/GPU/PLC/HIL/Field验收和跨项目运行实验未因此通过。
+
+**下一依赖门禁**：将目前仍由原MOC Compiler处理的复杂语义最终lowering变成完全自足、可版本化的执行描述；由MRK真实Loader消费并与现有Loop/Foreach/State/Trace/SourceMap Goldens等价；删除Orchestration对MRK的工程引用。之后才可安全实施27项目的`Logic+Orchestration→Decision`物理合并。当前仍28项目，勿将静态DTO拆文件误报为解环。

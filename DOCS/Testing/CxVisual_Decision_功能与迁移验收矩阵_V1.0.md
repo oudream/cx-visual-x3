@@ -473,3 +473,7 @@ CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明
 | MDC-106 | 原MOC编译的`SourceMap.Find`和`TryResolve`继续以同一StepId、ContentAddress和原BlockId返回对应SourceMap Origin，动态Loop/子流程正式回归不退化 |
 
 未宣称跨程序集迁移完成，真实执行Trace和SourceMap映射仍以原Studio/MRK测试为依据。
+
+### MDC-90～106的固定软件验收记录（2026-10-29）
+
+`c34e679d` → [Decision 40835077828](https://github.com/oudream/cx-visual-x3/actions/runs/40835077828)与[ModuleCenter 40835077779](https://github.com/oudream/cx-visual-x3/actions/runs/40835077779)，均Success；`f0af7af8` → [Decision 40835739253](https://github.com/oudream/cx-visual-x3/actions/runs/40835739253)与[ModuleCenter 40835739229](https://github.com/oudream/cx-visual-x3/actions/runs/40835739229)，均Success；`192a97eb` → [Decision 40836202294](https://github.com/oudream/cx-visual-x3/actions/runs/40836202294)与[ModuleCenter 40836202283](https://github.com/oudream/cx-visual-x3/actions/runs/40836202283)，均Success。当前只通过新增纯静态描述、强类型抽取与SourceMap文件级兼容范围，不代表`MDCPlan`已能脱离原MOC编译器独立被MRK加载运行，也不代表物理27项目重构及专业HIL完成。
