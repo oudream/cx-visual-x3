@@ -288,3 +288,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 **二维门禁收敛修正**：独立Mask/Region控件确实存在于“变换”页，旧自测先切到“输出”验收RAW后未切回，再按视觉树查找控件而失败。现按真实用户路径切回“变换”，仍要求按钮/半径输入可见，补充失败诊断，不改算法或用逻辑树访问隐藏控件冒充操作；完整本机`--imaging-viewer-smoke`退出0。新增毫米输入/真实按钮及此导航修正的新SHA CI须另核。
 
 **尚未交付**：矩形和法向偏移交互配方未独立持久化，重开保留的是有效Mesh顶点ROI/量值而非原矩形草稿；通用3D ROI形状/控制柄、正式Studio装配、跨资产ROI与Frame图、工业亚体素面/不确定度仍缺。继续扩展该业务链，不将此首条闭环当作完整B包或26能力验收。
+
+### 10.19 ROI通知只更新交互投影、统一失效与固定门禁
+
+固定提交`7ddb3c1663cd92f6af8f1beef134e7d80c17b621`的六个Windows工作流已全部SUCCESS：[CT3D B 40925092419](https://github.com/oudream/cx-visual-x3/actions/runs/40925092419)、[Imaging 40925092368](https://github.com/oudream/cx-visual-x3/actions/runs/40925092368)、[TestCenter 40925092677](https://github.com/oudream/cx-visual-x3/actions/runs/40925092677)、Command `40925092556`、Config L1 `40925092491`及Config公共底座 `40925092402`。这是ROI真实毫米输入/按钮、金色轮廓PNG和二维导航修正的固定证据；先前TestCenter UIA超时不据此改写为已定位修复，只记录本SHA后续成功。
+
+后续源码复查发现`SelectedSliceRectangle`通知会进入TestCenter的通用`RefreshSlices`，重建三张FIM图像且可能复位缩放；旧平面失效又只挂在MPW鼠标通知，直接MVI调用会漏掉。现将失效统一到当前MVI状态的ROI属性通知，选区只更新轮廓和专业结果，不重切片。MPW物理选区事件仍向外可用，但TestCenter不再重复消费同一事件。TCT与MPW收到后台模型通知时切回Dispatcher，并核对发送者仍是当前绑定，拒绝晚到旧状态通知。
+
+真实WPF新增反例：框选前后三张FIM Original对象保持相同、当前XY缩放保持不变；直接`ViewState.SelectRectangleRoi`也撤销旧Plane并禁用旧结果保存；后台`ClearRectangleRoi`在Dispatcher处理后同时清轮廓和Measurement。整条已有ROI拟合/保存竞争/多Case回归退出0；本机Release/Debug均0错误，日志`roi-no-reslice-wpf.log`、`roi-notify-release.log`和`roi-notify-debug.log`。不以此声明MVI模型所有并发写入或工业大数据均已认证；该通知收敛的新SHA CI另验。

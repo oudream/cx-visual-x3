@@ -273,6 +273,14 @@ namespace CxVisual.TestCenter.UI
                 Dispatcher.BeginInvoke(new Action(()=>OnStateChanged(sender,e)));
                 return;
             }
+            if(!Object.ReferenceEquals(sender,_state))return;
+            if(e.PropertyName=="SelectedSliceRectangle")
+            {
+                // ROI只影响交互轮廓和依赖结果，不重建三张原值切片或重置观察缩放。
+                // 直接MVI/SDK选区与MPW鼠标入口走同一失效路径。
+                OnSliceRectangleSelected(_state.SelectedSliceRectangle);
+                return;
+            }
             if(e.PropertyName=="SliceViewports")
             {
                 UpdateRenderedSliceViewports();

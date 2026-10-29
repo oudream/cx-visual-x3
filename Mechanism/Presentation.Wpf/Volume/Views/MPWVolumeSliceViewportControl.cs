@@ -88,6 +88,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         private void OnStateChanged(object sender,System.ComponentModel.PropertyChangedEventArgs e)
         {
+            if(!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(()=>OnStateChanged(sender,e)));
+                return;
+            }
+            if(!Object.ReferenceEquals(sender,_state))return;
             if(e.PropertyName=="SelectedSliceRectangle"||e.PropertyName=="All"||
                 e.PropertyName=="SliceX"||e.PropertyName=="SliceY"||e.PropertyName=="SliceZ")RefreshOverlay();
         }

@@ -103,3 +103,5 @@ Windows本地Build/Headless/WPF/GPU与GitHub CI分开登记；推送后只依据
 | B-ROI-03 | 真PNG包含选区金色像素 | 不能只登记HasRectangle标志或用SDK数值替代可见性 | 固定CI `40892609609` WPF/PNG成功；本机早期黑帧仍未关闭 |
 
 完整证据及边界见实施记录10.18。矩形/棱柱交互配方重开、通用3D工具、正式Studio和工业精度仍未验收；有效顶点ROI保存不等于这些项已交付。二维WPF导航修正与TestCenter通用UIA超时分别追踪，不能互相抵消。
+
+**固定升级**：`7ddb3c16`六个Windows门禁全部成功，CT3D B `40925092419`、Imaging `40925092368`及TestCenter `40925092677`覆盖输入按钮、ROI PNG和二维导航。后续B-ROI-04增加“三张FIM对象/缩放保持、直接MVI修改及后台清选区统一失效”的真实WPF反例，本机通过，新SHA CI另核；详见实施记录10.19。

@@ -343,7 +343,7 @@ namespace CxVisual.TestCenter.UI
             // 新的交互选区使当前平面作废；原Case只保留来源身份供后续保存/重新分析。
             if(_planeSceneItemId.HasValue)_state.Scene3D.Remove(_planeSceneItemId.Value);
             _planeSceneItemId=null;LastMeshPlaneFit=null;_planeRoi=null;
-            _status.Text=String.Format(CultureInfo.InvariantCulture,
+            _status.Text=rectangle==null?"切片选区已清除，原平面已失效。":String.Format(CultureInfo.InvariantCulture,
                 "{0} ROI已选；设置沿切片索引增加方向的偏移(mm)，再拟合局部平面。四角 ({1:0.###},{2:0.###},{3:0.###}) → ({4:0.###},{5:0.###},{6:0.###})",
                 rectangle.Plane,rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z,
                 rectangle.BottomRight.X,rectangle.BottomRight.Y,rectangle.BottomRight.Z);

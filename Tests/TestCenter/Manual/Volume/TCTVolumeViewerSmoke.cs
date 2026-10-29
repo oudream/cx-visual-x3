@@ -1049,6 +1049,11 @@ namespace CxVisual.TestCenter.UI
                 Action<FVOPhysicalSliceRectangle> roiListener=value=>reported=value;
                 var workbenchRoi=FindVisualByAutomationId<MPWVolumeFourViewWorkbenchControl>(
                     frame,"MPW.Volume.FourViewWorkbench");
+                var xyBeforeRoi=frame.XyViewer.Session.Original;
+                var xzBeforeRoi=frame.XzViewer.Session.Original;
+                var yzBeforeRoi=frame.YzViewer.Session.Original;
+                frame.XyViewer.Zoom(1.25);
+                double scaleBeforeRoi=frame.XyViewer.PrimaryViewportScale;
                 workbenchRoi.PhysicalRoiSelected+=roiListener;
                 var physicalRoi=viewport.SelectRectangleRoi(0,0,2,2);
                 workbenchRoi.PhysicalRoiSelected-=roiListener;
@@ -1056,6 +1061,11 @@ namespace CxVisual.TestCenter.UI
                     Object.ReferenceEquals(physicalRoi.SpatialFrame,frame.Volume.SpatialFrame)&&
                     physicalRoi.Plane==FVOSlicePlane.XY&&physicalRoi.Unit=="mm",
                     "WPF二维切片选区必须经MVI/FVO真正映射成物理三维ROI并向工作台通知");
+                Check(Object.ReferenceEquals(xyBeforeRoi,frame.XyViewer.Session.Original)&&
+                    Object.ReferenceEquals(xzBeforeRoi,frame.XzViewer.Session.Original)&&
+                    Object.ReferenceEquals(yzBeforeRoi,frame.YzViewer.Session.Original)&&
+                    Math.Abs(frame.XyViewer.PrimaryViewportScale-scaleBeforeRoi)<1e-7,
+                    "选区修改不得重建三张原值切片、重复提交纹理或重置当前观察缩放");
                 frame.AnalyzeCurrentVolumeMesh(1000,100);
                 viewport.SelectRectangleRoi(5,5,6,6);
                 var roiPlane=frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
@@ -1076,12 +1086,19 @@ namespace CxVisual.TestCenter.UI
                     "切换离开选区切片时隐藏轮廓而不把静态物理ROI移动到新切片");
                 frame.MoveSlices(6,6,6);
                 Check(viewport.Overlay.HasRectangleRoi,"回到选区切片后恢复同一物理ROI轮廓");
-                viewport.SelectRectangleRoi(0,0,2,2);
+                frame.ViewState.SelectRectangleRoi(FVOSlicePlane.XY,0,0,2,2,frame.Volume);
                 Check(frame.LastMeshPlaneFit==null&&!frame.Commands.Single(c=>c.Id=="ct3d.case.save").CanExecute(),
-                    "编辑ROI立即使旧平面失效，不得继续保存旧选区Measurement");
+                    "通过MVI/SDK直接编辑ROI也须立即使旧平面失效，不得继续保存旧选区Measurement");
                 bool emptyPrism=false;
                 try{frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);}catch(InvalidOperationException){emptyPrism=true;}
                 Check(emptyPrism&&frame.LastMeshPlaneFit==null,"无Mesh顶点的选区失败不回填旧平面");
+                viewport.SelectRectangleRoi(5,5,6,6);
+                frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
+                var roiState=frame.ViewState;
+                AwaitProfessional(System.Threading.Tasks.Task.Run(()=>roiState.ClearRectangleRoi()));
+                frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Background,new Action(delegate {}));
+                Check(frame.ViewState.SelectedSliceRectangle==null&&frame.LastMeshPlaneFit==null&&
+                    !viewport.Overlay.HasRectangleRoi,"后台MVI清选区须切回WPF线程并统一撤销轮廓和旧Measurement");
                 viewport.SelectRectangleRoi(5,5,6,6);
                 frame.AnalyzeCurrentMeshPlaneFromSliceRoi(.49,.51);
                 Check(FindVisualByAutomationId<Button>(frame,"TCT.Volume.SaveProfessionalCase")!=null &&
