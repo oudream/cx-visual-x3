@@ -1,0 +1,58 @@
+name: TestCenter Simulation MRK Real WPF UI Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Module/TCTSimulationStepPanel.cs'
+      - 'Tests/TestCenter/Manual/Module/TCTManualModuleFrame.cs'
+      - 'Tests/TestCenter/Verification/TCTSimulationStepUiSmoke.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Professional/Simulation/Modules/**'
+      - 'Professional/Simulation/CxVisual.Professional.Simulation.csproj'
+      - '.github/workflows/testcenter-simulation-step-ui-windows.yml'
+jobs:
+  simulation-mrk-uia:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter dependency restore failed' }
+      - name: Build TestCenter and real Simulation/MRK dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Build /m:1 /nr:false /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter Simulation x64 Build failed' }
+      - name: Actual WPF UIA Simulation MRK virtual model and fault recovery
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path Output/Debug/x64/CxVisual.TestCenter.exe).Path
+          $report=Join-Path (Split-Path $exe) 'TestCenter-Simulation-UIA-Report.txt'
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--module-simulation-ui-automation' -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            try {$p.Kill()} catch {}
+            throw 'Simulation WPF UIA timeout'
+          }
+          $p.Refresh()
+          if(Test-Path $report) {Get-Content $report}
+          if($p.ExitCode -ne 0) {throw "Simulation WPF real UIA failed: $($p.ExitCode)"}
+          if(-not (Test-Path $report)) {throw 'Missing Simulation UIA report'}
+          $lines=Get-Content $report
+          if(@($lines | Where-Object {$_ -like 'PASS TCT.Simulation.UIA*'}).Count -ne 1 -or
+             @($lines | Where-Object {$_ -like 'FAIL*'}).Count -ne 0) {
+             throw 'Simulation UIA did not assert genuine PSM/MRK recovery'
+          }
+      - name: Archive real model MRK WPF evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testcenter-simulation-mrk-real-uia
+          path: Output/Debug/x64/TestCenter-Simulation-UIA-Report.txt
+          if-no-files-found: warn
