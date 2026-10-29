@@ -69,6 +69,13 @@ namespace CxVisual.Mechanism.Decision
         /// <summary>Does not check Runtime, permissions or current equipment state.</summary>
         public void RequireCurrent(MEMProjectSnapshot project, MDCStaticCatalogSnapshot catalog)
         {
+            if(project==null)throw new ArgumentNullException("project");
+            if(catalog==null)throw new ArgumentNullException("catalog");
+            // 工程修订已不同，必须先报告Stale；新版源可能尚未形成合法可编译图，
+            // 不能在重建Manifest时以图结构异常掩盖已经确定的版本失效。
+            if(project.ProjectId!=ProjectId || project.Revision!=EngineeringRevision ||
+                !StringComparer.Ordinal.Equals(CatalogFingerprint,catalog.Fingerprint))
+                throw new InvalidOperationException("decision.source_manifest.stale");
             var fresh=new MDCStaticSourceManifestBuilder().Create(project,RootContentId,catalog);
             if (!StringComparer.Ordinal.Equals(Fingerprint,fresh.Fingerprint))
                 throw new InvalidOperationException("decision.source_manifest.stale");
