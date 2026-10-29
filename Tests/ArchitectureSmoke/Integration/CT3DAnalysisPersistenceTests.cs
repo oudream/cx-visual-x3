@@ -200,10 +200,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(var engineering=MEMEngineering.Create("Surface Sphere"))
             {
                 var owner=engineering.AddPage("Sphere").RootContent;
-                address=CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,folder,analysis,CancellationToken.None);
                 var second=CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,4000,CancellationToken.None,5000000);
                 var secondOwner=engineering.AddPage("Sphere 2").RootContent;
-                CT3DAnalysisPersistence.Commit(engineering,secondOwner,engineering.Revision,folder,second,CancellationToken.None);
+                int beforeBatch=engineering.Revision;
+                var committed=CT3DAnalysisPersistence.CommitAll(engineering,
+                    new[]{owner,secondOwner},beforeBatch,folder,
+                    new[]{analysis,second},CancellationToken.None);
+                address=committed[0];
+                Check(committed.Count==2&&engineering.Revision==beforeBatch+1,
+                    "同一MEM事务提交两个独立Feature仅增加一次工程Revision");
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.CommitAll(engineering,
+                    new[]{owner,secondOwner},beforeBatch,folder,
+                    new[]{analysis,second},CancellationToken.None));
+                Reject<ArgumentException>(()=>CT3DAnalysisPersistence.CommitAll(engineering,
+                    new[]{owner,owner},engineering.Revision,folder,
+                    new[]{analysis,second},CancellationToken.None));
+                engineering.Undo().RequireValue();
+                Reject<InvalidDataException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
+                engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None).Count==2,
+                    "MEM Undo/Redo必须同时移除及恢复同一批结果");
                 engineering.SaveAs(path);
             }
             using(var engineering=MEMEngineering.Open(path))
