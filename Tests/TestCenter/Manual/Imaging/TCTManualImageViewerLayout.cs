@@ -782,10 +782,13 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(Heading("导出  ·  区分原像素与视口截图"));
             WrapPanel export = Row();
             Action(export,"保存图像PNG","SaveRawPng",Save);
+            Action(export,"导出无损原像素RAW","ExportActiveRaw",ExportActiveRawWithDialog);
             Action(export,"保存含标注视口","SaveViewPng",SaveViewPng);
             Action(export,"复制图像","Copy",()=>_viewer.CopyToClipboard());
             Action(export,"导出测量/标注CSV","ExportMeasurements",ExportMeasurements);
             content.Children.Add(export);
+            content.Children.Add(Hint("RAW导出保存当前活动原图或结果图的真实像素，不包含窗位、伪彩、ROI或视口叠加。默认紧排小端；请记录宽高/像素格式/Stride后再导入，"
+                +"彩色通道保持BGR/BGRA原序。PNG视图与原像素是两种不同导出用途。"));
             content.Children.Add(Heading("RAW / 原始图像输入"));
             content.Children.Add(Row(Label("宽"),_rawWidth,Label("高"),_rawHeight));
             foreach (FIMPixelFormat format in new[] { FIMPixelFormat.Gray8,
