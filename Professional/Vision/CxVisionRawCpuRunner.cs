@@ -222,11 +222,34 @@ namespace CxVisual.Professional.Vision
                 contentId,medianRadius,true,options);
         }
 
+        /// <summary>
+        /// FIM原图直接进入正式MEM/MOC/MRK拆分算法链，不经RAW文件中转。
+        /// 工程Session由调用者拥有；所有中间Mask、Region、测量仍采用原Provider。
+        /// </summary>
+        public static Task<CxVisionCpuRun> ExecuteSeparatedMeasuredImageAsync(
+            MEMEngineeringSession session,CxVisionInspectionOptions options,long revision,
+            FIMImageBuffer image,string sourceId,int medianRadius,CancellationToken cancellation)
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(options==null)throw new ArgumentNullException("options");
+            if(string.IsNullOrWhiteSpace(sourceId))
+                throw new ArgumentException("必须提供真实图像来源身份","sourceId");
+            if(medianRadius<0||medianRadius>3)
+                throw new ArgumentOutOfRangeException("medianRadius");
+            cancellation.ThrowIfCancellationRequested();
+            byte[] raw=CxVisionImageInterop.ToPackedRawPixels(image,options.PixelDepth);
+            var vision=new CxVisionThresholdProvider(options,revision);
+            return ExecuteCoreAsync(session,vision,sourceId,image.Width,image.Height,
+                cancellation,true,medianRadius:medianRadius,splitNodes:true,
+                splitOptions:options,suppliedPixels:raw);
+        }
+
         private static async Task<CxVisionCpuRun> ExecuteCoreAsync(
             MEMEngineeringSession session,CxVisionThresholdProvider vision,
             string path,int width,int height,CancellationToken cancellation,
             bool includeMeasurement,Guid? existingContentId=null,int medianRadius=0,
-            bool splitNodes=false,CxVisionInspectionOptions splitOptions=null)
+            bool splitNodes=false,CxVisionInspectionOptions splitOptions=null,
+            byte[] suppliedPixels=null)
         {
             if(session==null)throw new ArgumentNullException("session");
             if(vision==null)throw new ArgumentNullException("vision");
@@ -236,7 +259,19 @@ namespace CxVisual.Professional.Vision
                 String.IsNullOrWhiteSpace(version))
                 throw new InvalidOperationException("CPU Vision配置版本不可用");
             // Validate before modifying the engineering project.
-            byte[] pixels=ReadRaw(path,width,height,vision.PixelDepth,cancellation);
+            byte[] pixels;
+            if(suppliedPixels==null)
+                pixels=ReadRaw(path,width,height,vision.PixelDepth,cancellation);
+            else
+            {
+                long count=(long)width*height;
+                int bytesPerPixel=vision.PixelDepth==CxVisionPixelDepth.Bits8?1:2;
+                if(count<=0||count>32000000L ||
+                   suppliedPixels.LongLength!=count*bytesPerPixel)
+                    throw new ArgumentException("内存RAW与图像尺寸和位深不一致","suppliedPixels");
+                cancellation.ThrowIfCancellationRequested();
+                pixels=(byte[])suppliedPixels.Clone();
+            }
             cancellation.ThrowIfCancellationRequested();
             CxVisionAcceptedRegionMeasureProvider measureProvider=includeMeasurement ?
                 new CxVisionAcceptedRegionMeasureProvider(vision) : null;
