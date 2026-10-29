@@ -911,6 +911,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             input.CopyPixels().SequenceEqual(storage),
                             "R1工程保存重开后内存图重跑丢失身份、像素、轮廓或修改工程");
 
+                        // R1同一次Run的Region/Contour/Measurement可机器复核地导出，
+                        // CSV只是文本证据，不伪造Image/Mask二进制Artifact。
+                        CxVisionRunSummary withContours=
+                            repeated.Evidence.WithThresholdMaskContours();
+                        string csvText;
+                        using(var csvWriter=new StringWriter(CultureInfo.InvariantCulture))
+                        {
+                            CxVisionRunCsvExporter.Write(csvWriter,withContours);
+                            csvText=csvWriter.ToString();
+                        }
+                        Check(csvText.StartsWith("schema_version,run_id,source_id,") &&
+                            csvText.Contains(repeated.FlowId.ToString("N")) &&
+                            csvText.Contains("r1/camera/frame-001") &&
+                            csvText.Contains("\"ThresholdMask\"") &&
+                            csvText.Contains("\"Measurement\"") &&
+                            csvText.Contains("\"Contour\"") &&
+                            csvText.Contains("\"3\"") &&
+                            csvText.Contains("\"px²\""),
+                            "R1结构化CSV未保持Run、Source和数值单位");
+                        var formula=CxVisionRunSummary.FromInspection(Guid.NewGuid(),
+                            "=SUM(1,2)",repeated.Inspection);
+                        using(var csvWriter=new StringWriter(CultureInfo.InvariantCulture))
+                        {
+                            CxVisionRunCsvExporter.Write(csvWriter,formula);
+                            Check(csvWriter.ToString().Contains("'=SUM(1,2)"),
+                                "来自外部SourceId的表格公式必须作为文字导出");
+                        }
+                        string resultCsv=Path.Combine(Path.GetTempPath(),
+                            "r1-result-"+Guid.NewGuid().ToString("N")+".csv");
+                        try
+                        {
+                            File.WriteAllText(resultCsv,"previous evidence");
+                            Reject<IOException>(()=>CxVisionRunCsvExporter.SaveFile(
+                                resultCsv,withContours),
+                                "R1 CSV默认禁止覆盖已有结果");
+                            Check(File.ReadAllText(resultCsv)=="previous evidence",
+                                "R1拒绝覆盖不得改写先前结果");
+                            CxVisionRunCsvExporter.SaveFile(resultCsv,withContours,
+                                overwrite:true);
+                            Check(File.ReadAllText(resultCsv).Contains(
+                                repeated.FlowId.ToString("N")),
+                                "R1原子CSV保存后丢失当前Run证据");
+                            using(var stopped=new CancellationTokenSource())
+                            {
+                                stopped.Cancel();
+                                Reject<OperationCanceledException>(()=>
+                                    CxVisionRunCsvExporter.SaveFile(resultCsv,
+                                        withContours,overwrite:true,
+                                        cancellation:stopped.Token),
+                                    "取消CSV导出不得覆盖已有结果");
+                            }
+                            Check(File.ReadAllText(resultCsv).Contains(
+                                repeated.FlowId.ToString("N")),
+                                "R1取消导出污染已保存的证据");
+                        }
+                        finally{if(File.Exists(resultCsv))File.Delete(resultCsv);}
                         // 输入错误与非法操作绝不能改变已保存工程。
                         Reject<ArgumentException>(()=>
                             CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
