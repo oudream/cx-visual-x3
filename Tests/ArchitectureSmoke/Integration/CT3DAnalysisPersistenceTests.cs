@@ -105,6 +105,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     restored.Plane.SourceMeshResultId==restored.Mesh.ResultId &&
                     restored.Mesh.Mesh.TriangleCount==48 && restored.SelectedVertexIndices.SequenceEqual(analysis.SelectedVertexIndices),
                     "关闭重开保留来源/空间签名/结果身份/局部ROI与Mesh");
+                Check(restored.RoiSignature==analysis.RoiSignature&&
+                    restored.RoiSignature!=null&&restored.RoiSignature.Length==64,
+                    "原RAW和选中毫米ROI在MEM重开后保持稳定身份");
                 Check(restored.Source.SpatialFrame!=frame &&
                     Math.Abs(restored.Plane.SignedDistanceMm(new FVOPhysicalPoint3D(25,35,47.5),restored.Source.SpatialFrame)-1)<1e-9,
                     "重建Frame对象后仍可在恢复的同一Frame内测量");
@@ -118,6 +121,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(recomputed.Mesh.ResultId!=restored.Mesh.ResultId &&
                     recomputed.Plane.ResultId!=restored.Plane.ResultId &&
                     recomputed.Source.Signature==restored.Source.Signature &&
+                    recomputed.RoiSignature==restored.RoiSignature &&
                     Math.Abs(recomputed.Plane.PointMm.Z-restored.Plane.PointMm.Z)<1e-10 &&
                     recomputed.Mesh.Mesh.TriangleIndices.SequenceEqual(restored.Mesh.Mesh.TriangleIndices),
                     "复算形成新结果身份且几何量值一致");
