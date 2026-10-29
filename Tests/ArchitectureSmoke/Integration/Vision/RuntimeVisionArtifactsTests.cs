@@ -299,9 +299,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             string name="vision-moc-"+Guid.NewGuid().ToString("N");
             string rawPath=Path.Combine(Path.GetTempPath(),name+".raw");
+            string resizedPath=Path.Combine(Path.GetTempPath(),name+"-resized.raw");
             string projectPath=Path.Combine(Path.GetTempPath(),name+".cxproj");
             File.WriteAllBytes(rawPath,new byte[] {
                 210,210,0,0,0, 210,0,0,0,0, 0,0,0,0,250 });
+            // Separate malformed RAW length from a valid 6x3 RAW whose dimensions
+            // conflict with the saved 5x3 engineering parameters.
+            File.WriteAllBytes(resizedPath,new byte[18]);
             try
             {
                 var provider=new CxVisionThresholdProvider(
@@ -385,7 +389,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "重新打开的MEM工程未能无编辑重绑RAW后执行正式MOC测量");
                     Reject<InvalidOperationException>(()=>
                         CxVisionRawCpuRunner.ExecuteSavedMeasuredAsync(
-                            reopened,content.Id,provider,rawPath,6,3,CancellationToken.None)
+                            reopened,content.Id,provider,resizedPath,6,3,CancellationToken.None)
                         .GetAwaiter().GetResult(),
                         "重绑输入尺寸与已保存的工程参数冲突必须拒绝");
                     Check(reopened.GetSnapshot().Revision==savedRevision,
@@ -409,6 +413,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally
             {
                 if(File.Exists(rawPath))File.Delete(rawPath);
+                if(File.Exists(resizedPath))File.Delete(resizedPath);
                 if(File.Exists(projectPath))File.Delete(projectPath);
             }
         }
