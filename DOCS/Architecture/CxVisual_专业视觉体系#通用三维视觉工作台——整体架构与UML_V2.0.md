@@ -2,7 +2,7 @@
 
 > **身份：唯一三维总体架构主文档；R5先从用户目标推导完整目标对象，再比较现状，仍属架构评审候选，不等于新增公共API/Owner已批准。** 本次审核日期：2026-10-29；源码核对基线：`master@0487b050f73fff9b3efe03e561ca017b9a02e16a`；本轮仅修改设计与导航，未重新编译、运行测试或在线复核历史CI。
 > **核心原则：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**  
-> **阅读顺序**：§0～2（需求推导/26项能力）→§3～6（Owner、数据、对象、GPU、专业计算）→**附录E（完整目标类职责、协作关系与26项对应）**→**附录F（对象身份、OOP/GoF/AOP、UML及验收合同）**→§7～8（工业操作/接口时序）→§9～14（源码、证据、实施、决议）；附录A/B为专题UML，C为原文存在性索引，D为实施检查表。
+> **阅读顺序**：§0～2（需求推导/26项能力）→§3～6（Owner、数据、对象、GPU、专业计算）→**附录E（完整目标类职责、协作关系与26项对应）**→**附录F（对象身份、OOP/GoF/AOP、UML及验收合同）**→**附录G（全类唯一性、公共API与工业闭环收敛）**→§7～8（工业操作/接口时序）→§9～14（源码、证据、实施、决议）；附录A/B为专题UML，C为原文存在性索引，D为实施检查表。
 > **状态图例**：【E】现有源码、【R】现有类需调整、【N】候选新增、【P】远期规划、【T】固定提交自动测试、【H】真实GPU/工业样本尚未实证。**E≠T，T≠H**。  
 > **不可突破**：F/M/P和28项目/135子方面Owner、唯一MEM工程真源、CT3D与MPW不形成循环引用、TestCenter只验收、ReferTo/Vision只读，不另建第二套资源/命令/执行/Undo/专业数据体系。  
 > **需求来源更新**：用户2026-10-29提供两张目标截图，直接可读范围为**R11～R64，共54条**；R01～R10与R65～R90共36条仍无原文。截图是需求证据，不是其中提及SDK已安装或功能已实现的证据。DOCS/04本轮定向读取F_Geometry/F_Volume/M_Visual/M_PresentationWpf，发现F06/F07与F12的Mesh候选重叠；DOCS/02～04尚未完成全Sheet交叉裁决，新增Owner仍按ADR处理。
@@ -1863,3 +1863,132 @@ UI-->>User: 恢复结果或显示需重算的诊断
 | P1 | 高级CAD/Inspection/缺陷/厚度 | 经专业适配和已验证质量合同逐条纵切片 | 正反工业样本、CAD SDK证据及报告一致性 |
 
 **R5评审结论**：既有F/M/P、MEM唯一工程真源、FVO原值、FGE/FNU通用数值、CT3D专业算法、MVI会话、MPW渲染边界继续保留；本附录强化**对象语义、接口资格、设计模式准入、失败一致性及验收**，不批准全部候选类型，不宣称原有26项已经交付。本轮仅为文档优化，编译/CI/GPU/工业精度**未验证**。
+
+---
+
+## 附录 G｜三项架构收敛审计：Owner、开发者合同与工业闭环（R5.1）
+
+> **审查性质**：针对2026-10-29用户确认的三项收敛目标，补充候选全类的去重规则、面向开发者的最小公共合同及可执行验收准入。只补充本架构主文，不创竞争性总纲。**评审已深化，不等于架构ADR全部签署，也不等于相应源码/设备已实现。** 本轮文档核实基线master为 `3ccaa397f7155ed7ba5a7d73cbb41545a29c74c7`，所列证据仅代表已核实的文件与先前固定SHA历史测试，不宣称此版本Windows/GPU通过。
+
+### G.1 逐类Owner判定规则与去重清单
+
+定义**对象唯一性七问**：①谁拥有权威数值/状态？②是否具有独立身份和版本？③相同语义是否已有类？④是不可变值对象还是有生命周期资源？⑤哪一层使用它、是否导致逆向项目引用？⑥是否能在不启WPF下被专业算法调用？⑦移除该类能否由现有API完整替代？七问未回答，不批准新增公开类型。
+
+| 目标概念 | 现有可复用证据/真正Owner | 收敛建议（不得直接等同已实施） | 禁止重叠 |
+|---|---|---|---|
+| RAW、体素租约、Volume Region | FVO的FVOVolumeData、FVOOriginalScalarLease【E】 | Region/Chunk是FVO扩展；读取请求表达精度和预算；租约保护跨线程使用 | CT3D私有Volume与MPW原值仓库 |
+| Pixel与切片 | FIM二维缓冲/FVO切片【E基础】 | SliceSamplingMap由FVO声明从像素到物理体素的映射；二维工具经MVI使用 | 将屏幕像素当计量原值 |
+| 点、向量、Mesh、空间运算 | FGE的FGETriangleMesh3D【E】、FVO SpatialFrame【E】 | 纯通用几何归FGE；Frame图/单位归属待ADR-02核准 | CT3D重复矩阵、MPW私有物理坐标合同 |
+| SVD/最小二乘 | FNU FitPlaneBySvd【E】 | 复用FNU数值核；专业拟合阈值/工艺归CT3D | CT3D重写SVD库 |
+| Surface、Feature、Registration、Measurement | CT3D局部Mesh、平面/球分析【E初步】 | 按专业语义分离Result/Parameter/Quality，优先扩展已有结果 | FGE持有GD&T/阈值工艺 |
+| Quality判定、Defect复核 | CT3D提供数据与数值；Inspection处理业务决策【目标边界】 | 几何误差和质量规则分离；Report引用已确定结果 | 用MPW色谱直接判合格 |
+| 工程资源、Artifact和Undo | MEMAssetReference【E静态资源】、现有MEM工程真源 | 先按真实容量和提交合同设计外部Artifact与来源依赖；ADR-03/09/11待批准 | CT3D CasePackage第二工程仓库 |
+| 临时数据/计算态 | MDS Heap、MRK运行【现有机制】 | 接入现有变量/运行/任务；外部大型数据以租约传入 | CT3D私有Heap、TaskScheduler |
+| Scene、Camera、Selection | MVI3DSceneState【E】，MVI3DCameraState【E】 | Session快照/子元素选择扩展MVI，会话身份与资产身份区分 | Scene二次持久工程树 |
+| WPF、多视图、GPU资源 | MPW现有Volume四视图/OpenGL【E】 | Renderer读取中立快照；GPU代次与预算归MPW | 专业结果持有WPF/GL句柄 |
+| Timeline/工程关键帧 | MEM工程定义 + MVI播放会话【N】 | 同一Keyframe只定义一次；动画结果可确定性重放 | UI局部隐藏动画文件替代工程持久化 |
+| CAD内核、VTK/ITK/HALCON | 外部SDK真实路径与许可证待核 | Adapter隔离所有权、精确B-Rep与三角代理分离 | 未验证SDK直接暴露为基础公共API |
+
+**类型裁剪决定**：`3DObject`、`DataHandle`、`CasePackage`、`UniversalProcessor`等抽象在没有既有契约审查和不可替代用途前不批准；已有`MEMAssetReference`不能被误认为支持任意GB级RAW。附录E的类名作为目标槽位而非强制实例化清单；`CT3DCaseSession`须证明比宿主编排+现有MRK多提供哪项必要专业会话能力，方可批准。
+
+### G.2 开发者公共合同：最小且可完整调用
+
+开发者看到的目标路径应同时支持高级便捷入口与细粒度组合；以下仅为**语义签名示例，不是已存在SDK**。
+
+```csharp
+// 候选语义：具体接口位置/参数和类型名称由Owner ADR后定案。
+ProfessionalResultRef Run<TParameters>(
+    ProfessionalOperationId operation,
+    IReadOnlyList<ProfessionalAssetRef> inputs,
+    TParameters parameters,
+    ProfessionalRunOptions options,
+    CancellationToken cancellationToken);
+
+ProfessionalResultSnapshot ResolveResult(ProfessionalResultRef reference);
+void Present(MVI3DSceneState scene, ProfessionalResultRef reference);
+```
+
+**输入合同必备**：类型化AssetRef、ContentHash/SourceRevision、FrameRef/FrameRevision、单位、必要的ROI或子元素语义、算法参数和资源预算。禁止仅凭`string sourceRef`判定所有版本和物理等价性。
+
+**输出合同必备**：ResultId、输入签名集合、算法标识与版本、参数Hash、质量指标及警告、数值单位、结果状态、可用于后续算法的Feature/Geometry引用；未通过质量门禁时不得直接报告工业量值合格。
+
+**故障合同必备**：InvalidInput、PrecisionUnavailable、FrameMismatch、DegenerateGeometry、BudgetExceeded、Cancelled、SourceChanged、Stale、ArtifactMissing、BackendUnavailable及UnexpectedError；错误分类的精确定义需与现有错误模型对照后采用，禁止另创不相容全局错误体系。
+
+**生命周期合同必备**：Acquire/Dispose租约、不可变结果、版本复核、临时Artifact的原子发布与失败清理；长任务不持有长时间MEM工程写锁。算法执行不得依赖WPF Dispatcher或GL Context。
+
+**使用便利性**：开发者既可一条调用完成常规分析，也可组合Surface→Fit→Measurement；SDK入口暴露可发现的能力、参数Schema、诊断和结果解释。包装仅发生在业务边界，避免逐体素虚调用/动态代理；同一专业算法由Headless和Studio调用，不复制实现。
+
+### G.3 UML｜资产、操作与场景的类型关系（目标合同）
+
+```mermaid
+classDiagram
+direction LR
+class ProfessionalAssetRef {
+  +AssetId
+  +SourceRevision
+  +ContentHash
+  +FrameRef
+}
+class ProfessionalOperation {
+  <<interface candidate>>
+  +Execute(inputs,params,token)
+}
+class OperationInput {
+  +ROIRef
+  +TypedInputs
+  +Parameters
+}
+class ProfessionalResultRef {
+  +ResultId
+  +InputSignatures
+  +AlgorithmVersion
+  +Quality
+}
+class MVI3DSceneItem {
+  +Id
+  +SourceRef
+  +SourceRevision
+  +SpatialFrameRef
+}
+class MEMContent {
+  +StableId
+}
+ProfessionalOperation ..> OperationInput
+OperationInput --> ProfessionalAssetRef
+ProfessionalOperation ..> ProfessionalResultRef
+ProfessionalResultRef --> ProfessionalAssetRef : provenance
+MVI3DSceneItem --> ProfessionalResultRef : display-only
+MEMContent o-- ProfessionalAssetRef : persistent reference
+MEMContent o-- ProfessionalResultRef : registered result
+```
+
+**UML边界解释**：只是概念关联，不允许由图直接生成跨程序集项目引用。Studio/独立宿主作为Composition Root链接MEM/MRK/CT3D/MVI/MPW，Headless客户端仅链接专业API与必须的基础/机制合同。
+
+### G.4 三条纵向业务闭环的验收规格
+
+| 闭环 | 最小真实数据与操作 | 必须具备的正常结果 | 必须覆盖的反例 |
+|---|---|---|---|
+| A 工业计量 | UInt16/Float32 RAW→空间标定→ROI→Surface/Mesh→平面/球/圆柱Feature→测量 | 物理毫米、法向/残差、来源版本、质量，保存重开后同源重算可复现 | NaN、未标定、退化ROI、Mesh重建导致索引失效、Frame不一致、错误单位、标准件误差 |
+| B CAD比较 | 精确CAD装载与单位核验→CT Surface→Datum/Registration→signed deviation→报告 | 稳定的CT/CAD变换方向、误差统计、色谱与数字报告同一结果来源 | STEP文件损坏、SDK缺失/授权失效、镜像或变换方向反、未收敛、仅Proxy作为精确B-Rep |
+| C 检测/装配 | 原始Volume→多材料Mask→缺陷/壁厚/装配间隙→Inspection判定→批量报告 | 缺陷空间位置/体积、最薄点、质量规则版本、任务结果与审核信息 | 触边、分割误差、厚度多解、材料界面不确定、任务取消、规则变更旧结果失效 |
+| D 场景与动画 | Volume+Mask+Mesh+CAD+测量引用组合→四视图→交互→Timeline→保存重放 | 同一对象多视图一致、播放与关键帧可重现，MPW真实显示可回退 | 关闭后旧回调、丢失Artifact、GPU Context重建、透明深度错误、帧序/源版本漂移 |
+
+验收应**分五级**：G1编译与依赖 DAG；G2 Headless合成真值和反例；G3真实WPF窗口操作；G4 NVIDIA/AMD/Intel目标GPU实际像素/性能/显存；G5工业样本、校准标准件及误差预算。G2不能替代G4/G5。
+
+### G.5 OOP/GoF/AOP 实施裁剪及核查门禁
+
+- **OOP**：先稳定职责与所有权，再决定类/接口；Frame、参数、Transform偏向不可变值；Asset/Result有稳定身份；算法为独立服务；Scene仅引用。每次新增公共类型写明替代现有哪一抽象，或者为什么无法复用。
+- **GoF**：Strategy用于真正多种算法，Adapter隔离外部CAD/VTK/ITK/HALCON，Composite映射既有Group/Assembly，Command复用MRK/MEM，Observer带Revision合帧，State控制工具/GPU，Facade降低SDK使用门槛。每次模式引入需附**第二实现或变化证明**和单元测试；不得按模式名称创造空层级。
+- **AOP**：参数/权限/审计/计时/取消/预算/结果质量/来源签名统一包在操作边界；不在RAW热点循环、三角构造和每个GL Draw中使用动态代理。通过输入变化时旧结果拒绝、异常释放、重复执行幂等三个反例验收横切机制。
+
+### G.6 验收与裁决状态（真实、可维护）
+
+| 审查项 | 本轮结论 | 剩余门禁 |
+|---|---|---|
+| 全类身份和Owner | 已形成逐类收敛矩阵及禁止重叠原则【设计深化】 | DOCS/02～04全Sheet逐项审核、ADR-02/03/09/11签收 |
+| API可开发性 | 明确输入/输出/错误/租约与SDK使用路径【候选合同】 | 对照现有真实接口、编译兼容与Versioned serialization |
+| 端到端闭环 | 四条正反路径及G1～G5分级【验收设计】 | 专业Asset/Artifact真实代码、Windows运行、设备/工业样本 |
+| 26项与90条要求 | 26项保持主文唯一追踪，已收到截图R11～R64 | R01～R10、R65～R90原文仍缺，**不得凭推测签收全部90条** |
+| 第三方复用 | 保持ReferTo/Vision只读；确立Adapter/许可验收 | 物理SDK/DLL/设备驱动和真实CAD数据尚待核实 |
+
+**收敛判断**：总体架构方向收敛；**接口与Owner裁决尚未完全收敛**。只有当各目标类型完成Owner核对、最小公开API有可执行样例、四条业务链通过适用G1～G5且没有第二真源时，才可标记“实现与验收收敛”。这一判断不会通过增加文档篇幅自动升级。
