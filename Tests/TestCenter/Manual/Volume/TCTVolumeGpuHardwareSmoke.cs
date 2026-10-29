@@ -4,6 +4,9 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using CxVisual.Foundation.Geometry;
+using CxVisual.Foundation.Volume;
+using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -18,6 +21,25 @@ namespace CxVisual.TestCenter.UI
         private static IntPtr CursorPoint(int x,int y)
         {
             return new IntPtr((y<<16)|(x&0xffff));
+        }
+        private static FGEPoint3D PhysicalVertex(FVOVolumeSpatialFrame frame,int x,int y,int z)
+        {
+            FVOPhysicalPoint3D p=frame.VoxelToPhysical(x,y,z);
+            return new FGEPoint3D(p.X,p.Y,p.Z);
+        }
+        private static int FrameDifference(BitmapSource before,BitmapSource after)
+        {
+            if(before.PixelWidth!=after.PixelWidth||before.PixelHeight!=after.PixelHeight)
+                throw new InvalidOperationException("GPU多对象渲染后帧尺寸被意外修改。");
+            int stride=checked(before.PixelWidth*4);
+            byte[] a=new byte[checked(stride*before.PixelHeight)];
+            byte[] b=new byte[a.Length];
+            before.CopyPixels(a,stride,0);after.CopyPixels(b,stride,0);
+            int different=0;
+            for(int i=0;i<a.Length;i+=4)
+                if(Math.Abs(a[i]-b[i])+Math.Abs(a[i+1]-b[i+1])+
+                   Math.Abs(a[i+2]-b[i+2])>=40)different++;
+            return different;
         }
         public static void Run()
         {
@@ -78,6 +100,28 @@ namespace CxVisual.TestCenter.UI
                     if(rgba[i]>35 || rgba[i+1]>35 || rgba[i+2]>35) nonBackground++;
                 if(nonBackground<200)
                     throw new InvalidOperationException("GPU帧只有清屏色，没有真实Raymarch/切面像素。");
+                // G4真实显卡：三角面由FGE毫米Mesh经现有MPW空间投影上传GL，
+                // 截图须发生真实像素变化，而不是仅登记一个面数。
+                FVOVolumeData volume=frame.Volume;
+                var spatial=volume.SpatialFrame;
+                int vx=volume.OriginalWidth,vy=volume.OriginalHeight,vz=volume.OriginalDepth;
+                var originalMesh=new FGETriangleMesh3D(new[]{
+                    PhysicalVertex(spatial,vx/3,vy/3,vz/3),
+                    PhysicalVertex(spatial,2*vx/3,vy/3,vz/3),
+                    PhysicalVertex(spatial,vx/3,2*vy/3,vz/3),
+                    PhysicalVertex(spatial,vx/3,vy/3,2*vz/3)
+                },new[]{0,2,1,0,1,3,0,3,2,1,2,3});
+                MPWVolumeDisplayMesh projected=MPWVolumeSurfaceProjection.ProjectMesh(
+                    originalMesh,spatial,vx,vy,vz);
+                gl.SetSurfaceMesh(projected);
+                BitmapSource meshImage=frame.CaptureGpuFrameForTest();
+                if(gl.SurfaceMeshTriangleCount!=4||
+                    FrameDifference(pixels,meshImage)<250)
+                    throw new InvalidOperationException(
+                        "真实GPU Mesh VBO与深度绘制未造成可观察像素变化。");
+                gl.ClearSurfaceMesh();
+                if(gl.SurfaceMeshTriangleCount!=0)
+                    throw new InvalidOperationException("GPU Mesh清理后仍保留三角面引用。");
                 string path=Environment.GetEnvironmentVariable("CXVISUAL_GPU_UI_SCREENSHOT");
                 if(string.IsNullOrEmpty(path))
                     path=Path.Combine(Path.GetTempPath(),"CxVisual-GPU-Hardware-Raymarch.png");
