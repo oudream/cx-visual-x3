@@ -470,7 +470,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if(!File.Exists(rawFixture)||!File.Exists(projectFixture)||
                 !Directory.Exists(Path.Combine(fixture,"artifacts","ct3d")))
             {
-                Console.WriteLine("SKIP CT3D fixed schema1 compatibility: legacy fixture absent; external binary acceptance pending");
+                // 正式兼容性门禁必须失败，不能把外部历史资产缺失视为通过。
+                if(String.Equals(Environment.GetEnvironmentVariable("CXVISUAL_CT3D_REQUIRE_LEGACY_FIXTURE"),
+                    "1",StringComparison.Ordinal))
+                    throw new FileNotFoundException(
+                        "A包严格Schema1验收要求真实旧版DLL生成的RAW、工程与Artifact；当前fixture不完整。",
+                        fixture);
+                Console.WriteLine("SKIP CT3D fixed schema1 compatibility: legacy fixture absent; set CXVISUAL_CT3D_REQUIRE_LEGACY_FIXTURE=1 for strict acceptance");
                 return;
             }
             string migrated=Path.Combine(folder,"schema1-migrated");Directory.CreateDirectory(migrated);
