@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gogo/hy/common/monitorc"
+	"gogo/internal/monitorc"
 )
 
 type DealMonC struct{}

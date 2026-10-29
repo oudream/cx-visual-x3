@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 	"os"
 	"path/filepath"
 	"sort"

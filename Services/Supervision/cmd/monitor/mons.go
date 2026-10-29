@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"gogo/common/channels"
 	"gogo/common/utilities"
-	"gogo/hy/common/monitorc"
-	"gogo/hy/common/program"
+	"gogo/internal/monitorc"
+	"gogo/internal/program"
 	"net"
 )
 

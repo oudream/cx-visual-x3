@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"gogo/common/utilities"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 	"path/filepath"
 )
 

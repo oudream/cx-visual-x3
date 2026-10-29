@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"gogo/common/channels"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 	"unsafe"
 )
 

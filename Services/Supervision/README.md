@@ -7,24 +7,26 @@
 - 原仓库：`oudream/device_communicator`
 - 原仓固定提交：`18b5313d8c0c350f3a8cc723f57120cf9e551156`
 - 用户上传源码：`device_communicator.zip`（本次迁移交叉核验来源；ZIP 为 CRLF，Git Blob 为 LF，源码语义一致）
-- 保留原 `module gogo`、原 `hy/monitor`、`hy/daemon`、`hy/common/{monitorc,daemonc,program}`、`common/{channels,models,utilities}` 共 8 个本地 Go 包，以及 `go.mod/go.sum`。
+- 保留原 `module gogo`、现已整理为 `cmd/monitor`、`cmd/daemon`、`internal/{monitorc,daemonc,program}`（原仓分别位于 `hy/monitor`、`hy/daemon`、`hy/common/`）、`common/{channels,models,utilities}` 共 8 个本地 Go 包，以及 `go.mod/go.sum`。
 - 迁入 55 份原始 Go 源码。未复制原 IoT HTTP Server、数据采集业务、生产数据库、密钥、用户配置、可执行文件等不属于两个入口编译闭包的文件。
 
 ## 构建（在本目录运行）
 
 ```bash
 go mod download
-go build -o ./out/monitor ./hy/monitor
-go build -o ./out/daemon ./hy/daemon
-go test ./hy/monitor ./hy/daemon ./hy/common/monitorc ./hy/common/daemonc ./hy/common/program ./common/channels ./common/models ./common/utilities
+go build -o ./out/monitor ./cmd/monitor
+go build -o ./out/daemon ./cmd/daemon
+go test ./cmd/monitor ./cmd/daemon ./internal/monitorc ./internal/daemonc ./internal/program ./common/channels ./common/models ./common/utilities
 ```
+
+目录约定：`cmd/` 为独立程序入口；`internal/` 为 Go 限制外部引用的内部实现；原 `common/` 仍是基础工具代码。首次迁移 commit `d23e46e` 保留了原结构，本次只调整目录和 import，不修改监控守护业务逻辑。
 
 Go 模块含 `github.com/mattn/go-sqlite3`，请在目标系统提供可用的 CGO/C 工具链和 SQLite3 编译条件。**仅编译通过不等于数据库驱动在目标 OS 可工作。** `go.mod` 为旧仓版本（Go 1.19）；当前不做依赖升级。
 
 ## 原有部署语义
 
-- Monitor：`hy/monitor`，提供运行状态、心跳/UDP 和 HTTP `GET /programs_status`；从工作目录读取 `conf/sys.config.*`。
-- Daemon：`hy/daemon`，按工作目录的进程数据库启动与守护所配置的子程序；涉及进程终止/重启，**不得在 CI 中无隔离直接运行**。
+- Monitor：`cmd/monitor`，提供运行状态、心跳/UDP 和 HTTP `GET /programs_status`；从工作目录读取 `conf/sys.config.*`。
+- Daemon：`cmd/daemon`，按工作目录的进程数据库启动与守护所配置的子程序；涉及进程终止/重启，**不得在 CI 中无隔离直接运行**。
 - 两者原有 `-d` 参数指定工作目录。原代码使用 `db/`、`log/`、`backup/` 等目录，且数据库中程序条目需对应部署机器环境。请在隔离环境准备真实配置与程序清单。
 - 部署示例配置不含秘密或现场地址。不要将真实 `conf/`、`db/`、`log/`、API 令牌、生产设备地址提交到此公开仓库。
 

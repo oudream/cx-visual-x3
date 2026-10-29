@@ -4,7 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 )
 
 // -d /userdata/hy -i programs1

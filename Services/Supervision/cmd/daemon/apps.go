@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 	"sync"
 )
 

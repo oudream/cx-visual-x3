@@ -52,7 +52,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: false
-      - name: Build legacy Monitor and Daemon
+      - name: Build Monitor and Daemon
         if: ${{ hashFiles('Services/Supervision/go.mod') != '' }}
         shell: bash
         working-directory: Services/Supervision
@@ -60,10 +60,14 @@ jobs:
           set -euo pipefail
           go version
           go env CGO_ENABLED
+          if [[ -d hy ]]; then echo "::error::Unexpected legacy hy directory"; exit 1; fi
+          if grep -R -n '"gogo/hy/' --include="*.go" cmd internal common; then
+            echo "::error::Legacy import remains"; exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/supervision-bin"
           ext=""
           if [[ "$RUNNER_OS" == "Windows" ]]; then ext=".exe"; fi
-          go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./hy/monitor
-          go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./hy/daemon
-          go test -count=1 ./hy/common/monitorc ./hy/common/daemonc ./hy/common/program
+          go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./cmd/monitor
+          go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./cmd/daemon
+          go test -count=1 ./cmd/monitor ./cmd/daemon ./internal/monitorc ./internal/daemonc ./internal/program ./common/channels ./common/models ./common/utilities
           echo "Built and smoke-tested Monitor and Daemon for $RUNNER_OS"

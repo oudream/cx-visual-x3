@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"gogo/common/utilities"
-	"gogo/hy/common/program"
+	"gogo/internal/program"
 	"log"
 	"os"
 	"os/exec"

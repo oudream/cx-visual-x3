@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"gogo/common/utilities"
-	"gogo/hy/common/monitorc"
-	"gogo/hy/common/program"
+	"gogo/internal/monitorc"
+	"gogo/internal/program"
 	"time"
 )
 
