@@ -83,6 +83,23 @@ namespace CxVisual.Professional.CT3D
             }
         }
 
+        /// <summary>校验旧结果及工程修订后原值复算，使用既有MEM事务替换同一Content的结果。
+        /// 同一工程提交前旧Revision冲突会拒绝，不创建平行Undo或制品仓库。</summary>
+        public static MRIObjectAddress RecomputeAndCommit(MEMEngineeringSession engineering,
+            MEMContent owner,int expectedRevision,string root,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(owner==null||engineering.Find(owner.Id)!=owner)
+                throw new ArgumentException("待复算目标不是当前MEM工程内容。","owner");
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
+            cancellation.ThrowIfCancellationRequested();
+            var existing=Open(engineering,engineering.GetAddress(owner),root,cancellation);
+            var recomputed=existing.Recompute(root,cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            return Commit(engineering,owner,expectedRevision,root,recomputed,cancellation);
+        }
+
         /// <summary>从唯一MEM工程枚举所有CT3D专业Case；逐个复用Open的Hash/Frame/算法检验。
         /// 任何一个来源损坏即整体失败，不返回似乎完整的部分测量集合。</summary>
         public static IReadOnlyList<CT3DAnalysisCase> OpenAll(MEMEngineeringSession engineering,
