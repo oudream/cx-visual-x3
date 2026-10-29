@@ -1196,6 +1196,10 @@ namespace CxVisual.TestCenter.UI
                 _windowLimit.ToString("0.###",CultureInfo.InvariantCulture)+
                 "；窗宽 1～"+_windowLimit.ToString("0.###",CultureInfo.InvariantCulture)+
                 "，窗位 0～"+_windowLimit.ToString("0.###",CultureInfo.InvariantCulture);
+            if(_windowWidthMaxLabel!=null)
+                _windowWidthMaxLabel.Text=_windowLimit.ToString("0.###",CultureInfo.InvariantCulture);
+            if(_windowCenterMaxLabel!=null)
+                _windowCenterMaxLabel.Text=_windowLimit.ToString("0.###",CultureInfo.InvariantCulture);
             _syncingWindowControls=true;
             try
             {
