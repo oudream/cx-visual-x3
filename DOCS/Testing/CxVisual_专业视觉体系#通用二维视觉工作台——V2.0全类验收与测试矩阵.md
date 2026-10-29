@@ -318,3 +318,13 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ### 19.2 ARCH-O03 强化为FDT冻结反证
 
 真实Windows [Module Center #40809580828](https://github.com/oudream/cx-visual-x3/actions/runs/40809580828) 在新增Area公开输出后触发`CxVisionInspectionResult`无安全复制/冻结适配器并按平台策略失败；这是数据合同门禁有效的证据，不可绕过。已在Professional CPU Provider使用已有深拷贝+FDTDataKind.Object/真实容量估算注册，以真实MRK跨步骤复制后再发布Area；测试失败场景在`564b5d7`增加`Close(true)`兜底，以免`Unsaved changes`掩盖真正MRK异常。最新[Imaging #40810246586](https://github.com/oudream/cx-visual-x3/actions/runs/40810246586)/[Engineering #40810246877](https://github.com/oudream/cx-visual-x3/actions/runs/40810246877)初次登记仍待运行，不提升G3/G4。
+
+### 19.3 ARCH-O06 保存重开、输入重绑定和用户界面重试状态反证
+
+| ID | 正反验收语义 | 固定证据状态 |
+|---|---|---|
+| ARCH-O06 | 同一已保存MEM工程`SaveAs/Close/Open`后，显式重新绑定RAW + Provider，仍用**同一3块MOL**触发MOC版本检查、MRK计算与SourceMap；得到新RunId、3 px² Measurement及完整Trace；工程Revision/Dirty不改变，且不生成第二页 | [dceed1d](https://github.com/oudream/cx-visual-x3/commit/dceed1d7a8ceb0b6685615ebf8b83245947553ef)已补自动反证，Windows最新结果待查 |
+| ARCH-O07 | 已保存5×3工程重绑真实6×3合法RAW（18字节），明确拒绝工程宽高不匹配；与**非法RAW长度**两种错误分开，拒绝后不修改工程Revision | [Engineering #40811670459](https://github.com/oudream/cx-visual-x3/actions/runs/40811670459) / [Imaging #40811670554](https://github.com/oudream/cx-visual-x3/actions/runs/40811670554)待最终执行结论 |
+| UI-COMP-02 | 故意以6×3解释15字节RAW触发负例，必须等待异步处理真正结束；改回5×3再点Run，不能把旧错误状态/取消状态当作新Run完成，必须等到新LastReport | [2b110f5](https://github.com/oudream/cx-visual-x3/commit/2b110f5429bba324a57c5e024d49dd615dfcf97e)、[Compute UIA #40811544416](https://github.com/oudream/cx-visual-x3/actions/runs/40811544416)待最终结果 |
+
+**边界**：工程重开不是无需资源重绑定的生产重放，也不保存RAW像素于MEM；持久ArtifactRef/FrameRef/ReviewRecord、跨设备调度与长时HIL仍未完成。
