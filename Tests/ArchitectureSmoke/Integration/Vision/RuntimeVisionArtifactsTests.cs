@@ -7,6 +7,7 @@ using CxVisual.Mechanism.Orchestration;
 using System.Linq;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Mechanism.Visual;
@@ -103,6 +104,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "多类型结果缺少真实像素、具名端口或源/Run身份");
                 Check(result.Items.Select(x => x.ItemId).Distinct().Count() == 7,
                     "ResultItem必须唯一");
+                // V2D-12/21：既有MRK提交的Mask按需提取轮廓，不能改变默认结果或筛选后的Region。
+                CxVisionRunSummary traced=result.WithThresholdMaskContours();
+                var boundaries=traced.Items.Where(x=>x.Kind==CxVisionResultKind.Contour).ToList();
+                Check(result.Items.Count==7 && traced.Items.Count==9 && boundaries.Count==2 &&
+                    boundaries.All(x=>x.SourceId==result.SourceId && x.RunId==run.FlowId &&
+                        x.OutputPort=="ThresholdMask" && x.Contour!=null &&
+                        x.Image==null && x.Unit=="px²") &&
+                    Math.Abs(boundaries.Sum(x=>x.Contour.SignedAreaPixels)-4)<1e-9 &&
+                    boundaries.All(x=>!x.Contour.IsHole) &&
+                    traced.Items.Select(x=>x.ItemId).Distinct().Count()==traced.Items.Count &&
+                    object.ReferenceEquals(traced.WithThresholdMaskContours(),traced),
+                    "真实阈值Mask应产生两个独立闭环，不能冒充面积过滤后的3px²");
+                IList<FGEPoint2D> readonlyPoints=boundaries[0].Contour.Points as IList<FGEPoint2D>;
+                Check(readonlyPoints!=null && readonlyPoints.IsReadOnly,
+                    "Contour顶点集合不得对外可变");
+                Reject<NotSupportedException>(()=>readonlyPoints.Clear(),
+                    "调用者不得修改历史轮廓顶点");
+                Reject<InvalidOperationException>(()=>result.WithThresholdMaskContours(4),
+                    "边界预算超限不得返回截断的假轮廓");
+                Reject<ArgumentOutOfRangeException>(()=>result.WithThresholdMaskContours(3),
+                    "非法边界预算必须被拒绝");
+                using(var stoppedContours=new CancellationTokenSource())
+                {
+                    stoppedContours.Cancel();
+                    Reject<OperationCanceledException>(()=>result.WithThresholdMaskContours(
+                        cancellationToken:stoppedContours.Token),
+                        "已取消的轮廓投影不得提交任何结果");
+                }
+                var ringRun=engine.StartFlow(plan,Inputs(new byte[] {
+                    255,255,255,255,0,255,255,255,255 },3,3))
+                    .Completion.GetAwaiter().GetResult();
+                Check(ringRun.State==MRKFlowState.Completed,
+                    "真实带孔洞Mask的MRK流程失败");
+                var ringResult=CxVisionRunSummary.FromCpuFlow(ringRun,"donut/frame")
+                    .WithThresholdMaskContours();
+                var ringContours=ringResult.Items.Where(x=>x.Kind==CxVisionResultKind.Contour).ToList();
+                Check(ringContours.Count==2 &&
+                    ringContours.Any(x=>Math.Abs(x.Contour.SignedAreaPixels-9)<1e-9 && !x.Contour.IsHole) &&
+                    ringContours.Any(x=>Math.Abs(x.Contour.SignedAreaPixels+1)<1e-9 && x.Contour.IsHole) &&
+                    Math.Abs(ringContours.Sum(x=>x.Contour.SignedAreaPixels)-8)<1e-9,
+                    "真实MRK Mask的外环与孔洞必须分开保留，净面积为8");
+
                 byte[] changed = binary.Image.CopyPixels();
                 changed[0] = 0;
                 input[0] = 0;
@@ -177,6 +220,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     !legacy.CommittedOutputs.ContainsKey("ThresholdMask") &&
                     CxVisionRunSummary.FromCpuFlow(legacy, "legacy").Items.Count == 5,
                     "旧CPU Plan必须保持原数据出口及默认内存开销");
+                Reject<InvalidOperationException>(()=>
+                    CxVisionRunSummary.FromCpuFlow(legacy,"legacy")
+                        .WithThresholdMaskContours(),
+                    "无Mask的旧流程不得伪造轮廓");
                 var bad = engine.StartFlow(
                     CxVisionDataFlow.CreateCpuInspectionPlanWithArtifacts(options, 74),
                     Inputs(new byte[] { 1, 2 }, 5, 3))
