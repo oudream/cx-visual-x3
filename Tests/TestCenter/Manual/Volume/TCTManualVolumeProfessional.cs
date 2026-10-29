@@ -250,6 +250,27 @@ namespace CxVisual.TestCenter.UI
         /// 用户/算法已选局部Mesh顶点ROI的真正平面拟合入口。
         /// MVI仅注册Measurement引用；专业毫米结果由CT3D保存，绝不重新拟合R8预览。
         /// </summary>
+        /// <summary>真实GPU窗口像素→现有MPW相机射线→原值物理Frame→FGE Mesh。
+        /// GPU仅负责视角与坐标，不借显示预览反推专业几何。</summary>
+        public bool TryPickCurrentMeshFromGpuPixel(int pixelX,int pixelY,
+            out FGEMeshRayHit hit,CancellationToken cancellation=default(CancellationToken))
+        {
+            hit=null;
+            if(_gpu==null||!_gpu.IsAvailable||_volume==null)return false;
+            Vector3 start,ray;
+            if(!_gpu.TryGetNormalizedPickRay(pixelX,pixelY,out start,out ray))return false;
+            FVOPhysicalPoint3D a=_volume.SpatialFrame.VoxelToPhysical(
+                (start.X+.5)*_volume.OriginalWidth-.5,
+                (start.Y+.5)*_volume.OriginalHeight-.5,
+                (start.Z+.5)*_volume.OriginalDepth-.5);
+            FVOPhysicalPoint3D b=_volume.SpatialFrame.VoxelToPhysical(
+                (start.X+ray.X+.5)*_volume.OriginalWidth-.5,
+                (start.Y+ray.Y+.5)*_volume.OriginalHeight-.5,
+                (start.Z+ray.Z+.5)*_volume.OriginalDepth-.5);
+            return TryPickCurrentMeshRay(new FGEPoint3D(a.X,a.Y,a.Z),
+                new FGEVector3D(b.X-a.X,b.Y-a.Y,b.Z-a.Z),out hit,cancellation);
+        }
+
         /// <summary>毫米物理Ray命中真实FGE Mesh；成功选择既有MVI Scene实例。</summary>
         public bool TryPickCurrentMeshRay(FGEPoint3D origin,FGEVector3D direction,
             out FGEMeshRayHit hit,CancellationToken cancellation=default(CancellationToken))
