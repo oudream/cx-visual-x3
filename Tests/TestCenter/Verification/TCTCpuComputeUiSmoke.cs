@@ -47,6 +47,20 @@ namespace CxVisual.TestCenter.UI
                 if(edit==null)throw new InvalidOperationException("No UIA Value: "+id);
                 edit.SetValue(value);
             });
+            // Real WPF ValuePattern inputs are marshalled to the owning dispatcher.
+            // Confirm the displayed value is committed before the next click.
+            bool applied=false;
+            for(int attempt=0;attempt<80&&!applied;attempt++)
+            {
+                applied=await Task.Run(()=>{
+                    var item=Find(AutomationElement.FromHandle(hwnd),id);
+                    var edit=item.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+                    return edit!=null&&String.Equals(edit.Current.Value,value,StringComparison.Ordinal);
+                });
+                if(!applied)await Task.Delay(25);
+            }
+            if(!applied)throw new InvalidOperationException(
+                "UIA输入未生效："+id+" expected="+value);
         }
         private static async Task Until(Func<bool> ok,string reason,int loops=250)
         {
