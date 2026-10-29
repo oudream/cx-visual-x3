@@ -457,3 +457,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | STD-SPLIT-06 | 半径4必须拒绝且MEM Revision不增加；MHS Effective阈值由200变201后，旧Provider捕获和创建新运行必须拒绝并且Revision不变 | 已写Studio CPU-only测试，G4待跑 |
 
 **门禁**：已有`.github/workflows/module-center-cpu-windows.yml`在Studio/Vision代码变更后自动触发，包含Windows Release/x64实际构建与`--module-center-cpu-self-test`，检验`StudioShellSelfTest.txt`的真实PASS/FAIL；Windows Release/x64 编译，`CxVisual.Studio.exe --module-center-cpu-self-test`及全Studio WPF自测，`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`和默认回归，必要时人工在Studio配置Scope后操作RAW与流程页。不能用此前[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994)成功替代当前新SHA。
+
+## 27. Studio四专业能力发现与MEM正式节点添加专项（2026-10-29）
+
+| ID | 现有可执行测试与反证 | 证据 |
+|---|---|---|
+| STD-CAT-01 | 真实Studio WPF模块中心Compute过滤后包含阈值检测、独立Mask、四邻域Region、接受面积四个MOC/MFM Compute节点；非演示身份且均可解析 | 已写源码，Windows G5待证 |
+| STD-CAT-02 | 检查阈值int输入、Mask自定义TypeId、区域RuleVersion string、Inspection自定义TypeId及Area long正式端口，MHS Effective加载后目录不丢失 | 已写源码，Windows G4/G5待证 |
+| STD-CAT-03 | 在真实隔离MEM工程上经Studio生产API分别加入Mask、Region、Measurement三个Block，验证三个独立ID、MOL参数阈值200和固定区域RuleVersion；尚无连线时不能冒充可执行Flow | 已写源码，Windows G4待证 |
+| STD-CAT-04 | 未知Capability ID在编辑前拒绝且Revision不变；MHS Effective生效版本变更后旧Provider无法再次向工程添加节点 | 已写源码，Windows G4待证 |
+| STD-CAT-05 | 对专业自定义CLR object输入保留MOC Unknown并只批准现有PVC运行时具体类型保护的两个白名单端口；其它静态签名异常不得降级放行 | 生产门禁已写，专项负例仍待深化 |
+
+**现有门禁**：`.github/workflows/module-center-cpu-windows.yml`（真实`--module-center-cpu-self-test`与测试文本）、Imaging Windows、Studio Shell WPF自测，以及ArchitectureSmoke默认回归。当前未取得新SHA的Windows成功记录，所有G3-G5保持待证；不能用此前历史成功任务代替最新提交。
