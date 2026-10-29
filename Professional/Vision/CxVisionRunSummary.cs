@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Professional.Vision
 {
     /// <summary>现有CPU检测结果实际可提供的类型；流程标志并非产品级OK/NG。</summary>
-    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask, Measurement }
+    public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask, Measurement, Contour }
 
     /// <summary>不可变候选区域快照，不泄漏原CxVisionDefectRegion的可变属性。</summary>
     public sealed class CxVisionRegionSnapshot
@@ -36,6 +38,27 @@ namespace CxVisual.Professional.Vision
     }
 
     /// <summary>
+    /// 从真实FIM二值Mask提取的一个闭合像素边缘轮廓快照。正面积为外环、负面积为孔洞；
+    /// 顶点属于原图像素网格边界，不是像素中心或毫米坐标。
+    /// </summary>
+    public sealed class CxVisionContourSnapshot
+    {
+        public IReadOnlyList<FGEPoint2D> Points { get; private set; }
+        public double SignedAreaPixels { get; private set; }
+        public bool IsHole { get { return SignedAreaPixels < 0; } }
+
+        internal CxVisionContourSnapshot(IReadOnlyList<FGEPoint2D> points)
+        {
+            if (points == null) throw new ArgumentNullException("points");
+            var copy = new List<FGEPoint2D>(points);
+            SignedAreaPixels = FIMImageMaskContours.SignedArea(copy);
+            if (SignedAreaPixels == 0)
+                throw new ArgumentException("轮廓面积不能为零。", "points");
+            Points = copy.AsReadOnly();
+        }
+    }
+
+    /// <summary>
     /// 每次Run的具名专业结果项。图像使用自持有不可变FIM像素快照，
     /// 只支持本Run内临时引用，不是磁盘Artifact或持久ImageSet。
     /// </summary>
@@ -53,11 +76,13 @@ namespace CxVisual.Professional.Vision
         public CxVisionRegionSnapshot Region { get; private set; }
         /// <summary>仅Kind为Image/Mask时存在；FIM公开像素访问均不可修改内部数据。</summary>
         public FIMImageBuffer Image { get; private set; }
+        /// <summary>仅Kind为Contour时存在，来自同Run的阈值Mask像素边缘。</summary>
+        public CxVisionContourSnapshot Contour { get; private set; }
 
         internal CxVisionResultItem(Guid runId, string sourceId, string suffix,
             string outputPort, CxVisionResultKind kind, string name, string unit,
             long? number = null, bool? boolean = null, CxVisionRegionSnapshot region = null,
-            FIMImageBuffer image = null)
+            FIMImageBuffer image = null, CxVisionContourSnapshot contour = null)
         {
             RunId = runId;
             SourceId = sourceId;
@@ -70,6 +95,7 @@ namespace CxVisual.Professional.Vision
             BooleanValue = boolean;
             Region = region;
             Image = image;
+            Contour = contour;
         }
     }
 
@@ -92,6 +118,52 @@ namespace CxVisual.Professional.Vision
         public IReadOnlyList<CxVisionResultItem> Items { get; private set; }
 
         private CxVisionRunSummary() { }
+
+        /// <summary>
+        /// 按需将已提交的ThresholdMask提取为Contour结果项。默认结果不自动扫描大Mask；
+        /// 不更改原Run、MRK输出、原始Image或结果集合。面积是原图像素边界带符号面积，
+        /// 不能混同Inspection过滤后的接受区域面积，也没有校准单位。
+        /// </summary>
+        public CxVisionRunSummary WithThresholdMaskContours(int maxBoundaryEdges = 100000,
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (maxBoundaryEdges < 4 || maxBoundaryEdges > 2000000)
+                throw new ArgumentOutOfRangeException("maxBoundaryEdges");
+            cancellationToken.ThrowIfCancellationRequested();
+            CxVisionResultItem mask = null;
+            foreach (CxVisionResultItem item in Items)
+            {
+                if (item.Kind == CxVisionResultKind.Contour &&
+                    item.OutputPort == "ThresholdMask") return this;
+                if (item.Kind == CxVisionResultKind.Mask &&
+                    item.OutputPort == "ThresholdMask")
+                {
+                    if (mask != null)
+                        throw new InvalidOperationException("同一Run包含多个ThresholdMask结果项");
+                    mask = item;
+                }
+            }
+            if (mask == null || mask.Image == null)
+                throw new InvalidOperationException("此Run没有已提交的ThresholdMask，不能生成轮廓");
+            var loops = FIMImageMaskContours.Trace(mask.Image, maxBoundaryEdges, cancellationToken);
+            var items = new List<CxVisionResultItem>(Items);
+            for (int i = 0; i < loops.Count; ++i)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                items.Add(new CxVisionResultItem(RunId, SourceId,
+                    "ThresholdMask.Contour." + i.ToString(CultureInfo.InvariantCulture),
+                    "ThresholdMask", CxVisionResultKind.Contour,
+                    "阈值Mask像素边界轮廓", "px²",
+                    contour: new CxVisionContourSnapshot(loops[i])));
+            }
+            return new CxVisionRunSummary
+            {
+                RunId = RunId, SourceId = SourceId, CompletedUtc = CompletedUtc,
+                ConfigRevision = ConfigRevision, Width = Width, Height = Height,
+                PlanFingerprint = PlanFingerprint, CapabilityVersion = CapabilityVersion,
+                HasNoRegions = HasNoRegions, Items = items.AsReadOnly()
+            };
+        }
 
         /// <summary>直接消费真实MRK成功提交的Inspection/GraySum/Passed；失败不冒充结果。</summary>
         public static CxVisionRunSummary FromCpuFlow(MRKFlowResult flow, string sourceId)
