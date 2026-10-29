@@ -105,6 +105,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     restored.Plane.SourceMeshResultId==restored.Mesh.ResultId &&
                     restored.Mesh.Mesh.TriangleCount==48 && restored.SelectedVertexIndices.SequenceEqual(analysis.SelectedVertexIndices),
                     "关闭重开保留来源/空间签名/结果身份/局部ROI与Mesh");
+                Check(restored.ParameterSignature==analysis.ParameterSignature&&
+                    restored.ParameterSignature.Length==64,
+                    "Mesh/Plane工程重开保留稳定算法参数签名");
                 Check(restored.RoiSignature==analysis.RoiSignature&&
                     restored.RoiSignature!=null&&restored.RoiSignature.Length==64,
                     "原RAW和选中毫米ROI在MEM重开后保持稳定身份");
@@ -122,6 +125,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     recomputed.Plane.ResultId!=restored.Plane.ResultId &&
                     recomputed.Source.Signature==restored.Source.Signature &&
                     recomputed.RoiSignature==restored.RoiSignature &&
+                    recomputed.ParameterSignature==restored.ParameterSignature &&
                     Math.Abs(recomputed.Plane.PointMm.Z-restored.Plane.PointMm.Z)<1e-10 &&
                     recomputed.Mesh.Mesh.TriangleIndices.SequenceEqual(restored.Mesh.Mesh.TriangleIndices),
                     "复算形成新结果身份且几何量值一致");
@@ -208,6 +212,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     restored.Sphere.SourceSurfaceResultId==restored.Surface.ResultId&&
                     Math.Abs(restored.Sphere.RmsResidualMm-analysis.Sphere.RmsResidualMm)<1e-10,
                     "Surface/球重开保留采样参数、点集、结果依赖、半径与残差");
+                Check(restored.ParameterSignature==analysis.ParameterSignature,
+                    "球Feature工程重开保留算法版本和拟合参数");
                 var reloadedMeasurements=restored.GetFeatureMeasurements();
                 Check(reloadedMeasurements.Count==2&&
                     reloadedMeasurements[1].FeatureResultId==restored.Sphere.ResultId&&
@@ -269,6 +275,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
                     Check(restored.Kind==CT3DAnalysisKind.SurfaceCylinder&&
+                        restored.ParameterSignature==caseValue.ParameterSignature&&
                         restored.Cylinder.ResultId==caseValue.Cylinder.ResultId&&
                         restored.Surface.ResultId==caseValue.Surface.ResultId&&
                         restored.Cylinder.SourceSurfaceResultId==restored.Surface.ResultId&&
