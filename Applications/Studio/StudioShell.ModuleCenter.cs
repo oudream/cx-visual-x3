@@ -15,6 +15,7 @@ using System.Windows.Controls;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Professional.Vision;
 
@@ -180,6 +181,21 @@ namespace CxVisual.Studio
                     var capability=catalog.Find(selected.Id);
                     if(capability==null||!capability.RuntimeAvailable)
                         throw new InvalidOperationException("MOC当前无法解析此软件能力");
+                    // Editing must not persist an already inconsistent MPC/MRK signature.
+                    // MOC holds the static identity, MRK the callable CLR contract.
+                    // This is only a static check; Host authorization still applies.
+                    MRKResolvedCapability action;
+                    if(!selectedProvider.TryResolve(selected.Id,out action)||action==null)
+                        throw new InvalidOperationException("当前Provider运行签名不可解析");
+                    var proof=new MOCBindingContractInspector().Assess(
+                        capability.Definition,action,new Dictionary<string,Type>{
+                            {CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                                typeof(CxVisionInspectionResult)}
+                        });
+                    if(proof.Verdict!=MDCVerdict.Allowed)
+                        throw new InvalidOperationException(
+                            "能力声明与执行端口不一致或待验证："+
+                            string.Join(", ",proof.ReasonCodes));
                     MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
                         builder=>builder.Step(capability.Definition));
                     RefreshScene();

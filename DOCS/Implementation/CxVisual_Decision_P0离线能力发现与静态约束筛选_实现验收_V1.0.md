@@ -67,3 +67,10 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 八、专业真实Contract与Decision轻量候选合流验证（新增软件案例）
 
 扩展`MDCDecisionTests.RuntimeBindingContractConsistency`：使用真实`CxVisionThresholdProvider(new CxVisionInspectionOptions(),0)`，取得同一Provider的MPC静态`RawPixels/Width/Height/Inspection`以及MRK运行CLR输入/具名输出，以专业显式`vision.cpu.inspection.result → CxVisionInspectionResult`映射核对合同；同时从真实MOC离线目录输入一个`byte[]`输出端口，验证Decision可找到`RawPixels`适配候选。**不读取相机、不执行检测或改动工程**，证明已有专业Provider可以在编排期零设备调用地共用同一能力身份；与需要Legacy`object`的RegionMeasure仍为Unknown形成反例。验证结果以包含该测试的实际Windows CI为准。
+
+
+## 九、Studio正式编排入口的实际接入（新增）
+
+在现有`Applications/Studio/StudioShell.ModuleCenter.cs`“加入当前主流程”操作中，继续先执行已有`MHS Effective`版本/权限、当前Scope、运行中禁止编辑检查，**再调用`MOCBindingContractInspector.Assess`核对真实Vision Threshold的MPC端口与MRK具名CLR合同**。静态检查不通过（Rejected/Unknown）显示规则原因并阻止`MOCFlowBuilder.Edit`，通过后仍走原来的Core编辑事务和Undo，未直接执行专业算法，也不能将这一步视为生产发布许可。
+
+后续Windows软件证据需同时包含Decision专项和ModuleCenter CPU RAW WPF闭环。当前只为Vision已知软件Provider示例，不宣称所有专业Provider与Studio画布智能过滤都已接入。完整Attribute/Fluent及动态策略仍待开发。
