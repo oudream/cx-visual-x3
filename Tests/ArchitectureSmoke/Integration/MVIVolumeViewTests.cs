@@ -241,9 +241,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try { state.ScrollSlice((FVOSlicePlane)99,1,data); }
                 catch(ArgumentOutOfRangeException) { invalidPlane=true; }
                 Check(invalidPlane,"非法切面不能隐式修改三刀状态");
-                using(FVOVolumeData calibrated=FVOVolumeData.CreateDemo(8,10,12))
+                using(FVOVolumeData calibrated=FVORawVolumeLoader.LoadFromMemory(
+                    new byte[8*10*12*2],new FVORawVolumeInfo(8,10,12,.5f,.75f,1.25f,
+                        FVORawVoxelFormat.UInt16,"roi-physical"),64,System.Threading.CancellationToken.None))
                 {
-                    var frame=new FVOVolumeSpatialFrame(.5,.75,1.2,10,20,30,
+                    var frame=new FVOVolumeSpatialFrame(.5,.75,1.25,10,20,30,
                         new double[]{0,-1,0,1,0,0,0,0,1},true);
                     calibrated.SetSpatialFrame(frame);
                     var roi=FVOSliceImageBuilder.RectangleToPhysical(calibrated,3,4,5,
@@ -253,7 +255,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(roi.Unit=="mm"&&Object.ReferenceEquals(roi.SpatialFrame,frame)&&
                         Math.Abs(roi.TopLeft.X-10)<1e-9&&
                         Math.Abs(roi.TopLeft.Y-20)<1e-9&&
-                        Math.Abs(roi.TopLeft.Z-36)<1e-9&&
+                        Math.Abs(roi.TopLeft.Z-36.25)<1e-9&&
                         Math.Abs(roi.BottomRight.Z-roi.TopLeft.Z)<1e-9,
                         "XY显示ROI须经过旋转/非各向同性Frame准确映射为毫米空间四角");
                     int vx,vy,vz;
