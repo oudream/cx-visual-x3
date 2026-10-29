@@ -849,10 +849,12 @@ namespace CxVisual.TestCenter.UI
                     toggleGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,toggleGroup));
                     Check(frame.SurfaceDisplayedPointCount>100,
                         "通过真实WPF按钮恢复整组应重用已计算原值Surface");
-                    Guid selectedSurface=frame.ViewState.Scene3D.SelectedId.Value;
                     var scene=frame.ViewState.Scene3D;
                     Guid sphereSurface=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Surface).Id;
                     Guid sphereMeasurement=scene.Snapshot().Single(i=>i.Kind==MVI3DSceneKind.Measurement).Id;
+                    Check(scene.SelectedId==null,"隐藏选中对象后不能隐式恢复旧选择");
+                    scene.Select(sphereMeasurement);
+                    Guid selectedSurface=scene.SelectedId.Value;
                     scene.SetOrganization(sphereSurface,"surface","measurement-session");
                     scene.SetOrganization(sphereMeasurement,"analysis","measurement-session");
                     long groupedRevision=scene.Revision;
