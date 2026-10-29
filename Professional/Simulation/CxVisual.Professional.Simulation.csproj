@@ -22,7 +22,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Modules\PSMSimulationModuleContracts.cs"/><Compile Include="Modules\PSMSimulationCore.cs"/><Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="Modules\PSMSimulationModuleConfiguration.cs" /></ItemGroup>
+    <Compile Include="Modules\PSMSimulationModuleConfiguration.cs" />
+    <Compile Include="Modules\PSMAxisLinearModel.cs" /></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
