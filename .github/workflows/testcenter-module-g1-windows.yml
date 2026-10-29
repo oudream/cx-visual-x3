@@ -42,23 +42,35 @@ jobs:
             @{Argument='--module-service-ui-automation';Report='TestCenter-Service-UIA-Report.txt';Label='PASS TCT.Service.UIA'},
             @{Argument='--module-connector-ui-automation';Report='TestCenter-Connector-UIA-Report.txt';Label='PASS TCT.Connector.UIA'}
           )
+          $failures=@()
           foreach($check in $checks) {
-            $report=Join-Path $dir $check.Report
-            Remove-Item $report -ErrorAction SilentlyContinue
-            $p=Start-Process -FilePath $exe -ArgumentList @($check.Argument) -PassThru
-            if(-not $p.WaitForExit(120000)) {
-              try{$p.Kill()}catch{}
-              throw "Module G1 UIA timed out: $($check.Argument)"
+            try {
+              $report=Join-Path $dir $check.Report
+              Remove-Item $report -ErrorAction SilentlyContinue
+              $p=Start-Process -FilePath $exe -ArgumentList @($check.Argument) -PassThru
+              if(-not $p.WaitForExit(120000)) {
+                try{$p.Kill()}catch{}
+                throw "UIA timed out"
+              }
+              $p.Refresh()
+              if(Test-Path $report){Get-Content $report}
+              if($p.ExitCode -ne 0){throw "exit=$($p.ExitCode)"}
+              if(-not(Test-Path $report)){throw "missing UIA report"}
+              $lines=@(Get-Content $report)
+              if(@($lines|Where-Object {$_.StartsWith($check.Label)}).Count -ne 1 -or
+                 @($lines|Where-Object {$_.StartsWith('FAIL')}).Count -ne 0) {
+                throw "actual PASS missing"
+              }
+              Write-Host "PASS $($check.Argument)"
             }
-            $p.Refresh()
-            if(Test-Path $report){Get-Content $report}
-            if($p.ExitCode -ne 0){throw "Module G1 UIA failed: $($check.Argument) exit=$($p.ExitCode)"}
-            if(-not(Test-Path $report)){throw "G1 UIA missing report: $($check.Report)"}
-            $lines=@(Get-Content $report)
-            if(@($lines|Where-Object {$_.StartsWith($check.Label)}).Count -ne 1 -or
-               @($lines|Where-Object {$_.StartsWith('FAIL')}).Count -ne 0) {
-              throw "Missing true WPF G1 acceptance evidence for $($check.Argument)"
+            catch {
+              $message="$($check.Argument): $($_.Exception.Message)"
+              $failures+= $message
+              Write-Host "FAIL $message"
             }
+          }
+          if($failures.Count -ne 0) {
+            throw "Real WPF G1 regression(s): $($failures -join '; ')"
           }
           Write-Host 'PASS Four G1 real WPF operator flows: Compute, Simulation, Service, Connector'
       - name: Archive same-commit real UIA results
