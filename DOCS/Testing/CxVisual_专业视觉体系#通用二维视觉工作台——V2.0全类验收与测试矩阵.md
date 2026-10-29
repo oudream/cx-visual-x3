@@ -314,3 +314,7 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 `13f5b42c2949dd24e518e2f3fc4e52ada13dac60`： [Engineering Organization #40809379292](https://github.com/oudream/cx-visual-x3/actions/runs/40809379292) success，[Module Center CPU RAW #40809379183](https://github.com/oudream/cx-visual-x3/actions/runs/40809379183) success；本次工程定义、编译、保存重开、Area计算与旧API兼容正反用例完成实跑。后续具名MDS `Area` 的`CommittedOutput`一致性是再增加的代码，不以此固定SHA宣称成功。
 同固定SHA [Studio S1 #40809379277](https://github.com/oudream/cx-visual-x3/actions/runs/40809379277) failure，日志为配置布局列容器要求，非CPU专业合同。其Owner需独立跟进；保持失败记录，不关闭总体G5门禁。
+
+### 19.2 ARCH-O03 强化为FDT冻结反证
+
+真实Windows [Module Center #40809580828](https://github.com/oudream/cx-visual-x3/actions/runs/40809580828) 在新增Area公开输出后触发`CxVisionInspectionResult`无安全复制/冻结适配器并按平台策略失败；这是数据合同门禁有效的证据，不可绕过。已在Professional CPU Provider使用已有深拷贝+FDTDataKind.Object/真实容量估算注册，以真实MRK跨步骤复制后再发布Area；测试失败场景在`564b5d7`增加`Close(true)`兜底，以免`Unsaved changes`掩盖真正MRK异常。最新[Imaging #40810246586](https://github.com/oudream/cx-visual-x3/actions/runs/40810246586)/[Engineering #40810246877](https://github.com/oudream/cx-visual-x3/actions/runs/40810246877)初次登记仍待运行，不提升G3/G4。
