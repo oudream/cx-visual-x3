@@ -434,3 +434,20 @@ CI只证明软件编译、静态版本门禁和原MOC编译器交接，不证明
 - `master@59d95b0a` → [Decision Run 40831977051](https://github.com/oudream/cx-visual-x3/actions/runs/40831977051) = Failure；`MDCStaticBuildPreflight`共用描述合同后残留错误的`found.Definition`属性，已在后续代码修复，不能计入成功。
 - `master@efecd87c` → [Decision Run 40832214673](https://github.com/oudream/cx-visual-x3/actions/runs/40832214673) = Success；统一.NET48构建、`--decision`及默认ArchitectureSmoke成功，包含MDC-89与原MOCFlowBuilder V2正例。[ModuleCenter Run 40832214907](https://github.com/oudream/cx-visual-x3/actions/runs/40832214907) = Success。
 - 当前仅证明严格静态/运行交接适配和旧编译行为未回退；**不是**D05完整纯Plan/27项目迁移验收，涉及真实设备/多进程场景仍需专项证据。
+
+
+### D05纯描述式Plan首批软件验收（MDC-90～98）
+
+| Case | 断言 |
+|---|---|
+| MDC-90 | V1 Branch/Case、Loop/ForEach、Try/Finally保留原BlockId、父子角色和动态迭代上限，不能展开4097/5000个Step |
+| MDC-91 | 原MOL Logic Aspect完整规范化Payload防御性拷贝；外部写入不会改变Plan |
+| MDC-92 | V2 Control/Data Link保留Source/Target原端点、LinkId、条件和顺序 |
+| MDC-93 | V2 Port TypeId、公开FlowInputs/Outputs、字面量参数、原Policy和执行组Id保真 |
+| MDC-94 | 相同Core/目录稳定SHA-256，变更目录或工程使旧Plan RequireCurrent失败 |
+| MDC-95 | DTO无Delegate及MRK执行器类型；CI静态源码Runtime-free门禁通过 |
+| MDC-96 | `MOCManifestRuntimeBinding.Bind(project,plan,...)`继续调用原MOC编译并保留原SourceMap与Step身份 |
+| MDC-97 | 复杂表达式、StateMachine、Loop/Try正式语义仍从Core Codec Payload无损保留，但**完整独立IR lowering未验收** |
+| MDC-98 | 未完成MRK独立Loader、纯执行Plan与27项目物理合并，不得由软件Smoke替代 |
+
+软件CI结果以对应SHA的Windows运行记录为证，不等于CT/GPU设备实测或现场HIL。

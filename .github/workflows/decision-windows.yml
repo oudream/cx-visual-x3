@@ -35,6 +35,7 @@ jobs:
             'Mechanism/Orchestration/MDCStaticBuildPreflight.cs',
             'Mechanism/Orchestration/MDCStaticPathExplorer.cs',
             'Mechanism/Orchestration/MDCStaticSourceManifest.cs',
+            'Mechanism/Orchestration/MDCDeclarativePlan.cs',
             'Mechanism/Orchestration/MDCLogicTraversal.cs'
           )
           foreach ($file in $pure) {

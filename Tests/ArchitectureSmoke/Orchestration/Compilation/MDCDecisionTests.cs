@@ -60,6 +60,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StaticBranchScenarioExploration();
             StaticSourceManifestPreservesCoreRevisionAndClosure();
             ManifestRuntimeBindingHandoffAndSafety();
+            DeclarativePlanPreservesV1V2Semantics();
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
@@ -953,6 +954,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var resolver=new ProbeResolver();
                 var binder=new MOCManifestRuntimeBinding();
                 var compiled=binder.Bind(snapshot,staticManifest,catalog,resolver);
+                var staticPlan=new MDCDeclarativePlanCompiler().Compile(
+                    snapshot,content.Id,catalog);
+                var planResolver=new ProbeResolver();
+                var lowered=binder.Bind(snapshot,staticPlan,catalog,planResolver);
+                Check(lowered!=null && lowered.SourceMap.Find(action.Id).Count>0 &&
+                    lowered.Plan.Id==compiled.Plan.Id && planResolver.Calls==1 &&
+                    planResolver.Executions==0,
+                    "new declarative Plan must hand off to the same original compiler and source map");
+
                 Check(compiled!=null && compiled.Plan!=null &&
                     compiled.ProjectId==snapshot.ProjectId &&
                     compiled.EngineeringRevision==snapshot.Revision &&
@@ -1051,6 +1061,114 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "real MOL V2 Builder must retain original compiled SourceMap and one pinned resolver");
 
 
+            }
+            finally {session.Close(true);}
+        }
+
+        private static void DeclarativePlanPreservesV1V2Semantics()
+        {
+            var session=MEMEngineering.Create("decision-immutable-plan");
+            try
+            {
+                var structured=session.AddPage("Structured");
+                var first=MOLControlBlock.Action("vision.gray16");
+                var iteration=MOLControlBlock.Action("vision.gray16");
+                var foreachBody=MOLControlBlock.Action("vision.gray16");
+                var loop=MOLControlBlock.Repeat(MOLLoopMode.For,4097,iteration);
+                var each=MOLControlBlock.Each("images",5000,foreachBody);
+                var branch=MOLControlBlock.If(MOLExpression.InputTrue("enabled"),loop,each);
+                var final=MOLControlBlock.Action("vision.gray16");
+                var protectedRegion=MOLControlBlock.TryCatchFinally(
+                    MOLControlBlock.Action("vision.gray16"),finallyBody:final);
+                MOLLogicCodec.Set(session,structured.RootContent,
+                    new MOLLogicDefinition(MOLControlBlock.Sequence(first,branch,protectedRegion)));
+
+                var wired=session.AddPage("Wired");
+                Guid sourceId=Guid.Empty,targetId=Guid.Empty,dataLink=Guid.Empty,
+                    conditionalLink=Guid.Empty;
+                MOCFlowBuilder.Edit(session,wired.RootContent,edit=>{
+                    sourceId=edit.Step("vision.gray16");
+                    targetId=edit.Step("vision.gray16");
+                    edit.AddPort(sourceId,Port("Seed",MPCPortDirection.Input,"gray16"));
+                    edit.AddPort(sourceId,Port("Pixels",MPCPortDirection.Output,"gray16"));
+                    edit.AddPort(targetId,Port("Image",MPCPortDirection.Input,"gray16"));
+                    edit.AddPort(targetId,Port("Result",MPCPortDirection.Output,"gray16"));
+                    edit.AddPort(targetId,Port("Threshold",MPCPortDirection.Input,"int"));
+                    dataLink=edit.Connect(sourceId,"Pixels",targetId,"Image",MPCPortKind.Data);
+                    conditionalLink=edit.ConnectConditional(sourceId,"Done",targetId,
+                        "Start","bool:true");
+                    edit.ExposeInput("Raw",sourceId,"Seed");
+                    edit.ExposeOutput("Detected",targetId,"Result");
+                    edit.SetParameter(targetId,"Threshold","5");
+                    edit.SetWorkflowPolicy(targetId,new MOLStepPolicy(
+                        maxAttempts:2,retryDelayMs:10,timeoutMs:300,
+                        idempotent:true,executionGroup:"cpu"));
+                });
+                var catalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.gray16","Gray16","Vision")
+                });
+                var snapshot=session.GetSnapshot();
+                var compiler=new MDCDeclarativePlanCompiler();
+                var v1=compiler.Compile(snapshot,structured.RootContent.Id,catalog);
+                var v1Content=v1.Contents.Single();
+                Check(v1Content.Blocks.Any(x=>x.BlockId==loop.Id &&
+                    x.Kind==MOLControlKind.Loop && x.MaxIterations==4097) &&
+                    v1Content.Blocks.Any(x=>x.BlockId==each.Id &&
+                    x.Kind==MOLControlKind.ForEach && x.MaxIterations==5000 &&
+                    x.CollectionInput=="images"),
+                    "Declarative Plan must preserve dynamic Loop/ForEach bounds without expansion");
+                Check(v1Content.Blocks.Count<20 &&
+                    v1Content.Blocks.Any(x=>x.BlockId==branch.Id &&
+                        x.Kind==MOLControlKind.Branch) &&
+                    v1Content.Blocks.Any(x=>x.BlockId==foreachBody.Id &&
+                        x.ParentBlockId==each.Id && x.Role=="LoopBody") &&
+                    v1Content.Blocks.Any(x=>x.BlockId==final.Id &&
+                        x.ParentBlockId==protectedRegion.Id && x.Role=="Finally"),
+                    "V1 branch/structured exception tree and original BlockIds must survive");
+                Check(v1Content.CopyCanonicalLogicPayload().SequenceEqual(
+                    snapshot.Find(structured.RootContent.Id).Aspects.Single(
+                        x=>x.Kind==MPMAspectKind.Logic).Payload),
+                    "complete original Logic codec payload preserves expressions/try/catches");
+                var modifiedPayload=v1Content.CopyCanonicalLogicPayload();
+                modifiedPayload[0]=(byte)(modifiedPayload[0]^1);
+                Check(!v1Content.CopyCanonicalLogicPayload().SequenceEqual(modifiedPayload),
+                    "mutating external payload copy must not alter the static Plan");
+
+                var v2=compiler.Compile(snapshot,wired.RootContent.Id,catalog);
+                var w=v2.Contents.Single();
+                Check(w.IsWiring && w.Blocks.Count==2 &&
+                    w.EntryBlockId==sourceId && w.Links.Count==2 &&
+                    w.Links.Any(x=>x.LinkId==dataLink&&x.Kind==MPCPortKind.Data&&
+                        x.SourcePort=="Pixels"&&x.TargetPort=="Image") &&
+                    w.Links.Any(x=>x.LinkId==conditionalLink&&x.Kind==MPCPortKind.Control&&
+                        x.ConditionId=="bool:true"),
+                    "V2 control/data links and explicit branch guard must survive");
+                Check(w.FlowInputs.Any(x=>x.Name=="Raw"&&x.BlockId==sourceId) &&
+                    w.FlowOutputs.Any(x=>x.Name=="Detected"&&x.BlockId==targetId) &&
+                    w.Literals.Any(x=>x.BlockId==targetId&&
+                        x.PortMemberId=="Threshold"&&x.Value=="5") &&
+                    w.Policies.Any(x=>x.BlockId==targetId&&x.MaxAttempts==2 &&
+                        x.RetryDelayMs==10&&x.ExecutionGroup=="cpu") &&
+                    w.Ports.Any(x=>x.BlockId==targetId && x.MemberId=="Image" &&
+                        x.TypeId=="gray16"),
+                    "V2 named ports, literal values, policy and type contract must survive");
+                Check(v2.Fingerprint.Length==64 &&
+                    v2.Fingerprint==compiler.Compile(snapshot,wired.RootContent.Id,catalog)
+                        .Fingerprint,"static Plan must be stable for the same Core snapshot");
+                v2.RequireCurrent(snapshot,catalog);
+                var changedCatalog=new MDCStaticCatalogSnapshot(new[]{
+                    new MOCCapabilityDescriptor("vision.gray16","New schema","Vision")
+                });
+                bool stale=false;
+                try {v2.RequireCurrent(snapshot,changedCatalog);}
+                catch(InvalidOperationException) {stale=true;}
+                Check(stale,"static Plan must reject changed professional catalog");
+                bool noExecutableDelegate=typeof(MDCDeclarativePlan).Assembly
+                    .GetTypes().Where(t=>t.Name.StartsWith("MDCPlan",StringComparison.Ordinal))
+                    .SelectMany(t=>t.GetProperties())
+                    .All(p=>!typeof(Delegate).IsAssignableFrom(p.PropertyType));
+                Check(noExecutableDelegate,
+                    "pure Plan DTO must not expose an executable Delegate");
             }
             finally {session.Close(true);}
         }

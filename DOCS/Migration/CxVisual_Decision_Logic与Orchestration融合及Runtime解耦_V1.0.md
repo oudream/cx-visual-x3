@@ -280,3 +280,10 @@ git grep -n -E 'MRKExecutionPlanCompiler|IMRKCapabilityResolver|MRKResolvedCapab
 新增过渡`MOCManifestRuntimeBinding`实现GoF Adapter，把前期纯`MDCStaticSourceManifest`与既有`MOCEngineeringCompiler`衔接，而非开发一套新的编译器/执行器。严格顺序：Static Manifest重验与元数据完整性 → 运行边界Resolve与`MOCBindingContractInspector`合同检查 → 原MOC/MRK编译/SourceMap。一个Binding调用内缓存能力Id和委托，避免预检和真正编译时重复Resolver产生不一致的已绑定实现；仅在原Resolver确实支持版本接口时透传`IMRKVersionedCapabilityResolver`。
 
 **源码归属**：`MOCManifestRuntimeBinding.cs`及`MOCBindingContractInspector.cs`未来应留Host/Runtime，不能因为文件现处Orchestration就一起进入Decision。严格未知合同默认拒绝；旧Provider显式兼容仍交由原MRK二次运行约束。保持`MOCEngineeringCompiler.Compile`旧入口不变，便于对照SourceMap、动态Loop/子流程/原发布回归。P0尚未完成纯Plan分离、工程Reference DAG断环及27项目物理融合。
+
+
+## P0阶段一：纯描述式Plan IR已独立成源文件，运行lowering仍由原MOC负责
+
+新增`MDCDeclarativePlan.cs`作为无`MRK*`引用的瞬时静态编译结果。它消费Core的唯一权威Logic Aspect和已验`MDCStaticSourceManifest`，产生按原身份索引的V1结构关系与V2端口/链路/公开别名/参数/策略，并保留完整规范化MOL Payload防止复杂语义丢失。已审的Runtime-free CI清单包含该文件。
+
+迁移顺序保持：**Phase 1静态描述与来源保真 → Phase 2实现完全独立的Expr/Branch/Loop/Try/StateMachine声明式lowering及序列化金样 → Phase 3 MRK Host Loader/Binding消费该IR并保留SourceMap/Trace行为等价 → Phase 4消除旧Orchestration→Runtime引用 → Phase 5最后物理融合为Mechanism.Decision**。当前桥接器新增`Bind(project,MDCDeclarativePlan,catalog,resolver)`只检查Plan版本、继续调用唯一原编译器，不能误报为Phase 3完成。旧API保持。

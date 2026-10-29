@@ -437,3 +437,24 @@ manifest.RequireCurrent(session.GetSnapshot(),
 ### D05运行交接增加第三层静态Core端口校验
 
 `MOCManifestRuntimeBinding.Bind`在查询任何MRK Resolver之前，针对Manifest中全部V2 Content复用现有`MDCStaticBuildPreflight.Assess(wiring, MDCStaticCatalogSnapshot)`。因此交接链现在为**Core/MOL版本与正式引用→工程节点MPC端口与专业静态Schema→专业静态Schema与MRK CLR运行签名→原MOC编译器**。静态Port硬冲突立即拒绝并附原ContentId/RuleId，不能由于后续执行签名正确就放行过时工程定义；未验证静态描述只有显式Legacy兼容开关可继续原执行约束检查。该接口不复制MOL Graph，不执行委托，不触达设备；Studio/Headless使用同一个静态预检。
+
+
+## 19. D05首批无Runtime的描述式Plan（静态编译阶段，非最终MRK lowering）
+
+`MDCDeclarativePlanCompiler.Compile(MEMProjectSnapshot,rootContentId,MDCStaticCatalogSnapshot)`现在从已实现的`MDCStaticSourceManifest`收敛出**瞬时不可编辑Plan IR**：`MDCDeclarativePlan`（工程Revision、Root、目录/来源SHA-256）、`MDCPlanContent`、`MDCPlanBlock`、`MDCPlanLink`、`MDCPlanPort`、`MDCPlanNamedPort`、`MDCPlanLiteral`和`MDCPlanPolicy`。无MRK类型、执行委托或设备句柄。
+
+- V1结构化原`BlockId/Kind`、Branch的Case顺序与父子关系、Loop/Foreach的动态最大迭代数、Try/Catch/Finally、Invoke目标身份均保留；**绝不按迭代次数静态展开循环**。
+- V2保留原`EntryBlockId`、Control/Data/Stream的原LinkId、端口端点、ConditionId和Order，以及业务端口TypeId、单位、坐标/时基、公开FlowInputs/FlowOutputs、字面量与声明式重试/超时/执行组策略。
+- 对复杂表达式AST、StateMachine状态与转移、Loop条件、具名Catch精细语义，本切片同时保留一份**防御性复制的原MOL规范化Logic Aspect负载**；它是不可变来源证据而非另一个工程真源，不用半完成的私有规则解释器代替Core。对同一工程、目录产生稳定来源指纹，`RequireCurrent`使Core/目录变更后旧Plan失效。
+
+示例：
+~~~csharp
+var plan = new MDCDeclarativePlanCompiler().Compile(
+    session.GetSnapshot(), contentId, new MDCStaticCatalogSnapshot(catalog));
+plan.RequireCurrent(session.GetSnapshot(), new MDCStaticCatalogSnapshot(catalog));
+// 过渡阶段仍经已有MOC/MRK唯一编译、绑定与执行体系：
+var originalCompiled = new MOCManifestRuntimeBinding().Bind(
+    session.GetSnapshot(), plan, new MDCStaticCatalogSnapshot(catalog), resolver);
+~~~
+
+**严格分层声明**：目前这是无Runtime的源描述与索引IR（Static Phase 1），尚未将V1表达式、V2 StateMachine/Guard与资源策略全部降低成**自足、可被MRK独立加载的执行IR**；桥接器虽接收此Plan，仍委托原MOCEngineeringCompiler完成最终lowering。不能宣称P0纯Plan迁移、项目解环或完整State/Loop行为等价证明已完成。

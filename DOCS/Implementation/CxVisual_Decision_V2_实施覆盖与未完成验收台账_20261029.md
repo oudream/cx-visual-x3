@@ -113,3 +113,10 @@ ArchitectureSmoke在V1父调用V2子之外，再由原`MOCFlowBuilder.InvokeCont
 | [efecd87c](https://github.com/oudream/cx-visual-x3/commit/efecd87cc99aab6a19bbf59845dc032aafc4c013) | 修正为`found.Ports`；新增原`MOCFlowBuilder`真实V2 Action→Manifest→绑定→SourceMap正例。[Decision Run 40832214673](https://github.com/oudream/cx-visual-x3/actions/runs/40832214673) **Success**；[ModuleCenter CPU RAW Run 40832214907](https://github.com/oudream/cx-visual-x3/actions/runs/40832214907) **Success** | Automated（软件） |
 
 **未完成**：唯一`Mechanism.Decision`物理工程、Orchestration→Runtime的项目依赖解除、独立可序列化纯Plan及MRK Loader、六专业完整资源/仿真/现场HIL。软件CI不证明外部设备安全或发布授权。
+
+
+## 18. D05静态描述式Plan Phase 1 实际交付与剩余差距
+
+新增`MDCDeclarativePlanCompiler`及不可编辑Plan DTO，在原V1/V2 Core/MOL单一工程真源上构建SourceMap可追溯的原Content/Block索引。V1包含Branch、Loop/Foreach与Try结构关系，V2包含原控制与数据连线、端口、命名输入输出、字面量及步骤策略；完整原MOL规范化负载保留Complex Expression/StateMachine等尚未独立降低语义。不携带Delegate/MRKExecutionPlan/设备句柄、不产生第二套持久工程Graph。过渡`MOCManifestRuntimeBinding`增加Plan重载，重检版本后仍由原MOC Compiler做唯一最终lowering。测试以真实`MEMEngineering`和`MOCFlowBuilder`编排正例及已提交运行编译器回归为准。
+
+**关键未完成**：这是Phase 1“描述式IR”，不是全部控制语义已lowering的Runtime独立执行Plan；MRK Loader、工厂、Policy/State/Loop完整静态编译、27项目融合和多专业真实HIL均不在此批完成范围。WindowsCI状态须以后续Run登记。

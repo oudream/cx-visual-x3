@@ -16,6 +16,24 @@ namespace CxVisual.Mechanism.Orchestration
     public sealed class MOCManifestRuntimeBinding
     {
         /// <summary>
+        /// Transitional Host adapter for the pure declarative Plan. For now the
+        /// original MOC compiler remains the only lowering authority. This
+        /// overload consumes a versioned Plan but does NOT translate its block
+        /// index into a second MRK scheduler or claim Plan/Runtime decoupling.
+        /// </summary>
+        public MOCCompiledPlan Bind(MEMProjectSnapshot project,
+            MDCDeclarativePlan plan, MDCStaticCatalogSnapshot catalog,
+            IMRKCapabilityResolver resolver,
+            IReadOnlyDictionary<string,Type> professionalTypes = null,
+            bool allowUnverifiedLegacyContracts = false)
+        {
+            if(plan==null)throw new ArgumentNullException("plan");
+            plan.RequireCurrent(project,catalog);
+            return Bind(project,plan.SourceManifest,catalog,resolver,
+                professionalTypes,allowUnverifiedLegacyContracts);
+        }
+
+        /// <summary>
         /// Fail closed BEFORE invoking a provider's resolver for stale, incomplete
         /// or structurally invalid source. A resolver is probed only once per
         /// capability ID within this binding attempt and never executed.
