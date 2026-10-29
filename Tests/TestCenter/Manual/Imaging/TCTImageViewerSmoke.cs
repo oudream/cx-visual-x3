@@ -546,6 +546,28 @@ namespace CxVisual.TestCenter.UI
                 ListBox cpuResults=FindControl<ListBox>(frame,"TCT.Imaging.CpuResultItems");
                 if(cpuResults==null || cpuResults.Items.Count!=evidence.Items.Count)
                     throw new InvalidOperationException("CPU Run结果项未在WPF输出页显示");
+                Button exportRunCsv=FindControl<Button>(frame,
+                    "TCT.Imaging.ExportCpuRunCsv");
+                if(exportRunCsv==null || !exportRunCsv.IsEnabled)
+                    throw new InvalidOperationException(
+                        "R1工作台当前Run的结构化CSV导出按钮缺失");
+                string runCsv=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-RunCsv-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportCpuRunCsvFile(runCsv);
+                    string csv=File.ReadAllText(runCsv);
+                    if(!csv.StartsWith("schema_version,run_id,source_id,") ||
+                       !csv.Contains(evidence.RunId.ToString("N")) ||
+                       !csv.Contains(evidence.SourceId) ||
+                       !csv.Contains("\"Measurement\"") ||
+                       !csv.Contains("\"Region\"") ||
+                       !csv.Contains("\"7\"") || !csv.Contains("\"px²\""))
+                        throw new InvalidOperationException(
+                            "WPF当前Run导出的结构化CSV身份或区域/测量数值不正确");
+                }
+                finally {if(File.Exists(runCsv))File.Delete(runCsv);}
+
                 var imageRow=cpuResults.Items.OfType<ListBoxItem>().Single(row =>
                     ((CxVisual.Professional.Vision.CxVisionResultItem)row.Tag).Kind ==
                     CxVisual.Professional.Vision.CxVisionResultKind.Image);
@@ -670,6 +692,21 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.AddOverlay(manual);
                 // 修改参数必须清空属于旧Run的显示槽和证据；无效参数不能重用旧结果。
                 cpuThreshold.Text="70000";
+                bool staleRunCsvDenied=false;
+                string invalidCsvPath=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-StaleRun-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportCpuRunCsvFile(invalidCsvPath);
+                }
+                catch(InvalidOperationException){staleRunCsvDenied=true;}
+                finally
+                {
+                    if(File.Exists(invalidCsvPath))File.Delete(invalidCsvPath);
+                }
+                if(!staleRunCsvDenied)
+                    throw new InvalidOperationException(
+                        "修改专业参数后旧Run仍能被导出为有效CSV");
                 if(frame.Viewer.Overlays.Find(projectedOverlayId.Value)!=null ||
                     frame.Viewer.Overlays.Find(manual.Id)==null)
                     throw new InvalidOperationException(
