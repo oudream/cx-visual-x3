@@ -1,6 +1,8 @@
+> **工程现状（2026-10-29）**：已将 Logic 与 Orchestration 合为单一物理工程 `Mechanism/Decision`；当前为 **26 个正式工程（Foundation 8 / Mechanism 7 / Professional 6 / Applications 2 / Intelligence 1 / Tests 2）**。旧 28 项目是历史设计基线；Decision 当前仍存在对 MRK 的过渡编译依赖，最终静态 Plan/运行 Binder 解耦未完成。
+
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (2): **28 traditional C# projects** (ArchitectureSmoke and TestCenter).
+**Architecture:** Foundation (8) → Mechanism (7) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (2): **26 currently tracked C# projects** (ArchitectureSmoke and TestCenter).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
@@ -84,10 +86,10 @@ A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI 
 
 ```text
 CxVisual.Unified/
-├── CxVisual.Unified.sln            # all 28 projects
+├── CxVisual.Unified.sln            # all 26 projects
 ├── CxVisual.Foundation.sln         # 8 foundation projects
 ├── Foundation/                     # 8 projects
-├── Mechanism/                      # 9 projects incl. WPF adapter
+├── Mechanism/                      # 7 projects incl. WPF adapter
 ├── Professional/                   # 6 domain workbench projects
 ├── Applications/                   # Studio (WPF) / Runtime.Host (CLI)
 ├── Intelligence/                   # 1 project

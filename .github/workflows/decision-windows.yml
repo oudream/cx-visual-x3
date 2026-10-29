@@ -5,7 +5,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Decision/**'
       - 'Mechanism/Core/**'
       - 'Mechanism/Runtime/**'
       - 'Tests/ArchitectureSmoke/**'
@@ -24,21 +24,21 @@ jobs:
         shell: pwsh
         run: |
           $pure = @(
-            'Mechanism/Orchestration/MOCCapabilityCatalog.cs',
-            'Mechanism/Orchestration/MOCSourceMap.cs',
-            'Mechanism/Orchestration/MDCDecisionService.cs',
-            'Mechanism/Orchestration/MDCObjectiveSelection.cs',
-            'Mechanism/Orchestration/MDCResourceBudgetPlanner.cs',
-            'Mechanism/Orchestration/MDCStaticCatalogSnapshot.cs',
-            'Mechanism/Orchestration/MDCRecommendationService.cs',
-            'Mechanism/Orchestration/MDCProjectImpactAnalyzer.cs',
-            'Mechanism/Orchestration/MDCRecoverySafetyAssessor.cs',
-            'Mechanism/Orchestration/MDCStaticBuildPreflight.cs',
-            'Mechanism/Orchestration/MDCStaticPathExplorer.cs',
-            'Mechanism/Orchestration/MDCStaticSourceManifest.cs',
-            'Mechanism/Orchestration/MDCDeclarativePlan.cs',
-            'Mechanism/Orchestration/MDCPlanSemantics.cs',
-            'Mechanism/Orchestration/MDCLogicTraversal.cs'
+            'Mechanism/Decision/MOCCapabilityCatalog.cs',
+            'Mechanism/Decision/MOCSourceMap.cs',
+            'Mechanism/Decision/MDCDecisionService.cs',
+            'Mechanism/Decision/MDCObjectiveSelection.cs',
+            'Mechanism/Decision/MDCResourceBudgetPlanner.cs',
+            'Mechanism/Decision/MDCStaticCatalogSnapshot.cs',
+            'Mechanism/Decision/MDCRecommendationService.cs',
+            'Mechanism/Decision/MDCProjectImpactAnalyzer.cs',
+            'Mechanism/Decision/MDCRecoverySafetyAssessor.cs',
+            'Mechanism/Decision/MDCStaticBuildPreflight.cs',
+            'Mechanism/Decision/MDCStaticPathExplorer.cs',
+            'Mechanism/Decision/MDCStaticSourceManifest.cs',
+            'Mechanism/Decision/MDCDeclarativePlan.cs',
+            'Mechanism/Decision/MDCPlanSemantics.cs',
+            'Mechanism/Decision/MDCLogicTraversal.cs'
           )
           foreach ($file in $pure) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
@@ -51,7 +51,7 @@ jobs:
               throw "Runtime API leaked into static Decision source: $file"
             }
           }
-          if (-not (Test-Path 'Mechanism/Orchestration/MOCCapabilityCatalog.Runtime.cs')) {
+          if (-not (Test-Path 'Mechanism/Decision/MOCCapabilityCatalog.Runtime.cs')) {
             throw 'Missing legacy MRK resolver bridge'
           }
       - name: Build unified .NET Framework 4.8 x64 solution

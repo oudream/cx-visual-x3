@@ -1,6 +1,6 @@
 ---
 name: cxvisual-engineering
-description: Apply CxVisual.Unified engineering, C# coding, project layout and migration standards to CxVisual implementation tasks. Use when creating or editing the 28-project .NET Framework 4.8 solution, Foundation/Mechanism/Professional code, WPF Studio, DLL dependencies, logging, health checks, build/test scripts, versioned deployment, or migrating V7.8 and CxECTStudio patterns. 用于 CxVisual 解决方案、项目、子方面、WPF、V7.8迁移、日志、点检、构建和部署规范。
+description: Apply CxVisual.Unified engineering, C# coding, project layout and migration standards to CxVisual implementation tasks. Use when creating or editing the current 26-project .NET Framework 4.8 solution, Foundation/Mechanism/Professional code, WPF Studio, DLL dependencies, logging, health checks, build/test scripts, versioned deployment, or migrating V7.8 and CxECTStudio patterns. 用于 CxVisual 解决方案、项目、子方面、WPF、V7.8迁移、日志、点检、构建和部署规范。
 ---
 
 # CxVisual engineering standard (V1.0)
@@ -31,7 +31,7 @@ Load only the sections needed for the current task; avoid quoting the whole 41-K
 
 ## Essential implementation invariants
 
-1. Preserve **28 projects / 135 sub-areas** (Foundation 8/22, Mechanism 9/40, Professional 6/73, Applications 2, Intelligence 1, Tests 2) and unique sub-area Owner. Use `CxVisual.Unified.sln` and `CxVisual.Foundation.sln`. Do not create one `.csproj` per sub-area, or reintroduce top-level `Adapters`/`Presentation` project groups.
+1. Preserve **current 26 projects / 135 planned sub-areas** (Foundation 8/22, Mechanism 7/40, Professional 6/73, Applications 2, Intelligence 1, Tests 2; historical 28 included now-retired Lifecycle and merged Logic/Orchestration) and unique sub-area Owner. Use `CxVisual.Unified.sln` and `CxVisual.Foundation.sln`. Do not create one `.csproj` per sub-area, or reintroduce top-level `Adapters`/`Presentation` project groups.
 2. Keep **one CxNode engineering truth**. `Project/Page/Content/Symbol/Group/Element`, references and connections must not generate a second persistent Graph tree. Keep Foundation independent of Mechanism/Professional; Mechanism independent of Professional implementation; keep Visual UI-agnostic and Runtime headless.
 3. New UI is WPF (XAML + code-behind + ViewModel). Migrate the necessary WinForms behavior; never rename `.Designer.cs` to simulate a WPF conversion. `Mechanism.Presentation.Wpf` does not own engineering state or need `Foundation.Volume`.
 4. Use traditional `.csproj`, .NET Framework 4.8 and the V1.0 VS2022 build conventions. **C# 12 is a candidate pending real target-environment validation**, not a proven universal compatibility guarantee; inspect §3.2 before fixing `LangVersion`.

@@ -6,7 +6,7 @@ on:
     paths:
       - 'Applications/Studio/**'
       - 'Professional/Vision/**'
-      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Decision/**'
       - 'Mechanism/Runtime/**'
       - 'Mechanism/Data/**'
       - 'Mechanism/Core/**'

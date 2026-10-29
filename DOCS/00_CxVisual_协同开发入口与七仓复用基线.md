@@ -1,4 +1,6 @@
 # CxVisual 协同开发工作入口与七仓复用基线 V1.0
+> **2026-10-29 最新工程结构**：Logic 与 Orchestration 已合并为唯一 `Mechanism/Decision`；Lifecycle 此前已取消独立工程，实际工程数由27减少为**26（F8/M7/P6/应用2/智能1/测试2）**。下文出现的28/27均需按设计或历史事实理解。物理目录合并不代表已解除 Decision→Runtime 的过渡编译引用，不应报告最终纯 Plan / Loader 拆分完成。
+
 
 > **位置**：`cx-visual-x3/DOCS/00_CxVisual_协同开发入口与七仓复用基线.md`  
 > **日期**：2026-10-14  

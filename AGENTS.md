@@ -1,3 +1,5 @@
+> **工程目录新裁决（2026-10-29）**：`Mechanism.Logic` 与 `Mechanism.Orchestration` 已合并为唯一 `Mechanism.Decision` 工程；此前 Lifecycle 已撤销独立工程，当前 **26 项目（F8/M7/P6/应用2/智能1/测试2）**。历史 28 项目规范只作原规划追溯。MOC/Decision 对 MRK 的兼容依赖暂未消除，不能冒称纯静态 DAG/最终运行解耦验收。
+
 # CxVisual.Unified repository guidance (merge into existing AGENTS.md)
 
 - Engineering organization continuation (user authorization, 2026-10-18): continue H02 through H07 automatically after H01; each package requires real implementation, examples, tests, Windows CI, Chinese commits and evidence. Do not wait for repeated stage approval. Consult the latest stage acceptance report for actual API/status; Git authentication failure means Windows CI is pending, not passed. Preserve the unique engineering source and original Runtime/Data/Professional owners.
@@ -7,7 +9,7 @@ This repository uses the approved CxVisual F/M/P architecture and engineering st
 ## Required workflow
 
 - For CxVisual solution, `.csproj`, source code, WPF, DLL/SDK, logging, point-check, build, test, migration or deployment work, use **`$cxvisual-engineering`** and read the relevant sections of its bundled V1.0 reference (or a newer approved repo version).
-- Observe the agreed 28-project / 135-sub-area Owner map and project dependency DAG; avoid adding projects, APIs or SDK references without a concrete need and approved owner.
+- Observe the agreed current 26-project / 135-sub-area Owner map and project dependency DAG; avoid adding projects, APIs or SDK references without a concrete need and approved owner.
 - Keep V7.8 source and physical DLL reality distinct from new specifications. Never fabricate SDKs, successful builds, point-check passes or physical hardware validation.
 - Do not claim changes are complete without reporting actual tests, their outputs, and unverified constraints.
 - Respect the immediate user's task scope; the skill reference is not permission to perform unrelated edits.

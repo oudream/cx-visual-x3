@@ -45,7 +45,6 @@
     <ProjectReference Include="..\..\Professional\Simulation\CxVisual.Professional.Simulation.csproj"><Project>{F8166329-04DC-5071-A3B7-F8CE0755AF27}</Project><Name>CxVisual.Professional.Simulation</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
-    <ProjectReference Include="..\..\Mechanism\Logic\CxVisual.Mechanism.Logic.csproj"><Project>{71A7BD54-3D24-50DC-B60D-42A9848E8DB0}</Project><Name>CxVisual.Mechanism.Logic</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Presentation.Wpf\CxVisual.Mechanism.Presentation.Wpf.csproj"><Project>{718A728A-4133-59EF-804F-62B7E8EE11EA}</Project><Name>CxVisual.Mechanism.Presentation.Wpf</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Automation\CxVisual.Professional.Automation.csproj"><Project>{02494452-8A8C-593B-8B49-A58D05218D88}</Project><Name>CxVisual.Professional.Automation</Name></ProjectReference>
@@ -59,7 +58,7 @@
     <ProjectReference Include="..\..\Foundation\Core\CxVisual.Foundation.Core.csproj"><Project>{688C0850-BA46-559F-B977-A6F9D1DE4DB0}</Project><Name>CxVisual.Foundation.Core</Name></ProjectReference>
   <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{1626A969-FF77-560F-AA00-53D010AD01B3}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference></ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Mechanism\Orchestration\CxVisual.Mechanism.Orchestration.csproj"><Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Orchestration</Name></ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Decision\CxVisual.Mechanism.Decision.csproj"><Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Decision</Name></ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="**\*.cs" Exclude="obj\**\*.cs;bin\**\*.cs" />

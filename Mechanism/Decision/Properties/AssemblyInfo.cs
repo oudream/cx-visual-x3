@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
-[assembly: AssemblyTitle("CxVisual.Mechanism.Logic")]
+[assembly: AssemblyTitle("CxVisual.Mechanism.Decision")]
 [assembly: AssemblyDescription("CxVisual unified platform V1 sample")]
 [assembly: AssemblyCompany("CxVisual")]
 [assembly: AssemblyProduct("CxVisual.Unified")]

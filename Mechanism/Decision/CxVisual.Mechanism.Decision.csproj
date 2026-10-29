@@ -4,8 +4,8 @@
   <PropertyGroup>
     <ProjectGuid>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>CxVisual.Mechanism.Orchestration</RootNamespace>
-    <AssemblyName>CxVisual.Mechanism.Orchestration</AssemblyName>
+    <RootNamespace>CxVisual.Mechanism.Decision</RootNamespace>
+    <AssemblyName>CxVisual.Mechanism.Decision</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>

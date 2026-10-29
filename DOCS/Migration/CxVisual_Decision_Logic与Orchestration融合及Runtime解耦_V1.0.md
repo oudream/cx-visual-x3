@@ -1,4 +1,6 @@
 # CxVisual Decision——Logic/Orchestration 融合、Runtime 解耦与项目改名迁移台账 V1.0
+> **2026-10-29 物理工程实施补记**：按用户明确要求，已先行迁移 Orchestration 真实源文件到 `Mechanism/Decision`，移除无业务源码的 Logic 工程，沿用原 Orchestration GUID，更新 `.sln` / `.csproj` / CI / 工程目录清单。Lifecycle 此前已归并，工程数量实际 **27 → 26**。**此举只完成目录与程序集融合**：过渡 MOC/MDC 公共命名空间、Decision→Runtime 编译引用仍保留，纯静态 Plan、最终单向 MRK Loader 和 P0～P3 工业验收仍未完成。下文“尚未更改”保留为当时的历史状态，不再代表当前 master。
+
 
 > 目标：把 `Mechanism.Logic`、`Mechanism.Orchestration` 合并改名为 **`Mechanism.Decision`**，使 Core 定义、Decision 判断与规划、Runtime 运行形成真实的单向职责及无环依赖。
 > **当前状态：规划/逐文件迁移清单，尚未更改 .sln/.csproj、程序集、DLL 名或任何公开类型。** 真实基础：2026-10-28 master `f081438986a201382167d95c1130ea9a284bd7e1`。

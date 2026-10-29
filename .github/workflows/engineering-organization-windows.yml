@@ -8,7 +8,7 @@ on:
       - 'Mechanism/Core/**'
       - 'Mechanism/Visual/**'
       - 'Mechanism/Presentation.Wpf/**'
-      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Decision/**'
       - 'Mechanism/Lifecycle/**'
       - 'Applications/Studio/**'
       - 'Tests/ArchitectureSmoke/**'
