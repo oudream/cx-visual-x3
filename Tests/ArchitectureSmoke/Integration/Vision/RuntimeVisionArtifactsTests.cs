@@ -315,6 +315,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "测量MOC能力未声明专业输入及强类型面积输出");
                 using(var project=MEMEngineering.Create("Vision工程测量"))
                 {
+                    try
+                    {
                     CxVisionCpuRun result=CxVisionRawCpuRunner.ExecuteMeasuredAsync(
                         project,provider,rawPath,5,3,CancellationToken.None)
                         .GetAwaiter().GetResult();
@@ -340,6 +342,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             x.CapabilityId==CxVisionAcceptedRegionMeasureProvider.CapabilityId),
                         "正式三节点并未持久编入唯一MEM/MOL工程内容");
                     project.SaveAs(projectPath);
+                    }
+                    finally { project.Close(true); }
                 }
                 using(var reopened=MEMEngineering.Open(projectPath))
                 {
@@ -355,6 +359,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 using(var legacy=MEMEngineering.Create("保留两步旧调用"))
                 {
+                    try
+                    {
                     var old=CxVisionRawCpuRunner.ExecuteAsync(
                         legacy,provider,rawPath,5,3,CancellationToken.None)
                         .GetAwaiter().GetResult();
@@ -362,7 +368,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         !old.AcceptedRegionPixelArea.HasValue &&
                         !old.Evidence.Items.Any(x=>x.Kind==CxVisionResultKind.Measurement),
                         "旧MOC两节点调用被强制增加测量节点");
-                    legacy.Close(true);
+                    }
+                    finally { legacy.Close(true); }
                 }
             }
             finally
