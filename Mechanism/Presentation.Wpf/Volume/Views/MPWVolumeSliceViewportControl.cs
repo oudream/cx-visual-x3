@@ -215,10 +215,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             Point pt=e.GetPosition(image);
             if(!IsFinite(pt.X)||!IsFinite(pt.Y))return false;
             if(pt.X<0||pt.Y<0||pt.X>=image.ActualWidth||pt.Y>=image.ActualHeight)return false;
-            x=Math.Max(0,Math.Min(image.Source.PixelWidth-1,
-                (int)Math.Floor(pt.X*image.Source.Width/image.ActualWidth)));
-            y=Math.Max(0,Math.Min(image.Source.PixelHeight-1,
-                (int)Math.Floor(pt.Y*image.Source.Height/image.ActualHeight)));
+            var bitmap=image.Source as System.Windows.Media.Imaging.BitmapSource;
+            if(bitmap==null)return false;
+            x=Math.Max(0,Math.Min(bitmap.PixelWidth-1,
+                (int)Math.Floor(pt.X*bitmap.PixelWidth/image.ActualWidth)));
+            y=Math.Max(0,Math.Min(bitmap.PixelHeight-1,
+                (int)Math.Floor(pt.Y*bitmap.PixelHeight/image.ActualHeight)));
             return true;
         }
 
