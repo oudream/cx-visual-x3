@@ -74,7 +74,9 @@ namespace CxVisual.TestCenter.UI
                     previousSurface.SampleStep,previousSurface.MaximumPoints,cancellation,previousSphere.MaximumConditionNumber):
                     saveCylinder?CT3DAnalysisCase.AnalyzeCylinder(root,source,previousSurface.Threshold,
                     previousSurface.SampleStep,previousSurface.MaximumPoints,previousCylinder.AxisDirection,
-                    cancellation,previousCylinder.MaximumConditionNumber):
+                    cancellation,previousCylinder.MaximumConditionNumber,
+                    previousCylinder.SelectedPointIndices.Count==0?null:
+                        previousCylinder.SelectedPointIndices):
                     CT3DAnalysisCase.Analyze(root,source,previous.Threshold,
                         Math.Max(12,previous.Mesh.TriangleCount),mesh=>roi,cancellation,ratio);
                 // 保存的是当前视图所选几何，源文件变化不能让旧ROI悄悄指向另一片网格。
