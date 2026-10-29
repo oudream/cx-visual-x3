@@ -55,9 +55,12 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("来源Frame已变化，请重新分析后保存。");
             var capturedScene=_state.Scene3D;
             long capturedSceneRevision=capturedScene.Revision;
+            var capturedVisuals=capturedScene.Snapshot();
+            Guid? capturedSelection=capturedScene.SelectedId;
             var priorSource=_professionalSource;
             var roi=_planeRoi==null?null:(int[])_planeRoi.Clone();double ratio=_planePlanarity;
             string savedToken=null;
+            MVI3DSceneState savedLayout=null;
             int capturedCaseIndex=_professionalCaseIndex;
             var saved=await Task.Run(()=>
             {
@@ -101,6 +104,9 @@ namespace CxVisual.TestCenter.UI
                         owner=owners[capturedCaseIndex];
                     }
                     CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,root,analysis,cancellation);
+                    savedLayout=BuildSavedSceneLayout(analysis,capturedVisuals,capturedSelection);
+                    MVI3DSceneLayoutPersistence.Commit(engineering,owner,engineering.Revision,
+                        savedLayout,cancellation);
                     cancellation.ThrowIfCancellationRequested();
                     engineering.SaveAsAsync(full,cancellation).GetAwaiter().GetResult();
                     savedToken=engineering.StoreToken;
@@ -118,7 +124,11 @@ namespace CxVisual.TestCenter.UI
             {
                 // 磁盘提交已完成，应接纳新的保存Token；Frame/ROI变化时只更新保存收据，
                 // 不让旧快照替换当前专业结果。后续保存仍可沿用资产身份并递增来源修订。
-                if(restore)RestoreProfessionalCase(saved);
+                if(restore)
+                {
+                    RestoreProfessionalCase(saved);
+                    ApplySavedSceneLayout(savedLayout);
+                }
                 _professionalSource=saved.Source;
                 _professionalProjectPath=full;_professionalStoreToken=savedToken;
                 _professionalCaseIndex=expectedStore==null?0:capturedCaseIndex;
@@ -141,6 +151,7 @@ namespace CxVisual.TestCenter.UI
             long request=++_caseRequestEpoch,volumeEpoch=_sphereEpoch;
             string openedToken=null;
             FVOVolumeData loaded=null;
+            MVI3DSceneState openedLayout=null;
             try
             {
                 var analysis=await Task.Run(()=>
@@ -153,6 +164,14 @@ namespace CxVisual.TestCenter.UI
                             throw new ArgumentOutOfRangeException("caseIndex","三维案例索引不存在。");
                         var value=CT3DAnalysisPersistence.Open(engineering,engineering.GetAddress(owners[caseIndex]),root,cancellation);
                         loaded=value.Source.LoadVolume(root,cancellation);
+                        if(owners[caseIndex].Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
+                            a.ProviderId==MVI3DSceneLayoutPersistence.ProviderId))
+                        {
+                            openedLayout=new MVI3DSceneState();
+                            MVI3DSceneLayoutPersistence.Open(engineering,
+                                engineering.GetAddress(owners[caseIndex]),openedLayout,
+                                item=>IsSceneSourceForAnalysis(item,value),cancellation);
+                        }
                         openedToken=engineering.StoreToken;
                         return value;
                     }
@@ -162,10 +181,77 @@ namespace CxVisual.TestCenter.UI
                     throw new OperationCanceledException("视图已切换，丢弃旧案例读取结果。");
                 LoadVolume(loaded);loaded=null;
                 RestoreProfessionalCase(analysis);
+                ApplySavedSceneLayout(openedLayout);
                 _professionalProjectPath=full;_professionalStoreToken=openedToken;
                 _professionalCaseIndex=caseIndex;
             }
             finally{if(loaded!=null)loaded.Dispose();}
+        }
+
+        private static string ProfessionalSceneSource(CT3DAnalysisCase analysis,
+            MVI3DSceneKind kind)
+        {
+            if(kind==MVI3DSceneKind.Volume)return analysis.Source.SourceRef;
+            if(kind==MVI3DSceneKind.Mesh&&analysis.Kind==CT3DAnalysisKind.MeshPlane)
+                return "ct3d:mesh:"+analysis.Mesh.ResultId.ToString("N");
+            if(kind==MVI3DSceneKind.Surface&&analysis.Kind!=CT3DAnalysisKind.MeshPlane)
+                return "ct3d:surface:"+analysis.Surface.ResultId.ToString("N");
+            if(kind==MVI3DSceneKind.Measurement)
+            {
+                if(analysis.Kind==CT3DAnalysisKind.MeshPlane)
+                    return "ct3d:plane:"+analysis.Plane.ResultId.ToString("N");
+                if(analysis.Kind==CT3DAnalysisKind.SurfaceSphere)
+                    return "ct3d:sphere:"+analysis.Sphere.ResultId.ToString("N");
+                return "ct3d:cylinder:"+analysis.Cylinder.ResultId.ToString("N");
+            }
+            return null;
+        }
+        private static bool IsSceneSourceForAnalysis(MVI3DSceneItem item,CT3DAnalysisCase analysis)
+        {
+            string expected=ProfessionalSceneSource(analysis,item.Kind);
+            return expected!=null&&expected==item.SourceRef&&
+                item.SourceRevision==analysis.Source.Revision&&
+                (item.SpatialFrameRef==analysis.Source.Signature||
+                 item.SpatialFrameRef==analysis.Source.SpatialFrameRef);
+        }
+        private static MVI3DSceneState BuildSavedSceneLayout(CT3DAnalysisCase analysis,
+            System.Collections.Generic.IReadOnlyList<MVI3DSceneItem> current,Guid? selected)
+        {
+            var layout=new MVI3DSceneState();
+            var kinds=analysis.Kind==CT3DAnalysisKind.MeshPlane
+                ?new[]{MVI3DSceneKind.Volume,MVI3DSceneKind.Mesh,MVI3DSceneKind.Measurement}
+                :new[]{MVI3DSceneKind.Volume,MVI3DSceneKind.Surface,MVI3DSceneKind.Measurement};
+            foreach(MVI3DSceneKind kind in kinds)
+            {
+                MVI3DSceneItem style=current.FirstOrDefault(x=>x.Kind==kind&&
+                    (kind!=MVI3DSceneKind.Measurement||selected==x.Id))??
+                    current.FirstOrDefault(x=>x.Kind==kind);
+                Guid id=layout.Add(kind,ProfessionalSceneSource(analysis,kind),
+                    analysis.Source.Revision,analysis.Source.Signature,
+                    style==null?1:style.Opacity);
+                if(style==null)continue;
+                layout.SetOrganization(id,style.LayerKey,style.GroupKey);
+                if(!style.Visible)layout.SetVisibility(id,false);
+                if(selected==style.Id&&style.Visible)layout.Select(id);
+            }
+            return layout;
+        }
+
+        private void ApplySavedSceneLayout(MVI3DSceneState layout)
+        {
+            if(layout==null||_state==null)return;
+            Guid? selected=null;
+            foreach(MVI3DSceneItem style in layout.Snapshot())
+            {
+                MVI3DSceneItem current=_state.Scene3D.Snapshot().FirstOrDefault(x=>
+                    x.Kind==style.Kind&&x.SourceRef==style.SourceRef);
+                if(current==null)throw new InvalidDataException("保存的三维Scene引用与当前专业结果不一致。");
+                _state.Scene3D.SetOrganization(current.Id,style.LayerKey,style.GroupKey);
+                _state.Scene3D.SetOpacity(current.Id,style.Opacity);
+                _state.Scene3D.SetVisibility(current.Id,style.Visible);
+                if(layout.SelectedId==style.Id&&style.Visible)selected=current.Id;
+            }
+            _state.Scene3D.Select(selected);
         }
 
         private void RestoreProfessionalCase(CT3DAnalysisCase analysis)
