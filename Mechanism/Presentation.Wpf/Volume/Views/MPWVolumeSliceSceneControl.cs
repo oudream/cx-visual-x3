@@ -31,6 +31,61 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalMeshTriangles=
             new Dictionary<Guid,int>();
+        private MVI3DSceneState _additionalScene;
+        private Func<MVI3DSceneItem,MPWVolumeDisplayMesh> _additionalMeshResolver;
+        private readonly HashSet<Guid> _sceneMeshIds=new HashSet<Guid>();
+
+        /// <summary>正式MVI场景是唯一显隐/透明度Owner；WPF仅消费其专业几何显示投影。</summary>
+        public void BindAdditionalMeshes(MVI3DSceneState scene,
+            Func<MVI3DSceneItem,MPWVolumeDisplayMesh> resolver)
+        {
+            Dispatcher.VerifyAccess();
+            if(scene!=null&&resolver==null)throw new ArgumentNullException("resolver");
+            if(_additionalScene!=null)_additionalScene.Changed-=AdditionalSceneChanged;
+            foreach(Guid id in new List<Guid>(_sceneMeshIds))RemoveAdditionalMesh(id);
+            _sceneMeshIds.Clear();
+            _additionalScene=scene;_additionalMeshResolver=resolver;
+            if(scene!=null)
+            {
+                scene.Changed+=AdditionalSceneChanged;
+                SynchronizeAdditionalMeshes();
+            }
+        }
+        private void AdditionalSceneChanged(object sender,EventArgs e)
+        {
+            if(Dispatcher.CheckAccess())SynchronizeAdditionalMeshes();
+            else Dispatcher.BeginInvoke(new Action(SynchronizeAdditionalMeshes));
+        }
+        private void SynchronizeAdditionalMeshes()
+        {
+            Dispatcher.VerifyAccess();
+            if(_additionalScene==null)return;
+            var wanted=new Dictionary<Guid,Tuple<MPWVolumeDisplayMesh,double>>();
+            int triangles=0;
+            foreach(MVI3DSceneItem item in _additionalScene.Snapshot())
+            {
+                if(!item.Visible||(item.Kind!=MVI3DSceneKind.Mesh&&
+                    item.Kind!=MVI3DSceneKind.Cad))continue;
+                MPWVolumeDisplayMesh geometry=_additionalMeshResolver(item);
+                if(geometry==null)continue;
+                triangles=checked(triangles+geometry.TriangleCount);
+                if(triangles+SurfaceMeshTriangleCount>50000)
+                    throw new InvalidOperationException("MVI多对象WPF Mesh超出50000三角总预算。");
+                wanted.Add(item.Id,Tuple.Create(geometry,item.Opacity));
+            }
+            foreach(Guid id in new List<Guid>(_sceneMeshIds))
+                if(!wanted.ContainsKey(id))
+                {
+                    RemoveAdditionalMesh(id);
+                    _sceneMeshIds.Remove(id);
+                }
+            foreach(var pair in wanted)
+            {
+                SetAdditionalMesh(pair.Key,pair.Value.Item1,pair.Value.Item2);
+                _sceneMeshIds.Add(pair.Key);
+            }
+        }
+
         public int AdditionalMeshCount {get{return _additionalMeshes.Count;}}
         public int AdditionalMeshTriangleCount
         {
@@ -191,6 +246,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
+            BindAdditionalMeshes(null,null);
             ClearSurfaceMesh();
             ClearAdditionalMeshes();
         }
