@@ -288,6 +288,74 @@ namespace CxVisual.Studio
                     (item.Unit==null?"":" "+item.Unit):"");
         }
 
+        /// <summary>
+        /// 只创建一次真实MEM Page/Content：内部三段已连通，外部RAW数据由
+        /// 既有MOL FlowInput端口绑定；用户仍可使用Studio原FlowCanvas更改拓扑。
+        /// 不自动创建Raw Provider或隐式绑定设备，不是新的Graph状态。
+        /// </summary>
+        internal sealed class StudioVisionFlowTemplate
+        {
+            public Guid PageId {get;internal set;}
+            public Guid MaskBlockId {get;internal set;}
+            public Guid RegionBlockId {get;internal set;}
+            public Guid MeasureBlockId {get;internal set;}
+            public long ConfigurationRevision {get;internal set;}
+        }
+
+        internal static StudioVisionFlowTemplate CreateStudioSeparatedVisionFlow(
+            MEMEngineeringSession session,CxVisionThresholdProvider provider)
+        {
+            if(session==null)throw new ArgumentNullException("session");
+            if(provider==null)throw new ArgumentNullException("provider");
+            StudioVisionCapabilitySet set=CreateStudioVisionCapabilities(provider);
+            CxVisionInspectionOptions options=provider.CaptureInspectionOptions();
+            // 在触及工程之前核对所有真实专业能力及已生效版本。
+            foreach(string id in new[]{
+                CxVisionBinaryThresholdProvider.CapabilityId,
+                CxVisionMaskRegionsProvider.CapabilityId,
+                CxVisionAcceptedRegionMeasureProvider.CapabilityId})
+            {
+                MRKResolvedCapability action;
+                string pinnedVersion;
+                if(!set.Resolver.TryResolve(id,out action)||action==null ||
+                   !set.Resolver.TryGetCapabilityVersion(id,out pinnedVersion) ||
+                   string.IsNullOrWhiteSpace(pinnedVersion))
+                    throw new InvalidOperationException("vision.template.capability_unavailable:"+id);
+            }
+            // 校验MHS版本/权限在原事务创建前仍有效。
+            provider.CaptureInspectionOptions();
+            var page=session.AddPage("二维视觉 · Mask→Region→Measurement 可编辑流程");
+            Guid mask=Guid.Empty,regions=Guid.Empty,measure=Guid.Empty;
+            MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                mask=b.Step(set.Threshold.DescribeCapabilities().Single());
+                b.SetParameter(mask,"Threshold",
+                    options.GrayThreshold.ToString(CultureInfo.InvariantCulture));
+                regions=b.Step(set.Regions.DescribeCapabilities().Single());
+                b.SetParameter(regions,"RuleVersion",set.Regions.ReleaseVersion);
+                measure=b.Step(set.Measurement.DescribeCapabilities().Single());
+                b.Connect(mask,"Done",regions,"Start",MPCPortKind.Control);
+                b.Connect(mask,"ThresholdMask",regions,"ThresholdMask",MPCPortKind.Data);
+                b.Connect(regions,"Done",measure,"Start",MPCPortKind.Control);
+                b.Connect(regions,"Inspection",measure,"Inspection",MPCPortKind.Data);
+                // 此子流程不持有RAW设备或文件路径，外部调用者显式输入三值。
+                b.ExposeInput("RawPixels",mask,"RawPixels");
+                b.ExposeInput("Width",mask,"Width");
+                b.ExposeInput("Height",mask,"Height");
+                b.ExposeOutput("ThresholdMask",mask,"ThresholdMask");
+                b.ExposeOutput("Inspection",regions,"Inspection");
+                b.ExposeOutput("AcceptedRegionPixelArea",measure,"Area");
+            });
+            var saved=session.GetSnapshot().Find(page.RootContent.Id);
+            var wiring=saved==null?null:MOLWiringCodec.Get(saved);
+            if(wiring==null)throw new InvalidOperationException("vision.template.not_persisted");
+            wiring.ValidateExecutable();
+            return new StudioVisionFlowTemplate {
+                PageId=page.Id,MaskBlockId=mask,
+                RegionBlockId=regions,MeasureBlockId=measure,
+                ConfigurationRevision=provider.ConfigurationRevision
+            };
+        }
+
         private void OnOpenStudioModuleCenter(object sender,RoutedEventArgs args)
         { SafeStudioAction(()=>OpenStudioDocument("doc.modules")); }
 
