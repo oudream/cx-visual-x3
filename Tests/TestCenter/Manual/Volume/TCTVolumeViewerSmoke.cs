@@ -998,6 +998,9 @@ namespace CxVisual.TestCenter.UI
                 try{AwaitProfessional(frame.SaveProfessionalCaseAsync(project,System.Threading.CancellationToken.None));}
                 catch(CxVisual.Mechanism.Core.MEMStoreConflictException){conflict=true;}
                 Check(conflict,"外部编辑后旧工作台保存必须报告StoreToken冲突");
+                // 多Case重新打开会创建新的FVO Volume与Frame实例；保存竞态测试
+                // 必须恢复当前会话的Frame，而非切换前旧Volume的Frame对象。
+                var currentCaseFrame=frame.Volume.SpatialFrame;
                 var meshBeforeSave=frame.LastVoxelMesh;
                 var planeBeforeSave=frame.LastMeshPlaneFit;
                 var saveBeforeFrameChange=frame.SaveProfessionalCaseAsync(
@@ -1010,7 +1013,7 @@ namespace CxVisual.TestCenter.UI
                     Object.ReferenceEquals(frame.LastVoxelMesh,meshBeforeSave)&&
                     Object.ReferenceEquals(frame.LastMeshPlaneFit,planeBeforeSave),
                     "保存期间Frame改变不能由旧快照回填当前Mesh/Measurement");
-                frame.Volume.SetSpatialFrame(oldFrame);
+                frame.Volume.SetSpatialFrame(currentCaseFrame);
                 string roiSnapshot=Path.Combine(root,"snapshot-roi.cxproj");
                 var saveBeforeRoiChange=frame.SaveProfessionalCaseAsync(roiSnapshot,System.Threading.CancellationToken.None);
                 var newerPlane=frame.AnalyzeCurrentMeshPlaneTopZ();
