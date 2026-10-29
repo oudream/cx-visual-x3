@@ -94,6 +94,7 @@
     <Compile Include="Automated\Cases\TCTCommandCenterCases.cs" />
     <Compile Include="Manual\Module\TCTManualModuleFrame.cs" />
     <Compile Include="Manual\Module\TCTCpuComputePanel.cs" />
+    <Compile Include="Manual\Module\TCTDriverReadinessPanel.cs" />
     <Compile Include="Manual\Module\TCTSimulationStepPanel.cs" />
     <Compile Include="Manual\Module\TCTServiceRequestPanel.cs" />
     <Compile Include="Manual\Module\TCTConnectorLoopPanel.cs" />
