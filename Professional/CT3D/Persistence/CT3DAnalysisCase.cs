@@ -68,6 +68,13 @@ namespace CxVisual.Professional.CT3D
         public IReadOnlyList<CT3DFeatureMeasurement> GetFeatureMeasurements()
         {
             var values=new List<CT3DFeatureMeasurement>();
+            if(Kind==CT3DAnalysisKind.MeshPlane)
+            {
+                values.Add(new CT3DFeatureMeasurement("plane.rms-residual",Plane.RmsResidualMm,
+                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                values.Add(new CT3DFeatureMeasurement("plane.max-absolute-residual",Plane.MaxAbsoluteResidualMm,
+                    Plane.RmsResidualMm,Plane.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+            }
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
             {
                 values.Add(new CT3DFeatureMeasurement("sphere.radius",Sphere.RadiusMm,
