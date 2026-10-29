@@ -59,6 +59,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ProjectBackedSeparatedNodes();
             SeparatedGray16AndInputSafety();
             SeparatedMemoryImagePreview();
+            SavedMemoryVisionR1RoundTrip();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
         }
@@ -835,6 +836,134 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .GetAwaiter().GetResult(),
                     "预取消的拆分工程不能返回Run");
             }
+        }
+
+        /// <summary>
+        /// CASE-01/02/07集成回归：Stride Gray16输入→分割面积→MEM保存关闭重开→
+        /// 从内存再次绑定→同源不同Run→轮廓→旧工程连线损坏被拒绝且无半提交。
+        /// </summary>
+        private static void SavedMemoryVisionR1RoundTrip()
+        {
+            string projectFile=Path.Combine(Path.GetTempPath(),
+                "vision-r1-"+Guid.NewGuid().ToString("N")+".cxproj");
+            // 3x2 Gray16，每行2个填充字节。阈值命中3个连通像素。
+            byte[] storage={
+                0xF4,0x01, 0xF4,0x01, 0,0, 0xA1,0xB2,
+                0xF4,0x01, 0,0, 0,0, 0xC3,0xD4
+            };
+            FIMImageBuffer input=new FIMImageBuffer(
+                3,2,FIMPixelFormat.Gray16,storage,8);
+            CxVisionInspectionOptions settings=Options(CxVisionPixelDepth.Bits16,400);
+            Guid contentId=Guid.Empty;
+            Guid initialRun=Guid.Empty;
+            string originalFingerprint=null;
+            try
+            {
+                using(var project=MEMEngineering.Create("R1 Gray16可复现工程"))
+                {
+                    try
+                    {
+                        CxVisionCpuRun initial=
+                            CxVisionRawCpuRunner.ExecuteSeparatedMeasuredImageAsync(
+                                project,settings,151,input,"r1/camera/frame-001",0,
+                                CancellationToken.None).GetAwaiter().GetResult();
+                        Check(initial.ThresholdMask!=null &&
+                            initial.ThresholdMask.GetGrayValue(0,0)==255 &&
+                            initial.ThresholdMask.GetGrayValue(1,0)==255 &&
+                            initial.ThresholdMask.GetGrayValue(0,1)==255 &&
+                            initial.AcceptedRegionPixelArea==3,
+                            "R1原始内存图真实Mask/Region数值错误");
+                        initialRun=initial.FlowId;
+                        originalFingerprint=initial.Fingerprint;
+                        MEMProjectSnapshot snapshot=project.GetSnapshot();
+                        var page=snapshot.Find(initial.PageId);
+                        contentId=snapshot.Nodes.Single(n=>n.Kind==MEMNodeKind.Content &&
+                            n.ParentId==page.Id).Id;
+                        project.SaveAs(projectFile);
+                    }
+                    finally {project.Close(true);}
+                }
+                using(var reopened=MEMEngineering.Open(projectFile))
+                {
+                    try
+                    {
+                        int revision=reopened.Revision;
+                        CxVisionCpuRun repeated=
+                            CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                reopened,contentId,settings,151,input,"r1/camera/frame-001",
+                                0,CancellationToken.None).GetAwaiter().GetResult();
+                        Check(repeated.FlowId!=initialRun &&
+                            repeated.Fingerprint==originalFingerprint &&
+                            repeated.SourceImage!=null &&
+                            repeated.SourceImage.PixelFormat==FIMPixelFormat.Gray16 &&
+                            repeated.SourceImage.Stride==6 &&
+                            repeated.SourceImage.GetGrayValue(0,0)==500 &&
+                            repeated.Evidence.SourceId=="r1/camera/frame-001" &&
+                            repeated.Evidence.RunId==repeated.FlowId &&
+                            repeated.Evidence.Items.Single(x=>
+                                x.Kind==CxVisionResultKind.Mask).Image.GetGrayValue(0,1)==255 &&
+                            repeated.Evidence.Items.Single(x=>
+                                x.Kind==CxVisionResultKind.Measurement).IntegerValue==3 &&
+                            repeated.Evidence.WithThresholdMaskContours()
+                                .Items.Where(x=>x.Kind==CxVisionResultKind.Contour)
+                                .Sum(x=>x.Contour.SignedAreaPixels)==3 &&
+                            reopened.Revision==revision && !reopened.IsDirty &&
+                            input.CopyPixels().SequenceEqual(storage),
+                            "R1工程保存重开后内存图重跑丢失身份、像素、轮廓或修改工程");
+
+                        // 输入错误与非法操作绝不能改变已保存工程。
+                        Reject<ArgumentException>(()=>
+                            CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                reopened,contentId,settings,151,
+                                new FIMImageBuffer(3,2,FIMPixelFormat.Gray8,
+                                    new byte[6]),"bad/frame",0,CancellationToken.None)
+                                    .GetAwaiter().GetResult(),
+                            "R1已保存工程不能把Gray8误当Gray16");
+                        CxVisionInspectionOptions wrongThreshold=Options(
+                            CxVisionPixelDepth.Bits16,401);
+                        Reject<InvalidOperationException>(()=>
+                            CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                reopened,contentId,wrongThreshold,151,input,
+                                "r1/camera/frame-001",0,CancellationToken.None)
+                                    .GetAwaiter().GetResult(),
+                            "R1工程不能悄然覆盖保存时的阈值");
+                        using(var canceled=new CancellationTokenSource())
+                        {
+                            canceled.Cancel();
+                            Reject<OperationCanceledException>(()=>
+                                CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                    reopened,contentId,settings,151,input,
+                                    "r1/camera/frame-001",0,canceled.Token)
+                                        .GetAwaiter().GetResult(),
+                                "R1预取消不得返回新Run");
+                        }
+                        Check(reopened.Revision==revision && !reopened.IsDirty,
+                            "R1坏输入、非法配置、取消不能使保存工程变脏");
+                        // 保留原MOL作为唯一真源。显式断开控制线使工程成为草稿：
+                        // 不能继续利用固定链快捷入口冒称已发布的原有定义。
+                        var node=reopened.GetSnapshot().Find(contentId);
+                        MOLWiringDefinition wiring=MOLWiringCodec.Get(node);
+                        Guid toBreak=wiring.Links.First(x=>
+                            x.Kind==MPCPortKind.Control &&
+                            x.Target.BlockId==repeated.InspectBlockId).Id;
+                        MEMContent editable=reopened.Find(contentId) as MEMContent;
+                        Check(editable!=null,"R1重开Content必须可供原MOC编辑器编辑");
+                        MOCFlowBuilder.Edit(reopened,editable,b=>b.Disconnect(toBreak));
+                        int editedRevision=reopened.Revision;
+                        Reject<InvalidOperationException>(()=>
+                            CxVisionRawCpuRunner.ExecuteSavedSeparatedMeasuredImageAsync(
+                                reopened,contentId,settings,151,input,
+                                "r1/camera/frame-001",0,CancellationToken.None)
+                                    .GetAwaiter().GetResult(),
+                            "R1控制线被断开后固定链必须拒绝重跑");
+                        Check(reopened.Revision==editedRevision &&
+                            reopened.GetSnapshot().Find(contentId)!=null,
+                            "R1无效流程重跑不得进一步修改工程定义");
+                    }
+                    finally {reopened.Close(true);}
+                }
+            }
+            finally {if(File.Exists(projectFile))File.Delete(projectFile);}
         }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
