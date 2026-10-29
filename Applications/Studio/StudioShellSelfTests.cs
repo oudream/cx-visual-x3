@@ -197,9 +197,10 @@ namespace CxVisual.Studio
                         resultStack.Children.OfType<WrapPanel>()
                             .SelectMany(x=>x.Children.OfType<Button>())
                             .Count(x=>new[]{"Studio.ModuleCenter.ShowRunOriginal",
-                                "Studio.ModuleCenter.GenerateRunContours"}.Contains(
-                                System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==2,
-                        "Studio模块中心缺少统一MPW图窗、可视结果列表或Contour入口");
+                                "Studio.ModuleCenter.GenerateRunContours",
+                                "Studio.ModuleCenter.ExportRunCsv"}.Contains(
+                                System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==3,
+                        "Studio模块中心缺少统一MPW图窗、结果列表、Contour或Run CSV入口");
                     Button createVisionFlow=actions.FirstOrDefault(x=>
                         System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                         "Studio.ModuleCenter.CreateVisionFlow");
