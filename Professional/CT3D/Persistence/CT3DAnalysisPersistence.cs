@@ -109,6 +109,7 @@ namespace CxVisual.Professional.CT3D
             try
             {
                 var aspects=new List<MPMAspect>(analyses.Count);
+                long totalArtifactBytes=0;
                 for(int i=0;i<analyses.Count;i++)
                 {
                     cancellation.ThrowIfCancellationRequested();
@@ -120,6 +121,10 @@ namespace CxVisual.Professional.CT3D
                             WriteResult(writer,analysis,cancellation);
                     },cancellation);
                     string hash=Path.GetFileNameWithoutExtension(relative);
+                    totalArtifactBytes=checked(totalArtifactBytes+new FileInfo(
+                        CT3DArtifactFiles.Resolve(root,relative)).Length);
+                    if(totalArtifactBytes>CT3DArtifactFiles.MaximumResultBytes)
+                        throw new InvalidOperationException("批量专业结果制品合计超过内存/磁盘预算。");
                     byte[] payload;
                     using(var memory=new MemoryStream())
                     {
@@ -203,7 +208,10 @@ namespace CxVisual.Professional.CT3D
             {
                 cancellation.ThrowIfCancellationRequested();
                 if(owner.Aspects.Any(a=>a.Kind==MPMAspectKind.Data&&a.ProviderId==ProviderId))
+                {
+                    if(result.Count>=128)throw new InvalidOperationException("三维工程一次打开超过128个Case预算。");
                     result.Add(Open(engineering,engineering.GetAddress(owner),root,cancellation));
+                }
             }
             return result.AsReadOnly();
         }
