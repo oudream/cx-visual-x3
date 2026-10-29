@@ -165,7 +165,9 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.Overlays.Changed += (sender,args) =>
             {
-                // 轮廓标注发布会修改OverlayStore：不得反过来取消其自身的操作。
+                // 手工修改ROI仍取消引用旧ROI的区域任务；唯独本操作正式
+                // 发布轮廓标注期间不得反过来取消同一轮廓任务。
+                if(!_publishingContours)CancelAnalysis();
                 CancelHistogram();
                 _histogramPlot.Clear();
                 _info.Text="ROI或图层已变更，统计将自动刷新。";
