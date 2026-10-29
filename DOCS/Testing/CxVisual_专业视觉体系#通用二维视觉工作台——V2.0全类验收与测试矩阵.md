@@ -328,3 +328,9 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | UI-COMP-02 | 故意以6×3解释15字节RAW触发负例，必须等待异步处理真正结束；改回5×3再点Run，不能把旧错误状态/取消状态当作新Run完成，必须等到新LastReport | [2b110f5](https://github.com/oudream/cx-visual-x3/commit/2b110f5429bba324a57c5e024d49dd615dfcf97e)、[Compute UIA #40811544416](https://github.com/oudream/cx-visual-x3/actions/runs/40811544416)待最终结果 |
 
 **边界**：工程重开不是无需资源重绑定的生产重放，也不保存RAW像素于MEM；持久ArtifactRef/FrameRef/ReviewRecord、跨设备调度与长时HIL仍未完成。
+
+### 19.4 G3/G4实际回归结果（2026-10-29）
+
+`ARCH-O06/O07`针对固定`dceed1d7a8ceb0b6685615ebf8b83245947553ef`：[Imaging #40811670554](https://github.com/oudream/cx-visual-x3/actions/runs/40811670554) **success**（实际Windows构建、`--imaging`、保存重开显式重绑成功、合法18字节6×3输入与保存5×3工程不匹配被拒绝，工程Revision不变），[Unified Runtime #40811670497](https://github.com/oudream/cx-visual-x3/actions/runs/40811670497) **success**。同SHA工程专项[Engineering #40811670459](https://github.com/oudream/cx-visual-x3/actions/runs/40811670459) 首次登记in_progress，不据此称其success。
+
+`UI-COMP-02`固定`2b110f5429bba324a57c5e024d49dd615dfcf97e`：[TestCenter Compute UIA #40811544416](https://github.com/oudream/cx-visual-x3/actions/runs/40811544416) **success**， [Four G1 #40811544542](https://github.com/oudream/cx-visual-x3/actions/runs/40811544542) **success**。明确以等待新`LastReport`终结负例之后的真实重跑，不能以旧错误文本为条件伪造完成。
