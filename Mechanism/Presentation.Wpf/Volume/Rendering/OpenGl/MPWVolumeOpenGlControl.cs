@@ -39,6 +39,69 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         }
         private readonly Dictionary<Guid,CachedSceneMesh> _sceneMeshes=
             new Dictionary<Guid,CachedSceneMesh>();
+        private MVI3DSceneState _sceneMeshState;
+        private Func<MVI3DSceneItem,MPWVolumeDisplayMesh> _sceneMeshResolver;
+        private readonly Dictionary<Guid,string> _sceneMeshKeys=new Dictionary<Guid,string>();
+
+        /// <summary>MPW仅消费MVI可视状态；按资源Revision缓存GPU几何，样式变化只更新Uniform。</summary>
+        public void BindSceneMeshes(MVI3DSceneState scene,
+            Func<MVI3DSceneItem,MPWVolumeDisplayMesh> resolver)
+        {
+            if(scene!=null&&resolver==null)throw new ArgumentNullException("resolver");
+            if(_sceneMeshState!=null)_sceneMeshState.Changed-=OnSceneMeshesChanged;
+            foreach(Guid id in new List<Guid>(_sceneMeshKeys.Keys))RemoveSceneMesh(id);
+            _sceneMeshKeys.Clear();
+            _sceneMeshState=scene;_sceneMeshResolver=resolver;
+            if(scene!=null)
+            {
+                scene.Changed+=OnSceneMeshesChanged;
+                SynchronizeSceneMeshes();
+            }
+        }
+        private void OnSceneMeshesChanged(object sender,EventArgs e)
+        {
+            if(Dispatcher.CheckAccess())SynchronizeSceneMeshes();
+            else Dispatcher.BeginInvoke(new Action(SynchronizeSceneMeshes));
+        }
+        private void SynchronizeSceneMeshes()
+        {
+            if(_sceneMeshState==null)return;
+            var desired=new HashSet<Guid>();
+            foreach(MVI3DSceneItem item in _sceneMeshState.Snapshot())
+            {
+                if(!item.Visible||(item.Kind!=MVI3DSceneKind.Mesh&&
+                    item.Kind!=MVI3DSceneKind.Cad))continue;
+                string key=item.Kind+":"+item.SourceRef+":"+item.SourceRevision+":"+
+                    item.SpatialFrameRef;
+                string current;
+                if(_sceneMeshKeys.TryGetValue(item.Id,out current)&&current==key)
+                {
+                    UpdateSceneMeshOpacity(item.Id,item.Opacity);
+                    desired.Add(item.Id);
+                    continue;
+                }
+                MPWVolumeDisplayMesh geometry=_sceneMeshResolver(item);
+                if(geometry==null)continue;
+                SetSceneMesh(item.Id,geometry,item.Opacity);
+                _sceneMeshKeys[item.Id]=key;
+                desired.Add(item.Id);
+            }
+            foreach(Guid id in new List<Guid>(_sceneMeshKeys.Keys))
+            {
+                if(desired.Contains(id))continue;
+                RemoveSceneMesh(id);
+                _sceneMeshKeys.Remove(id);
+            }
+        }
+        private void UpdateSceneMeshOpacity(Guid id,double opacity)
+        {
+            CachedSceneMesh item;
+            if(!_sceneMeshes.TryGetValue(id,out item))return;
+            if(item.Opacity==opacity)return;
+            item.Opacity=opacity;
+            RequestRender();
+        }
+
         public int SceneMeshCount {get{return _sceneMeshes.Count;}}
         public int SceneMeshTriangleCount
         {
@@ -585,6 +648,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         {
             // 设备窗口销毁时解除MVI订阅，避免已释放WGL控件被会话事件保活。
             BindCamera(null);
+            BindSceneMeshes(null,null);
             _dragMode=0;
             if(_nativeInputInstalled && _window!=IntPtr.Zero)
             {
