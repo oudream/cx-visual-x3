@@ -88,6 +88,7 @@ namespace CxVisual.TestCenter.UI
         private FIMImageBuffer _plottedSource;
         private CancellationTokenSource _analysisCancellation;
         private long _analysisEpoch;
+        private bool _analysisNeedsRefresh=true, _automaticHistogramQueued;
         public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
         public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
         private readonly TextBox _polygonVertexIndex = new TextBox {
@@ -125,6 +126,17 @@ namespace CxVisual.TestCenter.UI
             _cpuResultItems.SelectionChanged += (sender,args) => SelectCpuResultItem();
             _cpuThreshold.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
             _cpuMinArea.TextChanged += (sender,args) => InvalidateCpuVisionParameters();
+            // 显示统计页时自动给当前原始像素/ROI计算；后台运行不阻塞UI。
+            _inspectTabs.SelectionChanged += (sender,args) =>
+            {
+                if(ReferenceEquals(args.Source,_inspectTabs) &&
+                   _inspectTabs.SelectedIndex==1 &&
+                   (_analysisNeedsRefresh ||
+                    !ReferenceEquals(_plottedSource,_viewer.ActiveImage)))
+                    QueueAutomaticHistogram();
+            };
+            _withRoi.Checked += (sender,args) => InvalidateHistogram();
+            _withRoi.Unchecked += (sender,args) => InvalidateHistogram();
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
@@ -149,7 +161,9 @@ namespace CxVisual.TestCenter.UI
             {
                 CancelAnalysis();
                 _histogramPlot.Clear();
-                _info.Text="ROI或图层已变更，请重新计算统计。";
+                _info.Text="ROI或图层已变更，统计将自动刷新。";
+                _analysisNeedsRefresh=true;
+                QueueAutomaticHistogram();
                 RefreshOverlayList();
             };
             _viewer.Session.Changed += (sender,args) =>
@@ -185,9 +199,10 @@ namespace CxVisual.TestCenter.UI
                 FIMImageBuffer current = _viewer.ActiveImage;
                 if (!ReferenceEquals(current, _plottedSource))
                 {
-                    _plottedSource = current;
+                    _analysisNeedsRefresh=true;
                     _histogramPlot.Clear();
                     _profilePlot.Clear();
+                    QueueAutomaticHistogram();
                 }
             };
             _viewer.SelectionChanged += (s,e) =>
@@ -196,7 +211,9 @@ namespace CxVisual.TestCenter.UI
                     SelectOverlayRow(_viewer.SelectedOverlayId);
                 CancelAnalysis();
                 _histogramPlot.Clear();
-                _info.Text="选择区域已变化，请点击“计算灰度统计 / 直方图”。";
+                _info.Text="选择区域已变化，统计将自动刷新。";
+                _analysisNeedsRefresh=true;
+                QueueAutomaticHistogram();
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
                 if (_viewer.ToolMode == MVIImageToolMode.LineProfile &&
@@ -1400,6 +1417,28 @@ namespace CxVisual.TestCenter.UI
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
 
+        private void InvalidateHistogram()
+        {
+            CancelAnalysis();
+            _analysisNeedsRefresh=true;
+            _histogramPlot.Clear();
+            QueueAutomaticHistogram();
+        }
+
+        private void QueueAutomaticHistogram()
+        {
+            if(_automaticHistogramQueued || _inspectTabs.SelectedIndex!=1 ||
+                _viewer.ActiveImage==null || !IsLoaded) return;
+            _automaticHistogramQueued=true;
+            Dispatcher.BeginInvoke(new Action(()=>
+            {
+                _automaticHistogramQueued=false;
+                if(IsLoaded && _inspectTabs.SelectedIndex==1 &&
+                   _viewer.ActiveImage!=null && _analysisNeedsRefresh)
+                    Calculate();
+            }),System.Windows.Threading.DispatcherPriority.Background);
+        }
+
         private void CancelAnalysis()
         {
             Interlocked.Increment(ref _analysisEpoch);
@@ -1468,6 +1507,7 @@ namespace CxVisual.TestCenter.UI
                 timer.Stop();
                 _histogramPlot.SetHistogram(result.Histogram);
                 _plottedSource = image;
+                _analysisNeedsRefresh=false;
                 _inspectTabs.SelectedIndex = 1;
                 FIMImageStatistics stats = result.Statistics;
                 _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
@@ -1485,7 +1525,7 @@ namespace CxVisual.TestCenter.UI
                     timer.Elapsed.TotalMilliseconds.ToString("0.#") +
                     "ms；原图不变、显示窗不参与计算");
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { /* 图像/ROI新请求取代旧请求，正常退出 */ }
             catch (Exception error)
             {
                 if (Interlocked.Read(ref _analysisEpoch) == epoch)
