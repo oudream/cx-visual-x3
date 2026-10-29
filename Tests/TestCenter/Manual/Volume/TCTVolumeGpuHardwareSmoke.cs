@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -143,6 +144,23 @@ namespace CxVisual.TestCenter.UI
                 gl.ClearSceneMeshes();
                 if(gl.SceneMeshCount!=0||gl.SceneMeshTriangleCount!=0)
                     throw new InvalidOperationException("清理所有GPU Scene Mesh后仍留显示缓存。");
+                var sharedScene=new MVI3DSceneState();
+                Guid mviMesh=sharedScene.Add(MVI3DSceneKind.Mesh,"ct3d:test:mesh",1);
+                Guid mviCad=sharedScene.Add(MVI3DSceneKind.Cad,"cad:test:mesh",1);
+                gl.BindSceneMeshes(sharedScene,item=>projected);
+                if(gl.SceneMeshCount!=2)
+                    throw new InvalidOperationException("GPU应按MVI Scene组合加载独立Mesh/CAD VBO。");
+                int uploadsBeforeStyle=gl.SceneMeshUploadCount;
+                sharedScene.SetOpacity(mviMesh,.35);
+                if(gl.SceneMeshUploadCount!=uploadsBeforeStyle)
+                    throw new InvalidOperationException("GPU样式变化不得重复上传顶点VBO。");
+                sharedScene.SetVisibility(mviCad,false);
+                if(gl.SceneMeshCount!=1)
+                    throw new InvalidOperationException("MVI隐藏CAD应释放GPU VBO。");
+                sharedScene.Remove(mviMesh);
+                if(gl.SceneMeshCount!=0)
+                    throw new InvalidOperationException("MVI删除Mesh应自动卸载对应GPU资源。");
+                gl.BindSceneMeshes(null,null);
                 string path=Environment.GetEnvironmentVariable("CXVISUAL_GPU_UI_SCREENSHOT");
                 if(string.IsNullOrEmpty(path))
                     path=Path.Combine(Path.GetTempPath(),"CxVisual-GPU-Hardware-Raymarch.png");
