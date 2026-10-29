@@ -61,6 +61,11 @@
 - [图元编辑完整设计与验收 V1.2](Architecture/CxVisual_工程呈现化体系%23图元编辑——完整设计与验收_V1.2.md)：十四章、四附录、A～F 核心操作图；包含六类控制柄、场景投影、数学变换、固定/浮动视觉连接、Group/Symbol/剪贴板、Studio 使用合同及 GE-01～GE-15。**设计合同，不是已实现/已验收的宣告**。
 - [图元体系架构与归属现状](Architecture/CxVisual_工程呈现化体系%23图元编辑——完整设计与验收_V1.2.md)：维护实际类归属、源码状态；具体实施/CI 见 Implementation/Testing。避免维护两份设计主规格。
 
+### Supervision（Go 监控守护服务）工程规范
+
+- **[《CxVisual Supervision Go 编码与工程规范 V1.0》](Architecture/CxVisual_Supervision_Go编码与工程规范_V1.0.md)**：正式编码与工程规范，覆盖 Monitor/Daemon 职责、Go 包/命名、HTTP/H5 安全、UDP/SQLite 兼容、错误/并发/生命周期、OOP/GoF/AOP、跨平台测试与工业验收；**规范生效不代表 P0～P3 目标功能已经实现**。
+- 正式代码位于 `Services/Supervision/`，以该目录 README、Go 源码、GitHub Actions 结果为实施事实。
+
 ### 已完成的七仓技术资产档案：01～03（源码证据及复用提案，不是正式定案）
 
 | 档案 | 内容与应读时机 | 本档案引用的旧仓源码基线 |

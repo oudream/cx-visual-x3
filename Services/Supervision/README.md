@@ -1,5 +1,7 @@
 # Supervision — 原 Go Monitor / Daemon 保真迁移
 
+> **开发规范**：[《CxVisual Supervision Go 编码与工程规范 V1.0》](../../DOCS/Architecture/CxVisual_Supervision_Go编码与工程规范_V1.0.md)。新增或实质修改 Go 源码时必须遵守；已迁移旧代码按兼容性和测试证据渐进治理。
+
 此目录是可独立构建的 **Go 模块**，不是 `CxVisual.Mechanism.Lifecycle` 的重命名，也不包含第二套 C# Host。
 
 ## 来源与迁移范围
