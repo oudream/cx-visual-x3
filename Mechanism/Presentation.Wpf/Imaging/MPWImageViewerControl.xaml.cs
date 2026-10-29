@@ -423,6 +423,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _session.Select(MVIImageSlot.Result);
         }
 
+        /// <summary>
+        /// 异步结果的UI提交入口。调用者应在开始计算前捕获Session.SourceVersion；
+        /// 过期结果不得覆盖新图，也不得切换当前视图。
+        /// </summary>
+        public bool TryShowResult(long expectedVersion, FIMImageBuffer image)
+        {
+            VerifyAccess();
+            if (image == null) throw new ArgumentNullException("image");
+            if (!_session.TrySetResult(expectedVersion, image)) return false;
+            _session.Select(MVIImageSlot.Result);
+            return true;
+        }
+
         public void SelectOriginal() { VerifyAccess(); _session.Select(MVIImageSlot.Original); }
         public void SelectResult() { VerifyAccess(); _session.Select(MVIImageSlot.Result); }
 
