@@ -84,6 +84,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 scene3d.SetGroupVisibility("inspection",false);
                 Check(scene3d.Revision==beforeGroup+1,"幂等整组显隐不能虚增场景Revision");
                 scene3d.SetGroupVisibility("inspection",true);
+                long beforeOpacity=scene3d.Revision;
+                scene3d.SetGroupOpacity("inspection",.25);
+                Check(scene3d.Revision==beforeOpacity+1&&
+                    scene3d.SnapshotLayer("reference")[0].Opacity==.25&&
+                    scene3d.SnapshotLayer("analysis")[0].Opacity==.25,
+                    "多种三维对象组透明度必须批量设置且发布单次版本更新");
+                scene3d.SetGroupOpacity("inspection",.25);
+                Check(scene3d.Revision==beforeOpacity+1,"重复组透明度不得产生冗余场景通知");
+                bool invalidGroupOpacity=false;
+                try{scene3d.SetGroupOpacity("inspection",double.NaN);}
+                catch(ArgumentOutOfRangeException){invalidGroupOpacity=true;}
+                Check(invalidGroupOpacity&&scene3d.Revision==beforeOpacity+1,
+                    "非法组透明度不得部分修改");
                 bool invalidLayer=false;
                 try{scene3d.SetOrganization(cadRef,"  ");}catch(ArgumentException){invalidLayer=true;}
                 Check(invalidLayer&&scene3d.SnapshotLayer("reference").Count==1,
