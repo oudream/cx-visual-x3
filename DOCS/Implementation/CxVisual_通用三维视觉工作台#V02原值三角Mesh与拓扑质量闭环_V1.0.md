@@ -237,3 +237,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **已定位并修复的回归**：旧批量测试误插到单Case作用域造成CS0103，提交`5343458`修复；Undo后MEM拒绝脏会话关闭，提交`f6f699c`显式Discard；多Case WPF切换后恢复旧Volume的Frame对象导致误失效，提交`d7dcab1`改用当前Case Frame。未改变MEM事务、CT3D失效语义。
 - **固定成功证据**：`f6f699c`的 [Engineering 40864641611](https://github.com/oudream/cx-visual-x3/actions/runs/40864641611)、[Runtime 40864641858](https://github.com/oudream/cx-visual-x3/actions/runs/40864641858)、[Decision 40864641767](https://github.com/oudream/cx-visual-x3/actions/runs/40864641767)均SUCCESS；`9899cb5` [Engineering 40865223526](https://github.com/oudream/cx-visual-x3/actions/runs/40865223526)、[Runtime 40865223564](https://github.com/oudream/cx-visual-x3/actions/runs/40865223564)、[Decision 40865223502](https://github.com/oudream/cx-visual-x3/actions/runs/40865223502)亦SUCCESS。证明对应SHA的Release x64/ArchitectureSmoke，不等于最新A包所有修改或G5通过。
 - **待验阻点**：最新WPF修复及Schema3测试还要以其对应Windows SHA核实；旧Schema1外部历史二进制fixture实际缺失（当前仅显式SKIP）；GPU/真实工业样本G4/G5未作新增验收；大型工业圆柱侧面识别与不确定度评估不属于此离散拟合的已认证能力。持续以R5唯一主文收敛，不另建项目/通用工程树。
+
+
+### 10.14 多Case WPF Frame竞态修复与固定验收（2026-10-29）
+
+- [`d7dcab1`](https://github.com/oudream/cx-visual-x3/commit/d7dcab135a6d5c2d84f272aef2c3fbea3f807e46) 修复WPF多Case回归中的错误测试状态恢复：重新打开不同Case会创建当前`FVOVolumeData/FVOVolumeSpatialFrame`，测试在异步保存Frame变化后错误恢复旧案例的Frame对象，触发专业ROI过期保护。改为恢复当前Case捕获的Frame，未削弱正式失效检测。对应[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994) **SUCCESS**，覆盖实际Windows 3D WPF验证；[TestCenter Command 40865538105](https://github.com/oudream/cx-visual-x3/actions/runs/40865538105) **SUCCESS**；全量TestCenter .NET48同时仍需记录其最终独立UIA结论。
+- [`3e186a3`](https://github.com/oudream/cx-visual-x3/commit/3e186a3487a34a4315761c864ecc55d3f6b70bc0)后续Windows全工程编译通过，但其WPF Smoke因上述Frame测试逻辑失败；不得将其标为全绿。修复以后按上述固定SHA升级。
+- 仍未将`AppData/Cases/CT3D/V04Schema1`外部旧版固定二进制样本误写为已验证；仍无实际工业量具G5精度认证。
