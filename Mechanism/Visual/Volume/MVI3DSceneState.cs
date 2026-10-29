@@ -171,6 +171,27 @@ namespace CxVisual.Mechanism.Visual
             ChangedNow();
         }
 
+        /// <summary>专业结果或工程树通过稳定资源引用定位可见场景项；
+        /// 若同来源存在多个实例必须由调用方消歧，不能隐式选错对象。</summary>
+        public bool TrySelectSource(string sourceRef,out Guid selectedId)
+        {
+            if(string.IsNullOrWhiteSpace(sourceRef))
+                throw new ArgumentException("来源引用不能为空。","sourceRef");
+            selectedId=Guid.Empty;
+            MVI3DSceneItem match=null;
+            foreach(MVI3DSceneItem item in _items)
+            {
+                if(!item.Visible||!string.Equals(item.SourceRef,sourceRef,StringComparison.Ordinal))
+                    continue;
+                if(match!=null)return false;
+                match=item;
+            }
+            if(match==null)return false;
+            selectedId=match.Id;
+            Select(selectedId);
+            return true;
+        }
+
         public void Remove(Guid id)
         {
             int index=FindIndex(id);
