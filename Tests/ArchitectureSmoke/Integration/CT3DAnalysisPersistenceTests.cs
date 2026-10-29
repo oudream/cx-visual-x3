@@ -252,6 +252,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Object.ReferenceEquals(result.SpatialFrame,source.SpatialFrame)&&
                     !result.HasEvaluatedUncertainty,
                     "UInt16离散圆柱侧壁拟合保留来源、毫米单位与质量证据");
+                var caseValue=CT3DAnalysisCase.AnalyzeCylinder(folder,source,1000,1,10000,axis,CancellationToken.None);
+                Check(caseValue.GetFeatureMeasurements().Count==2,"圆柱Feature提供半径和直径测量");
+                string projectFile=Path.Combine(folder,"cylinder.cxproj");MRIObjectAddress address;
+                using(var engineering=MEMEngineering.Create("Cylinder"))
+                {
+                    var owner=engineering.AddPage("Cylinder").RootContent;
+                    address=CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,folder,caseValue,CancellationToken.None);
+                    engineering.SaveAs(projectFile);
+                }
+                using(var engineering=MEMEngineering.Open(projectFile))
+                {
+                    var restored=CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None);
+                    Check(restored.Kind==CT3DAnalysisKind.SurfaceCylinder&&
+                        restored.Cylinder.ResultId==caseValue.Cylinder.ResultId&&
+                        restored.Surface.ResultId==caseValue.Surface.ResultId&&
+                        restored.Cylinder.SourceSurfaceResultId==restored.Surface.ResultId&&
+                        Math.Abs(restored.Cylinder.RadiusMm-caseValue.Cylinder.RadiusMm)<1e-10&&
+                        restored.GetFeatureMeasurements().All(m=>m.SourceSignature==source.Signature),
+                        "MEM重开圆柱保留Feature、Surface、来源签名及毫米量值");
+                    var recomputed=restored.Recompute(folder,CancellationToken.None);
+                    Check(recomputed.Cylinder.ResultId!=restored.Cylinder.ResultId&&
+                        Math.Abs(recomputed.Cylinder.DiameterMm-restored.Cylinder.DiameterMm)<1e-10,
+                        "固定轴向圆柱重新计算不复用旧结果身份");
+                }
                 Reject<ArgumentOutOfRangeException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(
                     samples,new FVOPhysicalPoint3D(0,0,0)));
                 Reject<OperationCanceledException>(()=>CT3DSurfaceCylinderAnalysis.FitCylinder(
