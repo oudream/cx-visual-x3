@@ -149,6 +149,40 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private bool _renderQueued;
         public int NativePointerEvents { get; private set; }
         public IntPtr NativeHandleForHardwareTest { get { return _window; } }
+        /// <summary>由真实WGL视口像素反投影为标准化Volume空间射线。
+        /// 后续由专业Owner用FVO Frame转回毫米坐标并求交，不借屏幕深度伪造计量结果。</summary>
+        public bool TryGetNormalizedPickRay(int pixelX,int pixelY,
+            out Vector3 origin,out Vector3 direction)
+        {
+            origin=Vector3.Zero;direction=Vector3.Zero;
+            if(_window==IntPtr.Zero||_voxels==null)return false;
+            RectNative area;
+            if(!GetClientRect(_window,out area))return false;
+            int w=area.Right-area.Left,h=area.Bottom-area.Top;
+            if(w<2||h<2||pixelX<0||pixelY<0||pixelX>=w||pixelY>=h)return false;
+            float cy=(float)Math.Cos(_yaw),sy=(float)Math.Sin(_yaw);
+            float cp=(float)Math.Cos(_pitch),sp=(float)Math.Sin(_pitch);
+            Vector3 camera=_target+new Vector3(_distance*sy*cp,_distance*sp,_distance*cy*cp);
+            Matrix4x4 model=Matrix4x4.CreateScale(_sx,_sy,_sz);
+            Matrix4x4 view=Matrix4x4.CreateLookAt(camera,_target,Vector3.UnitY);
+            Matrix4x4 projection=Matrix4x4.CreatePerspectiveFieldOfView(
+                (float)(Math.PI/4),w/(float)h,.02f,30);
+            Matrix4x4 inverse;
+            if(!Matrix4x4.Invert(model*view*projection,out inverse))return false;
+            float x=2f*(pixelX+.5f)/w-1f,y=1f-2f*(pixelY+.5f)/h;
+            // GL裁剪深度是[-1,1]，不是DirectX[0,1]。
+            Vector4 near=Vector4.Transform(new Vector4(x,y,-1,1),inverse);
+            Vector4 far=Vector4.Transform(new Vector4(x,y,1,1),inverse);
+            if(Math.Abs(near.W)<1e-9||Math.Abs(far.W)<1e-9)return false;
+            Vector3 p=new Vector3(near.X/near.W,near.Y/near.W,near.Z/near.W);
+            Vector3 q=new Vector3(far.X/far.W,far.Y/far.W,far.Z/far.W);
+            Vector3 ray=q-p;
+            if(ray.LengthSquared()<1e-18f||
+                float.IsNaN(ray.X)||float.IsNaN(ray.Y)||float.IsNaN(ray.Z))return false;
+            origin=p;direction=Vector3.Normalize(ray);
+            return true;
+        }
+
         public float CameraDistance { get { return _distance; } }
         public bool IsOrientationVisible { get { return _showOrientation; } }
         public void SetOrientationVisible(bool visible)
