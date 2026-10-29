@@ -1503,12 +1503,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var policy=new SignedReleasePolicy();
             var publisher=new MRKExecutionPlanPublisher(slot,initial,1,policy);
             var admission=new TestDurableReleaseAdmission();
-            using(RSA signer=RSA.Create())
+            using(RSACryptoServiceProvider signer=new RSACryptoServiceProvider(2048))
             {
-                signer.KeySize=2048;
+                RSAParameters publicKey=signer.ExportParameters(false);
+                Check(publicKey.Modulus!=null && publicKey.Modulus.Length>=256 &&
+                    publicKey.D==null,
+                    "test signer must expose exactly a public 2048-bit or stronger RSA trust anchor");
                 var verifier=new MOCPinnedRsaReleaseVerifier(
                     new Dictionary<string,RSAParameters>{
-                        {"factory-key",signer.ExportParameters(false)}
+                        {"factory-key",publicKey}
                     });
                 var trusted=new MOCTrustedPlanPublisher(
                     "station-42",verifier,admission,publisher);
