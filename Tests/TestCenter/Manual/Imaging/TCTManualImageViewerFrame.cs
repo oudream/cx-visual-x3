@@ -88,6 +88,9 @@ namespace CxVisual.TestCenter.UI
         private FIMImageBuffer _plottedSource;
         private CancellationTokenSource _analysisCancellation;
         private long _analysisEpoch;
+        private CancellationTokenSource _histogramCancellation;
+        private long _histogramEpoch;
+        private bool _publishingContours;
         private bool _analysisNeedsRefresh=true, _automaticHistogramQueued;
         private FIMImageBuffer _observedHistogramImage;
         public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
@@ -139,7 +142,7 @@ namespace CxVisual.TestCenter.UI
             _withRoi.Checked += (sender,args) => InvalidateHistogram();
             _withRoi.Unchecked += (sender,args) => InvalidateHistogram();
             Loaded += (sender,args) => QueueAutomaticHistogram();
-            Unloaded += (sender,args) => CancelAnalysis();
+            Unloaded += (sender,args) => { CancelAnalysis();CancelHistogram(); };
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
@@ -162,7 +165,8 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.Overlays.Changed += (sender,args) =>
             {
-                CancelAnalysis();
+                // 轮廓标注发布会修改OverlayStore：不得反过来取消其自身的操作。
+                CancelHistogram();
                 _histogramPlot.Clear();
                 _info.Text="ROI或图层已变更，统计将自动刷新。";
                 _analysisNeedsRefresh=true;
@@ -173,6 +177,7 @@ namespace CxVisual.TestCenter.UI
             {
                 if (!ReferenceEquals(_cpuSourceImage, _viewer.Session.Original))
                 {
+                    CancelAnalysis();
                     CancelCpuVision();
                     _cpuSourceImage = _viewer.Session.Original;
                     _cpuSourceId = _cpuSourceImage == null ? null :
@@ -203,7 +208,7 @@ namespace CxVisual.TestCenter.UI
                 if (!ReferenceEquals(current, _observedHistogramImage))
                 {
                     _observedHistogramImage=current;
-                    CancelAnalysis();
+                    CancelHistogram();
                     _analysisNeedsRefresh=true;
                     _histogramPlot.Clear();
                     _profilePlot.Clear();
@@ -214,7 +219,8 @@ namespace CxVisual.TestCenter.UI
             {
                 if (_viewer.SelectedOverlayId.HasValue)
                     SelectOverlayRow(_viewer.SelectedOverlayId);
-                CancelAnalysis();
+                if(!_publishingContours)CancelAnalysis();
+                CancelHistogram();
                 _histogramPlot.Clear();
                 _info.Text="选择区域已变化，统计将自动刷新。";
                 _analysisNeedsRefresh=true;
@@ -1127,9 +1133,14 @@ namespace CxVisual.TestCenter.UI
                    !ReferenceEquals(original,_viewer.Session.Original) ||
                    !ReferenceEquals(mask,_viewer.Session.Result))return;
                 timer.Stop();
-                _viewer.AddOverlays(objects);
-                _viewer.SelectOriginal();
-                _viewer.SelectOverlay(objects[0].Id);
+                _publishingContours=true;
+                try
+                {
+                    _viewer.AddOverlays(objects);
+                    _viewer.SelectOriginal();
+                    _viewer.SelectOverlay(objects[0].Id);
+                }
+                finally { _publishingContours=false; }
                 log.Info("轮廓完成；外环="+outer+"；孔洞="+holes+
                     "；耗时毫秒="+timer.Elapsed.TotalMilliseconds.ToString("0.###",CultureInfo.InvariantCulture)+
                     "；源版本="+sourceVersion+"；叠加数量="+objects.Count+"。");
@@ -1430,7 +1441,7 @@ namespace CxVisual.TestCenter.UI
 
         private void InvalidateHistogram()
         {
-            CancelAnalysis();
+            CancelHistogram();
             _analysisNeedsRefresh=true;
             _histogramPlot.Clear();
             QueueAutomaticHistogram();
@@ -1446,6 +1457,12 @@ namespace CxVisual.TestCenter.UI
                 if(IsLoaded && _viewer.ActiveImage!=null && _analysisNeedsRefresh)
                     CalculateCore(false);
             }),System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private void CancelHistogram()
+        {
+            Interlocked.Increment(ref _histogramEpoch);
+            if(_histogramCancellation!=null)_histogramCancellation.Cancel();
         }
 
         private void CancelAnalysis()
@@ -1496,10 +1513,10 @@ namespace CxVisual.TestCenter.UI
                 }
             }
             MVIImageOverlayItem selectedRoi=areaRoi; // 线程只消费不可变MVI快照
-            CancelAnalysis();
+            CancelHistogram();
             CancellationTokenSource cancellation = new CancellationTokenSource();
-            _analysisCancellation = cancellation;
-            long epoch = Interlocked.Read(ref _analysisEpoch);
+            _histogramCancellation = cancellation;
+            long epoch = Interlocked.Read(ref _histogramEpoch);
             Stopwatch timer = Stopwatch.StartNew();
             Show("正在分析原始灰度：" + image.Width + "×" + image.Height +
                 "；界面仍可操作，切图/变更ROI会取消旧请求");
@@ -1523,7 +1540,7 @@ namespace CxVisual.TestCenter.UI
                     }
                 },cancellation.Token);
                 if (result==null || cancellation.IsCancellationRequested ||
-                    Interlocked.Read(ref _analysisEpoch) != epoch ||
+                    Interlocked.Read(ref _histogramEpoch) != epoch ||
                     !ReferenceEquals(_viewer.ActiveImage,image))
                     return;
                 timer.Stop();
@@ -1550,13 +1567,13 @@ namespace CxVisual.TestCenter.UI
             catch (OperationCanceledException) { /* 图像/ROI新请求取代旧请求，正常退出 */ }
             catch (Exception error)
             {
-                if (Interlocked.Read(ref _analysisEpoch) == epoch)
+                if (Interlocked.Read(ref _histogramEpoch) == epoch)
                     Show("统计失败：" + error.Message);
             }
             finally
             {
-                if (ReferenceEquals(_analysisCancellation,cancellation))
-                    _analysisCancellation = null;
+                if (ReferenceEquals(_histogramCancellation,cancellation))
+                    _histogramCancellation = null;
                 cancellation.Dispose();
             }
         }
