@@ -7,6 +7,32 @@ using CxVisual.Foundation.Volume;
 namespace CxVisual.Professional.CT3D
 {
     public enum CT3DAnalysisKind { MeshPlane=1, SurfaceSphere=2 }
+    /// <summary>由已拟合专业Feature派生的只读毫米测量；共享原Feature身份与来源，
+    /// 不是以显示网格估算的独立工业计量认证值。</summary>
+    public sealed class CT3DFeatureMeasurement
+    {
+        internal CT3DFeatureMeasurement(string kind,double valueMm,double rmsMm,
+            Guid featureId,string sourceRef,long revision,string sourceSignature)
+        {
+            if(string.IsNullOrWhiteSpace(kind)||featureId==Guid.Empty||
+                string.IsNullOrWhiteSpace(sourceRef)||string.IsNullOrWhiteSpace(sourceSignature)||
+                revision<1||double.IsNaN(valueMm)||double.IsInfinity(valueMm)||
+                double.IsNaN(rmsMm)||double.IsInfinity(rmsMm)||rmsMm<0)
+                throw new ArgumentException("专业测量来源或数值无效。");
+            Kind=kind;ValueMm=valueMm;RmsResidualMm=rmsMm;FeatureResultId=featureId;
+            SourceRef=sourceRef;SourceRevision=revision;SourceSignature=sourceSignature;
+        }
+        public string Kind {get;private set;}
+        public double ValueMm {get;private set;}
+        public string Unit {get{return "mm";}}
+        public double RmsResidualMm {get;private set;}
+        public Guid FeatureResultId {get;private set;}
+        public string SourceRef {get;private set;}
+        public long SourceRevision {get;private set;}
+        public string SourceSignature {get;private set;}
+        public bool HasEvaluatedUncertainty {get{return false;}}
+    }
+
     /// <summary>V03专业结果及其可复算配方；不拥有MEM树、WPF状态或原始数据副本。</summary>
     public sealed class CT3DAnalysisCase
     {
@@ -37,6 +63,20 @@ namespace CxVisual.Professional.CT3D
         public int MaximumTriangles {get;private set;}
         public string AlgorithmVersion {get{return Kind==CT3DAnalysisKind.MeshPlane
             ? "ct3d.voxel-mesh-plane/1":"ct3d.surface-sphere/1";}}
+        /// <summary>同一专业结果的派生Feature测量，重开时从保存并验证的原值结果确定性恢复。
+        /// ROI平面的残差是质量量，不冒充有基准的距离或GD&T。</summary>
+        public IReadOnlyList<CT3DFeatureMeasurement> GetFeatureMeasurements()
+        {
+            var values=new List<CT3DFeatureMeasurement>();
+            if(Kind==CT3DAnalysisKind.SurfaceSphere)
+            {
+                values.Add(new CT3DFeatureMeasurement("sphere.radius",Sphere.RadiusMm,
+                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+                values.Add(new CT3DFeatureMeasurement("sphere.diameter",Sphere.DiameterMm,
+                    Sphere.RmsResidualMm,Sphere.ResultId,Source.SourceRef,Source.Revision,Source.Signature));
+            }
+            return values.AsReadOnly();
+        }
         public string Unit {get{return "mm";}}
         /// <summary>现有残差/拓扑证据不构成工业计量不确定度评定。</summary>
         public bool HasEvaluatedMeasurementUncertainty {get{return false;}}
