@@ -43,6 +43,7 @@ namespace CxVisual.TestCenter.UI
         private CancellationTokenSource _sphereCancellation;
         private long _sphereEpoch;
         public CT3DSphereFitResult LastSphereFit {get;private set;}
+        public CT3DCylinderFitResult LastCylinderFit {get;private set;}
         public CT3DSurfaceSamples LastSurfaceSamples {get;private set;}
         public int SurfaceDisplayedPointCount {get{return _scene.SurfacePreviewPointCount;}}
         private IReadOnlyList<Vector3> SurfacePointsForPresentation
@@ -121,6 +122,7 @@ namespace CxVisual.TestCenter.UI
             _professionalSource=null;
             _meshPreview=null;
             LastSphereFit=null;
+            LastCylinderFit=null;
             LastSurfaceSamples=null;
             LastVoxelMesh=null;
             _scene.ClearSurfacePoints();
