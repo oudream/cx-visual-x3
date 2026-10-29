@@ -38,3 +38,18 @@
 - `IMOCTrustedReleaseAdmission` 由可信 Host 注入，负责**主体授权及持久化递增修订号的原子预留**，拒绝跨进程重放；不提供默认放行或内存版生产实现。预留早于 Stage 以保证故障后不倒退，Stage 失败会消耗当前修订号，需要 Host 重新签发更高修订号。
 - 测试只使用临时生成的非生产 RSA 密钥及测试型防重放存根；包含签名被修改、跨部署、重复发布、Host 安全点禁止激活、可信签名却版本过期等拒绝场景。
 - **仍未宣称完成**：生产 Host 可靠持久账本/密钥管理、独立进程部署、实际设备安全连锁和 HIL 长期试验；只有这些独立门禁满足后，才是工业生产完整发布闭环。
+
+## 可信签名发布与Host持久防重放验收（2026-10-30）
+
+**真实实现与固定提交**
+
+- [51919181faf8](https://github.com/oudream/cx-visual-x3/commit/51919181faf81f121e4f3ddc4af4e9df7f143480)：`MOCSignedPlanRelease` 提供可导出的规范签名信封；`MOCPinnedRsaReleaseVerifier` 基于 Host 固定的 RSA-2048+ 公钥验签；`MOCTrustedPlanPublisher` 完整校验签名/Scope/静态目录/专业版本之后通过**唯一** MRK Publisher Stage。未设置可信验证器和 Host Admission 不提供发布入口。
+- [f7ba82f6a0f3](https://github.com/oudream/cx-visual-x3/commit/f7ba82f6a0f3248e555b82d1c4185ba291585fa2)：将签名测试改为显式 2048 位测试密钥；[f3ac302dceeb](https://github.com/oudream/cx-visual-x3/commit/f3ac302dceebc609051c570de558bdceb9c89f9e) 修复并行 Vision 自测缺少 `CultureInfo` 阻断的编译。
+- [Decision Windows 40972808600](https://github.com/oudream/cx-visual-x3/actions/runs/40972808600)，固定 SHA `f3ac302dceeb`：.NET Framework 4.8 x64 全量构建、Decision 专项、默认 ArchitectureSmoke 全部 **Success**；验签、篡改拒绝、跨部署 Scope、重放版本、专业能力版本不一致、Host 安全点未就绪均已进入专项回归。
+- [d2c775e8c4d8](https://github.com/oudream/cx-visual-x3/commit/d2c775e8c4d8ac55be09efebe4ced175e8e7e815)：`Applications/Runtime.Host/MRHFileTrustedReleaseAdmission` 真实 FileShare.None 跨进程独占、首次显式 CommissionNew、单调追加、`Flush(true)`、SHA256 链式校验、撕裂记录拒绝；附 CLI 跨进程测试入口，不对外默认放行。
+- [Unified Runtime Windows 40972856365](https://github.com/oudream/cx-visual-x3/actions/runs/40972856365)，固定 SHA `d2c775e8c4d8`：全量 Rebuild、编排回归、Runtime Host 功能与新增账本跨进程重启/损坏拒绝全部 **Success**。
+
+**边界与未完成**
+
+- 账本 SHA256 链仅用于发现损坏与意外断裂，不能替代 OS ACL、防删除保护、可信安全存储或外部签名；攻击者若拥有账本目录修改/删除权限，仍可伪造或重置记录。生产 Host 必须确保初始化、ACL、可信备份和恢复链。
+- 签名应用于纯 Plan 与声明版本；真实设备授权、安全联锁、资源生命周期、Worker/HIL 及工厂级灾难恢复仍须按专业工程分别验证。不把软件级 Success 误标为设备 HIL 完成。
