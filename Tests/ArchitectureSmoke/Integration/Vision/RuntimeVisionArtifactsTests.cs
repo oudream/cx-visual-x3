@@ -478,6 +478,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             result.EnhancedImage.CopyPixels().SequenceEqual(expected.CopyPixels()) &&
                             result.Evidence.Items.Single(x=>
                                 x.Kind==CxVisionResultKind.Measurement).IntegerValue==5 &&
+                            result.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Image &&
+                                x.OutputPort=="EnhancedPixels").Image
+                                .CopyPixels().SequenceEqual(expected.CopyPixels()) &&
+                            result.Evidence.Items.All(x=>x.RunId==result.FlowId &&
+                                x.SourceId==result.Evidence.SourceId) &&
                             result.Trace.Any(x=>x.BlockId==result.EnhanceBlockId &&
                                 x.State=="Completed"),
                             "四节点真实FIM中值处理/阈值/区域面积/Trace不一致");
