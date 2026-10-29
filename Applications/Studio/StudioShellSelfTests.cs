@@ -3269,6 +3269,29 @@ namespace CxVisual.Studio
                         Assert(previewItems.Items.Count==split.Evidence.Items.Count &&
                             Object.ReferenceEquals(previewViewer.Session.Original,split.SourceImage),
                             "Studio结果面板未共用原MPW Viewer及完整Run产物");
+                        // 兼容旧一体化Run：没有原图快照时，统计/测量仍可点选，
+                        // 但不能因此伪造Image或Mask，也不能显示其他Run的图。
+                        var legacyViewer=new MPWImageViewerControl();
+                        var legacyItems=new ListBox();
+                        MainWindow.PopulateStudioVisionResults(cpuReport,legacyViewer,legacyItems);
+                        var legacyMeasure=cpuReport.Evidence.Items.Single(x=>
+                            x.Kind==CxVisionResultKind.Measurement);
+                        string measureText=MainWindow.SelectStudioVisionResult(
+                            cpuReport.Evidence,null,legacyViewer,legacyMeasure);
+                        Assert(cpuReport.SourceImage==null &&
+                            legacyViewer.Session.Original==null &&
+                            measureText.Contains("3") &&
+                            legacyItems.Items.Count==cpuReport.Evidence.Items.Count,
+                            "无原图旧Run测量列表不应被新预览强制禁用");
+                        bool mixedSourceDenied=false;
+                        try
+                        {
+                            MainWindow.SelectStudioVisionResult(split.Evidence,null,
+                                legacyViewer,imageResult);
+                        }
+                        catch(InvalidOperationException){mixedSourceDenied=true;}
+                        Assert(mixedSourceDenied,"没有同源原图时不得显示旧Run的Mask");
+
                         var imageResult=split.Evidence.Items.Single(x=>x.Kind==CxVisionResultKind.Mask);
                         MainWindow.SelectStudioVisionResult(split.Evidence,split.SourceImage,
                             previewViewer,imageResult);
@@ -3325,6 +3348,10 @@ namespace CxVisual.Studio
                         for(int y=2;y<=4;y++)for(int x=2;x<=4;x++)larger[y*7+x]=210;
                         larger[0]=250;
                         File.WriteAllBytes(filename,larger);
+                        Assert(split.SourceImage.GetGrayValue(0,0)==210 &&
+                            split.SourceImage.GetGrayValue(4,2)==250 &&
+                            split.SourceImage.Width==5 && split.SourceImage.Height==3,
+                            "本次执行RAW被替换后，Studio原图快照不得随磁盘文件漂移");
                         var five=MainWindow.ExecuteStudioSeparatedCpuVisionFileAsync(
                             session,provider,filename,7,7,1,System.Threading.CancellationToken.None)
                             .GetAwaiter().GetResult();
