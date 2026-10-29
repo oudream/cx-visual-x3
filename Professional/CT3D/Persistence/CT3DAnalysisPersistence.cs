@@ -211,7 +211,7 @@ namespace CxVisual.Professional.CT3D
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
         {
             // 元数据Aspect保持Schema1；结果制品V2增加明确种类，读取仍兼容已有V1 Mesh/平面。
-            w.Write(Magic);w.Write(2);w.Write((int)a.Kind);w.Write(a.AlgorithmVersion);w.Write(a.Source.Signature);
+            w.Write(Magic);w.Write(a.Kind==CT3DAnalysisKind.SurfaceCylinder?3:2);w.Write((int)a.Kind);w.Write(a.AlgorithmVersion);w.Write(a.Source.Signature);
             if(a.Kind==CT3DAnalysisKind.SurfaceSphere)
             {
                 WriteSphereResult(w,a,cancellation);
@@ -241,7 +241,7 @@ namespace CxVisual.Professional.CT3D
         {
             if(r.ReadInt32()!=Magic)throw new InvalidDataException("三维结果头无效。");
             int version=r.ReadInt32();
-            if(version!=1&&version!=2)throw new InvalidDataException("三维结果版本不受支持。");
+            if(version!=1&&version!=2&&version!=3)throw new InvalidDataException("三维结果版本不受支持。");
             var kind=version==1?CT3DAnalysisKind.MeshPlane:(CT3DAnalysisKind)r.ReadInt32();
             if(!Enum.IsDefined(typeof(CT3DAnalysisKind),kind))throw new InvalidDataException("三维结果种类无效。");
             string method=kind==CT3DAnalysisKind.MeshPlane?"ct3d.voxel-mesh-plane/1":kind==CT3DAnalysisKind.SurfaceSphere?"ct3d.surface-sphere/1":"ct3d.surface-cylinder-axis/1";
@@ -249,7 +249,7 @@ namespace CxVisual.Professional.CT3D
                 CT3DArtifactFiles.ReadText(r,64)!=source.Signature)
                 throw new InvalidDataException("三维结果算法版本或来源签名不一致。");
             if(kind==CT3DAnalysisKind.SurfaceSphere)return ReadSphereResult(r,source,cancellation);
-            if(kind==CT3DAnalysisKind.SurfaceCylinder)return ReadCylinderResult(r,source,cancellation);
+            if(kind==CT3DAnalysisKind.SurfaceCylinder)return ReadCylinderResult(r,source,cancellation,version);
             Guid meshId=new Guid(r.ReadBytes(16)),planeId=new Guid(r.ReadBytes(16));
             if(meshId==Guid.Empty||planeId==Guid.Empty)throw new InvalidDataException("三维结果身份无效。");
             float threshold=r.ReadSingle();bool boundary=r.ReadBoolean();int budget=r.ReadInt32();
@@ -292,6 +292,8 @@ namespace CxVisual.Professional.CT3D
             w.Write(surface.Threshold);w.Write(surface.TouchesVolumeBoundary);
             w.Write(surface.SampleStep);w.Write(surface.MaximumPoints);w.Write(feature.MaximumConditionNumber);
             w.Write(feature.AxisDirection.X);w.Write(feature.AxisDirection.Y);w.Write(feature.AxisDirection.Z);
+            w.Write(feature.SelectedPointIndices.Count);
+            foreach(int index in feature.SelectedPointIndices)w.Write(index);
             w.Write(surface.Count);
             for(int i=0;i<surface.Count;i++)
             {
@@ -307,12 +309,24 @@ namespace CxVisual.Professional.CT3D
                 f.AxisDirection.X,f.AxisDirection.Y,f.AxisDirection.Z,
                 f.RadiusMm,f.RmsResidualMm,f.MaxAbsoluteResidualMm,f.ConditionNumber};
         }
-        private static CT3DAnalysisCase ReadCylinderResult(BinaryReader r,CT3DAssetReference source,CancellationToken token)
+        private static CT3DAnalysisCase ReadCylinderResult(BinaryReader r,CT3DAssetReference source,CancellationToken token,int version)
         {
             Guid sid=new Guid(r.ReadBytes(16)),fid=new Guid(r.ReadBytes(16));
             float threshold=r.ReadSingle();bool boundary=r.ReadBoolean();
             int step=r.ReadInt32(),maximum=r.ReadInt32();double condition=r.ReadDouble();
             var axis=new CxVisual.Foundation.Volume.FVOPhysicalPoint3D(r.ReadDouble(),r.ReadDouble(),r.ReadDouble());
+            var selected=new List<int>();
+            if(version>=3)
+            {
+                int selectedCount=r.ReadInt32();
+                if(selectedCount<0||selectedCount>10000||(selectedCount>0&&selectedCount<6))
+                    throw new InvalidDataException("圆柱侧壁ROI数量无效。");
+                for(int i=0;i<selectedCount;i++)
+                {
+                    if((i&255)==0)token.ThrowIfCancellationRequested();
+                    selected.Add(r.ReadInt32());
+                }
+            }
             if(sid==Guid.Empty||fid==Guid.Empty||float.IsNaN(threshold)||float.IsInfinity(threshold)||
                 step<1||maximum<6||maximum>10000)throw new InvalidDataException("圆柱制品身份或参数无效。");
             int count=ReadCount(r,maximum,24);
@@ -324,7 +338,8 @@ namespace CxVisual.Professional.CT3D
             }
             var surface=new CT3DSurfaceSamples(points,threshold,source.SpatialFrame,boundary,
                 source.SourceRef,source.Revision,step,maximum,sid);
-            var fit=CT3DSurfaceCylinderAnalysis.FitCylinder(surface,axis,condition,token);
+            var fit=CT3DSurfaceCylinderAnalysis.FitCylinder(surface,axis,
+                selected.Count==0?null:selected,condition,token);
             if(r.ReadInt32()!=fit.SampleCount)throw new InvalidDataException("圆柱点数不一致。");
             foreach(double expected in CylinderValues(fit))
             {
@@ -336,7 +351,7 @@ namespace CxVisual.Professional.CT3D
             if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException("圆柱制品有多余数据。");
             var restored=new CT3DCylinderFitResult(fit.AxisPoint,fit.AxisDirection,fit.RadiusMm,
                 fit.RmsResidualMm,fit.MaxAbsoluteResidualMm,fit.ConditionNumber,
-                fit.SampleCount,surface,condition,fid);
+                fit.SampleCount,surface,condition,selected.Count==0?null:selected,fid);
             return new CT3DAnalysisCase(source,surface,restored);
         }
 
