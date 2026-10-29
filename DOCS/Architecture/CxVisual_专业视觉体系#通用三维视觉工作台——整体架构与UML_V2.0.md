@@ -1964,7 +1964,7 @@ MEMContent o-- ProfessionalResultRef : registered result
 
 **UML边界解释**：只是概念关联，不允许由图直接生成跨程序集项目引用。Studio/独立宿主作为Composition Root链接MEM/MRK/CT3D/MVI/MPW，Headless客户端仅链接专业API与必须的基础/机制合同。
 
-### G.4 三条纵向业务闭环的验收规格
+### G.4 四条纵向业务闭环的验收规格
 
 | 闭环 | 最小真实数据与操作 | 必须具备的正常结果 | 必须覆盖的反例 |
 |---|---|---|---|
