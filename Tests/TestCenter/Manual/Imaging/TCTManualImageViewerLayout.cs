@@ -470,6 +470,8 @@ namespace CxVisual.TestCenter.UI
                 FontSize=11,Foreground=Paint(100,119,141),
                 HorizontalAlignment=HorizontalAlignment.Right };
             if(isWidth)_windowWidthMaxLabel=maximum;else _windowCenterMaxLabel=maximum;
+            AutomationProperties.SetAutomationId(maximum,isWidth?
+                "TCT.Imaging.WindowWidthMax":"TCT.Imaging.WindowCenterMax");
             ticks.Children.Add(minimum);
             Grid.SetColumn(maximum,1);ticks.Children.Add(maximum);
             Grid.SetRow(ticks,1);Grid.SetColumn(ticks,2);row.Children.Add(ticks);
