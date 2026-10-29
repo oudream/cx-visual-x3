@@ -1779,7 +1779,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     MPCPortKind.Data,required:true)});
             var resolver=new TestResolver()
                 .Register("vision.capture",(ctx,t)=>Task.FromResult((object)7));
-            var catalog=new MOCCapabilityCatalog(
+            var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
                 new[]{new DemoCapabilityProvider(capture,inspect)},resolver);
             Check(catalog.All.Count==2&&catalog.Search("inspect").Count==1,
                 "capability discovery/search");
@@ -2030,7 +2030,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     declaredCpu.Ports.Any(p=>p.MemberId=="Width")&&
                     declaredCpu.Ports.Any(p=>p.MemberId=="Height"),
                     "professional CPU provider MOC descriptor lost typed input schema");
-                var cpuCatalog=new MOCCapabilityCatalog(
+                var cpuCatalog=MOCCapabilityCatalogRuntimeFactory.Create(
                     new[]{discoveryProvider},provider);
                 var cpuModule=new MFMModuleDescriptor("vision.cpu.01",
                     "真实CPU软件视觉",MFMModuleKind.Compute,

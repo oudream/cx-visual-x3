@@ -22,14 +22,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="MOCEngineeringCompiler.cs"/>
+    <Compile Include="MOCFlowBuilder.cs"/>
     <Compile Include="MOCSourceMap.cs"/>
     <Compile Include="MOCCapabilityCatalog.cs"/>
-    <Compile Include="MOCCapabilityCatalog.Runtime.cs"/>
     <Compile Include="MDCDecisionService.cs"/>
     <Compile Include="MDCObjectiveSelection.cs"/>
-    <Compile Include="MOCBindingContractInspector.cs"/>
-    <Compile Include="MOCManifestRuntimeBinding.cs"/>
     <Compile Include="MDCResourceBudgetPlanner.cs"/>
     <Compile Include="MDCStaticCatalogSnapshot.cs"/>
     <Compile Include="MDCRecommendationService.cs"/>
@@ -40,13 +37,10 @@
     <Compile Include="MDCLogicTraversal.cs"/>
     <Compile Include="MDCStaticSourceManifest.cs"/>
     <Compile Include="MDCDeclarativePlan.cs"/>
-    <Compile Include="MDCPlanSemantics.cs"/>
-    <Compile Include="MOCBuildService.cs"/>
-    <Compile Include="MOCProjectRelease.cs"/></ItemGroup>
+    <Compile Include="MDCPlanSemantics.cs"/></ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
-    <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
-  </ItemGroup>
+    </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

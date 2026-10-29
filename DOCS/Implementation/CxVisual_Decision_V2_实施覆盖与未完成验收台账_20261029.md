@@ -1,4 +1,6 @@
 # CxVisual Decision V2.0——实施覆盖与未完成验收台账（2026-10-29）
+> **2026-10-29 工程实装更新**：已将 MOC/MRK Resolver、编译、Release/Stage 等运行集成代码移至 `Mechanism/Runtime/Execution/DecisionBinding/`，将纯静态 `MOCFlowBuilder` 保留在 Decision，工程依赖改为 Runtime→Decision。详见[单向依赖实施记录](CxVisual_Decision_Runtime单向依赖实装与验收_20261029.md)。下文旧“仍依赖Runtime/28项目”的描述为历史快照，不再代表当前 `master`；**完整纯 Plan Loader/工业 HIL 仍未完成，CI 以此次 SHA 实际记录为准**。
+
 
 > 本文件为**事实/未完成事项追溯入口**，不是第八份权威技术规格。架构仍以[#0](../Architecture/CxVisual_统一决策与规划体系%230总体架构与全类需求_V2.0.md)与[#1～#6](../Architecture/CxVisual_统一决策与规划体系%231对象合同与开发者API_V2.0.md)为准，测试母表仍为[Decision验收矩阵](../Testing/CxVisual_Decision_功能与迁移验收矩阵_V1.0.md)。源码现状以仓库最新master为准；以下CI仅证明指定SHA下的软件构建与回归。
 

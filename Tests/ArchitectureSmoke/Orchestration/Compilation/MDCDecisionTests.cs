@@ -46,6 +46,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         internal static void Run()
         {
+            StaticRuntimeAssemblyBoundary();
             OfflineCatalogAndLegacyResolver();
             StaticConnectionIsFailClosed();
             CandidateGroupsAndNoExecution();
@@ -64,6 +65,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RuntimeBindingContractConsistency();
             Console.WriteLine("PASS MDC Decision offline discovery/constraints/candidates");
         }
+
+        private static void StaticRuntimeAssemblyBoundary()
+        {
+            string decisionName = typeof(MDCDeclarativePlan).Assembly.GetName().Name;
+            string runtimeName = typeof(MOCEngineeringCompiler).Assembly.GetName().Name;
+            Check(decisionName == "CxVisual.Mechanism.Decision" &&
+                runtimeName == "CxVisual.Mechanism.Runtime",
+                "Decision static and MOC/MRK executable compiler must have distinct assembly owners");
+            Check(typeof(MOCFlowBuilder).Assembly == typeof(MDCDeclarativePlan).Assembly &&
+                typeof(MOCCapabilityCatalog).Assembly == typeof(MDCDeclarativePlan).Assembly,
+                "Core editing facade and static catalog must stay with Decision");
+            Check(typeof(MOCBindingContractInspector).Assembly ==
+                typeof(MOCEngineeringCompiler).Assembly &&
+                typeof(MOCProjectRelease).Assembly == typeof(MOCEngineeringCompiler).Assembly &&
+                typeof(MOCCapabilityCatalogRuntimeFactory).Assembly ==
+                typeof(MOCEngineeringCompiler).Assembly,
+                "resolver/binder/release adapter must stay on Runtime-facing side");
+            Check(!typeof(MDCDeclarativePlan).Assembly.GetReferencedAssemblies()
+                .Any(x => x.Name == runtimeName),
+                "Decision project must not reference the Runtime assembly");
+            Check(typeof(MOCEngineeringCompiler).Assembly.GetReferencedAssemblies()
+                .Any(x => x.Name == decisionName),
+                "Runtime binder must reference the static Decision contract");
+        }
         private static void OfflineCatalogAndLegacyResolver()
         {
             var descriptions = new Provider(
@@ -76,7 +101,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 offline.All.All(x => !x.AvailabilityKnown && !x.RuntimeAvailable),
                 "offline metadata must not claim runtime availability");
             Resolver runtime = new Resolver();
-            var bound = new MOCCapabilityCatalog(new[] { descriptions }, runtime);
+            var bound = MOCCapabilityCatalogRuntimeFactory.Create(new[] { descriptions }, runtime);
             Check(runtime.Calls == 2 && bound.Find("vision.gray16").AvailabilityKnown &&
                 bound.Find("vision.gray16").RuntimeAvailable &&
                 bound.Find("vision.gray8").AvailabilityKnown &&

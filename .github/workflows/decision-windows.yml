@@ -6,6 +6,7 @@ on:
     branches: [master]
     paths:
       - 'Mechanism/Decision/**'
+      - 'Mechanism/Runtime/Execution/DecisionBinding/**'
       - 'Mechanism/Core/**'
       - 'Mechanism/Runtime/**'
       - 'Tests/ArchitectureSmoke/**'
@@ -20,39 +21,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Verify static Decision source files are Runtime-free
+      - name: Verify Decision project and static sources are Runtime-free
         shell: pwsh
         run: |
-          $pure = @(
-            'Mechanism/Decision/MOCCapabilityCatalog.cs',
-            'Mechanism/Decision/MOCSourceMap.cs',
-            'Mechanism/Decision/MDCDecisionService.cs',
-            'Mechanism/Decision/MDCObjectiveSelection.cs',
-            'Mechanism/Decision/MDCResourceBudgetPlanner.cs',
-            'Mechanism/Decision/MDCStaticCatalogSnapshot.cs',
-            'Mechanism/Decision/MDCRecommendationService.cs',
-            'Mechanism/Decision/MDCProjectImpactAnalyzer.cs',
-            'Mechanism/Decision/MDCRecoverySafetyAssessor.cs',
-            'Mechanism/Decision/MDCStaticBuildPreflight.cs',
-            'Mechanism/Decision/MDCStaticPathExplorer.cs',
-            'Mechanism/Decision/MDCStaticSourceManifest.cs',
-            'Mechanism/Decision/MDCDeclarativePlan.cs',
-            'Mechanism/Decision/MDCPlanSemantics.cs',
-            'Mechanism/Decision/MDCLogicTraversal.cs'
-          )
-          foreach ($file in $pure) {
-            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Missing static Decision source: $file"
-            }
-            $source = Get-Content -LiteralPath $file
-            $code = ($source | Where-Object { $_ -notmatch '^\s*(//|\*|/\*)' }) -join "`n"
-            if ($code -match '(?m)^\s*using\s+CxVisual\.Mechanism\.Runtime\.' -or
-                $code -match '\b(IMRKCapabilityResolver|MRKResolvedCapability|MRKExecutionPlan|MRKFlowHandle|MRKExecutionEngine)\b') {
-              throw "Runtime API leaked into static Decision source: $file"
+          $project = Get-Content 'Mechanism/Decision/CxVisual.Mechanism.Decision.csproj' -Raw
+          if ($project -match 'Mechanism\\Runtime' -or $project -match 'CxVisual.Mechanism.Runtime.csproj') {
+            throw 'Decision may not ProjectReference Runtime'
+          }
+          $files = @(Get-ChildItem 'Mechanism/Decision' -Filter '*.cs' -File)
+          if ($files.Count -lt 12) { throw 'Static Decision source file set unexpectedly small' }
+          foreach ($file in $files) {
+            $source = Get-Content -LiteralPath $file.FullName
+            $code = ($source | Where-Object { $_ -notmatch '^\\s*(//|\\*|/\\*)' }) -join "`n"
+            if ($code -match '(?m)^\\s*using\\s+CxVisual\\.Mechanism\\.Runtime\\.' -or
+                $code -match '\\b(IMRKCapabilityResolver|MRKResolvedCapability|MRKExecutionPlan|MRKFlowHandle|MRKExecutionEngine)\\b') {
+              throw "Runtime API leaked into Decision source: $($file.Name)"
             }
           }
-          if (-not (Test-Path 'Mechanism/Decision/MOCCapabilityCatalog.Runtime.cs')) {
-            throw 'Missing legacy MRK resolver bridge'
+          foreach ($file in @('MOCEngineeringCompiler.cs','MOCBuildService.cs',
+              'MOCProjectRelease.cs','MOCManifestRuntimeBinding.cs',
+              'MOCBindingContractInspector.cs','MOCCapabilityCatalogRuntimeFactory.cs')) {
+            if (-not (Test-Path "Mechanism/Runtime/Execution/DecisionBinding/$file")) {
+              throw "Missing Runtime binder: $file"
+            }
+          }
+          if (-not (Test-Path 'Mechanism/Decision/MOCFlowBuilder.cs')) {
+            throw 'Missing static MOCFlowBuilder'
           }
       - name: Build unified .NET Framework 4.8 x64 solution
         shell: pwsh

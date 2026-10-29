@@ -72,7 +72,7 @@ namespace CxVisual.Mechanism.Orchestration
         /// <summary>Resolver matched; NOT device Ready, Supported or Authorized.</summary>
         public bool RuntimeResolved {get{return CatalogItem!=null&&CatalogItem.RuntimeAvailable;}}
     }
-    public sealed partial class MOCCapabilityCatalog
+    public sealed class MOCCapabilityCatalog
     {
         private readonly IReadOnlyList<MOCCapabilityCatalogItem> _all;
         private readonly IDictionary<string,MOCCapabilityCatalogItem> _ids;
@@ -80,7 +80,7 @@ namespace CxVisual.Mechanism.Orchestration
         public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers)
             : this(providers,(Func<string,bool>)null) { }
 
-        private MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
+        public MOCCapabilityCatalog(IEnumerable<IMOCCapabilityProvider> providers,
             Func<string,bool> availability)
         {
             if(providers==null)throw new ArgumentNullException("providers");

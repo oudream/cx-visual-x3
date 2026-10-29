@@ -176,7 +176,7 @@ namespace CxVisual.Studio
                         throw new InvalidOperationException("当前Provider版本无法确认");
                     var page=_viewModel.ActivePage;
                     if(page==null)throw new InvalidOperationException("请先选择有效工程页面");
-                    var catalog=new MOCCapabilityCatalog(
+                    var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
                         new IMOCCapabilityProvider[]{_simulation,selectedProvider},selectedProvider);
                     var capability=catalog.Find(selected.Id);
                     if(capability==null||!capability.RuntimeAvailable)
@@ -379,7 +379,7 @@ namespace CxVisual.Studio
             CxVisionThresholdProvider vision,string description)
         {
             // One MOC catalog, no parallel registration or execution dispatcher.
-            var catalog=new MOCCapabilityCatalog(
+            var catalog=MOCCapabilityCatalogRuntimeFactory.Create(
                 new IMOCCapabilityProvider[]{_simulation,vision},vision);
             var module=new MFMModuleDescriptor("studio.development.cpu.vision",
                 "CPU视觉阈值检测（未绑定MEM模块资源）",MFMModuleKind.Compute,

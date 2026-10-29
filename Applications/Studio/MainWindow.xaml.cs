@@ -1173,7 +1173,7 @@ namespace CxVisual.Studio
 
         private MOCCapabilityCatalog CurrentCatalog()
         {
-            return new MOCCapabilityCatalog(new IMOCCapabilityProvider[]{_simulation},_simulation);
+            return MOCCapabilityCatalogRuntimeFactory.Create(new IMOCCapabilityProvider[]{_simulation},_simulation);
         }
         private void OnSearchCapabilities(object sender,RoutedEventArgs args)
         {
