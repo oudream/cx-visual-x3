@@ -7,6 +7,7 @@ using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Foundation.Data.Types;
 
 namespace CxVisual.Professional.Vision
 {
