@@ -1,6 +1,6 @@
 # CxVisual Decision P0——离线能力发现与静态约束筛选 实现验收 V1.0
 
-> 状态：**首批 C# 源码及ArchitectureSmoke专项测试已编写，Windows CI仍需以实际commit/run验证。** 起点`master@6bb99a5e293ed54b1db78b53ffd3b2e8b1aa9132`（2026-10-29），后续以提交SHA为准。当前工程数仍28，Orchestration仍引用Runtime，**未进行Decision物理合并或Runtime整体断环**。
+> 状态：**首批静态判断与多目标Pareto已完成软件源码、Windows .NET Framework 4.8编译、Decision专项及默认ArchitectureSmoke回归；Studio/HIL/完整Decision项目迁移仍未完成。** 起点`master@6bb99a5e293ed54b1db78b53ffd3b2e8b1aa9132`（2026-10-29），后续以提交SHA为准。当前工程数仍28，Orchestration仍引用Runtime，**未进行Decision物理合并或Runtime整体断环**。
 
 ## 一、真实需求与已经实现的切片
 
@@ -46,3 +46,14 @@ P0-Next：让真正的纯静态Descriptor合同独立于Orchestration Runtime项
 ## 五、P0之后增构：有实测依据的多目标选择（同一过渡工程）
 
 新增\`Mechanism/Orchestration/MDCObjectiveSelection.cs\`，沿用\`MDCAssessment\`实现HardFail优先、Unknown禁止自动选；\`MDCObjective\`显式方向/优先级/单位，\`MDCMeasuredMetric\`提供数值/EvidenceTier/来源ID，\`MDCChoiceService\`生成候选状态、Pareto与稳定首选。完全不运行设备/重用执行器，也不建立第二Capability目录。测试\`MDCDecisionTests.MultiObjectiveSelection\`覆盖Pareto两方案、Hard GPU超限、仅估计、单位冲突、缺指标与稳定平局。状态仍为“源码已编写；以本批Windows提交/CI为准”，不把EvidenceId自动视为经过签署的真实工业测量。
+
+
+## 六、真实Windows提交与验收证据（2026-10-29）
+
+| 证据项 | GitHub SHA/Run | 实际结论 |
+|---|---|---|
+| 首批离线MOC/三态端口/候选 | [738e5cc4](https://github.com/oudream/cx-visual-x3/commit/738e5cc4ae028828cab670ce6db9c4925231ec7a) | C#正式源码、专项测试已提交 |
+| Decision独立Windows工作流 | [74277727](https://github.com/oudream/cx-visual-x3/commit/74277727d93903618cd19c47c3765fc0d9bd27c1) / [Run 40813421838](https://github.com/oudream/cx-visual-x3/actions/runs/40813421838) | **Success**：全解决方案.NET48 x64 Build、--decision、默认ArchitectureSmoke |
+| 多目标Pareto与反例 | [57d99a3](https://github.com/oudream/cx-visual-x3/commit/57d99a3ad6414ab95136550470698803b802e8fd) / [Run 40813828127](https://github.com/oudream/cx-visual-x3/actions/runs/40813828127) | **Success**：全解决方案.NET48 x64 Build、--decision、默认ArchitectureSmoke；专项现含HardFail、估计证据、单位、Pareto、稳定平局 |
+
+**证据边界**：以上证明代码在上述SHA的Windows构建、Smoke用例通过；没有提供真实CPU/GPU的策略优化效果、六专业全链闭环、Studio实时交互、跨进程Plan安全发布、PLC运动/CT设备HIL或生产可靠性。因此只能记为相应软件能力 \`Automated\`，不能记为 \`Integrated/Field\`。早前本文“提交前Linux无MSBuild/CI待验”的描述属于编写阶段历史，现在以本节固定SHA的实际证据为准。

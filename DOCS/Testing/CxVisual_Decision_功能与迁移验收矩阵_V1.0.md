@@ -237,3 +237,11 @@ flowchart LR
 | MDC-16 | 超过256候选或16目标 | 明确拒绝超预算，不做无界搜索 |
 
 源码入口\`MDCChoiceService.Compare\`；运行入口仍为\`ArchitectureSmoke.exe --decision\`及默认回归，完整V2优化目标的预测模型/业务证据有效性验证/资源真实预测器尚未实现。
+
+
+### P0实际Windows软件验收（已通过的范围）
+
+- **基础P0（MDC-01～10）**：\`master@74277727d93903618cd19c47c3765fc0d9bd27c1\`，Windows [Run 40813421838](https://github.com/oudream/cx-visual-x3/actions/runs/40813421838) = Success；全解决方案Release/x64 Build、\`--decision\`、默认ArchitectureSmoke三步均成功。
+- **多目标P0（MDC-11～15）**：\`master@57d99a3ad6414ab95136550470698803b802e8fd\`，Windows [Run 40813828127](https://github.com/oudream/cx-visual-x3/actions/runs/40813828127) = Success；上述三步全部成功。
+- MDC-16输入上限的构造规则存在于真实代码（256候选、16目标），**未有显式自动测试证明极限输入负例**，不得将它合并标为MDC-11～15已覆盖。
+- **证据等级：Automated（单独的软件SDK/约束/比较逻辑）**。WPF候选面板、真实第三方专业Provider映射、运行加载、资源优化实测、HIL及跨进程仍是目标，不得从本CI成功推断已验证。
