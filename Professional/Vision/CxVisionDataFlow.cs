@@ -40,7 +40,7 @@ namespace CxVisual.Professional.Vision
             return area;
         }
 
-        private static CxVisionInspectionResult CopyResult(CxVisionInspectionResult result)
+        internal static CxVisionInspectionResult CopyResult(CxVisionInspectionResult result)
         {
             List<CxVisionDefectRegion> regions = new List<CxVisionDefectRegion>();
             foreach (CxVisionDefectRegion r in result.Regions)
