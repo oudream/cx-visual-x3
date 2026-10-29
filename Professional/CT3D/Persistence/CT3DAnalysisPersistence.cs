@@ -83,6 +83,71 @@ namespace CxVisual.Professional.CT3D
             }
         }
 
+        /// <summary>将多个独立CT3D结果在一次MEM事务中整体登记。
+        /// 制品先发布并完成校验，MEM编辑失败则所有Content保持原状态；
+        /// 完整未引用制品允许保留，不误删可供其它工程共享的内容寻址数据。</summary>
+        public static IReadOnlyList<MRIObjectAddress> CommitAll(MEMEngineeringSession engineering,
+            IReadOnlyList<MEMContent> owners,int expectedRevision,string root,
+            IReadOnlyList<CT3DAnalysisCase> analyses,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(owners==null)throw new ArgumentNullException("owners");
+            if(analyses==null)throw new ArgumentNullException("analyses");
+            if(owners.Count==0||owners.Count>128||owners.Count!=analyses.Count)
+                throw new ArgumentException("批量三维Case须有1~128个对应的MEMContent。","owners");
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
+            var ids=new HashSet<Guid>();
+            for(int i=0;i<owners.Count;i++)
+            {
+                if(owners[i]==null||engineering.Find(owners[i].Id)!=owners[i]||!ids.Add(owners[i].Id))
+                    throw new ArgumentException("MEMContent归属无效或重复。","owners");
+                if(analyses[i]==null)throw new ArgumentException("专业Case不能为空。","analyses");
+            }
+            cancellation.ThrowIfCancellationRequested();
+            var locks=new List<FileStream>();
+            try
+            {
+                var aspects=new List<MPMAspect>(analyses.Count);
+                for(int i=0;i<analyses.Count;i++)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    var analysis=analyses[i];
+                    locks.Add(analysis.Source.OpenVerified(root,cancellation));
+                    string relative=CT3DArtifactFiles.Publish(root,".analysis",stream=>
+                    {
+                        using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
+                            WriteResult(writer,analysis,cancellation);
+                    },cancellation);
+                    string hash=Path.GetFileNameWithoutExtension(relative);
+                    byte[] payload;
+                    using(var memory=new MemoryStream())
+                    {
+                        using(var writer=new BinaryWriter(memory,Encoding.UTF8,true))
+                        {
+                            writer.Write(Magic);writer.Write(Schema);
+                            analysis.Source.Write(writer);writer.Write(hash);
+                        }
+                        payload=memory.ToArray();
+                    }
+                    aspects.Add(new MPMAspect(MPMAspectKind.Data,ProviderId,Schema,payload,true));
+                }
+                cancellation.ThrowIfCancellationRequested();
+                engineering.Edit("批量登记三维专业结果",expectedRevision,edit=>
+                {
+                    for(int i=0;i<owners.Count;i++)edit.SetAspect(owners[i],aspects[i]);
+                    return true;
+                }).RequireValue();
+                var addresses=new List<MRIObjectAddress>(owners.Count);
+                foreach(MEMContent owner in owners)addresses.Add(engineering.GetAddress(owner));
+                return addresses.AsReadOnly();
+            }
+            finally
+            {
+                foreach(FileStream stream in locks)stream.Dispose();
+            }
+        }
+
         /// <summary>校验旧结果及工程修订后原值复算，使用既有MEM事务替换同一Content的结果。
         /// 同一工程提交前旧Revision冲突会拒绝，不创建平行Undo或制品仓库。</summary>
         public static MRIObjectAddress RecomputeAndCommit(MEMEngineeringSession engineering,
