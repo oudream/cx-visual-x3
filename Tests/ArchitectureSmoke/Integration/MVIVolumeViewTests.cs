@@ -101,6 +101,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try{scene3d.SetOrganization(cadRef,"  ");}catch(ArgumentException){invalidLayer=true;}
                 Check(invalidLayer&&scene3d.SnapshotLayer("reference").Count==1,
                     "非法图层更新不能损坏现有场景引用");
+                Guid sourceSelection;
+                Check(scene3d.TrySelectSource("cad:assembly:fixture",out sourceSelection)&&
+                    sourceSelection==cadRef&&scene3d.SelectedId==cadRef,
+                    "专业CAD资源引用可反向定位唯一可见Scene对象");
+                Guid duplicateCad=scene3d.Add(MVI3DSceneKind.Cad,"cad:assembly:fixture",1);
+                long beforeAmbiguity=scene3d.Revision;
+                Check(!scene3d.TrySelectSource("cad:assembly:fixture",out sourceSelection)&&
+                    scene3d.Revision==beforeAmbiguity&&scene3d.SelectedId==cadRef,
+                    "同来源多实例必须明确消歧，不能误选或改变状态");
+                scene3d.Remove(duplicateCad);
+                scene3d.SetVisibility(cadRef,false);
+                Check(!scene3d.TrySelectSource("cad:assembly:fixture",out sourceSelection),
+                    "不可见CAD对象不能由资源引用选中");
+                scene3d.SetVisibility(cadRef,true);
                 scene3d.Remove(cadRef);
                 scene3d.Remove(maskRef);
                 scene3d.Remove(resultRef);
