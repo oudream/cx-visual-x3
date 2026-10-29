@@ -443,3 +443,13 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **测试**：`RuntimeVisionArtifactsTests.SeparatedMemoryImagePreview`核对带Stride Gray16同样本拆分/旧MRK数值、Mask和测量、来源身份、原像素不变、错误位深、空SourceId、非法增强半径及已取消请求。`TCTImageViewerSmoke`在真实WPF窗口点击拆分模式和可选增强、核对Mask像素/面积、ResultItem、原16位像素保留和配置变更后旧Run失效。
 - **代码提交**：[内存紧排](https://github.com/oudream/cx-visual-x3/commit/0589c35a0dc7d003516925a25dd98b3d4bcfedf3)、[专业工程直入](https://github.com/oudream/cx-visual-x3/commit/cbec73a9d096e8e34aaceee6ebf8ac4686ba228d)、[共享预览](https://github.com/oudream/cx-visual-x3/commit/01042934e6f63f791b358907bc2ddf9c34ce7ce1)、[TestCenter入口](https://github.com/oudream/cx-visual-x3/commit/4818293e047b840118e65093788fa1e55e4c9fa7)、[Headless测试](https://github.com/oudream/cx-visual-x3/commit/5138ed22d3324971bea1183ed7a639cadf4bcf1d)、[WPF测试](https://github.com/oudream/cx-visual-x3/commit/36c5eadbf4e7df6fd30a7e1a6d4c1ded0a0ee278)。
 - **证据边界**：上述文件已提交，但未获得匹配SHA的Windows 2022 / .NET Framework 4.8 x64 编译及WPF smoke日志，暂为G2，不得宣称G3/G4/G5。32M像素上限、临时MEM实例创建成本、大图副本峰值与正式长生命周期数据租约还须单独验收。
+
+## 26. V2D-12/21/24：正式Run轮廓的TestCenter结果与只读Overlay投影（2026-10-29）
+
+- **历史架构不改**：PVC原有`CxVisionRunSummary.WithThresholdMaskContours`依靠FIM轮廓、FGEPoint2D、同Run来源、孔洞符号与只读`CxVisionContourSnapshot`；本次不新建第二OverlayStore、Run仓库、MOC或MEM资源类型。
+- **用户可见入口**：TestCenter二维工作台输出页新增`CpuGenerateContours`按钮（`TCT.Imaging.CpuGenerateContours`）；必须已有绑定当前Original的真实CPU Run，异步按需计算，在回到WPF时核验Run对象、SourceId、SourceVersion、分析代次与取消。重复生成不会重扫已有Contour；一次运行最多256项显示，单个MVI多边形上限10万顶点。
+- **结果统一**：`PopulateCpuResultItems`保留原Image/Mask/Region/Measurement，新增Contour净带符号面积、外环/孔洞信息。单击轮廓结果在原图坐标创建（或复用）带`ExternalId=ResultItemId`的只读`MVIImageOverlayItem`；保持真实`RunId/SourceId`不变，防重复叠加且不把轮廓当MEM正式ROI。临时轮廓投影采用MVI已有`Overlays`和MPW Viewer。
+- **生命周期**：重跑、切图、图窗结果被其它算法覆盖或CPU参数修改时，只删除当前Run记录的临时轮廓投影，并保留其它用户手绘ROI/Annotation；旧结果项和变更前轮廓不允许继续当作当前Run显示。取消或计算失败不得发布部分Contour项。
+- **源码提交**：[TestCenter Run与Overlay](https://github.com/oudream/cx-visual-x3/commit/214f19bb04f6b0b139f53f929cf3669d87eef1fc)、[输出页按钮](https://github.com/oudream/cx-visual-x3/commit/d239d31a60caf65af708f35b31b0d1fdcfc72225)、[WPF正反测试](https://github.com/oudream/cx-visual-x3/commit/e1eabcddf7544cd314e4275b37340c269dacfe72)。
+- **验收边界**：此前固定[Imaging 40865537994](https://github.com/oudream/cx-visual-x3/actions/runs/40865537994) jobs确认含Windows构建、WPF ImageViewer、`--imaging`/`--vision-results`/默认回归、3D WPF，均Success；**该Run早于本条轮廓UI改动**，不能充当本条G3/G4/G5验收。新修改有文件回读与静态检查，但仍须以对应SHA取Windows CI、真实WPF Screenshot和结果日志。
+
