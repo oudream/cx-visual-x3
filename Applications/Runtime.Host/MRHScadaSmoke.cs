@@ -219,15 +219,23 @@ namespace CxVisual.Runtime.Host
                                 }
                                 int first=(request[1]<<8)|request[2];
                                 int count=(request[3]<<8)|request[4];
-                                if(first!=100||count!=2)
-                                    throw new InvalidDataException("SCADA连续FC03地址/数量异常");
-                                byte[] response=new byte[13];
+                                // 常规双工站G1仍只允许FC03(count=2)；
+                                // A4启用可写点后，已有PAD写回读必须独立发FC03(count=1)。
+                                // 测试夹具要根据真实MBAP点数返回合法帧，不能把
+                                // 专业命令的正常单寄存器回读误报为非法连续扫描。
+                                if(first!=100 || (count!=2 && !(_allowWrites&&count==1)))
+                                    throw new InvalidDataException("SCADA FC03地址/数量异常");
+                                byte[] response=new byte[9+count*2];
                                 Array.Copy(mbap,0,response,0,7);
-                                response[4]=0;response[5]=7;
-                                response[7]=3;response[8]=4;
+                                response[4]=0;response[5]=(byte)(3+count*2);
+                                response[7]=3;response[8]=(byte)(count*2);
                                 ushort current=(ushort)Volatile.Read(ref _wordValue);
                                 response[9]=(byte)(current>>8);response[10]=(byte)current;
-                                response[11]=(byte)(_inputValue>>8);response[12]=(byte)_inputValue;
+                                if(count==2)
+                                {
+                                    response[11]=(byte)(_inputValue>>8);
+                                    response[12]=(byte)_inputValue;
+                                }
                                 Interlocked.Increment(ref _reads);
                                 if(Volatile.Read(ref _dropReplies)>0)
                                 {
