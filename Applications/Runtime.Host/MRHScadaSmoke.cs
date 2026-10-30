@@ -242,6 +242,33 @@ namespace CxVisual.Runtime.Host
                     Check(plcA.Reads==readsA&&plcB.Reads==readsB,
                         "设备组Stop后不允许任何残余TCP采样");
                 }
+                // 项目级Deployment的生效版本同样必须被每台PLC轮询守卫：
+                // 不允许Studio部署调整后旧Host继续采集或沿用原设备控制上下文。
+                using(MRHScadaRuntimeGroup pinned=MRHScadaRuntimeGroup.OpenFromEngineering(
+                    project,configs))
+                {
+                    pinned.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    Check(SpinWait.SpinUntil(()=>
+                        pinned.Find(a).CompletedCycles>=1 &&
+                        pinned.Find(b).CompletedCycles>=1,10000),
+                        "项目部署漂移测试前两个PLC必须有真实Good样本");
+                    var modifiedDeployment=deployment.UpdateAsync(model=>
+                        model.Devices[0].IntervalMs=120,
+                        "Studio发布新采样方案",CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(modifiedDeployment.Success,
+                        "正式FCM项目部署版本变更提交失败");
+                    Check(SpinWait.SpinUntil(()=>
+                        pinned.Find(a).Completion.IsFaulted &&
+                        pinned.Find(b).Completion.IsFaulted,8000),
+                        "项目级MHS Deployment变化应在两个独立工站下一轮发包前FailClosed");
+                    Check(pinned.Find(a).Device.Inspect("word100").Quality==
+                            MDSVariableQuality.Stale &&
+                        pinned.Find(b).Device.Inspect("word100").Quality==
+                            MDSVariableQuality.Stale &&
+                        plcA.Writes==0&&plcB.Writes==0,
+                        "部署漂移不能继续公开Good或触发自动设备写入");
+                }
                 // 两个设备配置不同Module，但手动误复用ChannelId也必须被Host拒绝。
                 MHSConfigService store=new MHSConfigService(configs);
                 var second=store.ForScope("module","connector-B")
