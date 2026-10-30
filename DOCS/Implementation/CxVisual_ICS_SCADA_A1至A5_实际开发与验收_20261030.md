@@ -41,3 +41,13 @@
 - 已提交共享文件：`DOCS/Implementation/CxVisual_ICS_SCADA_共享接口与联调契约_V1.0.md`；内容包括真实 `DeviceRef/PointId`、MDS快照/回调、MRK命令Schema、固定Effective版本、Host启停、跨进程边界。
 - A专有源码仅改 `Professional/Automation`、`Applications/Runtime.Host`、相关专业测试/文档/Workflow；没有修改B的HMI/Visual/Presentation/Studio。
 - 第二段进入：正式MEM Device资源/Station拓扑与Config Owner关联；多设备/多工站共享MRK租约；跨进程授权数据订阅与命令入口；运行Journal、监督服务集成；现场PLC G2/HIL与安全G3。
+
+## 5. A2/A5 后台采集故障监督与同版只读重连（2026-10-30增量）
+
+此次不建立SCADA私有计时器/Transport/数据仓，也不自动重放MRK设备动作。 `PADPlcPollingSession` 原有普通顺序扫描仍允许偶发Partial；增加可选 `maxConsecutiveFailedCycles`（默认0保持旧API），SCADA正式会话设置3。连续三轮全部读取失败、F17 Channel不再Open，或连续FC03网络超时时，抛出明确的 `PADPlcAcquisitionUnavailableException`，由FCR Completion结束该采集世代。协议坏帧 `InvalidDataException`、点表/配置漂移、会话非法等仍保持 **FailClosed、不得自动连接新设备**。
+
+`Applications/Runtime.Host/MRHScadaRecoverySupervisor.cs` 在 **明确指定 `scada-serve ... --service --recover`** 时才启用：每次旧Host完全Dispose后，用原MEM DeviceRef、MHS Connector Module、Scope重新Open；校验最初的工程文件时间和MHS Effective版本相同，建立新Channel Session Generation；恢复只允许 `PADPlcAcquisitionUnavailableException` 或Socket连接故障，最多3次、有界指数退避。超过预算或版本变化必须Faulted向上层传播，不能无声无限重连。默认 `scada-serve` 和 `--service` 不自动重连。所有自动恢复均为 **只读FC03**，没有设备控制回放。
+
+`MRHScadaSmoke` 用原生TCP测试设备不返回真实FC03请求响应，验证旧世代超时、MDS质量不可信、新世代连接及后续成功采样，且全程无FC06；关闭Supervisor后不得遗留后台FC03。该夹具不是PLC硬件验证。
+
+**验收证据**：代码已提交，恢复专项待 <https://github.com/oudream/cx-visual-x3/actions/runs/41028001190> Windows G1实际结束后确认；本段不能提前标记软件G1通过，真实设备G2/HIL G3与无界长稳都尚未执行。Windows Service SCM安装、服务级守护/进程崩溃拉起，应与现有 `Services/Supervision` Owner联调，禁止在Automation再建守护服务。
