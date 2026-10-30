@@ -11,6 +11,12 @@ namespace CxVisual.Professional.Vision
     /// <summary>现有CPU检测结果实际可提供的类型；流程标志并非产品级OK/NG。</summary>
     public enum CxVisionResultKind { DetectionSummary, Region, Statistic, FlowDecision, Image, Mask, Measurement, Contour }
 
+    /// <summary>
+    /// 结果项对于某一当前视图/工程上下文的可用状态；不等于MRK Flow执行状态。
+    /// 空候选集合仍可来自成功完成的Run；Stale不修改历史Run事实。
+    /// </summary>
+    public enum CxVisionResultValidity { Valid, Empty, Stale, MissingArtifact, Invalid }
+
     /// <summary>不可变候选区域快照，不泄漏原CxVisionDefectRegion的可变属性。</summary>
     public sealed class CxVisionRegionSnapshot
     {
@@ -126,7 +132,44 @@ namespace CxVisual.Professional.Vision
         /// <summary>正式工程运行时的MEM Revision，区别于算法ConfigRevision。</summary>
         public int? DefinitionRevision { get; private set; }
 
+        /// <summary>
+        /// CxVisionRunSummary仅在MRK已成功提交后构造；失败、取消或拒绝由
+        /// 原MRKFlowResult.State/Trace记录，不伪造有产物的失败Run。
+        /// </summary>
+        public MRKFlowState ExecutionState { get { return MRKFlowState.Completed; } }
+
         private CxVisionRunSummary() { }
+
+        /// <summary>
+        /// 只读检查某一Run结果是否可投影到当前图像/工程。
+        /// 在外部来源身份未确认时从严返回Stale；不变更旧Item或MRK输出。
+        /// 当前字节型结果随Run在内存中存在，未引入磁盘Artifact仓库。
+        /// </summary>
+        public CxVisionResultValidity AssessItemValidity(CxVisionResultItem item,
+            string currentSourceId,string validatedSourceHash = null,
+            int? currentDefinitionRevision = null)
+        {
+            if(item==null || Items==null ||
+               !System.Linq.Enumerable.Any(Items,x=>Object.ReferenceEquals(x,item)) ||
+               item.RunId!=RunId || item.SourceId!=SourceId)
+                return CxVisionResultValidity.Invalid;
+            if(string.IsNullOrWhiteSpace(currentSourceId) ||
+               !string.Equals(currentSourceId,SourceId,StringComparison.Ordinal) ||
+               (ValidatedSourceHash!=null &&
+                !string.Equals(ValidatedSourceHash,validatedSourceHash,StringComparison.Ordinal)) ||
+               (DefinitionRevision.HasValue &&
+                (!currentDefinitionRevision.HasValue ||
+                 DefinitionRevision.Value!=currentDefinitionRevision.Value)))
+                return CxVisionResultValidity.Stale;
+            if(((item.Kind==CxVisionResultKind.Image ||
+                 item.Kind==CxVisionResultKind.Mask) && item.Image==null) ||
+               (item.Kind==CxVisionResultKind.Contour && item.Contour==null))
+                return CxVisionResultValidity.MissingArtifact;
+            if(item.Kind==CxVisionResultKind.DetectionSummary &&
+               item.IntegerValue.HasValue && item.IntegerValue.Value==0)
+                return CxVisionResultValidity.Empty;
+            return CxVisionResultValidity.Valid;
+        }
 
         /// <summary>在已验证正式工程边界生成独立只读证据，不篡改原Run结果。</summary>
         internal CxVisionRunSummary WithValidatedRoiEvidence(Guid roiId,
