@@ -352,3 +352,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **WPF交互**：MPWVolumeSceneObjectListControl沿用既有按钮，普通单击独选、Ctrl单击追加或取消，组合选中全部加粗显示；下游仍可通过SelectedId访问主选择，不影响旧Viewer API。
 - **工程兼容**：MEM Visual Aspect原Schema1单选制品完全沿用；仅组合选择多于一个实例时写Schema2，末尾追加有限数量的有序场景Guid集合。Open同时支持Schema1/2，并验证来源、可见性、主选择一致、重复/不存在Id后才整体Restore；CreateReboundAspect保持多选顺序。旧数据不自动伪造组合选择或更改Version。
 - **真实回归**：MVIVolumeViewTests覆盖Volume/Mesh/CAD/PointCloud的复合选择、整组隐藏、单次版本通知、Schema1旧工程恢复、Schema2保存重开、主选择删除/隐藏自动降级和非法选择拒绝。以此次源码提交对应固定SHA CT3D B Windows G1～G3以及受影响Studio/TestCenter的实际CI为验收依据，未通过不能登记为T。
+
+
+### 10.27 B包：Ctrl组合选择批量分组与固定SHA软件验收（2026-10-30）
+
+- **功能**：在既有Scene多选基础上，MVI3DSceneState.SetSelectionOrganization对全部当前可见SelectedIds先校验、再批量更改Layer/Group，只提交一次Changed/Revision；空选择、非法图层或失效对象整体拒绝。MPW正式分组按钮复用这一能力，不再只改最后主选择；已有整组显隐/透明度因此可直接用于多对象组合编辑。
+- **正反例**：ArchitectureSmoke/MVIVolumeViewTests在真实MEM Schema2保存重开后验证Mesh/CAD/PointCloud三类对象一次批量分组、幂等Revision、非法Layer整体拒绝，再执行隐藏、删除及主选择降级检查。StudioShellSelfTests用真实双Case RAW/MEM工程验证Mesh+Measurement组合选择后单次Data+Visual提交及重开选择顺序/隔离。
+- **已验证固定SHA**：多选基础修复SHA 5ed566d6bca57774efcdf26a04c5902649bd3096 对应CT3D B Windows G1～G3 41020403175、Imaging/MVI 41020403281、Studio S1 41020403295均SUCCESS；覆盖旧Schema1、组合Scene V2、WPF自测及编译。后续组合分组SHA 5029b26ba301744ce2a33fe698baa615703c19c2 的CT3D、Studio、TestCenter等Windows CI另行触发，状态未取得SUCCESS时不得把此增量标成已验证。
+- **剩余边界**：当前组合的是Scene实例选择与组织操作，不是Mesh三角面/点云点/CAD拓扑的工业级子元素拾取；复杂3D ROI、实时GPU G4及实测量具对照G5仍需实际开发和硬件证据。
