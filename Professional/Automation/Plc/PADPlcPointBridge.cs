@@ -108,11 +108,39 @@ namespace CxVisual.Professional.Automation.Plc
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
         }
 
-        /// <summary>真实规约读点并通过MPA入站映射提交到MDS；不重复调用Provider.Emit。</summary>
+        /// <summary>
+        /// 规约回包先进入操作局部暂存。会话世代和点表经二次核验后，才向唯一MDS仓提交；
+        /// 对超时、配置漂移、迟到回包均不将未经确认的数据发布为Good。
+        /// </summary>
         public Task<object> ReadAndMapAsync(string stableId, CancellationToken cancellationToken)
         {
+            return ReadConfirmedAsync(stableId, cancellationToken);
+        }
+
+        private async Task<object> ReadConfirmedAsync(string stableId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             string point = Resolve(stableId);
-            return _connector.ReadDevicePointAsync(point, _dataOwner, _destination, cancellationToken);
+            PADDeviceVariableDefinition variable = _catalog.FindById(stableId);
+            if (variable == null) throw new KeyNotFoundException("工业变量定义已经失效: " + stableId);
+            string generation = _connector.Channel.SessionId.ToString("N");
+            string target = _scopeId + "/" + variable.Address;
+            StagedReadAccess staging = new StagedReadAccess(target);
+            object received = await _connector.ReadDevicePointAsync(
+                point, staging, _destination, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (generation != _connector.Channel.SessionId.ToString("N") ||
+                !string.Equals(point, Resolve(stableId), StringComparison.Ordinal))
+                throw new PADPlcOutcomeUnknownException(point,
+                    "PLC读回期间会话或点表变化，禁止提交未经确认的数据");
+            if (!staging.HasValue || received == null || !object.Equals(received, staging.Value) ||
+                !variable.ValueType.IsInstanceOfType(staging.Value))
+                throw new PADPlcOutcomeUnknownException(point,
+                    "PLC协议读回与映射结果不一致，禁止写入MDS");
+            await _dataOwner.WriteAsync(
+                MPADataTargetKind.Variable, target, staging.Value, cancellationToken)
+                .ConfigureAwait(false);
+            return received;
         }
 
         /// <summary>沿用PAD现有授权接口，默认无授权回调时拒绝所有写入。</summary>
@@ -177,12 +205,12 @@ namespace CxVisual.Professional.Automation.Plc
             object nativeValue, CancellationToken ct)
         {
             if (variable == null || !variable.Writable) throw new InvalidOperationException("PLC点只读");
-            string pointName = Resolve(variable.StableId);
             // 作用域内串行：避免两个写+回读交错。不同宿主必须由正式MRK提供跨调用资源租约。
             await _writeGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 ct.ThrowIfCancellationRequested();
+                string pointName = Resolve(variable.StableId);
                 string generation = _connector.Channel.SessionId.ToString("N");
                 MPAProtocolOperationResult acknowledgement;
                 try
@@ -203,10 +231,9 @@ namespace CxVisual.Professional.Automation.Plc
                 {
                     if (_connector.Channel.SessionId.ToString("N") != generation)
                         throw new InvalidOperationException("PLC连接代次已改变");
-                    observed = await _connector.ReadDevicePointAsync(pointName,
-                        _dataOwner, _destination, ct).ConfigureAwait(false);
+                    observed = await ReadConfirmedAsync(variable.StableId, ct).ConfigureAwait(false);
                     if (_connector.Channel.SessionId.ToString("N") != generation)
-                        throw new InvalidOperationException("PLC回读过程中连接代次已改变");
+                        throw new InvalidOperationException("PLC写入至回读期间连接代次已改变");
                 }
                 catch (Exception error)
                 {
@@ -219,6 +246,31 @@ namespace CxVisual.Professional.Automation.Plc
                 return true;
             }
             finally { _writeGate.Release(); }
+        }
+
+        /// <summary>仅保存单次规约读回；不是缓存、变量仓或第二份运行Current。</summary>
+        private sealed class StagedReadAccess : IMPADataTargetAccess
+        {
+            private readonly string _expectedTarget;
+            public StagedReadAccess(string target) { _expectedTarget = target; }
+            public bool HasValue { get; private set; }
+            public object Value { get; private set; }
+            public Task<object> ReadAsync(MPADataTargetKind kind, string targetRef, CancellationToken ct)
+            { throw new NotSupportedException("PLC读回暂存不支持获取其他MDS变量"); }
+            public Task WriteAsync(MPADataTargetKind kind, string targetRef, object value, CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (kind != MPADataTargetKind.Variable ||
+                    !string.Equals(targetRef, _expectedTarget, StringComparison.Ordinal) || HasValue)
+                    throw new InvalidOperationException("PLC读回不允许跨目标写入或重复提交");
+                Value = value;
+                HasValue = true;
+                return Task.CompletedTask;
+            }
+            public Task PublishAsync(string targetRef, object value, CancellationToken ct)
+            { throw new NotSupportedException("PLC读回暂存不能发布事件"); }
+            public Task InvokeAsync(string targetRef, object value, CancellationToken ct)
+            { throw new NotSupportedException("PLC读回暂存不能执行命令"); }
         }
 
         /// <summary>一次写入请求的临时数据源，不预先覆盖MDS当前值。</summary>
