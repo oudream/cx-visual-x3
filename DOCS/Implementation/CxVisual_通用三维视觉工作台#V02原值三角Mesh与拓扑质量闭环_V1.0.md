@@ -381,3 +381,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **已通过**：CT3D专业面片射线命中、8面片→9顶点、原值平面重算、来源/阈值/重复面/取消反例对应提交 `b378413d0d86598b7f713e232223674545195749`，Windows CT3D B G1～G3 `41027934866` 整条SUCCESS（Release/Debug x64、Headless G2、真实WPF G3）。相同专业代码SHA的Imaging `41027934809` SUCCESS。
 - **Studio源码**：`687d46337c5b14fef1afa1ec9245f69a012f6dbb` 增加TryPickMeshFace/RecomputeMeshFaceRoiAsync，复用Studio已有后台取消、会话epoch和MEM未提交预览；`c4a04c9a4f27f326e2ef890366cd0f472e88badf` 增加正式保存、重开、Scene来源验证。对应Studio S1 `41028510937`、`41028806164` 尚待固定SHA独立验收，不可以以先前CT3D专项替代。
 - **范围**：完成双精度Mesh三角面子元素专业查询/多面组合与Studio API接线，并非三维视口鼠标选面、CAD拓扑、子元素持久选择集或GPU工业G4/G5全部交付。
+
+
+### 10.32 B包：WPF视口Ctrl+Shift面片交互、原体素射线映射（2026-10-30）
+
+- **实际控件实现**：MPWVolumeSliceSceneControl在现有Ctrl场景对象选择之上新增Ctrl+Shift表面Mesh命中事件；WPF只返回可见显示模型首个交点和相机位置。不直接使用WPF显示LOD三角索引；MPW按真实Volume尺寸、各向异性显示缩放逆变换到原Voxel，Studio经同一FVOVolumeSpatialFrame投影到双精度毫米射线，再调用既有FGE/CT3D原Mesh求交并取得CT3DMeshFaceReference稳定子元素身份。正交切片或其它Mesh遮挡时拒绝穿透选中后面的物体。
+- **交互闭环**：StudioCT3DDocument新增面片临时选择集（StableId增删）、“选中面片重算”正式操作按钮、异步原值分析及取消/切Case清除。更换2D ROI或点击增删面片时撤销旧待提交分析，保存前比较面片选择代次与当前二维ROI实例，禁止旧Feature错存。不扩展MEM树，不将瞬时UI选择伪造为可持久子元素集。
+- **源码提交**：WPF控件 `7d910011c1703bd6d464165662ab9edb6767edc4`，Studio交互 `aed98c3ad18673f5da624465b41a6c5f1ffb1b48`，Studio真工程回归 `c5cf9e3ca0762c4b4846e293933e15bcdd8b6588`。新增回归验证12³显示射线→原Voxel→毫米射线的FGE原Mesh重新拾取、单面片3点重算、取消选择失效预览；WPF鼠标物理点击与任意LOD遮挡/GPU尚需独立真实操作验证。
+- **验收界限**：上一轮专业Mesh面片算法固定SHA `b378413d0d86598b7f713e232223674545195749` 的CT3D G1～G3 `41027934866` 与Imaging `41027934809` SUCCESS；本轮WPF/Studio增量固定SHA Studio `41034581734`、TestCenter `41034581843` 截至写入尚排队，不能冒充Windows通过。既有Studio全量S1另受并行MRK Vision CPU按钮/Trace失败阻断，须与CT3D本次功能区分。G4真实GPU、G5工业计量精度仍未关闭。
