@@ -200,7 +200,7 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 |---|---|---|---|
 | SR-01 | 旧资产档案 08.4 三主进程候选与现行 Go 双进程设计 | 在部署图明确“CxVisual 主进程”和“Supervision Go 两进程”分别指什么，保持迁移成果 | P0 文档 |
 | SR-02 | /api/v1/health 只表示 Monitor HTTP 存活；HeartbeatAtMs > 0 只表示有心跳记录 | 不能推断 Service/Device Ready；补正式健康来源和过期判断 | P0 |
-| SR-03 | internal/alerts/history.go 仅在 EventStart 消息含“启动失败”时分类；internal/daemonc/daemon.go 可能直接记录英文 err.Error() | **疑似遗漏启动失败**，须核对事件写入/筛选链，新增中英文/真实错误文本正反测试；尚未修复 | P0 |
+| SR-03 | 已查实 `Daemon.RunProgram → Monitor.dealProgramDaemonEvent → logProgramDaemonEvent → alerts.Classify`：Monitor 原先会为失败事件写入“启动失败”，英文原始错误不会直接导致此标准链漏报 | 已完成源码确认，并补启动成功/英文原始失败/空命令/历史 NDJSON 持久读取正反测试（`app_event_test.go`）；测试通过以当前 GitHub CI 为准，历史非标准日志仍按明确标签分类 | P0 正反测试待 CI |
 | SR-04 | 旧 Gin 监听、pprof、UDP 控制协议 | 生产隔离/认证/恶意请求、跨域及控制面安全审计；远程写接口仍保持关闭 | P0 |
 | SR-05 | 有界日志的异常历史不是活动告警状态机 | 后续建立规则、生命周期、通知、ACK/恢复真实状态和保留周期 | P0 |
 | SR-06 | Service、MRK、MDS、专业健康未被 Supervision 汇聚 | 先做只读 Provider 及 Scope/Trace/Version 对齐，禁止复制 Registry | P1 |
@@ -220,4 +220,13 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 
 **文档边界**：本文件保持为 Supervision **五级监督、S01～S12 和完整需求/验收的唯一索引**；具体路由/目录归整体架构，Go/Web 约束归其各自规范，Service 长驻能力、Runtime、MDS、Automation 工业监控与设备安全仍归各自 Owner。后续实际代码提交时回填本矩阵证据，不复写平行状态台账。
 
-**下次开发前的核查清单**：核对当前 master 和受影响的正式代码、历史 ReferTo、对象 Owner、DOCS/02～04；保持本轮只增补设计文档、不修改 Go/前端/数据库；优先验证 SR-03 的真实事件分类问题及 SR-04 的安全边界，再沿 A/B/C/D 阶段形成可运行的单主题交付。
+**后续开发核查清单**：每轮核对当前 master 和受影响的正式代码、ReferTo、对象 Owner 及 DOCS/02～04；SR-03 的标准事件通路已核实并增加回归，Go/前端 CI 和隔离运行结果须单独登记；下一个重点仍为 SR-04 安全边界与 P0 心跳时效语义，沿 A/B/C/D 以实际代码闭环推进。
+
+
+## 八、P0 实际源码推进记录（2026-10-30）
+
+- **实际更改**：`cmd/monitor/app_event.go` 抽出纯函数 `formatProgramDaemonEvent`，保留原 Daemon EventStart/EventExit/MaxError/MaxCount 编码及持久化字段，修正 EventExit 的“短时间退出”与“运行时长”文本反向判定；成功退出不输出无意义的 `<nil>`。
+- **测试增加**：`cmd/monitor/app_event_test.go` 覆盖启动成功、英文原始启动失败、`cmd is nil`、短时异常退出、正常退出、重启上限，以及 Monitor 规范化→原 `ProgramEventRecord` NDJSON→`alerts.ReadHistory` 的完整读取链；不把普通退出归类为活动告警。
+- **事实纠偏**：旧 SR-03 的“英文错误直接进入 alerts.Classify 导致漏报”不适用于现有标准 Monitor 记录路径，因为 `dealProgramDaemonEvent` 先增加了统一中文失败描述。真正已修复的是 EventExit 语义反向。
+- **兼容性**：Go 双进程、`Program` SQLite、UDP 帧、事件码、原 `/programs_status`、`GET /api/v1/alerts/history` JSON 结构不变；新代码没有新增服务、数据库或公共模块 Owner。
+- **验收等级**：源码已提交（S）；本轮连接环境不能直接克隆仓库到本地运行完整 Go 测试，GitHub Actions 推送结果尚未证实。因此 **G1 未宣称通过**；真实进程/设备长稳属于 G2/G3 待验。触发工作流：`.github/workflows/supervision-migration.yml`，应核对最新提交上的 Go Windows/macOS/Linux 及 Web 作业后回填真实结果。
