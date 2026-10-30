@@ -358,11 +358,7 @@ func main() {
 					_logger.Println(_title.Info + aProgram.Path + " 启动失败。" + aInfo + programEvent.Message)
 				}
 			case program.EventExit:
-				if programEvent.Status.ErrorCount > 0 {
-					_logger.Println(_title.Info + fmt.Sprintf(aProgram.Path+"退出，运行时长：%d。", time.Now().Unix()-programEvent.Status.LastRunTime) + aInfo)
-				} else {
-					_logger.Println(_title.Info + aProgram.Path + "退出，运行时间太短" + aInfo + programEvent.Message)
-				}
+				_logger.Println(_title.Info + formatDaemonExitEvent(aProgram.Path, programEvent, aInfo, time.Now().UnixMilli()))
 			}
 			programStatuses[programEvent.Status.Id] = &programEvent.Status
 			if existProgram(programEvent.Status.Id) {
@@ -395,4 +391,24 @@ func recoveryPrograms(cae chan program.Event) {
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
 	}
+}
+
+// formatDaemonExitEvent preserves the original Daemon event/status contract
+// while displaying the millisecond LastRunTime in correct seconds. Daemon
+// resets ErrorCount for sufficiently long-lived processes before emitting
+// EventExit; a nonzero value denotes an abnormal short-lived exit.
+func formatDaemonExitEvent(path string, event program.Event, desc string, nowMs int64) string {
+	elapsedSeconds := int64(0)
+	startedMs := event.Status.LastRunTime
+	if startedMs > 0 && nowMs >= startedMs {
+		elapsedSeconds = (nowMs - startedMs) / 1000
+	}
+	if event.Status.ErrorCount > 0 {
+		return fmt.Sprintf("%s异常退出（运行时间过短），运行时长：%d秒。", path, elapsedSeconds) + desc + event.Message
+	}
+	message := fmt.Sprintf("%s退出，运行时长：%d秒。", path, elapsedSeconds) + desc
+	if event.Message != "" && event.Message != "<nil>" {
+		message += event.Message
+	}
+	return message
 }
