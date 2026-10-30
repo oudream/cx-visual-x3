@@ -360,6 +360,7 @@ namespace CxVisual.Runtime.Host
                 Check(!String.IsNullOrWhiteSpace(actualPeer),
                     "Windows MRK受信Pipe必须取得真实宿主账户");
                 bool peerAllowed=true,modeAllowed=true,revokeImmediatelyAfterAdmission=false;
+                bool pipePeerChecked=false,pipePeerMatched=false,commandPolicyChecked=false;
                 string mrkPipe="CxScada.A4."+Guid.NewGuid().ToString("N");
                 using(MRHScadaRuntime host=MRHScadaRuntime.Open(project,configs,
                     deviceId,module,scope,100,true,additionalApproval:approved,
@@ -369,10 +370,16 @@ namespace CxVisual.Runtime.Host
                          point.StableId=="word100"))
                 using(MRHScadaTrustedCommandPipe trusted=new MRHScadaTrustedCommandPipe(
                     host,mrkPipe,970731,
-                    peer=>peerAllowed&&String.Equals(peer,actualPeer,
-                        StringComparison.OrdinalIgnoreCase),
+                    peer=>
+                    {
+                        pipePeerChecked=true;
+                        pipePeerMatched=String.Equals(peer,actualPeer,
+                            StringComparison.OrdinalIgnoreCase);
+                        return peerAllowed && pipePeerMatched;
+                    },
                     context=>
                     {
+                        commandPolicyChecked=true;
                         bool admitted=modeAllowed &&
                             (context.Caller=="operator" ||
                              String.Equals(context.Caller,actualPeer,
@@ -519,6 +526,11 @@ namespace CxVisual.Runtime.Host
                         " Error=" + remoteWritten.Error +
                         " ActualWord=" + plc.ActualWord +
                         " WritesBefore=" + beforeIpc + " WritesAfter=" + plc.Writes +
+                        " PipePeerChecked=" + pipePeerChecked +
+                        " PipePeerMatched=" + pipePeerMatched +
+                        " CommandPolicyChecked=" + commandPolicyChecked +
+                        " HostRunning=" + host.IsRunning +
+                        " HostApproved=" + host.IsStillApproved +
                         " PipeFaults=" + String.Join(" || ", pipeFaults.ToArray()));
                     MRKCommandResponse remoteQuery=ipc.QueryAsync(ipcOperation)
                         .GetAwaiter().GetResult();
