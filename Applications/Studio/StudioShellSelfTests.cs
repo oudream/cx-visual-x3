@@ -3516,6 +3516,11 @@ namespace CxVisual.Studio
                     try
                     {
                         int revision=reopened.Revision;
+                        // SHA-256只计有效Gray16原像素，不混入Stride Padding；
+                        // 这是4x4×Gray16(210)的固定数值回归向量。
+                        Assert(CxVisionRoiEngineering.Open(reopened,address).SourceHash==
+                            "d89466b0fdf25b41a4f4a59603c59bc4dee524fd4912d19e3fab793a3a3a1e73",
+                            "保存ROI原像素SHA-256与固定真值不一致");
                         var loaded=MainWindow.LoadStudioSavedRoiRaw(reopened,address,
                             rawPath,10,CancellationToken.None);
                         Assert(loaded.Width==4 && loaded.Height==4 &&
