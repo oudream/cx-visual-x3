@@ -32,6 +32,7 @@ namespace CxVisual.Professional.Automation.Scada
         private readonly PADPlcPointBridge _bridge;
         private readonly PADPlcPollingSession _polling;
         private readonly PADDeviceVariableProvider _provider;
+        private readonly bool _writeAuthorizationConfigured;
         private readonly object _gate = new object();
         private IDisposable _commandsBinding;
         private bool _running;
@@ -40,7 +41,8 @@ namespace CxVisual.Professional.Automation.Scada
 
         public PADScadaDeviceSession(string deviceRef, string scopeId,
             string moduleId, string configVersion, MCNConnectorConfiguration effective,
-            TimeSpan interval, bool contiguous = false)
+            TimeSpan interval, bool contiguous = false,
+            Func<string,PADDeviceVariableDefinition,bool> authorizeWrite = null)
         {
             if (string.IsNullOrWhiteSpace(deviceRef) || string.IsNullOrWhiteSpace(scopeId) ||
                 string.IsNullOrWhiteSpace(moduleId) || string.IsNullOrWhiteSpace(configVersion))
@@ -51,6 +53,7 @@ namespace CxVisual.Professional.Automation.Scada
                 !(effective.Channel is FTRTcpClientChannelConfiguration))
                 throw new NotSupportedException("当前首批只支持已生效的Modbus TCP/TCP Client装配");
             _deviceRef=deviceRef.Trim();
+            _writeAuthorizationConfigured=authorizeWrite!=null;
             _scopeId=scopeId.Trim();
             _configVersion=configVersion.Trim();
             _catalog=new PADDeviceVariableCatalog("scada/"+_deviceRef);
@@ -102,7 +105,7 @@ namespace CxVisual.Professional.Automation.Scada
             _bridge=new PADPlcPointBridge(_connector,_catalog,
                 new FTRSubChannelAddress(effective.Channel.Id),_scopeId,bindings);
             // 首次装配只读。命令写入必须由外部真实授权Host另行显式装配。
-            _provider=_bridge.CreateWriteProvider(null);
+            _provider=_bridge.CreateWriteProvider(authorizeWrite);
             _providerHost.Register(_provider);
             _catalog.Bind(_providerHost,_scopeId);
             _polling=new PADPlcPollingSession(_bridge,bindings.Select(b=>b.StableId),
@@ -131,20 +134,20 @@ namespace CxVisual.Professional.Automation.Scada
         /// HMI与专业服务只能向已配置可信授权器的MRK提交命令。空授权器没有降级入口。
         /// 本会话启动前才可注册控制；只读宿主永不创建此绑定。
         /// </summary>
-        public IDisposable RegisterWriteCommands(MRKCommandCenter hostCenter,
-            Func<string,PADDeviceVariableDefinition,bool> authorization,
-            long commandId)
+        public IDisposable RegisterWriteCommands(MRKCommandCenter hostCenter,long commandId)
         {
-            if(hostCenter==null || authorization==null)
-                throw new ArgumentNullException("hostCenter/authorization");
+            if(hostCenter==null)throw new ArgumentNullException("hostCenter");
             lock(_gate)
             {
                 if(_started||_disposed||_commandsBinding!=null)
                     throw new InvalidOperationException("SCADA会话命令装配已冻结");
-                // Provider写授权在创建时默认拒绝；Host还必须注入专业授权
-                // 不能在运行态替换Provider与MDS注册。当前版本显式fail-closed。
-                throw new NotSupportedException(
-                    "首批SCADA独立Host仅只读；受信控制需将PAD授权和MRK同代绑定后再开放");
+                if(!_writeAuthorizationConfigured)
+                    throw new UnauthorizedAccessException(
+                        "SCADA未注入专业写入授权器，禁止注册设备命令");
+                // Host须创建具有真实身份授权的MRKCommandCenter；本层不创建第二个MRK。
+                _commandsBinding=PADPlcMrkCommandRegistration.RegisterUInt16Write(
+                    hostCenter,_provider,_deviceRef,commandId);
+                return _commandsBinding;
             }
         }
         public async Task StartAsync(CancellationToken cancellationToken)
