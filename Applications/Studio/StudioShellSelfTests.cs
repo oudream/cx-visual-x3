@@ -492,6 +492,34 @@ namespace CxVisual.Studio
                                 "Studio.ModuleCenter.RunSavedRoi"}.Contains(
                                 System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==6,
                         "Studio模块中心缺少MPW图窗、Contour、CSV或正式ROI保存/重开运行操作");
+                    // 真实Studio必须让用户进入既有MPW图窗绘制/选中ROI；不是只留API。
+                    string[] roiTools={"Studio.ModuleCenter.DrawRectangleRoi",
+                        "Studio.ModuleCenter.DrawPolygonRoi",
+                        "Studio.ModuleCenter.SelectRoi",
+                        "Studio.ModuleCenter.NavigateRoi"};
+                    Button[] roiToolButtons=resultStack.Children.OfType<WrapPanel>()
+                        .SelectMany(x=>x.Children.OfType<Button>())
+                        .Where(x=>roiTools.Contains(System.Windows.Automation
+                            .AutomationProperties.GetAutomationId(x))).ToArray();
+                    Assert(roiToolButtons.Length==roiTools.Length &&
+                        roiToolButtons.Select(x=>System.Windows.Automation
+                            .AutomationProperties.GetAutomationId(x))
+                            .Distinct(StringComparer.Ordinal).Count()==roiTools.Length,
+                        "Studio模块中心缺少四种可操作的现有MVI/MPW ROI工具入口");
+                    MPWImageViewerControl roiViewer=resultStack.Children
+                        .OfType<MPWImageViewerControl>().Single();
+                    TextBlock roiStatus=resultStack.Children.OfType<TextBlock>()
+                        .Single(x=>System.Windows.Automation.AutomationProperties
+                            .GetAutomationId(x)=="Studio.ModuleCenter.ResultDetails");
+                    int beforeRoiTool=window.StudioEngineeringRevision;
+                    Button noSourceTool=roiToolButtons.Single(x=>System.Windows.Automation
+                        .AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.DrawRectangleRoi");
+                    noSourceTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,noSourceTool));
+                    Assert(roiViewer.ToolMode==MVIImageToolMode.Navigate &&
+                        roiStatus.Text.Contains("当前没有同源有效原图") &&
+                        window.StudioEngineeringRevision==beforeRoiTool,
+                        "尚无Run原图时ROI绘制入口必须拒绝而不能新建空图或MEM事务");
                     Button createVisionFlow=actions.FirstOrDefault(x=>
                         System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                         "Studio.ModuleCenter.CreateVisionFlow");
