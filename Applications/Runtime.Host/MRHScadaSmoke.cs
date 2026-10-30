@@ -481,9 +481,30 @@ namespace CxVisual.Runtime.Host
                             expectedSchemaVersion:1);
                     Guid ipcOperation=Guid.NewGuid();
                     int beforeIpc=plc.Writes;
-                    MRKCommandResponse remoteWritten=ipc.InvokeAsync(
-                        remoteRequest(86,host.Generation,ipcOperation))
-                        .GetAwaiter().GetResult();
+                    // Temporary SCADA-G1 evidence for an IPC peer that closes before
+                    // a structured response. The shared MRK server intentionally
+                    // fail-closes without exposing handler exceptions to the client.
+                    // Observe locally only, never return exception details over IPC.
+                    var pipeFaults = new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> pipeTrace =
+                        (sender, observed) =>
+                        {
+                            string stack = observed.Exception.StackTrace ?? String.Empty;
+                            if ((stack.Contains("MRKCommandPipe") ||
+                                 stack.Contains("NamedPipeServerStream")) && pipeFaults.Count < 12)
+                                pipeFaults.Enqueue(observed.Exception.GetType().Name +
+                                    ":" + observed.Exception.Message +
+                                    " at " + stack.Split('\n')[0].Trim());
+                        };
+                    MRKCommandResponse remoteWritten;
+                    AppDomain.CurrentDomain.FirstChanceException += pipeTrace;
+                    try
+                    {
+                        remoteWritten = ipc.InvokeAsync(
+                            remoteRequest(86,host.Generation,ipcOperation))
+                            .GetAwaiter().GetResult();
+                    }
+                    finally { AppDomain.CurrentDomain.FirstChanceException -= pipeTrace; }
                     Check(remoteWritten.Stage==MRKCommandStage.Accepted &&
                         remoteWritten.State==MRKCommandState.Completed &&
                         remoteWritten.BusinessSuccess==true &&
@@ -497,7 +518,8 @@ namespace CxVisual.Runtime.Host
                         " ErrorCode=" + remoteWritten.ErrorCode +
                         " Error=" + remoteWritten.Error +
                         " ActualWord=" + plc.ActualWord +
-                        " WritesBefore=" + beforeIpc + " WritesAfter=" + plc.Writes);
+                        " WritesBefore=" + beforeIpc + " WritesAfter=" + plc.Writes +
+                        " PipeFaults=" + String.Join(" || ", pipeFaults.ToArray()));
                     MRKCommandResponse remoteQuery=ipc.QueryAsync(ipcOperation)
                         .GetAwaiter().GetResult();
                     Check(remoteQuery.State==MRKCommandState.Completed &&
