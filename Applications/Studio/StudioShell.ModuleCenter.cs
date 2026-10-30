@@ -926,7 +926,24 @@ namespace CxVisual.Studio
                     CxVisionRoiEngineering.Commit(session,page.RootContent,
                         session.Revision,displayedOriginal,sourceId,roi,
                         options,configRevision,CancellationToken.None);
-                    // MEM新Revision立即使旧Run失效；保留已绑定原图和当前ROI供复算。
+                    // MEM新Revision使旧Run全部失效：不仅屏蔽操作按钮，也须
+                    // 清理MVI Result像素和本Run投影的只读轮廓，不能留下可误认
+                    // 为当前结果的视觉证据。保留用户面积ROI/其他Annotation。
+                    CxVisionRunSummary invalidatedRun=displayedRun;
+                    if(invalidatedRun!=null)
+                    {
+                        var contourIds=new HashSet<string>(
+                            invalidatedRun.Items.Where(item=>
+                                item.Kind==CxVisionResultKind.Contour)
+                                .Select(item=>item.ItemId),StringComparer.Ordinal);
+                        foreach(MVIImageOverlayItem projected in
+                            resultPreview.Overlays.Items.Where(item=>
+                                item.Kind==MVIImageOverlayKind.PolygonAnnotation &&
+                                item.IsLocked && contourIds.Contains(item.ExternalId))
+                                .ToArray())
+                            resultPreview.Overlays.Remove(projected.Id);
+                    }
+                    resultPreview.Session.ClearResult();
                     displayedRun=null;displayedRevision=-1;
                     resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
                     sourceButton.IsEnabled=false;contourButton.IsEnabled=false;
