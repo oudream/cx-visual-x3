@@ -117,7 +117,11 @@ onMounted(() => { void guard.refresh() })
             <el-tag :type="row.category === '终止闭锁' ? 'danger' : 'warning'" effect="plain">{{ row.category }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="programId" label="Program ID" min-width="165" />
+        <el-table-column label="Program ID" min-width="165">
+          <template #default="{ row }">
+            <RouterLink class="subtle-link" :to="{ path: '/programs', query: { id: row.programId } }">{{ row.programId }}</RouterLink>
+          </template>
+        </el-table-column>
         <el-table-column label="程序" min-width="190">
           <template #default="{ row }">
             {{ row.path ? programName(row.path, row.programId) : 'Monitor 未提供名称' }}
