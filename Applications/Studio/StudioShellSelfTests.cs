@@ -24,6 +24,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Foundation.Data.Messages;
 using CxVisual.Mechanism.Data.Messages;
 using CxVisual.Mechanism.Runtime.Commands;
 using CxVisual.Mechanism.Presentation.Wpf.Interaction;
