@@ -434,6 +434,7 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 
 ### 10.38 B包：多面片ROI质量与孤岛清理（2026-10-30）
 
+- **公共FGE复用裁决**：原Mesh选区通过稳定顶点索引映射构造只读局部 `FGETriangleMesh3D`，直接复用已存在的 `SurfaceArea`、`ConnectedFaceComponentCount`、`BoundaryEdgeCount`、`NonManifoldEdgeCount`，CT3D不再复制这些几何计算。专业层仅保留边界实际长度/闭环统计、选区原始资产签名与孤岛清理；额外局部网格是瞬时计算数据，不是第二个持久化原值或Scene。
 - **基于原值的质量证据**：`CT3DMeshFaceSelection.InspectRegion` 和不可变 `CT3DMeshRegionQuality` 对已验证同资产/Frame/Revision的原始三角Mesh面片计算实际曲面面积(mm²)、选区边界物理周长(mm)、边界边数、闭合边界环数、异常边界分量、非流形边数及共享边连通分量。明确区域开边界≠整个体表水密性；面积是原三角面面积而非CAD投影/工业认证面积，`IsIndustrialAccuracyCertified=false`。
 - **清理孤岛**：`KeepLargestConnectedRegion` 只对已选原Mesh面片建立共享边邻接；保留最大连通分量，面数相同时按最小真实TriangleIndex确定性选择。返回原稳定面片身份，支持原V5 Capture/重算和MEM保存重开，不更改FGE、FVO、MVI、MPW或MEM职责，不凭屏幕邻近删面。
 - **Studio交付**：新增“检查面片ROI”“清理孤立面片”按钮与SDK入口；质量信息含单位与认证限制。异步清理先持有原选择快照、Case/选区版本和取消令牌，计算与校验完成后才原子替换Studio临时面片选择，复用黄色高亮、待保存预览失效、正式原值重算及MEM原有V5流程；失败/取消不修改旧面片选择或工程。

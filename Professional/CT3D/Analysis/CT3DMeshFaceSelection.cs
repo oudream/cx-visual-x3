@@ -236,33 +236,17 @@ namespace CxVisual.Professional.CT3D
                 throw new InvalidOperationException("只有MeshPlane案例包含原值Mesh面片。");
             IReadOnlyList<int> vertices=ResolveVertices(analysis.Source,analysis.Mesh,
                 faces,cancellation);
+            // 公共FGE已实现面积、共享边连通/边界边与非流形质量合同。
+            // 专业CT3D只构造选中原Mesh的只读局部投影，不重复数值算法。
+            FGETriangleMesh3D regionMesh=BuildRegionMesh(
+                analysis.Mesh.Mesh,vertices,faces,cancellation);
             var owners=BuildRegionEdges(faces,cancellation);
-            List<List<int>> components=GetFaceComponents(faces,owners,analysis.Mesh.Mesh,
-                cancellation);
-            double area=0,perimeter=0;
-            for(int i=0;i<faces.Count;i++)
-            {
-                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
-                CT3DMeshFaceReference face=faces[i];
-                FGEPoint3D a=face.PointA,b=face.PointB,c=face.PointC;
-                double x=b.X-a.X,y=b.Y-a.Y,z=b.Z-a.Z;
-                double u=c.X-a.X,v=c.Y-a.Y,w=c.Z-a.Z;
-                double crossX=y*w-z*v,crossY=z*u-x*w,crossZ=x*v-y*u;
-                double triangleArea=0.5*Math.Sqrt(crossX*crossX+
-                    crossY*crossY+crossZ*crossZ);
-                if(!(triangleArea>0)||double.IsInfinity(triangleArea)||
-                    double.IsNaN(triangleArea))
-                    throw new InvalidOperationException("原Mesh包含退化或非有限三角面，拒绝质量评价。");
-                area+=triangleArea;
-            }
+            double perimeter=0;
             var boundary=new Dictionary<int,List<int>>();
-            int edgeCount=0,nonManifold=0;
             foreach(KeyValuePair<ulong,List<int>> item in owners)
             {
                 cancellation.ThrowIfCancellationRequested();
-                if(item.Value.Count>2)nonManifold++;
                 if(item.Value.Count!=1)continue;
-                edgeCount++;
                 int a=(int)(item.Key>>32),b=(int)(item.Key&0xffffffffUL);
                 FGEPoint3D pa=analysis.Mesh.Mesh.Vertices[a],
                     pb=analysis.Mesh.Mesh.Vertices[b];
@@ -289,11 +273,12 @@ namespace CxVisual.Professional.CT3D
                 }
                 if(closed)loops++;else irregular++;
             }
-            if(double.IsNaN(area)||double.IsInfinity(area)||
-                double.IsNaN(perimeter)||double.IsInfinity(perimeter))
-                throw new OverflowException("ROI几何面积或边界长度超出数值范围。");
+            if(double.IsNaN(perimeter)||double.IsInfinity(perimeter))
+                throw new OverflowException("ROI边界长度超出数值范围。");
             return new CT3DMeshRegionQuality(faces.Count,vertices.Count,
-                components.Count,edgeCount,loops,irregular,nonManifold,area,perimeter);
+                regionMesh.ConnectedFaceComponentCount,regionMesh.BoundaryEdgeCount,
+                loops,irregular,regionMesh.NonManifoldEdgeCount,
+                regionMesh.SurfaceArea,perimeter);
         }
 
         /// <summary>清理离散误选的孤岛；只保留共享边连通的最大原值三角面分量。
@@ -326,6 +311,33 @@ namespace CxVisual.Professional.CT3D
                 result.Add(lookup[index]);
             }
             return result.AsReadOnly();
+        }
+
+        /// <summary>把原Mesh稳定索引映射成局部选区，仅交给现有FGE拓扑/面积计算。
+        /// 顶点坐标来自原物理毫米Mesh，绝不重新量化或拷贝整幅RAW。</summary>
+        private static FGETriangleMesh3D BuildRegionMesh(FGETriangleMesh3D source,
+            IReadOnlyList<int> originalVertices,IReadOnlyList<CT3DMeshFaceReference> faces,
+            CancellationToken cancellation)
+        {
+            var pointMap=new Dictionary<int,int>(originalVertices.Count);
+            var points=new List<FGEPoint3D>(originalVertices.Count);
+            for(int i=0;i<originalVertices.Count;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                pointMap.Add(originalVertices[i],i);
+                points.Add(source.Vertices[originalVertices[i]]);
+            }
+            var indices=new List<int>(checked(faces.Count*3));
+            for(int i=0;i<faces.Count;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                CT3DMeshFaceReference face=faces[i];
+                indices.Add(pointMap[face.VertexA]);
+                indices.Add(pointMap[face.VertexB]);
+                indices.Add(pointMap[face.VertexC]);
+            }
+            cancellation.ThrowIfCancellationRequested();
+            return new FGETriangleMesh3D(points,indices);
         }
 
         private static Dictionary<ulong,List<int>> BuildRegionEdges(
