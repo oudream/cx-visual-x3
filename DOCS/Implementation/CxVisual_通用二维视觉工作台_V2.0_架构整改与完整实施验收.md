@@ -348,6 +348,15 @@
 - [`d92b8d32`](https://github.com/oudream/cx-visual-x3/commit/d92b8d32296ee1ccbcbb3c3b1d1a2d558c4e7502)补实际WPF捕获失败安全分支：所有主/副Pane的`CaptureMouse()`均检查返回值，无法取得鼠标捕获时立即`CancelTransientGesture`；禁止留下无MouseUp可到达的悬挂编辑State。
 - **本轮审慎结论**：公共源码与新增自动测试已完成G2，首次集成SHA已通过G3/G4；完整Esc、鼠标失捕、双Pane鼠标竞态真实UIA/人工G5和所有后续SHA的Windows G3/G4需按对应运行记录单独升级。IMG-01/02仍为InProgress。
 
+### 7.9 IMG-02 WPF Esc路由自动验收与跨Owner构建障碍（2026-10-30）
+
+- **前置CI核查**：最新回查`f57ccda83004864c373b54e43b3bc5e968e29d69`的[Imaging #41004342250](https://github.com/oudream/cx-visual-x3/actions/runs/41004342250)及[Unified Runtime #41004342241](https://github.com/oudream/cx-visual-x3/actions/runs/41004342241)均成功；`eba9d4453635a5cbdbf3bd3ecdddbd7ab1919e13`的[MVI手势测试 #41007034955](https://github.com/oudream/cx-visual-x3/actions/runs/41007034955)成功。后续并行编译失败不得误归结为这些历史SHA的Imaging单测。
+- **阻塞根因**：早期[Imaging #41007403424](https://github.com/oudream/cx-visual-x3/actions/runs/41007403424)和[TestCenter #41007403416](https://github.com/oudream/cx-visual-x3/actions/runs/41007403416)的Windows日志报`PADPlcPointBridge.cs(111,141)` CS1061：基础`IFTRChannel`不提供`StateChanged`；现有`IFTRChannelTransport`才提供状态订阅，与`MCNConnectorModule`的做法相同。[`0a4cef4d`](https://github.com/oudream/cx-visual-x3/commit/0a4cef4d01fe0df931acc67c0acb5cc988d37fef)最小修正PLC桥接：要求可执行`IFTRChannelTransport`，通过它订阅/解除状态事件；保留断线MDS Stale处理，未修改读写或设备安全策略。该修正属于跨项目构建恢复，不算IMG专业新能力。
+- **WPF输入验证**：[`8d94fa04`](https://github.com/oudream/cx-visual-x3/commit/8d94fa0469bcce27fe0ab554582b5b31b3ba7511)在`TCTImageViewerSmoke`新增实控件的`PreviewKeyDown(Escape)`路由回归：加载Gray16原图、切换两线工具、输入首点观察WPF草稿、发送实际RoutedEvent、验证Esc拦截并清除草稿、Store无误提交、重新输入从第一点开始、再切工具草稿归零。它是受控WPF STA合成输入，不冒充物理键盘/鼠标UIA G5。
+- **本轮门禁**：[Imaging #41010129867](https://github.com/oudream/cx-visual-x3/actions/runs/41010129867)及[TestCenter #41010129932](https://github.com/oudream/cx-visual-x3/actions/runs/41010129932)绑定`8d94fa04`；文档写入时尚未取得最终成功，必须在其执行完成后登记G3/G4与真实失败细节，不能沿用旧绿色状态。
+- **剩余**：真实双Pane手势拖动/失捕/鼠标焦点的全程UIA及工业大图仍需G5/G6；完整MPW字段收敛仍属IMG-01/02 InProgress。
+
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
