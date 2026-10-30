@@ -2015,7 +2015,9 @@ namespace CxVisual.Studio
                         candidate.EntryContentId==page.RootContent.Id&&
                         candidate.CapabilityVersions.ContainsKey("AI")&&
                         candidate.CapabilityVersions.ContainsKey("CV"),
-                        "Studio没有锁定真实AI/CV及主流程发布依赖");
+                        "Studio没有锁定真实AI/CV及主流程发布依赖: "+
+                            (candidate==null?window.LogicInfo.Text:
+                                string.Join(",",candidate.CapabilityVersions.Keys)));
                     var resolverField=typeof(MainWindow).GetField("_simulation",
                         System.Reflection.BindingFlags.NonPublic|
                         System.Reflection.BindingFlags.Instance);
