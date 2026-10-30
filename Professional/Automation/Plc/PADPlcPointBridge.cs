@@ -82,22 +82,24 @@ namespace CxVisual.Professional.Automation.Plc
                     point.ValueType != variable.ValueType.Name || (variable.Writable && !point.CanWrite))
                     throw new ArgumentException("PLC点/变量类型、读写能力不匹配: " + binding.StableId);
                 string target = prefix + variable.Address;
-                MPADataMapping[] inbound = connector.Configuration.Protocol.Mappings.Where(x =>
-                    x.PointRef == point.Name && x.TargetKind == MPADataTargetKind.Variable &&
-                    x.TargetRef == target && x.Direction != MPADataDirection.Outbound &&
+                // 这是可用于直接操作真实PLC的专业桥接，必须fail-closed：
+                // 禁止额外的消息/命令/跨变量映射在读取传感器时产生隐含副作用。
+                MPADataMapping[] mappings = connector.Configuration.Protocol.Mappings
+                    .Where(x => x.PointRef == point.Name).ToArray();
+                MPADataMapping[] inbound = mappings.Where(x =>
+                    x.TargetKind == MPADataTargetKind.Variable &&
+                    x.TargetRef == target && x.Direction == MPADataDirection.Inbound &&
                     x.Operation == MPADataOperation.WriteValue &&
                     x.Transform == MPADataTransformKind.None && x.Required).ToArray();
-                if (inbound.Length != 1)
-                    throw new ArgumentException("PLC点必须有唯一的必需MDS入站映射: " + point.Name);
-                if (variable.Writable)
-                {
-                    MPADataMapping[] outbound = connector.Configuration.Protocol.Mappings.Where(x =>
-                        x.PointRef == point.Name && x.Direction != MPADataDirection.Inbound &&
-                        x.Operation == MPADataOperation.ReadValue).ToArray();
-                    if (outbound.Length != 1 || outbound[0].TargetKind != MPADataTargetKind.Variable ||
-                        outbound[0].TargetRef != target || outbound[0].Transform != MPADataTransformKind.None)
-                        throw new ArgumentException("可写PLC点必须有唯一的同变量出站映射");
-                }
+                MPADataMapping[] outbound = mappings.Where(x =>
+                    x.TargetKind == MPADataTargetKind.Variable &&
+                    x.TargetRef == target && x.Direction == MPADataDirection.Outbound &&
+                    x.Operation == MPADataOperation.ReadValue &&
+                    x.Transform == MPADataTransformKind.None && x.Required).ToArray();
+                if (inbound.Length != 1 || outbound.Length != (variable.Writable ? 1 : 0) ||
+                    mappings.Length != inbound.Length + outbound.Length)
+                    throw new ArgumentException(
+                        "PLC点只允许唯一、必需且目标一致的MDS入站映射与授权出站映射: " + point.Name);
             }
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
         }
