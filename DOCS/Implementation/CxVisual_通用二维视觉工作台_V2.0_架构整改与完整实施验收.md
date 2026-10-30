@@ -299,6 +299,13 @@
 - **仍不关闭**：IMG-03/05/12/18继续`InProgress`；这是固定SHA的自动验证，不等于在真实Studio产品界面人工点击文件对话框或UIA全路径（G5），也不能替代设备HIL及大图/长稳（G6）。同SHA的Studio S1/Imaging专项尚无成功结论时继续列为待验收。
 - **下轮要求**：补可复验UIA或人工完整工程操作记录；在确认跨工程最新HEAD与CI后收敛IMG-04最小Run合同，不因本次单样本G4把26类260项标记完成。
 
+### 7.3 R1-01 附加数值/取消回归（2026-10-30，待最新SHA验证）
+
+- [`b9bae60`](https://github.com/oudream/cx-visual-x3/commit/b9bae60a8c018cd78ca405d041c4119b60cc8fd8) 在Studio自动测试中固定4×4 Gray16有效像素SHA-256：`d89466b0fdf25b41a4f4a59603c59bc4dee524fd4912d19e3fab793a3a3a1e73`（16个像素各为小端数值210，不含每行Padding）。
+- [`3a8fc2e`](https://github.com/oudream/cx-visual-x3/commit/3a8fc2edd1de81ec579263dd7aa44b8b69a4793b) 补“只修改Stride Padding不构成原像素变更、修改有效像素必须拒绝”双向真值反证；不把文件存储布局与图像有效内容混为一谈。
+- [`27e1381`](https://github.com/oudream/cx-visual-x3/commit/27e138115f87e77025b3be48f0e1c30eb85b4fad) 将RAW重绑加入已有取消按钮；取消或页面失效时拒绝显示晚到原图、保留之前的有效图像/Run，不新建任务中心。原FIMRawImageReader读取操作不是可中断块IO，取消承诺限定为任务完成前的验证和发布阻止，后续大图流式中断归IMG-09/10。
+- 以上修改后，`27e138115f87e77025b3be48f0e1c30eb85b4fad`的新CI为[Module Center CPU #40996427478](https://github.com/oudream/cx-visual-x3/actions/runs/40996427478)、[Studio S1 #40996427543](https://github.com/oudream/cx-visual-x3/actions/runs/40996427543)、[Imaging #40996427532](https://github.com/oudream/cx-visual-x3/actions/runs/40996427532)，记录时尚未完成；不得自动继承1d90c683历史成功为本SHA通过。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
