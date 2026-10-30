@@ -29,8 +29,6 @@ func newProgramWorkerGate() *programWorkerGate {
 	}
 }
 
-// start reserves an ID before launching its worker. Recovery must never
-// implicitly queue another guardian while an existing one is still alive.
 // enablePersistence loads the last Daemon instance's terminal limits before
 // any managed worker is admitted. Corrupt/unreadable files are fatal startup
 // errors, not a reason to silently erase the limits.
@@ -65,6 +63,7 @@ func (g *programWorkerGate) persistenceError() error {
 	return err
 }
 
+// start reserves the ID before launching. Periodic recovery never queues.
 func (g *programWorkerGate) start(ctx context.Context, id int64, run func()) bool {
 	started, _ := g.admit(ctx, id, run, false)
 	return started
@@ -119,8 +118,9 @@ func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
 		return
 	}
 	if g.storageFault != nil {
+		delete(g.active, id)
 		g.mu.Unlock()
-		return false, false
+		return
 	}
 	if _, blocked := g.terminal[id]; blocked {
 		delete(g.active, id)
