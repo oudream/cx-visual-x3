@@ -159,6 +159,33 @@ namespace CxVisual.Mechanism.Visual
             ChangedNow();
         }
 
+        /// <summary>将当前可见选择集作为一批修改Layer/Group，先校验、再一次提交与通知；
+        /// 只更新MVI可视组织，不修改专业资产或MEM工程定义。</summary>
+        public void SetSelectionOrganization(string layerKey,string groupKey=null)
+        {
+            CheckOrganization(layerKey,groupKey);
+            if(_selectedIds.Count==0)
+                throw new InvalidOperationException("没有选中的可见Scene实例。");
+            var indexes=new List<int>(_selectedIds.Count);
+            foreach(Guid id in _selectedIds)
+            {
+                int index=FindIndex(id);
+                if(!_items[index].Visible)
+                    throw new InvalidOperationException("组合分组包含不可见或过期的Scene对象。");
+                indexes.Add(index);
+            }
+            bool changed=false;
+            foreach(int index in indexes)
+            {
+                MVI3DSceneItem item=_items[index];
+                if(string.Equals(item.LayerKey,layerKey,StringComparison.Ordinal)&&
+                    string.Equals(item.GroupKey,groupKey,StringComparison.Ordinal))continue;
+                _items[index]=item.WithOrganization(layerKey,groupKey);
+                changed=true;
+            }
+            if(changed)ChangedNow();
+        }
+
         public ReadOnlyCollection<MVI3DSceneItem> SnapshotLayer(string layerKey)
         {
             if(string.IsNullOrWhiteSpace(layerKey))throw new ArgumentException("图层名称不能为空。","layerKey");

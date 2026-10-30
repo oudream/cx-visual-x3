@@ -175,7 +175,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 {_feedback.Text="请选择一个可见对象。";return;}
                 try
                 {
-                    _scene.SetOrganization(_scene.SelectedId.Value,
+                    _scene.SetSelectionOrganization(
                         _layerInput.Text,_groupInput.Text.Length==0?null:_groupInput.Text);
                     _feedback.Text="";
                 }

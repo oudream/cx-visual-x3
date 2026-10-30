@@ -282,6 +282,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         recovered.SelectedIds[1]==expectedSelection[1]&&
                         recovered.SelectedIds[2]==expectedSelection[2],
                         "MEM Schema2保存重开必须恢复组合选择顺序及兼容主选择");
+                    long beforeBatch=recovered.Revision;
+                    recovered.SetSelectionOrganization("combined","multi-selection");
+                    Check(recovered.Revision==beforeBatch+1&&
+                        recovered.SnapshotLayer("combined").Count==3&&
+                        recovered.SelectedIds.Count==3,
+                        "Ctrl组合选中的Mesh/CAD/PointCloud应原子调整Layer/Group且仅发一次通知");
+                    recovered.SetSelectionOrganization("combined","multi-selection");
+                    Check(recovered.Revision==beforeBatch+1,
+                        "重复组合分组不得虚增Scene Revision");
+                    bool invalidBatch=false;
+                    try{recovered.SetSelectionOrganization(" ", "multi-selection");}
+                    catch(ArgumentException){invalidBatch=true;}
+                    Check(invalidBatch&&recovered.Revision==beforeBatch+1&&
+                        recovered.SnapshotLayer("combined").Count==3,
+                        "非法组合分组整体拒绝，不能留下部分图层变更");
                     long beforeBad=recovered.Revision;
                     bool badSelection=false;
                     try{recovered.ToggleSelection(Guid.NewGuid());}
