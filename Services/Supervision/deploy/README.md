@@ -99,3 +99,12 @@ Daemon 启动会合并扫描旧 PID 文件和未清算意图，即使无旧 PID 
 目录及祖先链接被拒绝；macOS根目录标准 `/var`、`/tmp` 到各自 `/private/...` 的系统映射除外。不要把 supervision 或 launch-attempts 重定向至符号链接/目录联接。新停止请求为已有 requested/unknown 预留后续回执空间，可能在达到4MiB前拒绝新请求；应提前观察容量并按上述离线流程归档。持久化证据不是防恶意篡改的审计库；相同文件权限的外部程序与突然断电仍属独立验收边界。
 
 本机编译、并发、SQLite和六页面实证见[修复与真实验收](../docs/CxVisual_Supervision_修复与真实验收_20261030.md)。
+
+
+## S05 主机资源只读采样与部署口径（2026-10-30）
+
+新版 H5 导航新增“资源性能”，通过同机 Monitor `GET /api/v1/resources` 读取 OS 实际数据。资源的口径必须分开：整机 CPU 为约200ms采样值；物理内存为整机 Used/Total/Available；磁盘是**Monitor工作目录所在文件系统**的 Used/Total/Available，不代表整机所有磁盘。下方受管程序 CPU/RSS 仍来自原 Monitor 程序快照，绝不可当作主机资源或设备/业务 Ready。
+
+该接口复用 LocalOnly，外机/转发请求仍被拒绝，无任何写操作。工作目录为空、未创建或权限不足时，磁盘来源标记 unavailable；不采集真实值的 GPU、网络和历史趋势不显示假值。部署必须核对 Monitor 的 `-workDir` 与 Daemon 的实际日志/数据目录配置，确认文件系统与采样主体符合运维预期。
+
+本节的 Go 资源采样与 Vue 页面是在 Codex 固定 G1 SHA `5760a30d` 后的新开发，**不能沿用那次 CI 结果证明此增量已通过**。需对新增后的固定 SHA 执行三系统 Go 测试、Linux Race、前端 Typecheck/Vitest/Build；现场再验证多磁盘、文件系统权限、CPU 负载下的采样准确性和刷新性能。
