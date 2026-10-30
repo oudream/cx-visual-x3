@@ -33,11 +33,15 @@ namespace CxVisual.Foundation.Transport
             ct.ThrowIfCancellationRequested();
             Parity parity=(Parity)Enum.Parse(typeof(Parity),_config.Parity);
             StopBits stopBits=(StopBits)Enum.Parse(typeof(StopBits),_config.StopBits);
+            Handshake handshake=(Handshake)Enum.Parse(typeof(Handshake),_config.Handshake);
             // 固定短ReadTimeout只负责可中断轮询，独立ReceiveIdleTimeoutMs
             // 使用单调时间判断；不会把一次串口Read超时当作线路故障。
             SerialPort port=new SerialPort(_config.PortName,_config.BaudRate,
                 parity,_config.DataBits,stopBits) {
-                ReadTimeout=250,WriteTimeout=_config.SendTimeoutMs
+                ReadTimeout=_config.ReceiveIdleTimeoutMs>0?
+                    Math.Min(250,_config.ReceiveIdleTimeoutMs):250,
+                WriteTimeout=_config.SendTimeoutMs,
+                Handshake=handshake
             };
             try
             {
