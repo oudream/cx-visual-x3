@@ -200,6 +200,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 listener.Prefixes.Add(url);
                 listener.Start();
+                var headersSent=new ManualResetEventSlim(false);
                 Task server=Task.Run(()=>
                 {
                     HttpListenerContext request=listener.GetContext();
@@ -210,7 +211,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         // 立刻发送HTTP 200和第一小块后保持连接，不再发送响应尾。
                         request.Response.OutputStream.Write(new byte[]{42},0,1);
                         request.Response.OutputStream.Flush();
-                        Thread.Sleep(1200);
+                        headersSent.Set();
+                        Thread.Sleep(2200);
                     }
                     catch(HttpListenerException){}
                     catch(System.IO.IOException){}
@@ -221,7 +223,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                 });
                 var config=new FTRHttpClientChannelConfiguration {
-                    Id="f17-http-slow-response",Url=url,RequestTimeoutMs=250,
+                    Id="f17-http-slow-response",Url=url,RequestTimeoutMs=850,
                     MaxResponseBytes=1024,ReceiveByteBudget=4096,ReceiveBufferBytes=16,
                     StopTimeoutMs=3000
                 };
@@ -235,12 +237,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     try{client.Send(new byte[]{7});}
                     catch(TimeoutException){timedOut=true;}
                     stopwatch.Stop();
-                    Check(timedOut&&stopwatch.ElapsedMilliseconds<2500&&
+                    Check(headersSent.IsSet&&timedOut&&stopwatch.ElapsedMilliseconds<2900&&
                         client.Diagnostics.BufferedPayloadBytes==0&&packets==0,
                         "收到HTTP 200响应头后慢Body必须由同一RequestTimeout及时停止、清零额度，不能交付半消息");
                     client.Close();
                 }
                 Check(server.Wait(5000),"HTTP慢Body服务端未正常结算");
+                headersSent.Dispose();
             }
         }
 
