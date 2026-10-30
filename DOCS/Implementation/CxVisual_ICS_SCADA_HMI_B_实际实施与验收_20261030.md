@@ -30,3 +30,12 @@
 - 全面WPF UIA鼠键、Symbol多实例、性能和长期运行实证。
 
 统一工程Owner仍为MEM，运行值仍为MDS，执行/授权仍在MRK和A的Host；禁止第二套工程树、变量仓和PLC协议。
+
+## 2026-10-30 第二批：HMI实际Page Text显示与选变量编辑
+
+- Mechanism/Visual/MVISceneProjection.cs：普通core.text的"看到原工程文字"扩展为运行时读取原SetBinding("text")和MDS Resolver，没运行源时保留MEM原文；不在现场刷新里持久化工程。
+- Applications/Studio/StudioViewModel.Engineering.cs + MainWindow.xaml：属性面板仍用原MPM/MTC，选中Text图元产生真实text属性，可选择变量绑定；可编辑ComboBox候选来自当前已附加的MDS Scope，允许未接入时继续保留手工工程绑定，切换Scope会通知候选变化。
+- Applications/Studio/StudioShell.Hmi.cs：RuntimeVariableChoices只是当前MDS Definitions名称的只读投影，不保存第二份变量目录。StudioShell.Variables.cs在Scope切换后清理旧Viewer并刷新下拉。
+- Tests/ArchitectureSmoke/Integration/HmiRuntimeTests.cs：真实MEM text变量绑定磁盘保存重开和MDS=99动态显示、静态原文不变；HmiWpfTests.cs额外断言WPF实时投影91和原文。
+- 固定提交：动态Text 4800d17、Studio变量选择5c1f842/334ffaa/491c0c5/cea6db6、Text属性30eba84、WPF回归865400e、保存重开9776a12。
+- 第一版G1 #41028059482已SUCCESS，但其SHA **未包含**本段改动。新增完整G1/Studio编译/STA仍需新SHA Windows CI通过后才可登记Automated。
