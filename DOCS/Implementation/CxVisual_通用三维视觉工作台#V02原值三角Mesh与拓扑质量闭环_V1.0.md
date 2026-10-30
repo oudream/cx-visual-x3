@@ -397,3 +397,12 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **真实WPF交互**：选中/取消Ctrl+Shift面片后立即刷新高亮；视角变化时只更新可视微偏移防共面闪烁。高亮面再次被点击时仍进入FGE原Mesh射线重拾取，不使用WPF显示三角索引。隐藏Mesh、清除2D ROI、切Case、关闭工作台都会撤销或暂时清除高亮，已提交结果和MEM Owner保持不变。
 - **真实自测**：StudioShellSelfTests在既有12³双Case原RAW/MEM工程中增加单面选择时黄色面片计数=1、取消后=0、待保存结果被新面片选择撤销后高亮恢复等断言。对应源码SHA b4be1fe3f3f5c6c42f2c05941cbffcfa9ccfbeea（MPW）、422e030d89ba37a5ff0668916336ddb97a7ed2b7（Studio）、879b53dce814ded2841da6919dc00ff45fb49aae（WPF测试）。最后提交的Studio S1 41040779496、TestCenter 41040779613 仍排队，不登记为通过。
 - **当前限制**：面片选择集仍为Case会话中的临时引用，不能冒充永久工程子元素配方；多面片高亮实际WPF GPU/任意LOD/DPI性能需人工实测。G4 GPU真实渲染、G5工业计量不确定度未关闭。上一轮Studio/TestCenter 41034581734/41034581843 构建失败属于并行HMI/Runtime.Host引用与变量作用域错误，不能据此判定CT3D本身测试失败。
+
+
+### 10.34 B包：原Mesh面片ROI配方V5持久化与Studio重开（2026-10-30）
+
+- **正式专业配方**：CT3DMeshFaceRoiRecipe存来源签名、原Mesh方法/阈值、有序真实三角索引和逐面StableId，并在载入时重新计算面片身份及所选顶点ROI。沿用现有MEM+内容寻址Artifact的MeshPlane结果格式，新V5只对已存面片配方写入，继续兼容旧V1～V4，旧案例不伪造面片。参数签名纳入面片配方指纹，即使与顶点ROI同位置，专业选择方式改变仍有可追溯参数差异。
+- **Studio原值恢复**：正式案例DisplayCase加载V5时恢复专业面片StableId集合、WPF黄色高亮和可编辑选区；保存新Case后同步该配方。“选中面片重算”复用CT3D已有专业分析和Studio取消/过期结果保护，保存仍由唯一MEM事务裁决，不引入第二套Scene或工程树。
+- **专项回归**：ArchitectureSmoke使用真实UInt16 12³和8顶面三角面，完成内容寻址保存、MEM关开、配方指纹对比、无WPF重算、新ResultId与跨来源拒绝；Studio真实双Case自测增加保存8面ROI→关开→8面高亮→原值重算→Discard仍保持原Feature身份。专业提交94e946cc1255bbcf2f6868c653f1fc230a65a1ec；Studio代码95a1aeb7bf15f017408aa2a0b4277453c2540bd5；Studio测试84005b2b78f6ea11544e08eccea473810c83c6c1。
+- **CI状态**：专业SHA的Windows CT3D B G1～G3 41043316918，Studio SHA的S1 41043540247与TestCenter 41043540335在本次记录时仍Queued。G1～G3需实际Job绿灯才可签收。此前固定SHA c87ce927的Windows失败由并行Studio HMI CS0136所致，不代表本次CT3D源码已经通过或者失败。
+- **仍未交付**：任意复杂三维ROI、CAD拓扑实体级选择、批量高亮的设备GPU性能G4与工业计量精度/不确定度G5。
