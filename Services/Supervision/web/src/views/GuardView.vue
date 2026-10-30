@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useGuardStore } from '../stores/guard'
 import { useMonitorStore } from '../stores/monitor'
 import type { GuardIssue, GuardSource } from '../types/supervision'
-import { observationTime } from '../utils/guard'
+import { identityEvidenceLabel, observationTime } from '../utils/guard'
 import { programName } from '../utils/format'
 
 const guard = useGuardStore()
@@ -69,7 +69,7 @@ onMounted(() => { void guard.refresh() })
 
     <el-alert type="info" :closable="false" show-icon class="guard-notice"
       title="安全只读视图 · 不提供启停、重启、解锁或确认"
-      description="闭锁来自 Daemon 终止日志；隔离来自上次启动的旧 PID 与未结清启动凭证扫描。即使凭证没有 PID，也必须隔离，直到原进程经现场核查。此页面不代表实时 OS 身份、业务 Ready 或设备安全许可。" />
+      description="即使 OS 创建时间和程序文件吻合也不能证明原 Worker 归属、不能自动解除隔离。闭锁来自 Daemon 终止日志；隔离来自上次启动的旧 PID 与未结清启动凭证扫描。即使凭证没有 PID，也必须隔离，直到原进程经现场核查。此页面不代表实时 OS 身份、业务 Ready 或设备安全许可。" />
     <el-alert v-if="error" type="warning" :closable="false" show-icon class="guard-notice"
       :title="'守护诊断查询未刷新：' + error"
       description="已显示的历史快照可能过期；请先确认 Monitor 本机访问与 Daemon 工作目录。" />
@@ -127,7 +127,15 @@ onMounted(() => { void guard.refresh() })
             {{ row.path ? programName(row.path, row.programId) : 'Monitor 未提供名称' }}
           </template>
         </el-table-column>
-        <el-table-column prop="reason" label="记录原因" min-width="300" show-overflow-tooltip />
+        <el-table-column label="进程身份观察（非授权）" min-width="236">
+          <template #default="{ row }">
+            <el-tag v-if="row.category === '孤儿隔离'" type="warning" effect="plain">
+              {{ identityEvidenceLabel(row.reason) }}
+            </el-tag>
+            <span v-else class="muted">不适用</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" label="原始证据与原因" min-width="320" show-overflow-tooltip />
       </el-table>
       <div class="guard-foot">
         <RouterLink to="/programs" class="subtle-link">核对程序状态</RouterLink>
