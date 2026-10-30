@@ -71,6 +71,32 @@ namespace CxVisual.Studio
                     window.OpenStudioDocument("doc.flow");
                     Assert(window.GetStudioContentIds().Count(id => id == "doc.flow") == 1, "重复文档");
                 });
+                CheckStep("B5 调试暂停继续单步取消的真实Studio入口与空会话安全", () =>
+                {
+                    window.OpenStudioDocument("doc.flow");
+                    TextBlock feedback=window.FindName("LogicInfo") as TextBlock;
+                    Assert(feedback!=null,"Studio调试缺少可见反馈区");
+                    var flags=System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic;
+                    var debugField=typeof(MainWindow).GetField("_logicDebug",flags);
+                    var flowField=typeof(MainWindow).GetField("_logicFlow",flags);
+                    Assert(debugField!=null&&flowField!=null&&
+                        debugField.GetValue(window)==null&&flowField.GetValue(window)==null,
+                        "B5空会话安全回归必须从未执行的Studio开始");
+                    foreach(var item in new[]{
+                        new[]{"OnFlowDebugPause","当前没有活跃MRK调试会话"},
+                        new[]{"OnFlowDebugResume","当前没有活跃MRK调试会话"},
+                        new[]{"OnFlowDebugStep","当前无可单步的等待节点"},
+                        new[]{"OnFlowDebugCancel","没有可取消的运行任务"}})
+                    {
+                        var handler=typeof(MainWindow).GetMethod(item[0],flags);
+                        Assert(handler!=null,"调试命令入口不存在: "+item[0]);
+                        handler.Invoke(window,new object[]{window,
+                            new RoutedEventArgs(Button.ClickEvent)});
+                        Assert(feedback.Text.Contains(item[1]),
+                            "调试无会话状态反馈不正确: "+item[0]);
+                    }
+                });
                 CheckStep("S1-03B 变量Studio工作台复用单一MDS Owner", () =>
                 {
                     window.OpenStudioDocument("doc.variables");
