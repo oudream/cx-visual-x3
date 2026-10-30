@@ -949,3 +949,40 @@ sequenceDiagram
 `internal/daemonc/stop_test.go`：新增真实测试子进程的“先 unknown、后由同一 Wait 补一次最终回执”和“原配置保持 Enabled，受控停止后旧 Worker 必须结束”正反回归；`.github/workflows/supervision-migration.yml`：Linux Race 扩展到该两项及 cmd/daemon 代次切换。独立 Go 1.19 最小模块中，同构 StopController 在 Go 1.23.2/Linux amd64 上实际运行 `go test -race -count=20 ./...`，成功。**此证据不覆盖 cx-visual-x3 主仓库正式 Go 构建及 Windows/macOS/Linux CI（尚未获得本轮通过日志）。**
 
 **G1/G2/G3 仍待验**：Daemon 被 SIGKILL/断电时的孤儿进程恢复与真实状态对账、子孙进程树/OS PID 重用、迟到结果可靠持久化、用户/角色/权限/审批/审计、安全在线解锁、专业 Service/Device Ready 均未在本轮实现。详细追溯参见 [12大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十八章。
+
+
+## 24. 遗留PID与孤儿候选的保守隔离（2026-10-30）
+
+### 24.1 实际对象与 Owner
+
+本轮沿用 `cmd/daemon/programWorkerGate`、`program.Program`、`pid_identity.go`，只新建同一个 Go Daemon 目录下的纯观察函数 `scanLegacyPIDFiles`（`orphan_guard.go`）。它将既有 PID 文件转换为可诊断的启动前隔离理由，不接管子进程 OS 真源，也不把历史 PID 当作可发信号的授权令牌。
+
+~~~mermaid
+sequenceDiagram
+ participant Boot as Daemon首次启动
+ participant Legacy as 旧PID文件
+ participant OS as OS进程查询
+ participant Gate as programWorkerGate
+ participant Worker as 原守护Worker
+ Boot->>Legacy: 只读查旧pid/<name>.pid
+ alt 文件缺失或PID确认已不存在
+ Legacy-->>Boot: 无活动上一代证据
+ Boot->>Gate: 正常启动资格
+ Gate->>Worker: 原RunProgramContextWithStop
+ else 文件损坏/身份不确定/仍有存活进程
+ Legacy->>OS: 检查PID存在及可执行文件
+ OS-->>Boot: 存活或身份无法确认
+ Boot->>Gate: quarantineOrphans(ProgramId,原因)
+ Gate-->>Boot: 阻止首次启动、恢复、配置续接
+ Note over Boot,Gate: 保留原文件、拒绝自动Kill，交现场离线核查
+ end
+~~~
+
+旧 `exitPidFiles` 会尝试按 PID 文件找到的进程直接 Kill，即使文件身份吻合也缺少创建代次与原 Worker 句柄确认。现在正式启动中已移除该自动 Kill 路径，改成只读扫描；正常无旧 PID 文件时不影响自动运行，未知状态则隔离。对于多个 Program 共用原旧 PID 文件名、损坏/异常/非普通文件、PID 属于 Daemon 自身、PID 存活但身份不同或身份不确定的情况，全部保守拒绝自动重启。对隔离的 Program，现有 Gate 的 start/request/下一代交接均不允许绕过；没有通过旧 UDP、HTTP 或 H5 新增任何在线清隔离操作。
+
+### 24.2 安全与兼容局限
+
+- 本轮扫描仍依赖旧 PID 文件。文件由 Daemon 主循环消费 EventStart 后保存，因此**子进程已成功启动但 Daemon 在 PID 文件保存前遭 SIGKILL/断电**是仍需解决的遗漏窗口；下一步应在原 Worker 的 Start 成功后、事件发送前持久化 Program ID/启动代次凭证。该凭证是子进程归属证据，不应重建 Program DB、Runtime、MDS 或 S11 操作日志。
+- PID 文件可能被其他进程复用；扫描只识别/阻断，不承诺进程树实际停止。对确实存活的同一可执行文件也不能断言属于上一代，所以保留隔离和现场核验。
+- 原受管进程的单次启动、StopController/Wait 确认与终止上限跨重启闭锁继续使用本文件前章；本次不是 S11 身份、授权、审计或远程恢复完成。
+- 新增 `cmd/daemon/orphan_guard_test.go` 的真实测试子进程正反用例，`supervision-migration.yml` 扩展 Linux Race 筛选；当前源码已提交（S），主仓库完整 Go 三平台 CI/G1、工业 G2/G3 均未取得成功证据。详见 [功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十九章。
