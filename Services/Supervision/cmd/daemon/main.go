@@ -323,7 +323,7 @@ func main() {
 									bProgramHasRun = pid > 0
 								}
 								if !bProgramHasRun && ad.Enabled == program.ENABLE {
-									go daemonc.RunProgram(ad.Program, cae, findProgramById, _logger, *_workDir)
+									go daemonc.RunProgramContext(workerCtx, ad.Program, cae, findProgramById, _logger, *_workDir)
 									_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
 								}
 							} else {
