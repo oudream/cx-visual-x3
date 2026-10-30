@@ -210,7 +210,8 @@ namespace CxVisual.Professional.Vision
             cancellation.ThrowIfCancellationRequested();
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("vision.roi.definition_changed_during_run");
-            return completed;
+            return completed.WithValidatedRoiEvidence(recipe.RoiId,
+                recipe.SourceHash,expectedRevision);
         }
 
         /// <summary>
