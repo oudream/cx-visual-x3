@@ -192,6 +192,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 Reject<OperationCanceledException>(()=>restored.RecomputeWithSliceRectangle(
                     folder,sliceRoi,.49,.51,new CancellationToken(true)));
+                var owner=engineering.Resolve(address) as MEMContent;
+                Check(owner!=null,"重开MEM地址必须能解析当前Content Owner");
                 var visualLayout=new MVI3DSceneState();
                 Guid visualMesh=visualLayout.Add(MVI3DSceneKind.Mesh,
                     "ct3d:mesh:"+restored.Mesh.ResultId.ToString("N"),
