@@ -139,6 +139,83 @@ namespace CxVisual.TestCenter.UI
                 "专业快照已保存；当前视图已改变，未覆盖当前分析：")+full;
         }
 
+        /// <summary>已保存的三维案例在当前物理切片ROI上继续编辑；
+        /// 专业Data与Scene Visual在同一MEM事务更新，保留旧案例Undo记录。</summary>
+        public async Task SaveEditedSliceRoiAsync(double minimumOffsetMm,
+            double maximumOffsetMm,CancellationToken cancellation)
+        {
+            Dispatcher.VerifyAccess();
+            if(_volume==null||_state==null||LastOpenedProfessionalCase==null||
+                LastOpenedProfessionalCase.Kind!=CT3DAnalysisKind.MeshPlane||
+                _state.SelectedSliceRectangle==null||
+                string.IsNullOrEmpty(_professionalProjectPath)||
+                string.IsNullOrEmpty(_professionalStoreToken))
+                throw new InvalidOperationException("请先重开已保存的Mesh/Plane案例并选择新的物理切片ROI。");
+            var oldCase=LastOpenedProfessionalCase;
+            var roi=_state.SelectedSliceRectangle;
+            if(!oldCase.Source.MatchesSpatialFrame(roi.SpatialFrame))
+                throw new InvalidOperationException("所选切片ROI与已保存专业资产Frame不一致。");
+            string full=_professionalProjectPath,expectedToken=_professionalStoreToken;
+            string root=Path.GetDirectoryName(full);
+            int caseIndex=_professionalCaseIndex;
+            long capturedEpoch=_sphereEpoch;
+            var capturedVolume=_volume;
+            var capturedScene=_state.Scene3D;
+            long sceneRevision=capturedScene.Revision;
+            var capturedVisuals=capturedScene.Snapshot();
+            Guid? capturedSelection=capturedScene.SelectedId;
+            CT3DAnalysisCase edited=null;
+            MVI3DSceneState savedLayout=null;
+            string newToken=null;
+            await Task.Run(()=>
+            {
+                using(var engineering=MEMEngineering.Open(full))
+                {
+                    if(engineering.StoreToken!=expectedToken)
+                        throw new MEMStoreConflictException(full);
+                    var owners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                        .Where(c=>c.Aspects.Any(a=>a.Kind==MPMAspectKind.Data&&
+                            a.ProviderId==CT3DAnalysisPersistence.ProviderId)).ToArray();
+                    if(caseIndex<0||caseIndex>=owners.Length)
+                        throw new InvalidDataException("原三维案例索引已失效。");
+                    MEMContent owner=owners[caseIndex];
+                    CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(engineering,owner,
+                        engineering.Revision,root,roi,minimumOffsetMm,maximumOffsetMm,
+                        (previous,next)=>
+                        {
+                            if(previous.Plane.ResultId!=oldCase.Plane.ResultId||
+                                previous.Source.Signature!=oldCase.Source.Signature)
+                                throw new InvalidOperationException("已保存专业结果版本变化，拒绝覆盖。");
+                            edited=next;
+                            savedLayout=BuildSavedSceneLayout(next,capturedVisuals,capturedSelection);
+                            return MVI3DSceneLayoutPersistence.CreateAspect(savedLayout,cancellation);
+                        },cancellation);
+                    cancellation.ThrowIfCancellationRequested();
+                    engineering.SaveAsAsync(full,cancellation).GetAwaiter().GetResult();
+                    newToken=engineering.StoreToken;
+                }
+            },cancellation);
+            bool sameVolume=Object.ReferenceEquals(_volume,capturedVolume)&&
+                capturedEpoch==_sphereEpoch;
+            if(sameVolume)
+            {
+                bool restore=Object.ReferenceEquals(_volume.SpatialFrame,roi.SpatialFrame)&&
+                    _state!=null&&Object.ReferenceEquals(_state.Scene3D,capturedScene)&&
+                    sceneRevision==capturedScene.Revision;
+                if(restore)
+                {
+                    RestoreProfessionalCase(edited);
+                    ApplySavedSceneLayout(savedLayout);
+                }
+                _professionalSource=edited.Source;
+                _professionalProjectPath=full;
+                _professionalStoreToken=newToken;
+                _professionalCaseIndex=caseIndex;
+                _status.Text=restore?"物理ROI修改已保存，可Undo/Redo并重开。":
+                    "ROI修改已保存；当前场景已变化，未覆盖最新视图。";
+            }
+        }
+
         public Task OpenProfessionalCaseAsync(string projectFile,CancellationToken cancellation)
         {
             return OpenProfessionalCaseAsync(projectFile,0,cancellation);
