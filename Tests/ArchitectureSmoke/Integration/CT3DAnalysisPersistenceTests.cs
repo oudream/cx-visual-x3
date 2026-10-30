@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Visual;
 using CxVisual.Professional.CT3D;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -191,6 +192,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 Reject<OperationCanceledException>(()=>restored.RecomputeWithSliceRectangle(
                     folder,sliceRoi,.49,.51,new CancellationToken(true)));
+                var visualLayout=new MVI3DSceneState();
+                Guid visualMesh=visualLayout.Add(MVI3DSceneKind.Mesh,
+                    "ct3d:mesh:"+restored.Mesh.ResultId.ToString("N"),
+                    restored.Source.Revision,restored.Source.Signature,.4);
+                visualLayout.SetOrganization(visualMesh,"inspection","measurements");
+                visualLayout.Select(visualMesh);
+                var visualAspect=MVI3DSceneLayoutPersistence.CreateAspect(visualLayout,
+                    CancellationToken.None);
+                int combinedRevision=engineering.Revision;
+                CT3DAnalysisPersistence.Commit(engineering,owner,combinedRevision,folder,
+                    restored,visualAspect,CancellationToken.None);
+                Check(engineering.Revision==combinedRevision+1,
+                    "专业Data和Scene Visual只能增加一次MEM工程Revision");
+                engineering.Undo().RequireValue();
+                Reject<InvalidDataException>(()=>MVI3DSceneLayoutPersistence.Open(
+                    engineering,address,new MVI3DSceneState(),item=>true,CancellationToken.None));
+                engineering.Redo().RequireValue();
+                var loadedLayout=new MVI3DSceneState();
+                MVI3DSceneLayoutPersistence.Open(engineering,address,loadedLayout,
+                    item=>item.SourceRef=="ct3d:mesh:"+restored.Mesh.ResultId.ToString("N"),
+                    CancellationToken.None);
+                Check(loadedLayout.SelectedId.HasValue&&
+                    loadedLayout.SnapshotLayer("inspection").Count==1&&
+                    Math.Abs(loadedLayout.SnapshotLayer("inspection")[0].Opacity-.4)<1e-12,
+                    "同一MEM事务Undo/Redo完整恢复专业结果及Scene可视引用");
                 int editRevision=engineering.Revision;
                 CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(engineering,owner,
                     editRevision,folder,sliceRoi,.49,.51,CancellationToken.None);
