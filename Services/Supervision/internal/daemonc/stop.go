@@ -62,18 +62,20 @@ func (c *StopController) attach(cmd *exec.Cmd) {
 
 // finish is called exactly once AFTER the Worker's cmd.Wait. A stop waiter
 // receives its receipt even if the Daemon's ordinary event channel is blocked.
-func (c *StopController) finish(cmd *exec.Cmd, waitErr error) {
+func (c *StopController) finish(cmd *exec.Cmd, waitErr error) bool {
 	if c == nil || cmd == nil {
-		return
+		return false
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	child := c.child
 	if child != nil && child.cmd == cmd {
 		c.child = nil
 		child.done <- childWaitResult{waitError: waitErr, reaped: cmd.ProcessState != nil}
 		close(child.done)
+		return child.requested
 	}
-	c.mu.Unlock()
+	return false
 }
 
 // RequestStop never uses os.FindProcess or a bare stored PID. It refuses an
