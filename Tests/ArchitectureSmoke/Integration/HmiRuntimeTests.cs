@@ -114,6 +114,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 doc.Close(true);
             }
+            // 多动作防越权：第一个宿主回调改变工程后，第二个动作不可继续。
+            using (MEMEngineeringSession multi=MEMEngineering.Create("HMI多动作"))
+            {
+                MEMPage page=multi.AddPage("P");
+                var trigger=multi.AddRectangle(page.RootContent,"Multi",0,0);
+                multi.SetVisualBehavior(trigger,new MRCVisualBehaviorDefinition(
+                    eventActions:new[] {
+                        new MRCVisualEventAction("Click","first"),
+                        new MRCVisualEventAction("Click","second") }));
+                using (PHMHmiRuntimeSession session=new PHMHmiRuntimeSession(
+                    multi.Project.Id,multi.Revision,table,PHMHmiMode.AuthorizedOnline,
+                    TimeSpan.FromMinutes(1)))
+                {
+                    int dispatched=0;
+                    PHMHmiOperationFeedback result=session.RequestActionAsync(
+                        multi,multi.GetAddress(trigger),"Click",null,(invocation,cancel)=>
+                        {
+                            dispatched++;
+                            if(invocation.ActionId=="first")
+                                multi.AddText(page.RootContent,"Modified","Revision changed",1,1);
+                            return System.Threading.Tasks.Task.FromResult(new PHMHmiOperationFeedback(
+                                PHMHmiOperationState.Confirmed,"ACK"));
+                        },CancellationToken.None).GetAwaiter().GetResult();
+                    Check(dispatched==1&&result.State==PHMHmiOperationState.Unknown,
+                        "第一个Action后工程已变更，不得向Host下发第二个Action");
+                }
+                multi.Close(true);
+            }
             // 真MEM磁盘保存重开：text绑定和静态定义仍由唯一MEM保存。
             string archive = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
                 "cxvisual-hmi-binding-" + Guid.NewGuid().ToString("N") + ".cxproj");
