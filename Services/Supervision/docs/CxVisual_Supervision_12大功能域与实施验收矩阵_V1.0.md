@@ -343,3 +343,23 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 **隔离测试**：cmd/daemon/pid_identity_test.go 的负向测试拒绝无效/本进程 PID、空可执行路径；正反测试只由 Go 测试启动自己的临时受管子进程，验证同一可执行文件可识别、错误文件必拒绝，清理时只结束测试创建的子进程。原仓库此项测试/Go 三平台 CI 尚未取得本轮完成证据，G1 待核实。
 
 **持久日志质量补强**：terminal_store.go 改为有界流读取，最大为 1 MiB+1 字节，避免启动阶段因超大坏文件分配无界内存；terminal_store_test.go 补超长文件拒启、只读快照不可改变锁、运行中写故障后拒绝全部新启动等测试。工作目录下的监督日志需要受保护和备份；上限锁的正式权限审核、审计和在线解除仍是 S11 未来工作。
+
+
+## 十六、S02原Worker子进程停止确认与回执分级（2026-10-30）
+
+**本轮实际代码**：internal/daemonc/stop.go 新增 StopController、StopReceipt；internal/daemonc/daemon.go 为原 RunProgramContextWithTerminal 提供兼容入口，新增 RunProgramContextWithStop 以原 exec.Cmd 作为唯一进程句柄和 cmd.Wait 调用方。cmd/daemon/workers.go 将每代 Worker 与其 StopController 同步装配；cmd/daemon/owned_stop.go 异步发起本地停止请求并收集回执。cmd/daemon/main.go 把配置修改、原 UDP 重启和 Daemon 退出时的运行中停止操作接入该机制。
+
+**结果分级**：
+- refused：没有本代 Worker、目标 PID 不对应原 cmd.Process、重复/已取消请求；
+- signal-failed：原始进程句柄的 Kill 请求返回错误；
+- unknown：发出请求，但在有界时间内未拿到原 Worker 的 Wait/ProcessState 证据；
+- wait-confirmed：同一个 Worker 原来创建的子进程已经完成 cmd.Wait，ProcessState 可用；**不能推出整个进程树、业务流程、设备安全停止或 Service Ready**。
+Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清理对应 PID 文件；未核实的结果明确写 UNKNOWN。受控停止不会当作短时间崩溃增计 ErrorCount，因此避免在主动维护停止时触发错误的守护上限。
+
+**安全与兼容**：运行中受管进程的停止不再使用裸 os.FindProcess(pid).Kill；原 Worker 控制器是唯一有资格停止其子进程的句柄。被配置启用请求排队的新 Worker 在旧 Worker 返回前不得获得旧停止权。Daemon 初始旧 PID 文件清理没有正在运行的本代 Worker，因此仍依赖已有最小的可执行文件身份校验，属于历史残余风险，不得称具备 Wait 确认。旧 UDP 配置与重启路径保持原协议，**没有因此具备权限认证或安全远程启停**。
+
+**新增测试源码**：internal/daemonc/stop_test.go 对真实一次性测试进程验证成功停止、原 Worker Wait 结果确认、过期 PID/无效请求、确认前超时 UNKNOWN、受控退出不计错误次数；cmd/daemon/workers_test.go 和 owned_stop_test.go 检验控制器代次切换、退出释放、无守护者拒绝及日志分级。
+
+**验证等级**：已实际以相同 StopController 核心创建独立 Go 1.19 模块，使用 Go 1.23.2/Linux amd64 运行 go test -race -count=15 ./... 返回成功。仅可记为隔离核心算法验证，**不是原主仓库全部依赖、Windows/Linux/macOS GitHub Actions 或工业现场 G1/G2/G3 成功**。提交源码与测试（S）已完成，主仓库编译和正式 CI 仍需检查固定 SHA。
+
+**后续闭环**：原子 OS 进程身份/启动代次、孤儿进程与完整子进程树、服务/设备真正 Ready、终止许可、S11 身份/授权/审计、可靠跨进程操作回执以及工控机长稳必须继续开发。当前本地 StopReceipt 没有对 Monitor/H5 发布，不能用它冒充完整 S11。
