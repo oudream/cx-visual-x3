@@ -341,6 +341,12 @@
 - **架构限制**：手势更新遵循`MVIImageOverlayStore`原有“UI Owner线程串行调用”约束，没有虚报跨线程CAS；正式MEM/MTC提交及Undo未改变。WPF路径新加Esc/失捕事件接线，但真实鼠标拖动/键盘操作G5须单独验证，不能用SDK测试代替。
 - **初始状态**：IMG-01/02=`InProgress`；新代码和反例已提交=G2；针对最新源码的Imaging Windows/Studio/TestCenter CI G3/G4应附SHA和run实际结论，尚未完成时不能写Passed。后续按行为逐类取消MPW重复标志，先保证现有工具正反和PNG可视测试稳定，再扩展复杂ROI。
 
+### 7.8 IMG-01/02 首次绿色Windows及后续待验（2026-10-30）
+
+- [Imaging Windows #41006943702](https://github.com/oudream/cx-visual-x3/actions/runs/41006943702)在提交`65744af09f3dca99790fac9dfafd24b9f50b884c`显示`success`，包括全解决方案Release/x64构建、结构/DAG、真实WPF图窗PNG回归、FIM/MVI/default smoke和三维切片WPF回归。这证明首次MVI图元编辑State与MPW集成的**对应固定SHA G3/G4**，不表示稍后新Esc/LostMouseCapture XAML以及新增MVI反例已验证。
+- [`0c6af07b`](https://github.com/oudream/cx-visual-x3/commit/0c6af07b9e30bdada5e0904f017bd8f57b27d3fe)在正式`TCTImageViewerSmoke.AssertVisualLayout`增加真正WPF主/副Pane和Viewer必须Focusable的断言，以确保Esc取消输入有可获取焦点的宿主；最新[Imaging #41007403424](https://github.com/oudream/cx-visual-x3/actions/runs/41007403424)、[TestCenter #41007403416](https://github.com/oudream/cx-visual-x3/actions/runs/41007403416)触发时仍排队。
+- **本轮审慎结论**：公共源码与新增自动测试已完成G2，首次集成SHA已通过G3/G4；完整Esc、鼠标失捕、双Pane鼠标竞态真实UIA/人工G5和所有后续SHA的Windows G3/G4需按对应运行记录单独升级。IMG-01/02仍为InProgress。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
