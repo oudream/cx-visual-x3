@@ -46,12 +46,15 @@ namespace CxVisual.Runtime.Host
                 _authorizeCommand(context));
             try
             {
-                // PAD requires a trusted point authorization delegate and
-                // register-before-Start. Default read-only SCADA fails closed.
-                _registration=_device.RegisterTrustedWriteCommands(_commands,commandId);
+                // Validate the existing MRK Pipe schema BEFORE occupying the
+                // one-shot PAD device registration slot. A malformed name must
+                // never strand a valid SCADA session without a command binding.
                 _server=new MRKCommandPipeServer(_commands,pipeName,peer=>
                     _device.IsRunning && _device.IsStillApproved &&
                     _authorizePeer(peer));
+                // PAD requires trusted point authorization and registration
+                // before Start. The default read-only SCADA still fails closed.
+                _registration=_device.RegisterTrustedWriteCommands(_commands,commandId);
             }
             catch
             {
