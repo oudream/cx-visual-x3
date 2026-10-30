@@ -168,8 +168,10 @@ namespace CxVisual.Professional.Vision
         public static async Task<CxVisionRunSummary> RunRoiInspectionPreviewAsync(
             FIMImageBuffer image, CxVisionInspectionOptions options,
             string sourceId, FIMPixelRegion region,
-            Func<int,int,bool> includesPixel, CancellationToken cancellation)
+            Func<int,int,bool> includesPixel, CancellationToken cancellation,
+            long configRevision=1)
         {
+            if(configRevision<0)throw new ArgumentOutOfRangeException("configRevision");
             if(image==null)throw new ArgumentNullException("image");
             if(options==null)throw new ArgumentNullException("options");
             if(string.IsNullOrWhiteSpace(sourceId))
@@ -192,7 +194,8 @@ namespace CxVisual.Professional.Vision
                 MinDefectArea=options.MinDefectArea,
                 MaxDefectArea=options.MaxDefectArea,UseAi=false
             };
-            var plan=CreateCpuInspectionPlanWithMeasuredArtifacts(binaryOptions);
+            var plan=CreateCpuInspectionPlanWithMeasuredArtifacts(binaryOptions,
+                configRevision);
             var inputs=CxVisionImageInterop.ToCpuInspectionInputs(
                 segmented.Mask,CxVisionPixelDepth.Bits8);
             var engine=new MRKExecutionEngine(new FCRWorkerOptions(3,10));
