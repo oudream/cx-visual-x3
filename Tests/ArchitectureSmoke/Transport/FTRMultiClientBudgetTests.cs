@@ -124,7 +124,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var clientConfig=new FTRHttpClientChannelConfiguration {
                 Id="f17-http-client-budget",Url=url,RequestTimeoutMs=5000,
                 MaxResponseBytes=256,ReceiveBufferBytes=16,ReceiveByteBudget=512,
-                StopTimeoutMs=5000
+                CapturePayloadEvidence=false,StopTimeoutMs=5000
             };
             using(var server=new FTRHttpServerChannel(serverConfig))
             using(var client=new FTRHttpClientChannel(clientConfig))
@@ -164,11 +164,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         before.PayloadBufferByteBudget==512&&
                         before.ReceivedBytes==2,
                         "小响应预算/额度释放/真实Rx计数不正确");
+                    Check(client.ReadFrames().Where(frame=>
+                        frame.Direction==FTRFrameDirection.Rx||
+                        frame.Direction==FTRFrameDirection.Tx).All(frame=>
+                            frame.Bytes.Length==0)&&before.SentBytes==2,
+                        "HTTP Client禁用诊断载荷后仍复制大消息或丢失真实字节计数");
                     bool over=false;
                     try{client.Send(new byte[]{3});}
                     catch(InvalidOperationException){over=true;}
                     Check(over&&requests==3&&responses==2&&
                         client.Diagnostics.BufferedPayloadBytes==0&&
+                        client.Diagnostics.PeakBufferedPayloadBytes<=512&&
                         client.Diagnostics.RejectedPayloadBuffers>0,
                         "大响应不得在未取得内存/快照额度时隐式分配或继续交付");
                     // 拒绝大消息不污染父连接，同一Channel仍可继续正常请求。
