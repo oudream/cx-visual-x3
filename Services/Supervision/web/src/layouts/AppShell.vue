@@ -11,6 +11,13 @@ const monitor = useMonitorStore()
 const guard = useGuardStore()
 const theme = useThemeStore()
 const { error, loading, updatedAt } = storeToRefs(monitor)
+const { loading: guardLoading } = storeToRefs(guard)
+const toolbarLoading = computed(() => loading.value || guardLoading.value)
+
+function refreshCurrent(): void {
+  void monitor.refresh()
+  if (route.path === '/' || route.path === '/guard' || route.path === '/programs') void guard.refresh()
+}
 let poller: ReturnType<typeof setInterval> | undefined
 const titles: Record<string, string> = {
   '/': '运行总览', '/programs': '程序与服务', '/guard': '守护诊断', '/alerts': '异常历史', '/events': '事件记录',
@@ -63,7 +70,7 @@ onBeforeUnmount(() => {
           <span class="updated-time">{{ updatedAt ? '更新 ' + new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '暂无数据' }}</span>
           <el-button :aria-label="theme.mode === 'light' ? '切换深色主题' : '切换浅色主题'"
             @click="theme.toggle">{{ theme.mode === 'light' ? '☾ 深色' : '☼ 浅色' }}</el-button>
-          <el-button type="primary" :loading="loading" @click="monitor.refresh">刷新</el-button>
+          <el-button type="primary" :loading="toolbarLoading" @click="refreshCurrent">刷新</el-button>
         </div>
       </header>
       <div v-if="error" class="error-banner" role="alert">Monitor 查询失败：{{ error }}。数据可能已过期。</div>
