@@ -14,6 +14,7 @@ namespace CxVisual.Mechanism.Visual
         private FIMImageBuffer _result;
         private MVIImageSlot _active = MVIImageSlot.Original;
         private long _sourceVersion;
+        private long _originalGeneration;
 
         /// <summary>GoF Observer：会话提交状态变化时通知Viewer；事件始终在锁外触发。</summary>
         public event EventHandler Changed;
@@ -21,6 +22,16 @@ namespace CxVisual.Mechanism.Visual
         public long SourceVersion
         {
             get { lock (_gate) return _sourceVersion; }
+        }
+
+        /// <summary>
+        /// 原图专属代次：开始新原图加载、接受新原图或清空时改变。
+        /// 与兼容SourceVersion不同，显示Result或清理Result不会改变它；
+        /// 长任务应同时固定此代次及其自己的Run/参数代次。
+        /// </summary>
+        public long OriginalGeneration
+        {
+            get { lock (_gate) return _originalGeneration; }
         }
 
         public MVIImageSlot ActiveSlot
@@ -51,7 +62,11 @@ namespace CxVisual.Mechanism.Visual
         /// <summary>开始新的原图异步加载；只有最后一次加载令牌可以提交。</summary>
         public long BeginOriginalLoad()
         {
-            lock (_gate) return checked(++_sourceVersion);
+            lock (_gate)
+            {
+                checked { ++_originalGeneration; }
+                return checked(++_sourceVersion);
+            }
         }
 
         public bool TryCompleteOriginalLoad(long expectedVersion, FIMImageBuffer image)
@@ -63,7 +78,7 @@ namespace CxVisual.Mechanism.Visual
                 _original = image;
                 _result = null;
                 _active = MVIImageSlot.Original;
-                checked { ++_sourceVersion; }
+                checked { ++_sourceVersion; ++_originalGeneration; }
             }
             RaiseChanged();
             return true;
@@ -78,6 +93,7 @@ namespace CxVisual.Mechanism.Visual
                 _original = image;
                 _result = null;
                 _active = MVIImageSlot.Original;
+                checked { ++_originalGeneration; }
                 version = checked(++_sourceVersion);
             }
             RaiseChanged();
@@ -161,6 +177,7 @@ namespace CxVisual.Mechanism.Visual
                 _original = null;
                 _result = null;
                 _active = MVIImageSlot.Original;
+                checked { ++_originalGeneration; }
                 version = checked(++_sourceVersion);
             }
             RaiseChanged();
