@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Threading;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Linq;
@@ -96,6 +97,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[]{new FGEPoint3D(5000,5000,5000)}),frame,11,21,31);}
             catch(ArgumentOutOfRangeException){invalidCloud=true;}
             Check(invalidCloud,"PointCloud不同Frame或体外数据禁止误叠加到当前CT Volume");
+            var roiInfo=new FVORawVolumeInfo(11,21,31,.5f,1f,2f,
+                FVORawVoxelFormat.UInt16,"roi-source");
+            using(FVOVolumeData roiVolume=FVORawVolumeLoader.LoadFromMemory(
+                new byte[11*21*31*2],roiInfo,64,CancellationToken.None))
+            {
+                roiVolume.SetSpatialFrame(frame);
+                var physicalRoi=FVOSliceImageBuilder.RectangleToPhysical(roiVolume,
+                    5,10,15,FVOSlicePlane.XY,2,3,5,6);
+                MPWVolumeDisplayMesh prism=MPWVolumeSurfaceProjection.ProjectSliceRoiPrism(
+                    physicalRoi,-.2,.2,frame,11,21,31);
+                Check(prism.TriangleCount==12&&prism.Vertices.Count==8&&
+                    Math.Abs(prism.Vertices[4].Z-prism.Vertices[0].Z)>.00001,
+                    "斜置毫米Frame的二维ROI厚度必须生成12真实三角面的可视棱柱");
+                bool invalidRoi=false;
+                try{MPWVolumeSurfaceProjection.ProjectSliceRoiPrism(
+                    physicalRoi,1,0,frame,11,21,31);}
+                catch(ArgumentOutOfRangeException){invalidRoi=true;}
+                Check(invalidRoi,"非法ROI法向厚度范围必须拒绝而非产生假测量几何");
+            }
             bool invalidFrame=false;
             try
             {
