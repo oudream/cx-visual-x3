@@ -7,6 +7,9 @@ on:
       - 'Professional/HMI/**'
       - 'Mechanism/Presentation.Wpf/Visual/MPWLiveSceneControl.cs'
       - 'Applications/Studio/StudioShell.Hmi.cs'
+      - 'Applications/Studio/StudioShell.Hmi.Remote.cs'
+      - 'Applications/Studio/StudioShell.ResourceDocuments.cs'
+      - 'Tests/ArchitectureSmoke/Integration/HmiScadaPipeTests.cs'
       - 'Applications/Studio/StudioShell.ResourceTree.cs'
       - 'Applications/Studio/StudioShell.ResourceEditors.cs'
       - 'Applications/Studio/StudioShellSelfTests.cs'
@@ -51,6 +54,11 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi
           if($LASTEXITCODE -ne 0) { throw 'HMI G1 failed' }
+      - name: Run actual NamedPipe v1 HMI consumer and generation gates
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi-pipe
+          if($LASTEXITCODE -ne 0) { throw 'HMI Remote Pipe v1 contract failed' }
       - name: Run WPF STA real Page and MDS update
         shell: pwsh
         run: |
