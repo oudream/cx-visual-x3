@@ -962,6 +962,14 @@ namespace CxVisual.Studio
                 FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
             if(FlowTraceList!=null)
                 FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
+            if(staleActive)
+            {
+                // The old plan's step colors must not be projected onto the
+                // newly edited MEM page, even when its block IDs were reused.
+                _logicOverlay.Clear();
+                if(LogicHost!=null)
+                    LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+            }
         }
         private void RefreshScene()
         {
@@ -2372,7 +2380,11 @@ namespace CxVisual.Studio
                 {
                     SceneHost.IsDesignMode=true;
                     _viewModel.StopVisualRuntime();
-                    _viewModel.AttachVisualRuntimeSource(previousVisualOwner);
+                    // A previous session's visual source is not safe to
+                    // reattach after an engineering edit/project switch.
+                    _viewModel.AttachVisualRuntimeSource(
+                        IsCurrentResultScope(_activeFlowProjectId,
+                            _activeFlowEngineeringRevision)?previousVisualOwner:null);
                 }
                 _logicFlow=null;
                 _activeFlowProjectId=Guid.Empty;
