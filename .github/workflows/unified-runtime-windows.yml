@@ -76,6 +76,23 @@ jobs:
           & $exe runtime-recover $journal
           if ($LASTEXITCODE -ne 0) { throw "Runtime safe post-stop recovery scan failed" }
           Write-Host "PASS Runtime: compile, publish, flow, journal, restart, observe and drain"
+      - name: B6 Host recovery negative path and repeat process restart
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Runtime.Host.exe'
+          $missing = Join-Path $env:RUNNER_TEMP ("CxMissing-" + [guid]::NewGuid().ToString("N") + ".journal")
+          & $exe runtime-recover $missing
+          if ($LASTEXITCODE -ne 2 -or (Test-Path $missing)) {
+            throw 'Missing journal recovery unexpectedly succeeded or created state'
+          }
+          $journal = Join-Path $env:RUNNER_TEMP ("CxHostRepeat-" + [guid]::NewGuid().ToString("N") + ".journal")
+          for ($i = 0; $i -lt 5; $i++) {
+            & $exe runtime-run $journal
+            if ($LASTEXITCODE -ne 0) { throw "Host repeat-run failed at iteration $i" }
+            & $exe runtime-recover $journal
+            if ($LASTEXITCODE -ne 0) { throw "Host recovery failed at iteration $i" }
+          }
+          Write-Host 'PASS B6: missing journal rejects safely, five isolated Host process restarts and recovery scans'
       - name: Verify Host trusted release ledger across process restarts and torn writes
         shell: pwsh
         run: |
