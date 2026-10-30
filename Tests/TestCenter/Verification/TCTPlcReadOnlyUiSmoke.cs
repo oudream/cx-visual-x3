@@ -208,14 +208,21 @@ namespace CxVisual.TestCenter.UI
                     await Until(()=>panel.SuccessfulReads==1&&!panel.IsBusy,
                         "真实FC03连续两点");
                     Check(device.Reads==1&&device.BlockReads==1 &&
-                        panel.StatusMessage.StartsWith("FC03单事务完成"),
-                        "未通过真实单报文得到两点FC03数据");
+                        panel.StatusMessage.StartsWith("FC03单事务完成") &&
+                        panel.LastEvidence!=null&&panel.LastEvidence.Count==2 &&
+                        panel.LastEvidence[0].PointName=="word100" &&
+                        panel.LastEvidence[0].ObservedValue=="90" &&
+                        panel.LastEvidence[1].PointName=="input101" &&
+                        panel.LastEvidence[1].ObservedValue=="99" &&
+                        panel.LastEvidence[0].ReceivedUtc.Kind==DateTimeKind.Utc,
+                        "未通过真实单报文取得两个准确寄存器值与当次UTC诊断证据");
                     await SetValue(hwnd,"TCT.Plc.PointNames","input101,word100");
                     await Click(hwnd,"TCT.Plc.Read");
                     await Until(()=>panel.StatusMessage.StartsWith("读取失败")&&!panel.IsBusy,
                         "反序点表应由正式协议拒绝");
-                    Check(device.Reads==1&&panel.SuccessfulReads==1,
-                        "非法连续地址顺序误发送请求或冒充成功");
+                    Check(device.Reads==1&&panel.SuccessfulReads==1 &&
+                        panel.LastEvidence.Count==0,
+                        "非法连续地址顺序误发送请求、冒充成功或留下旧证据");
                     await Click(hwnd,"TCT.Plc.Stop");
                     await Until(()=>!panel.IsStarted&&!panel.IsBusy,
                         "显式断开PLC Connector");
