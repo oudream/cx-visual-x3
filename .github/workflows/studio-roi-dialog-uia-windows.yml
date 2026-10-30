@@ -21,11 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Build existing .NET Framework 4.8 solution
+      - name: Build real Studio .NET Framework 4.8 x64 project and its dependencies
         shell: pwsh
         run: |
-          & msbuild.exe .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
-          if ($LASTEXITCODE -ne 0) { throw 'IMG05 Studio unified build failed' }
+          & msbuild.exe .\Applications\Studio\CxVisual.Studio.csproj /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'IMG05 real Studio and its project references build failed' }
       - name: Operate actual Studio WPF and Windows native file dialogs
         shell: pwsh
         run: |
