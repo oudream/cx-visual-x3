@@ -214,10 +214,14 @@ namespace CxVisual.Studio
                 return;
             // 资源树是MEM页面和资源的只读投影：纯图元位置/运行帧变化不重建导航。
             string search = StudioResourceSearch == null ? "" : StudioResourceSearch.Text.Trim();
-            string snapshot = _viewModel.ProjectSession.Project.Id.ToString("N") + "|" + search + "|" +
+            string snapshot = _viewModel.ProjectSession.Project.Id.ToString("N") + "|" +
+                _viewModel.ProjectSession.Project.Name + "|" + search + "|" +
                 (_viewModel.ActivePage == null ? "" : _viewModel.ActivePage.Id.ToString("N")) + "|" +
-                String.Join(";", _viewModel.Pages.Select(item => item.Id.ToString("N") + ":" + item.Name)) + "|" +
-                String.Join(";", _viewModel.Resources.Select(item => item.Id.ToString("N") + ":" + item.Name));
+                String.Join(";", _viewModel.Pages.Select(item => item.Id.ToString("N") +
+                    ":" + item.Name + ":" + ContainsLogicDefinition(item.RootContent))) + "|" +
+                String.Join(";", _viewModel.Resources.Select(item => item.Id.ToString("N") +
+                    ":" + item.Name + ":" + (item is MEMContent &&
+                    ContainsLogicDefinition((MEMContent)item))));
             if (String.Equals(_studioTreeSnapshot, snapshot, StringComparison.Ordinal)) return;
             _studioTreeRefreshing = true;
             try
