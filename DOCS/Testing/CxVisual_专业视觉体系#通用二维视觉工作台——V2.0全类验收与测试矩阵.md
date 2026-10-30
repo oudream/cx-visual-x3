@@ -592,3 +592,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-01-06 | `module-center-cpu-windows.yml` | `--module-center-cpu-self-test` 需恰好2个独立PASS、0 FAIL（旧CPU + 新R1-01）；`--shell-self-test`保持旧STA门禁 | 已提交CI要求；实际结果待核 |
 
 **实测登记要求**：固定新HEAD SHA/Windows workflow run与Job、MSBuild Release/x64返回码、STA报告中两个PASS内容、Gray16数值、源文件Hash、失败截图/日志；并补一次从实际Studio启动→打开工程→点“重绑工程ROI原图”选择文件及Stride→执行→点击结果与导出的UIA/人工步骤。工业Device SDK/HIL/6144×3072性能不被此4×4样本代替。历史CI成功不能推断本轮成功。
+
+### R1-01 固定SHA自动测试成功登记（2026-10-30）
+
+| 项目 | 已核实结果 |
+|---|---|
+| 代码SHA | `1d90c6838e2d44517f0787c31bb31f306d327bed` |
+| Windows运行 | [Module Center CPU #40995860566](https://github.com/oudream/cx-visual-x3/actions/runs/40995860566)；`raw-cpu-closure` **success** |
+| 真实Job Steps | `Build actual .NET Framework 4.8 solution` success；`Execute actual RAW MHS MEM MOC MRK Vision closed loop in Studio WPF STA` success |
+| 可验收等级 | R1-01-01～04受控STA正反例可登记G3/G4；第05项只测自动化控件存在，不能替代弹框UIA G5；第06项对应CPU双PASS强制Job成功 |
+| 限制 | Windows Studio Shell整体与Imaging专项另查固定SHA Job；6144×3072大图、真实设备、长期Artifact、人机文件对话框尚未执行，不得填G5/G6 |
+
