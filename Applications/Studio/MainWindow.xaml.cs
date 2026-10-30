@@ -106,10 +106,11 @@ namespace CxVisual.Studio
             {
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择工程主流程页面");
-                StudioProfessionalFlowResolver resolver=CreateProfessionalFlowResolver(true);
+                MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
+                IMRKVersionedCapabilityResolver resolver=ResolverForFlow(
+                    snapshot,page.RootContent.Id);
                 _preparedCpuRelease=MOCProjectRelease.Prepare(
-                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,
-                    resolver,resolver.DescribeSoftwareVersions());
+                    snapshot,page.RootContent.Id,resolver,FlowVersions(resolver));
                 LogicInfo.Text="CPU仿真软件候选已锁定：Revision "+
                     _preparedCpuRelease.EngineeringRevision+"；能力版本 "+
                     _preparedCpuRelease.CapabilityVersions.Count+"；指纹 "+
@@ -1267,6 +1268,55 @@ namespace CxVisual.Studio
                     raw,_simulation);
         }
 
+        /// <summary>
+        /// Preserve all pre-existing simulation engineering semantics. Only a
+        /// real Vision/Automation capability within this reachable Content
+        /// closure opts in to the software-only professional scope.
+        /// </summary>
+        private static bool UsesProfessionalFlow(MEMProjectSnapshot snapshot,Guid root)
+        {
+            var visited=new HashSet<Guid>();
+            Func<Guid,bool> walk=null;
+            walk=id=>{
+                if(!visited.Add(id))return false;
+                MEMNodeSnapshot node=snapshot.Find(id);
+                if(node==null||node.Kind!=MEMNodeKind.Content)return false;
+                MOLWiringDefinition wiring=MOLWiringCodec.Get(node);
+                if(wiring==null)return false;
+                foreach(var block in wiring.Blocks)
+                {
+                    string capability=block.CapabilityId;
+                    if(capability.StartsWith("vision.cpu.",StringComparison.Ordinal)||
+                        capability.StartsWith("automation.plc.",StringComparison.Ordinal))
+                        return true;
+                    if(capability.StartsWith("moc.invoke:",StringComparison.Ordinal))
+                    {
+                        Guid child;
+                        if(Guid.TryParse(capability.Substring("moc.invoke:".Length),out child)
+                            && walk(child))return true;
+                    }
+                }
+                return false;
+            };
+            return walk(root);
+        }
+
+        private IMRKVersionedCapabilityResolver ResolverForFlow(
+            MEMProjectSnapshot snapshot,Guid root)
+        {
+            return UsesProfessionalFlow(snapshot,root)?
+                (IMRKVersionedCapabilityResolver)CreateProfessionalFlowResolver(true):
+                _simulation;
+        }
+        private IReadOnlyDictionary<string,string> FlowVersions(
+            IMRKVersionedCapabilityResolver resolver)
+        {
+            StudioProfessionalFlowResolver professional=
+                resolver as StudioProfessionalFlowResolver;
+            return professional==null?_simulation.DescribeReleaseVersions():
+                professional.DescribeSoftwareVersions();
+        }
+
         private MOCCapabilityCatalog CurrentCatalog()
         {
             // One read-only MOC catalog. The CPU entries use real Professional
@@ -2351,7 +2401,7 @@ namespace CxVisual.Studio
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
                 var result=new MOCBuildService().Build(snapshot,
-                    page.RootContent.Id,CreateProfessionalFlowResolver(true));
+                    page.RootContent.Id,ResolverForFlow(snapshot,page.RootContent.Id));
                 LogicInfo.Text=FormatBuildDiagnostics(result);
                 FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
                     ContentId=x.ContentId,ProjectId=snapshot.ProjectId,
@@ -2419,7 +2469,8 @@ namespace CxVisual.Studio
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 MEMProjectSnapshot runSnapshot=_viewModel.ProjectSession.GetSnapshot();
-                StudioProfessionalFlowResolver resolver=CreateProfessionalFlowResolver(true);
+                IMRKVersionedCapabilityResolver resolver=ResolverForFlow(
+                    runSnapshot,page.RootContent.Id);
                 var checkedBuild=new MOCBuildService().Build(
                     runSnapshot,page.RootContent.Id,resolver);
                 if(!checkedBuild.Succeeded)
@@ -2442,7 +2493,7 @@ namespace CxVisual.Studio
                     // 候选锁定旧Revision、子Content和Host声明能力版本；
                     // 过期/未授权时绝不自动回退为普通CPU运行。
                     compiled=StageCpuSoftwareRelease(_preparedCpuRelease,runSnapshot,
-                        resolver,resolver.DescribeSoftwareVersions(),
+                        resolver,FlowVersions(resolver),
                         new StudioCpuSoftwarePolicy());
                     releaseFingerprint=_preparedCpuRelease.Fingerprint;
                     publicationRevision=1;
