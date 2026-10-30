@@ -406,3 +406,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **专项回归**：ArchitectureSmoke使用真实UInt16 12³和8顶面三角面，完成内容寻址保存、MEM关开、配方指纹对比、无WPF重算、新ResultId与跨来源拒绝；Studio真实双Case自测增加保存8面ROI→关开→8面高亮→原值重算→Discard仍保持原Feature身份。专业提交94e946cc1255bbcf2f6868c653f1fc230a65a1ec；Studio代码95a1aeb7bf15f017408aa2a0b4277453c2540bd5；Studio测试84005b2b78f6ea11544e08eccea473810c83c6c1。
 - **CI状态**：专业SHA的Windows CT3D B G1～G3 41043316918，Studio SHA的S1 41043540247与TestCenter 41043540335在本次记录时仍Queued。G1～G3需实际Job绿灯才可签收。此前固定SHA c87ce927的Windows失败由并行Studio HMI CS0136所致，不代表本次CT3D源码已经通过或者失败。
 - **仍未交付**：任意复杂三维ROI、CAD拓扑实体级选择、批量高亮的设备GPU性能G4与工业计量精度/不确定度G5。
+
+
+### 10.35 B包：V5面片编辑事务、后台输入快照及回归（2026-10-30）
+
+- **已实装**：Studio RecomputeMeshFaceRoiAsync在启动后台Task之前固定输入面片引用列表快照，限制1～30000并拒绝空引用；完成时同时核对工程Case/MVI ROI会话/取消epoch及面片选择代次，防止调用方清空List或用户交互改变时将过期结果发布为待保存Feature。
+- **工程级V5**：ArchitectureSmoke在真实MEM工程读取已存面片配方后，调用既有CT3DAnalysisPersistence.RecomputeAndCommit执行真正的Revision受控编辑；验证ResultId更新、RoiSignature/ParameterSignature稳定、旧Revision拒绝、MEM Undo/Redo和保存后再次重开，仍归MEM唯一Owner。
+- **Studio真实回归**：调用SDK面片异步拟合后立刻清空调用方List，仍由快照完成8面片原值ROI；已存V5的8面片关闭重开后，取消其中1面片、执行7面片原值拟合，验证新签名/ResultId，正式保存、再次重开后为7面片与7个WPF黄色高亮而非旧版8面片。
+- **提交及证据**：317dedd31d9eb625a4d5c52b66f9658bb68088e5、98b8dee7973fa4a64c8ad52a32e8937263243f74、cbea2c6e3f3049a2dc92f1ee1235a9fd39489a58、b0385a5b64da4a492085cf4f372baf658b0b48b0。最后一SHA的Studio S1 `41046758031` 与TestCenter `41046758053`仍Queued；本轮CT3D专项 `41046611708`当前Pending，不能记为通过。G4 GPU实机和G5工业计量精度仍未完成。
