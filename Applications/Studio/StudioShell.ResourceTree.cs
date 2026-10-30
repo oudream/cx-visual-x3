@@ -109,6 +109,8 @@ namespace CxVisual.Studio
                     };
                     menu.Items.Add(item);
                 }
+                if(origin.Find(resourceId) is MEMPage)
+                    AppendStudioHmiAuthoringMenu(menu,origin,resourceId);
             };
             menu.Opened+=(sender,args)=>refresh();
             refresh();
