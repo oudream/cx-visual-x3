@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -143,4 +144,130 @@ func TestRecoveryProgramsSkipsReservedGuardian(t *testing.T) {
 	}
 	close(held)
 	waitWorkerReleased(t, _programWorkers, id)
+}
+
+
+func TestProgramWorkerGateTerminalLatchSurvivesRecovery(t *testing.T) {
+	for _, reason := range []int{program.EventMaxError, program.EventMaxCount} {
+		t.Run(fmt.Sprint(reason), func(t *testing.T) {
+			gate := newProgramWorkerGate()
+			const id int64 = 918
+			firstStarted := make(chan struct{})
+			release := make(chan struct{})
+			if !gate.start(context.Background(), id, func() {
+				close(firstStarted)
+				<-release
+			}) {
+				t.Fatal("guardian not started")
+			}
+			<-firstStarted
+			gate.markTerminal(program.Event{Event: reason, Status: program.Status{Id: id}})
+			if got, ok := gate.blocked(id); !ok || got != reason {
+				t.Fatalf("terminal lock not recorded: reason=%d locked=%t", got, ok)
+			}
+			if gate.start(context.Background(), id, func() { t.Error("automatic recovery ran") }) {
+				t.Fatal("recovery bypassed a terminal limit")
+			}
+			if started, queued := gate.request(context.Background(), id, func() {
+				t.Error("configuration request bypassed latch")
+			}); started || queued {
+				t.Fatal("unauthenticated re-enable must not reset terminal latch")
+			}
+			close(release)
+			waitWorkerReleased(t, gate, id)
+			if gate.start(context.Background(), id, func() { t.Error("later recovery ran") }) {
+				t.Fatal("later periodic recovery bypassed terminal latch")
+			}
+		})
+	}
+}
+
+func TestProgramWorkerGateQueuesEnabledIntentUntilOldWorkerReturns(t *testing.T) {
+	gate := newProgramWorkerGate()
+	const id int64 = 712
+	releaseOld := make(chan struct{})
+	oldStarted := make(chan struct{})
+	nextStarted := make(chan struct{})
+	releaseNext := make(chan struct{})
+	var simultaneous atomic.Int32
+	var maximum atomic.Int32
+	enter := func() {
+		count := simultaneous.Add(1)
+		if count > maximum.Load() {
+			maximum.Store(count)
+		}
+	}
+	leave := func() { simultaneous.Add(-1) }
+	if !gate.start(context.Background(), id, func() {
+		enter()
+		defer leave()
+		close(oldStarted)
+		<-releaseOld
+	}) {
+		t.Fatal("old guardian not started")
+	}
+	<-oldStarted
+	started, queued := gate.request(context.Background(), id, func() {
+		enter()
+		defer leave()
+		close(nextStarted)
+		<-releaseNext
+	})
+	if started || !queued {
+		t.Fatal("explicit enable must queue behind existing guardian")
+	}
+	if gate.start(context.Background(), id, func() { t.Error("periodic recovery duplicated worker") }) {
+		t.Fatal("periodic recovery may not overtake pending explicit enable")
+	}
+	select {
+	case <-nextStarted:
+		t.Fatal("next guardian started before previous returned")
+	default:
+	}
+	close(releaseOld)
+	select {
+	case <-nextStarted:
+	case <-time.After(3*time.Second):
+		t.Fatal("queued enabled intent was not resumed after old worker returned")
+	}
+	if !gate.has(id) || maximum.Load() != 1 {
+		t.Fatalf("handoff lost reservation or overlapped: active=%t max=%d", gate.has(id), maximum.Load())
+	}
+	close(releaseNext)
+	waitWorkerReleased(t, gate, id)
+}
+
+func TestProgramWorkerGateSuppressesQueuedIntentAfterLimit(t *testing.T) {
+	gate := newProgramWorkerGate()
+	const id int64 = 733
+	release := make(chan struct{})
+	if !gate.start(context.Background(), id, func() { <-release }) {
+		t.Fatal("unable to start")
+	}
+	var next atomic.Bool
+	if started, queued := gate.request(context.Background(), id, func() { next.Store(true) }); started || !queued {
+		t.Fatal("expected pending enabled request")
+	}
+	gate.markTerminal(program.Event{Event: program.EventMaxError, Status: program.Status{Id: id}})
+	close(release)
+	waitWorkerReleased(t, gate, id)
+	if next.Load() {
+		t.Fatal("terminal limit should discard queued restart")
+	}
+	gate.clearPending(id)
+	if _, blocked := gate.blocked(id); !blocked {
+		t.Fatal("clearing pending configuration must not clear terminal latch")
+	}
+}
+
+func TestProgramWorkerGateRejectsTerminalNoise(t *testing.T) {
+	gate := newProgramWorkerGate()
+	gate.markTerminal(program.Event{Event: program.EventExit, Status: program.Status{Id: 23}})
+	gate.markTerminal(program.Event{Event: program.EventMaxError, Status: program.Status{Id: 0}})
+	if _, found := gate.blocked(23); found {
+		t.Fatal("normal exit is not a terminal lock")
+	}
+	if _, found := gate.blocked(0); found {
+		t.Fatal("invalid program ID cannot be terminally locked")
+	}
 }
