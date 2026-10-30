@@ -938,6 +938,34 @@ namespace CxVisual.TestCenter.UI
                     Check(frame.Scene.AdditionalMeshCount==0,
                         "解绑MVI会话必须解除引用与显示资源");
 
+                    // PointCloud不伪装成Surface：独立Scene身份、WPF显示实例、透明度与内存预算。
+                    var pointCloudScene=new MVI3DSceneState();
+                    Guid cloudId=pointCloudScene.Add(MVI3DSceneKind.PointCloud,
+                        "ct3d:pointcloud:test",1,"frame:verified",.45);
+                    var normalizedCloud=new[]{
+                        new System.Numerics.Vector3(-.1f,-.1f,-.1f),
+                        new System.Numerics.Vector3(.1f,.1f,.1f),
+                        new System.Numerics.Vector3(.2f,.1f,.0f)};
+                    frame.Scene.BindSceneSelection(pointCloudScene);
+                    frame.Scene.SetAdditionalPointCloud(cloudId,normalizedCloud,.45);
+                    Check(frame.Scene.AdditionalPointCloudCount==1&&
+                        frame.Scene.AdditionalPointCount==3,
+                        "真实WPF应支持PointCloud独立身份及精确三点显示计数");
+                    frame.Scene.SetAdditionalPointCloud(cloudId,normalizedCloud,.8);
+                    Check(frame.Scene.AdditionalPointCloudCount==1,
+                        "点云透明度调整不能重复创建实例");
+                    bool rejectedCloud=false;
+                    try{frame.Scene.SetAdditionalPointCloud(cloudId,
+                        new[]{new System.Numerics.Vector3(float.NaN,0,0)},.5);}
+                    catch(ArgumentOutOfRangeException){rejectedCloud=true;}
+                    Check(rejectedCloud&&frame.Scene.AdditionalPointCount==3,
+                        "非法点云坐标不得破坏现有WPF显示实例");
+                    frame.Scene.RemoveAdditionalPointCloud(cloudId);
+                    Check(frame.Scene.AdditionalPointCloudCount==0&&
+                        frame.Scene.AdditionalPointCount==0,
+                        "移除PointCloud须释放WPF可视资源");
+                    frame.Scene.BindSceneSelection(frame.ViewState.Scene3D);
+
                     FGEMeshRayHit picked;
                     var bounds=meshResult.Mesh;
                     double rayX=(bounds.BoundsMin.X+bounds.BoundsMax.X)*.5;
