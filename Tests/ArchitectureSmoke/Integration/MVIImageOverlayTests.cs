@@ -536,6 +536,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Move) &&
                 hiddenGesture.Complete(),
                 "重新显示同一图层后允许新的独立编辑");
+            Ensure(hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Resize),
+                "测试隐藏发生在最后一次编辑和MouseUp之间");
+            var pendingHidden=hiddenRoi.Translate(2,1);
+            Ensure(hiddenGesture.TryUpdate(pendingHidden),"先有合法的编辑草稿");
+            hiddenStore.SetLayerVisible(MVIImageOverlayLayer.Roi,false);
+            Ensure(!hiddenGesture.Complete() && !hiddenGesture.IsActive &&
+                Object.ReferenceEquals(hiddenStore.Find(hiddenRoi.Id),hiddenRoi) &&
+                hiddenStore.GetVisibleItems().All(x=>x.Id!=hiddenRoi.Id),
+                "隐藏图层不能提交最后草稿；取消需恢复原对象而保留外部隐藏设置");
+            hiddenStore.SetLayerVisible(MVIImageOverlayLayer.Roi,true);
+            Ensure(Object.ReferenceEquals(hiddenStore.Find(hiddenRoi.Id),hiddenRoi),
+                "恢复图层可见性后不得复活之前被取消的编辑草稿");
             Console.WriteLine("PASS MVI ImageOverlay: 编辑State Begin/Update/Complete/Cancel、回滚与外部修改隔离");
         }
 
