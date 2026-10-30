@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gogo/internal/guardview"
 	"gogo/internal/httpapi"
 )
 
@@ -16,6 +17,9 @@ func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	e.GET("/programs_status", getProgramStatusList)
 	httpapi.Register(e, apiProgramSnapshot, apiEventHistory)
 	httpapi.RegisterAlertHistory(e, apiAlertHistory)
+	httpapi.RegisterGuardDiagnostics(e, func() guardview.Report {
+		return guardview.Read(*_workDir)
+	})
 }
 
 // httpListenMayBeRemote is a conservative diagnostic for the legacy HTTP
