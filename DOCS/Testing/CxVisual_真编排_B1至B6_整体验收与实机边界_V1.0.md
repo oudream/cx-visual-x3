@@ -84,6 +84,13 @@
 | B6 并行变更引发的完整编译红灯及后续修复 | `7fa19df` → `86a35e79` | [Studio #40998899991](https://github.com/oudream/cx-visual-x3/actions/runs/40998899991) **Failure** → [Runtime #41004371334](https://github.com/oudream/cx-visual-x3/actions/runs/41004371334)、[Decision #41004371419](https://github.com/oudream/cx-visual-x3/actions/runs/41004371419)、[Engineering #41004371335](https://github.com/oudream/cx-visual-x3/actions/runs/41004371335) **Success** | 旧版本的`TCTVolumeViewerSmoke.cs:1236`存在`roiEditCommand`未定义编译错误；后续固定SHA完整软件构建通过。并非忽略旧红灯，也不等于所有晚于该SHA的代码均已验证 |
 | B5 查看后自动更新、空闲Tick节流、工程切换即时失效及旧Overlay清除 | [`1c0a42a0`](https://github.com/oudream/cx-visual-x3/commit/1c0a42a08ce10124c9bd09f1f509014d4228c986)、[`3d7ede39`](https://github.com/oudream/cx-visual-x3/commit/3d7ede391dd80e391e52de1eacec0c92899dbe3f) | 新SHA Studio WPF S1及相关CI：**待确认** | 真实MRK、按钮、自动刷新和工程切换反例已经提交；Windows成功前不关闭 |
 
+**B5 后续软件提交与待确认门禁：**
+- [`d7cf592d`](https://github.com/oudream/cx-visual-x3/commit/d7cf592d4545d673bac56d08bc0e5de1c7d67701) 实际`RefreshScene`与MRK Trace增量观察拒绝回填过期工程；
+- [`1799b6c3`](https://github.com/oudream/cx-visual-x3/commit/1799b6c3f6e1a578f42d71cecab930faaef140ca) 工程失效立即清除旧`MOLRuntimeOverlay`图元颜色，Flow收尾不再将旧工程`VisualRuntimeSource`回绑新工程；
+- [`55fa2ba8`](https://github.com/oudream/cx-visual-x3/commit/55fa2ba8b9f8999616fccc63a119e877d82fa453) 异步旧Flow完成/异常不向当前工程`LogicInfo`展示旧FlowId/专业异常文本；
+- [`adfd6514`](https://github.com/oudream/cx-visual-x3/commit/adfd6514c6a3b45f3fc18c7e4bd559adf05ecf27) `StudioShellSelfTests`直接使用两个真实MRK完成结果证明不同工程终态隔离；其[Studio S1 #41007593878](https://github.com/oudream/cx-visual-x3/actions/runs/41007593878)、[Engineering #41007593876](https://github.com/oudream/cx-visual-x3/actions/runs/41007593876)查询时**Queued，待Windows执行**，不能登记成功。
+- 以上补的是Studio既有MRK/MOL可视化生命周期；旧Flow依然由原MRK安全取消和结算，**不宣称设备联锁验证**。
+
 **B5 代码边界：**`MainWindow.xaml.cs`仅缓存用户主动开启查看后的有界安全文本；增量更新仍取唯一MRK Trace/StepResult，空闲150ms Tick不扫描大量结果。工程Revision改变时，`RefreshScene`失效旧结果/Trace，旧Flow仍可安全取消、不制造外部设备已完成事实。应用测试为`StudioShellSelfTests`的两个B5真实MRK/WPF测试，不增建另一套调试引擎或数据中心。
 
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
