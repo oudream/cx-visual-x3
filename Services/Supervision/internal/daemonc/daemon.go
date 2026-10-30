@@ -63,18 +63,24 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 
 		//daemon 信息描述
 		if status.ErrorCount > a1.MaxError {
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxError, Status: status}) { return }
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxError, Status: status}) {
+				return
+			}
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 失败次数太多,退出\n", a1.Path, a1.ID)
 			break
 		}
 		if a1.MaxCount > 0 && status.StartCount > a1.MaxCount {
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxCount, Status: status}) { return }
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxCount, Status: status}) {
+				return
+			}
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 重启次数太多退出\n", a1.Path, a1.ID)
 			break
 		}
 
 		if status.StartCount > 0 && a1.StartWaitTime > 0 {
-			if !waitForRestart(ctx, time.Millisecond * time.Duration(a1.StartWaitTime)) { return }
+			if !waitForRestart(ctx, time.Millisecond * time.Duration(a1.StartWaitTime)) {
+				return
+			}
 			logger.Printf(_titleDaemon.Info+"进程[%s](%d) 异常退出后，启动时需要等待时间( %d 毫秒)\n", a1.Path, a1.ID, a1.StartWaitTime)
 		}
 
@@ -131,7 +137,9 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: err.Error()}) { return }
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: err.Error()}) {
+				return
+			}
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 启动子进程失败: %s\n", a1.Path, a1.ID, err)
 			continue
 		}
@@ -142,7 +150,9 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}) { return }
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}) {
+				return
+			}
 			continue
 		}
 
@@ -174,7 +184,9 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 		// Keep the exited child's PID in the exit event for diagnosis.
 		// A failed subsequent start clears the stale PID before reporting.
 		//被守护的进程停止后，通过管道向守护进程发出消息
-		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}) { return }
+		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}) {
+			return
+		}
 		logger.Printf(_titleDaemon.Error+"进程[%s](%d) pid(%d)退出, 共运行了%d秒: %s\n", a1.Path, a1.ID, cmd.ProcessState.Pid(), dat, err)
 	}
 }
