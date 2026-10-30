@@ -97,32 +97,11 @@ namespace CxVisual.Studio
             return handles;
         }
 
-        private static AutomationElementCollection NativeProcessWindows()
-        {
-            return AutomationElement.RootElement.FindAll(TreeScope.Children,
-                new AndCondition(
-                    new PropertyCondition(AutomationElement.ProcessIdProperty,
-                        Process.GetCurrentProcess().Id),
-                    new PropertyCondition(AutomationElement.ControlTypeProperty,
-                        ControlType.Window)));
-        }
-
         private static string NativeWindowDiagnostics()
         {
-            var windows=NativeProcessWindows();
+            // Win32 HWND枚举不触碰桌面UIA树；可在WPF模态窗口阻塞UIA
+            // Provider时仍留下进程窗口诊断，避免诊断代码本身卡住。
             var descriptions=new System.Collections.Generic.List<string>();
-            foreach(AutomationElement window in windows)
-            {
-                try
-                {
-                    descriptions.Add("Name="+window.Current.Name+
-                        " Class="+window.Current.ClassName+
-                        " Hwnd="+window.Current.NativeWindowHandle+
-                        " Enabled="+window.Current.IsEnabled);
-                }
-                catch(ElementNotAvailableException)
-                { descriptions.Add("(窗口在枚举中已关闭)"); }
-            }
             foreach(IntPtr hwnd in NativeDialogHandles())
             {
                 var caption=new StringBuilder(256);
@@ -130,40 +109,34 @@ namespace CxVisual.Studio
                 descriptions.Add("Win32 #32770 Hwnd="+hwnd+
                     " Title="+caption);
             }
-            return descriptions.Count==0?"(当前桌面没有本进程顶层Window或Win32文件框)":
+            return descriptions.Count==0?
+                "(当前Win32桌面未发现本进程原生#32770文件框)":
                 String.Join(" | ",descriptions);
         }
 
         private static AutomationElement FindNativeDialog(string title)
         {
-            AutomationElement nativeCandidate=null;
-            foreach(AutomationElement window in NativeProcessWindows())
+            // 先找真实Win32窗口，再从明确的HWND取得UIA控制元素。
+            // 不要在每50ms轮询中执行AutomationElement.RootElement.FindAll：
+            // GitHub hosted Windows进程的桌面UIA Provider可能在模态打开时等待
+            // UI线程，而主线程仍在InvokePattern/ShowDialog上等待，导致卡住。
+            IntPtr match=IntPtr.Zero;
+            var handles=NativeDialogHandles();
+            foreach(IntPtr hwnd in handles)
             {
-                try
+                var caption=new StringBuilder(256);
+                GetWindowText(hwnd,caption,caption.Capacity);
+                if(caption.ToString().IndexOf(title,StringComparison.Ordinal)>=0)
                 {
-                    if(window.Current.Name.IndexOf(title,StringComparison.Ordinal)>=0)
-                        return window;
-                    // Win32通用文件对话框稳定窗口类；地区语言/自定义标题在
-                    // UIA Name上可能不同，但必须确实是本进程原生#32770。
-                    if(String.Equals(window.Current.ClassName,"#32770",
-                        StringComparison.Ordinal))
-                    {
-                        if(nativeCandidate!=null)return null; // 多弹框不可猜
-                        nativeCandidate=window;
-                    }
+                    match=hwnd;
+                    break;
                 }
-                catch(ElementNotAvailableException){}
             }
-            if(nativeCandidate!=null)return nativeCandidate;
-            // GitHub Windows runner可能在不同Windows Desktop/UIA树，
-            // 但EnumWindows仍能找到同进程真实#32770 HWND。
-            // 继续使用UIAutomation与其实际控件交互，不模拟或绕过文件框。
-            foreach(IntPtr hwnd in NativeDialogHandles())
-            {
-                try { return AutomationElement.FromHandle(hwnd); }
-                catch(ElementNotAvailableException){}
-            }
-            return null;
+            if(match==IntPtr.Zero && handles.Count==1)
+                match=handles[0]; // 同进程仅有一个原生对话框，兼容地区标题差异
+            if(match==IntPtr.Zero)return null;
+            try{return AutomationElement.FromHandle(match);}
+            catch(ElementNotAvailableException){return null;}
         }
 
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
