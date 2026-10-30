@@ -112,7 +112,11 @@ namespace CxVisual.Runtime.Host
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("ERROR: " + ex.Message);
+                // 只在显式测试入口输出完整堆栈，定位实际PLC/命令子任务故障；
+                // 普通生产CLI仍只输出简短异常，避免泄露现场内部路径与参数。
+                if(args.Length==1 && args[0]=="scada-g1-smoke")
+                    Console.Error.WriteLine("SCADA-G1 DIAGNOSTIC: "+ex.ToString());
+                else Console.Error.WriteLine("ERROR: " + ex.Message);
                 return 1;
             }
         }
