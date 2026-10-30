@@ -276,6 +276,78 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(screenFile+".cx-lock"))
                     System.IO.File.Delete(screenFile+".cx-lock");
             }
+            // 工业Faceplate必须是一个Symbol定义、两个持久引用、不同设备MDS绑定，
+            // 且Good/Bad语义不能互相污染（不使用第二张图形结构树）。
+            table.Define(new MDSVariableDefinition("ready2",typeof(bool),null,true));
+            table.Update<bool>("ready",true);
+            table.Update<bool>("ready2",false);
+            string faceplateFile=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cxvisual-hmi-faceplate-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                using(MEMEngineeringSession face=MEMEngineering.Create("HMI Faceplate"))
+                {
+                    MEMPage page=face.AddPage("Station");
+                    int before=face.Revision;
+                    Guid first=PHMFaceplateAuthoring.Place(face,page.Id,
+                        PHMFaceplateKind.Motor,"电机一","ready",25,25);
+                    Check(face.Revision==before+1,
+                        "首实例定义与放置必须原子写入MEM");
+                    before=face.Revision;
+                    Guid second=PHMFaceplateAuthoring.Place(face,page.Id,
+                        PHMFaceplateKind.Motor,"电机二","ready2",235,25);
+                    Check(face.Revision==before+1,
+                        "第二个Faceplate实例必须是单事务且复用Symbol");
+                    MRIResourceReference a=face.FindReference(first);
+                    MRIResourceReference b=face.FindReference(second);
+                    Check(a!=null&&b!=null&&a.TargetId==b.TargetId&&
+                        face.Project.Children.OfType<MEMSymbol>().Count()==1,
+                        "Faceplate双实例复制了工程定义或丢失引用");
+                    using(PHMHmiRuntimeSession runtime=new PHMHmiRuntimeSession(
+                        face.Project.Id,face.Revision,table,PHMHmiMode.DesignPreview,
+                        TimeSpan.FromMinutes(1)))
+                    {
+                        var shown=CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(face,page.Id,runtime);
+                        Func<Guid,bool> green=id=>shown.Any(x=>
+                            x.Address!=null&&x.Address.InstancePath.Contains(id)&&
+                            x.Style.Fill.Kind==MRCBrushKind.Solid&&
+                            x.Style.Fill.Color.Equals(MRCColor.Parse("#FF25AC68")));
+                        Check(green(first)&&!green(second),
+                            "共用Faceplate实例不能隔离两个PLC布尔点");
+                        table.Update<bool>("ready2",true);
+                        shown=CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(face,page.Id,runtime);
+                        Check(green(first)&&green(second),
+                            "第二台电机实时变化没有独立恢复运行指示");
+                        table.Resolve<bool>("ready").Update(true,
+                            new MDSVariableUpdateOptions("test",MDSVariableQuality.Bad));
+                        shown=CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(face,page.Id,runtime);
+                        Check(!green(first)&&green(second),
+                            "第一台设备失效时另一台Faceplate不能被灰化");
+                    }
+                    face.SaveAs(faceplateFile);
+                    using(MEMEngineeringSession restored=MEMEngineering.Open(faceplateFile))
+                    {
+                        MRIResourceReference savedA=restored.FindReference(first);
+                        MRIResourceReference savedB=restored.FindReference(second);
+                        Check(savedA!=null&&savedB!=null&&
+                            savedA.TargetId==savedB.TargetId&&
+                            restored.ResolveParameter(savedA,"Online").SourceId=="ready"&&
+                            restored.ResolveParameter(savedB,"Online").SourceId=="ready2",
+                            "Faceplate双设备实例的MDS绑定未能保存重开");
+                        restored.Close(true);
+                    }
+                    face.Close(true);
+                }
+            }
+            finally
+            {
+                if(System.IO.File.Exists(faceplateFile))System.IO.File.Delete(faceplateFile);
+                if(System.IO.File.Exists(faceplateFile+".cx-lock"))
+                    System.IO.File.Delete(faceplateFile+".cx-lock");
+            }
             Console.WriteLine("PASS HMI-G1 UInt16/Int16, Quality, Stale and safe mode gates");
         }
     }
