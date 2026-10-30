@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -111,6 +112,42 @@ namespace CxVisual.Studio
             return reference.Id;
         }
 
+        internal void SetStudioSharedInstanceOverride(Guid instanceId, string member, string literal)
+        {
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            MRIResourceReference reference=session.FindReference(instanceId);
+            if(reference==null)throw new InvalidOperationException("实例已失效");
+            MEMNode definition=session.Find(reference.TargetId);
+            IMPMDefinition contract=definition as IMPMDefinition;
+            MPMProperty property=contract==null?null:contract.Properties.FirstOrDefault(p=>p.MemberId==member);
+            if(property==null||!property.Descriptor.IsPublic||property.Descriptor.IsReadOnly)
+                throw new InvalidOperationException("参数不允许实例覆盖");
+            MPMBinding value;
+            switch(property.Descriptor.ValueKind)
+            {
+                case MPMValueKind.String:value=MPMBinding.Literal(MPMValue.String(literal));break;
+                case MPMValueKind.Number:value=MPMBinding.Literal(MPMValue.Number(
+                    double.Parse(literal,CultureInfo.InvariantCulture)));break;
+                case MPMValueKind.Integer:value=MPMBinding.Literal(MPMValue.Integer(
+                    long.Parse(literal,CultureInfo.InvariantCulture)));break;
+                case MPMValueKind.Decimal:value=MPMBinding.Literal(MPMValue.Decimal(
+                    decimal.Parse(literal,CultureInfo.InvariantCulture)));break;
+                case MPMValueKind.Boolean:value=MPMBinding.Literal(MPMValue.Boolean(
+                    Boolean.Parse(literal)));break;
+                case MPMValueKind.Resource:value=MPMBinding.Resource(Guid.Parse(literal));break;
+                default:throw new InvalidOperationException("参数类型不支持直接文字覆盖");
+            }
+            session.SetOverride(reference,member,value);
+        }
+
+        internal void ClearStudioSharedInstanceOverride(Guid instanceId,string member)
+        {
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            MRIResourceReference reference=session.FindReference(instanceId);
+            if(reference==null)throw new InvalidOperationException("实例已失效");
+            session.ClearOverride(reference,member);
+        }
+
         private sealed class StudioSharedResourceCenter : DockPanel, IDisposable
         {
             private readonly MainWindow _host;
@@ -121,6 +158,9 @@ namespace CxVisual.Studio
             private readonly ListBox _external = new ListBox();
             private readonly ListBox _types = new ListBox();
             private readonly ComboBox _pages = new ComboBox { MinWidth = 140, Margin = new Thickness(3) };
+            private readonly ComboBox _instances = new ComboBox { MinWidth = 145, Margin = new Thickness(3) };
+            private readonly ComboBox _members = new ComboBox { MinWidth = 120, Margin = new Thickness(3) };
+            private readonly TextBox _overrideText = new TextBox { MinWidth = 120, Margin = new Thickness(3) };
             private readonly TextBox _search = new TextBox { MinWidth = 170, Margin = new Thickness(3) };
             private readonly TextBox _name = new TextBox { MinWidth = 140, Margin = new Thickness(3) };
             private readonly TextBlock _details = new TextBlock { Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap };
@@ -168,11 +208,21 @@ namespace CxVisual.Studio
                 placeBar.Children.Add(_pages);
                 AddAction(placeBar, "添加引用实例", PlaceSelected);
                 SetDock(placeBar, Dock.Top); Children.Add(placeBar);
+                var overrides = new WrapPanel { Margin = new Thickness(4) };
+                overrides.Children.Add(new TextBlock { Text = "实例二次配置", VerticalAlignment = VerticalAlignment.Center });
+                overrides.Children.Add(_instances);
+                overrides.Children.Add(_members);
+                overrides.Children.Add(_overrideText);
+                AddAction(overrides, "覆盖公开参数", ApplyOverride);
+                AddAction(overrides, "恢复继承", ClearOverride);
+                SetDock(overrides, Dock.Top); Children.Add(overrides);
+                _instances.SelectionChanged+=(s,e)=>UpdateMembers();
+                _members.SelectionChanged+=(s,e)=>UpdateOverrideValue();
                 _catalog.Items.Add(new TabItem { Header = "本工程共享定义", Content = _local });
                 _catalog.Items.Add(new TabItem { Header = "外部资源包", Content = _external });
                 _catalog.Items.Add(new TabItem { Header = "工程已注册类型", Content = _types });
                 _catalog.SelectionChanged += (s,e) => { if (e.Source == _catalog) UpdateDetails(); };
-                _local.SelectionChanged += (s,e) => UpdateDetails();
+                _local.SelectionChanged += (s,e) => { UpdateInstances();UpdateDetails(); };
                 _external.SelectionChanged += (s,e) => UpdateDetails();
                 _types.SelectionChanged += (s,e) => UpdateDetails();
                 _local.MouseDoubleClick += (s,e) => TryAction(OpenEditor);
@@ -283,6 +333,7 @@ namespace CxVisual.Studio
                 }
                 if (_pages.SelectedItem == null && _pages.Items.Count > 0) _pages.SelectedIndex = 0;
                 LastProject = session.Project.Id; LastRevision = session.Revision;
+                UpdateInstances();
                 UpdateDetails();
             }
             private Guid? SelectedLocal()
@@ -300,6 +351,83 @@ namespace CxVisual.Studio
                 MEMNode node = _package.Find(id.Value);
                 return (_symbol && node is MEMSymbol || !_symbol && node is MEMContent)
                     && node.Parent==_package.Project ? id : null;
+            }
+            private static Guid? SelectedComboGuid(ComboBox control)
+            {
+                ComboBoxItem item=control.SelectedItem as ComboBoxItem;
+                return item==null?(Guid?)null:(Guid)item.Tag;
+            }
+            private string SelectedMember()
+            {
+                ComboBoxItem item=_members.SelectedItem as ComboBoxItem;
+                return item==null?null:item.Tag as string;
+            }
+            private void UpdateInstances()
+            {
+                Guid? definition=SelectedLocal();
+                Guid? prior=SelectedComboGuid(_instances);
+                _instances.Items.Clear();
+                MEMEngineeringSession session=Session();
+                if(!definition.HasValue){_members.Items.Clear();return;}
+                var uses=session.Project.DescendantsAndSelf().OfType<MEMContent>()
+                    .SelectMany(x=>x.References)
+                    .Concat(session.Project.DescendantsAndSelf().OfType<MEMSymbol>()
+                        .SelectMany(x=>x.References))
+                    .Where(x=>x.TargetId==definition.Value);
+                foreach(MRIResourceReference use in uses)
+                {
+                    var entry=new ComboBoxItem {Content=use.Owner.Name+" / "+use.Name,Tag=use.Id};
+                    _instances.Items.Add(entry);
+                    if(prior==use.Id)entry.IsSelected=true;
+                }
+                if(_instances.SelectedItem==null && _instances.Items.Count!=0)_instances.SelectedIndex=0;
+                UpdateMembers();
+            }
+            private void UpdateMembers()
+            {
+                string old=SelectedMember();
+                _members.Items.Clear();
+                Guid? id=SelectedComboGuid(_instances);
+                MRIResourceReference reference=id.HasValue?Session().FindReference(id.Value):null;
+                IMPMDefinition definition=reference==null?null:Session().Find(reference.TargetId) as IMPMDefinition;
+                if(definition==null){_overrideText.Text="";return;}
+                foreach(MPMProperty p in definition.Properties.Where(p=>p.Descriptor.IsPublic&&!p.Descriptor.IsReadOnly))
+                {
+                    var option=new ComboBoxItem {Content=p.MemberId+" ["+p.Descriptor.ValueKind+"]",Tag=p.MemberId};
+                    _members.Items.Add(option);
+                    if(old==p.MemberId)option.IsSelected=true;
+                }
+                if(_members.SelectedItem==null && _members.Items.Count!=0)_members.SelectedIndex=0;
+                UpdateOverrideValue();
+            }
+            private void UpdateOverrideValue()
+            {
+                Guid? id=SelectedComboGuid(_instances);
+                string member=SelectedMember();
+                MRIResourceReference reference=id.HasValue?Session().FindReference(id.Value):null;
+                if(reference==null||member==null){_overrideText.Text="";return;}
+                MPMBinding binding=Session().ResolveParameter(reference,member);
+                _overrideText.Text=binding!=null&&binding.Kind==MPMBindingKind.Literal?
+                    binding.Value.Canonical:binding!=null&&binding.Kind==MPMBindingKind.Resource?
+                    binding.ResourceId.Value.ToString("D"):"";
+            }
+            private void ApplyOverride()
+            {
+                Guid? id=SelectedComboGuid(_instances);
+                string member=SelectedMember();
+                if(!id.HasValue||member==null)throw new InvalidOperationException("请选择实例和公开参数");
+                _host.SetStudioSharedInstanceOverride(id.Value,member,_overrideText.Text);
+                Refresh();
+                _feedback.Text="已在MEM实例上覆盖 "+member+"，共享Content/Symbol定义未被修改";
+            }
+            private void ClearOverride()
+            {
+                Guid? id=SelectedComboGuid(_instances);
+                string member=SelectedMember();
+                if(!id.HasValue||member==null)throw new InvalidOperationException("请选择实例和公开参数");
+                _host.ClearStudioSharedInstanceOverride(id.Value,member);
+                Refresh();
+                _feedback.Text="已清除实例覆盖，恢复继承共享定义的公开参数";
             }
             private void UpdateDetails()
             {
@@ -420,6 +548,8 @@ namespace CxVisual.Studio
                 if(!id.HasValue || page==null)throw new InvalidOperationException("请选择本工程共享定义和目标页面");
                 Guid reference=_host.PlaceStudioSharedDefinition(_symbol,id.Value,(Guid)page.Tag);
                 Refresh();
+                foreach(ComboBoxItem item in _instances.Items.OfType<ComboBoxItem>())
+                    if((Guid)item.Tag==reference){item.IsSelected=true;break;}
                 _feedback.Text="已在目标页面新增独立引用实例："+reference.ToString("N")+
                     "。后续使用MEM实例覆盖进行二次配置。";
             }
