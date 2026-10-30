@@ -95,6 +95,8 @@ namespace CxVisual.Studio
                 case "data":
                     AddResourceNavigation(menu,"打开变量中心","doc.variables");
                     AddResourceNavigation(menu,"打开运行数据中心","doc.runtime-data");
+                    AddResourceNavigation(menu,"打开消息中心","doc.messages");
+                    AddResourceNavigation(menu,"打开命令中心","doc.commands");
                     break;
                 case "configuration":
                     AddResourceNavigation(menu,"打开统一配置中心","doc.config");
