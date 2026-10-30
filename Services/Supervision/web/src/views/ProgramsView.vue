@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
 import { useGuardStore } from '../stores/guard'
@@ -8,11 +9,13 @@ import type { Program } from '../types/supervision'
 import { guardVerdict, guardLabel, guardTagType } from '../utils/guard'
 import { formatBytes, formatTime, formatHeartbeatAgeAtSnapshot, programName } from '../utils/format'
 
+const route = useRoute()
 const store = useMonitorStore()
 const guard = useGuardStore()
 const { report: guardReport, error: guardError } = storeToRefs(guard)
 const { programs, updatedAt } = storeToRefs(store)
-const filter = ref('')
+const filter = ref(typeof route.query.id === 'string' ? route.query.id : '')
+watch(() => route.query.id, id => { filter.value = typeof id === 'string' ? id : '' })
 const activeOnly = ref(false)
 const guardedOnly = ref(false)
 const detailOpen = ref(false)
