@@ -2094,8 +2094,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {G06ArchivedInputResolver.SourceId,G06ArchivedInputResolver.SourceVersion},
                 {CxVisionThresholdProvider.CapabilityId,vision.ReleaseVersion}
             };
+            // 独立Plan不携带CLR实现；Host必须显式证明专业TypeId映射。
+            // 保持严格MOC检查，不允许unknown TypeId默认放行。
+            var professionalTypes=new Dictionary<string,Type>(StringComparer.Ordinal){
+                {CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                    typeof(CxVisionInspectionResult)}
+            };
             MOCCompiledPlan compiled=new MOCManifestRuntimeBinding().Bind(
-                reloaded,catalog,source,expectedCapabilityVersions:versions);
+                reloaded,catalog,source,professionalTypes:professionalTypes,
+                expectedCapabilityVersions:versions);
             MOCTraceView trace;
             MRKFlowResult result=Execute(compiled,
                 compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),out trace);
@@ -2117,6 +2124,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 new MOCManifestRuntimeBinding().Bind(reloaded,catalog,
                     new G06ArchivedInputResolver(pixels,upgraded),
+                    professionalTypes:professionalTypes,
                     expectedCapabilityVersions:versions);
             }
             catch(InvalidOperationException ex)
