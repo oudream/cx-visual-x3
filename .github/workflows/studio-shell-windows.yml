@@ -63,7 +63,8 @@ jobs:
                                    'B5 调试暂停继续单步取消的真实Studio入口与空会话安全',
                                    'B5 活跃MRK断点单步继续取消真实WPF交互',
                                    'B5 活跃运行结果跨工程版本与多Flow隔离真实WPF反例',
-                                   'S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界')) {
+                                   'S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界',
+                                   'S2 真正WPF按钮创建RAW专业流程并执行MRK真实Vision CPU')) {
             if (-not @($passed | Where-Object { $_.Line.Contains($required) }).Count) {
               throw "Required real WPF STA assertion missing: $required"
             }
