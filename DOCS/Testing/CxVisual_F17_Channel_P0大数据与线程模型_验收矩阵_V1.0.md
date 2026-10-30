@@ -180,3 +180,7 @@
 | F17-SERIAL-HIL | 现场RS-232/485、长时间半包与慢接收、断线重连、Send/Receive互不阻塞 | 实体测试需上位机/串口仪、线缆和驱动，验证实际后台接收Thread、StopTimeoutMs、数据可靠性、RS-485方向控制及工业负载 | 尚未执行；禁止报告通过 |
 
 原F17 Windows workflow不仅要过F17.HTTP_LARGE_PASS，还必须输出F17.SERIAL_P0_PASS；全部自动回归及两种2GiB大流门禁仍是软件G1条件。CI取消的旧运行不得代替新SHA通过。
+
+### F17-SERIAL-03 流控配置门禁（2026-10-30）
+
+正式FCM配置可选None、XOnXOff、RequestToSend及RequestToSendXOnXOff；新建默认None保持旧行为。FTRSerialP0Tests验证RequestToSend配置往返、非法值拒绝。串口Open使用原生SerialPort.Handshake。源码提交eed989ce、d163a951、d24d70c，Windows固定SHA待验证；RS-232/485设备实际握手、持续流及断线恢复尚未测试。
