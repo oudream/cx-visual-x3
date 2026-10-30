@@ -374,3 +374,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - StudioCT3DDocument公开TryPickMeshFace（复用FGE物理射线）及RecomputeMeshFaceRoiAsync（复用专业CT3DMeshFaceSelection、Case原值重算、Studio epoch取消、待保存Scene和唯一MEM提交），不允许旧Case/选区异步结果覆盖当前会话。
 - StudioShellSelfTests使用真实双Case MEM+UInt16工程，恢复CaseA后通过物理射线命中真实三角面，聚合8个顶面三角面原值重算9点平面，验证新ResultId与同RoiSignature、待保存、Discard后原Case结果身份不变。
 - Studio物理射线API是正式SDK路径，不等同已经实现3D视口鼠标射线反投影；后者与CAD拓扑、复杂ROI/工业精度仍在B包后续范围。本增量须取得独立固定SHA Studio S1与CT3D专项CI证据。
+
+
+### 10.30 本轮Mesh面片子元素的固定SHA验收与交付边界（2026-10-30）
+
+- **已通过**：CT3D专业面片射线命中、8面片→9顶点、原值平面重算、来源/阈值/重复面/取消反例对应提交 `b378413d0d86598b7f713e232223674545195749`，Windows CT3D B G1～G3 `41027934866` 整条SUCCESS（Release/Debug x64、Headless G2、真实WPF G3）。相同专业代码SHA的Imaging `41027934809` SUCCESS。
+- **Studio源码**：`687d46337c5b14fef1afa1ec9245f69a012f6dbb` 增加TryPickMeshFace/RecomputeMeshFaceRoiAsync，复用Studio已有后台取消、会话epoch和MEM未提交预览；`c4a04c9a4f27f326e2ef890366cd0f472e88badf` 增加正式保存、重开、Scene来源验证。对应Studio S1 `41028510937`、`41028806164` 尚待固定SHA独立验收，不可以以先前CT3D专项替代。
+- **范围**：完成双精度Mesh三角面子元素专业查询/多面组合与Studio API接线，并非三维视口鼠标选面、CAD拓扑、子元素持久选择集或GPU工业G4/G5全部交付。
