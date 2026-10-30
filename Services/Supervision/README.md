@@ -45,6 +45,7 @@ Go 模块含 `github.com/mattn/go-sqlite3`，请在目标系统提供可用的 C
 1. [整体架构与目录设计 V1.0](docs/CxVisual_Supervision_整体架构与目录设计_V1.0.md)
 2. [Go 编码与工程规范 V1.0](docs/CxVisual_Supervision_Go编码与工程规范_V1.0.md)
 3. [Web 前端架构与编码规范 V1.0](docs/CxVisual_Supervision_Web前端架构与编码规范_V1.0.md)
+4. [整体架构与全类 UML 设计 V2.0](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)——完整对象地图、运行边界、Go/C#/Web 协同与分阶段实施；设计候选不是已实现代码。
 
 ## V1 实际可用的只读查询
 
