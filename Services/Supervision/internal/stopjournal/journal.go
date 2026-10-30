@@ -94,6 +94,12 @@ func Append(workDir string, entry Entry) error {
 		if !previous.Mode().IsRegular() {
 			return errors.New("stop journal is not a regular file")
 		}
+		// Do not authorize a new Stop when the existing history is
+		// truncated, invalid or internally contradictory. Otherwise
+		// future receipts would appear recorded in an unreadable log.
+		if prior := Read(workDir); !prior.Available {
+			return fmt.Errorf("existing stop journal unsafe: %s", prior.Error)
+		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
@@ -167,7 +173,7 @@ func Read(workDir string) History {
 		history.Error = err.Error()
 		return history
 	}
-	if !before.Mode().IsRegular() || before.Size() > MaxBytes {
+	if !before.Mode().IsRegular() || before.Size() == 0 || before.Size() > MaxBytes {
 		history.Error = "unsafe or oversized stop journal"
 		return history
 	}
