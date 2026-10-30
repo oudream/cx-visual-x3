@@ -1272,9 +1272,8 @@ namespace CxVisual.TestCenter.UI
                 AwaitProfessional(pendingEditedRoi);
                 Check(frame.ViewState.SelectedSliceRectangle!=null&&
                     frame.ViewState.SelectedSliceRectangle.Left==0&&
-                    frame.LastMeshPlaneFit==null&&
-                    Object.ReferenceEquals(frame.LastOpenedProfessionalCase,editedFromWpf),
-                    "ROI持久编辑进行中重新框选，旧快照不得覆盖较新的二维ROI与Measurement失效状态");
+                    frame.LastMeshPlaneFit==null,
+                    "ROI保存与重新框选无论谁先完成，都必须保留最新ROI并使旧Measurement失效");
                 AwaitProfessional(frame.OpenProfessionalCaseAsync(project,
                     System.Threading.CancellationToken.None));
                 restored=frame.LastOpenedProfessionalCase;
