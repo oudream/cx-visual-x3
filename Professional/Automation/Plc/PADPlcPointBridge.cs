@@ -47,7 +47,6 @@ namespace CxVisual.Professional.Automation.Plc
     {
         private readonly MCNConnectorModule _connector;
         private readonly PADDeviceVariableCatalog _catalog;
-        private readonly IMPADataTargetAccess _dataOwner;
         private readonly FTRSubChannelAddress _destination;
         private readonly Dictionary<string, string> _bindings;
         private readonly Dictionary<string, string> _approvedSignatures;
@@ -57,12 +56,10 @@ namespace CxVisual.Professional.Automation.Plc
         private int _disposed;
 
         public PADPlcPointBridge(MCNConnectorModule connector, PADDeviceVariableCatalog catalog,
-            IMPADataTargetAccess dataOwner, FTRSubChannelAddress destination,
-            string scopeId, IEnumerable<PADPlcPointBinding> bindings)
+            FTRSubChannelAddress destination, string scopeId, IEnumerable<PADPlcPointBinding> bindings)
         {
             _connector = connector ?? throw new ArgumentNullException("connector");
             _catalog = catalog ?? throw new ArgumentNullException("catalog");
-            _dataOwner = dataOwner ?? throw new ArgumentNullException("dataOwner");
             _destination = destination ?? throw new ArgumentNullException("destination");
             if (destination.ChannelId != connector.Channel.Id)
                 throw new ArgumentException("PLC目标与Connector Channel不一致");
@@ -169,9 +166,12 @@ namespace CxVisual.Professional.Automation.Plc
                 !variable.ValueType.IsInstanceOfType(staging.Value))
                 throw new PADPlcOutcomeUnknownException(point,
                     "PLC协议读回与映射结果不一致，禁止写入MDS");
-            await _dataOwner.WriteAsync(
-                MPADataTargetKind.Variable, target, staging.Value, cancellationToken)
-                .ConfigureAwait(false);
+            // 正式ProviderHost以设备来源身份提交，允许DI等只读工程变量接收采样。
+            // 与普通MDS变量Update(受Writable约束)不同，始终保留唯一MDS Current。
+            PADDeviceVariableProvider publisher = Volatile.Read(ref _qualityProvider);
+            if (publisher == null || !publisher.Emit(stableId, staging.Value,
+                CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good))
+                throw new InvalidOperationException("PLC设备Provider未启动，禁止宣称采样已发布");
             return received;
         }
 
