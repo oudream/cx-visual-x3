@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConditionalBranchesAndBoundedLoops();
             DebugBreakpointStepAndResume();
             ResultInspectionNeverCopiesRawBuffersOrLeaksText();
+            ResultInspectionIsBoundedForLongFlows();
             QualifiedLoopIterationBreakpoint();
             CancellationUnblocksPausedFlow();
             CancelledBreakpointsAreRemovedImmediately();
@@ -98,6 +99,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try { flow.Context.ResultSummariesSnapshot(513); }
                 catch (ArgumentOutOfRangeException) { bounds = true; }
                 Check(bounds, "B5调试结果数量没有硬上限");
+            }
+            finally { Await(engine.StopAsync(true)); }
+        }
+
+        private static void ResultInspectionIsBoundedForLongFlows()
+        {
+            var steps = new List<MRKExecutionStep>();
+            for (int i = 0; i < 72; i++)
+            {
+                string stepId = "k" + i.ToString("D3",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                string previous = "k" + (i - 1).ToString("D3",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                int value = i;
+                steps.Add(new MRKExecutionStep(stepId,
+                    i == 0 ? new string[0] : new[] { previous },
+                    (ctx,ct) => Task.FromResult((object)value)));
+            }
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+            try
+            {
+                MRKFlowHandle flow = engine.StartFlow(
+                    new MRKExecutionPlan("b5.summary.bound",steps));
+                Check(Await(flow.Completion).State == MRKFlowState.Completed,
+                    "B5大量结果的正式MRK链未能完成");
+                IDictionary<string,string> view=flow.Context.ResultSummariesSnapshot(32);
+                Check(view.Count==32&&view.ContainsKey("k000")&&
+                    view.ContainsKey("k031")&&!view.ContainsKey("k032")&&
+                    view.Keys.SequenceEqual(view.Keys.OrderBy(x=>x,StringComparer.Ordinal)),
+                    "B5大流程摘要数量或排序不确定");
             }
             finally { Await(engine.StopAsync(true)); }
         }
