@@ -265,7 +265,7 @@ namespace CxVisual.Studio
                 RequireStudioHmiTarget(origin,pageId,expectedScope,pointName);
                 if(remoteAtMenu!=null &&
                     (!ReferenceEquals(remoteAtMenu,_studioRemoteHmi)||
-                     !remoteAtMenu.Points().Any(x=>x.StablePointId==pointName)))
+                     !remoteAtMenu.Points().Any(point=>point.StablePointId==pointName)))
                     throw new InvalidOperationException("远程工站或点位已失效，重新选择");
                 MEMPage page=origin.Find(pageId) as MEMPage;
                 double x,y;NextStudioHmiPosition(page,out x,out y);
