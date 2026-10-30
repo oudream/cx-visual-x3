@@ -27,6 +27,7 @@ namespace CxVisual.Professional.Automation.Plc
         // Approved Connector Effective for the real MRK command schema; distinct
         // from the Decision capability release version.
         private readonly string _commandEffectiveVersion;
+        private readonly string _commandSessionGeneration;
         private readonly IMRKVersionedCapabilityResolver _fallback;
         private readonly MRKResolvedCapability _binding;
 
@@ -39,7 +40,8 @@ namespace CxVisual.Professional.Automation.Plc
         public PADPlcMrkWriteCapabilityProvider(MRKCommandCenter commands,
             string deviceRef, string trustedCaller, string capabilityVersion,
             IMRKVersionedCapabilityResolver fallback = null,
-            string commandEffectiveVersion = null)
+            string commandEffectiveVersion = null,
+            string commandSessionGeneration = null)
         {
             if (commands == null) throw new ArgumentNullException("commands");
             if (string.IsNullOrWhiteSpace(trustedCaller) ||
@@ -56,8 +58,15 @@ namespace CxVisual.Professional.Automation.Plc
                 commandEffectiveVersion.Length>128 ||
                 commandEffectiveVersion.Any(char.IsControl)))
                 throw new ArgumentException("automation.plc.command_effective_version_invalid");
+            if(commandSessionGeneration!=null &&
+                (string.IsNullOrWhiteSpace(commandSessionGeneration) ||
+                commandSessionGeneration.Length>128 ||
+                commandSessionGeneration.Any(char.IsControl) ||
+                commandEffectiveVersion==null))
+                throw new ArgumentException("automation.plc.command_generation_or_effective_missing");
             _version = capabilityVersion;
             _commandEffectiveVersion = commandEffectiveVersion;
+            _commandSessionGeneration = commandSessionGeneration;
             _fallback = fallback;
             _binding = new MRKResolvedCapability(ExecuteAsync,
                 new MRKExecutionOutput(typeof(bool)),
@@ -143,6 +152,8 @@ namespace CxVisual.Professional.Automation.Plc
             };
             if(_commandEffectiveVersion!=null)
                 arguments.Add("EffectiveVersion",_commandEffectiveVersion);
+            if(_commandSessionGeneration!=null)
+                arguments.Add("SessionGeneration",_commandSessionGeneration);
             MRKCommandRequest request = new MRKCommandRequest(_target,
                 PADPlcMrkCommandRegistration.WriteUInt16Code,
                 arguments, caller: _caller, expectedSchemaVersion: 1);
