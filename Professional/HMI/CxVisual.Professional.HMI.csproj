@@ -20,6 +20,7 @@
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
     <Reference Include="System.Runtime.Serialization"/>
+    <Reference Include="System.Xml"/>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="PHMHmiRuntimeSession.cs"/><Compile Include="PHMHmiScreenAuthoring.cs"/><Compile Include="PHMScadaReadOnlyPipeClient.cs"/><Compile Include="PHMScadaRemoteReadSession.cs"/><Compile Include="PHMFaceplateAuthoring.cs"/></ItemGroup>
