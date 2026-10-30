@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/process"
 	"gogo/internal/program"
+	"gogo/internal/launchjournal"
 )
 
 const legacyPIDMaxBytes = 64
@@ -99,4 +100,22 @@ func scanLegacyPIDFiles(workDir string, programs []program.Program) map[int64]st
 		quarantined[item.ID] = fmt.Sprintf("living legacy PID %d matches executable but ownership/generation is unverified", pid)
 	}
 	return quarantined
+}
+
+
+// scanUnreconciledPrograms combines legacy PID evidence with the new
+// pre-spawn durable intents. A missing old PID file must never erase an
+// unresolved child launch; a corrupt journal directory blocks all startup.
+func scanUnreconciledPrograms(workDir string, programs []program.Program) (map[int64]string, error) {
+	orphans := scanLegacyPIDFiles(workDir, programs)
+	attempts, err := launchjournal.Scan(workDir)
+	if err != nil { return nil, err }
+	for id, reason := range attempts {
+		if previous, present := orphans[id]; present {
+			orphans[id] = previous + "; " + reason
+		} else {
+			orphans[id] = reason
+		}
+	}
+	return orphans, nil
 }
