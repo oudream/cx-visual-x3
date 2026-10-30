@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchGuardReport, fetchOverview, fetchPrograms } from './client'
+import { fetchGuardReport, fetchOverview, fetchPrograms, fetchStopHistory } from './client'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -59,5 +59,27 @@ describe('read-only guard diagnostics', () => {
   it('does not silently reinterpret a blocked remote guard query as no issues', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
     await expect(fetchGuardReport()).rejects.toThrow('仅允许在 Monitor 本机查询')
+  })
+})
+
+describe('read-only durable stop history', () => {
+  it('preserves exact 64-bit Program ID and operation ID', async () => {
+    const item = { operationId: '0123456789abcdef0123456789abcdef',
+      programId: '9007199254740995', pid: 231, action: 'shutdown',
+      state: 'unknown', waitCompleted: false, recordedAt: '2026-10-30T08:00:00Z' }
+    const envelope = { data: { available: true, items: [item] },
+      generatedAt: '2026-10-30T08:00:01Z', scope: 'local-only',
+      kind: 'durable-stop-history' }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => envelope,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchStopHistory()).resolves.toEqual(envelope)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/stops/history',
+      expect.objectContaining({ cache: 'no-store' }))
+  })
+  it('refuses 403 instead of fabricating an empty record', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(fetchStopHistory()).rejects.toThrow('仅允许在 Monitor 本机查询')
   })
 })
