@@ -154,3 +154,11 @@ G2/G3 报告另记 `Model/SN/Firmware/ControllerSafeStatus/CalibrationId/SDKx64/
 **测试与实际通过状态**：固定提交 `0db3c0b9484cc8e1c6ca96d1097df9a8e02fbaed`；[Automation PLC Windows G1](https://github.com/oudream/cx-visual-x3/actions/runs/41015075474)、[Config L1](https://github.com/oudream/cx-visual-x3/actions/runs/41015075572)。**本条初次填写时均为Queued，CI有明确Success后才能标识G1 Passed；不能将“已提交”算作“已验收”。** G2真实PLC、跨设备时间一致性及G3安全现场均未执行。
 
 **非目标**：没有进行工业硬实时宣称、跨点MDS原子事务、周期调度、独立线程循环或Studio/TestCenter专业UI。需要时先复用已实现的通道诊断/变量订阅/TestCenter展示组件。
+
+### 19. AUT-PI-014 TestCenter PLC只读点表操作与五项UIA（2026-10-30）
+
+- **真实UI入口**：`TCTManualModuleFrame` 复用MPW模块中心的Connector专业分页 `connector-plc`，`TCTPlcReadOnlyPanel` 强制MHS Effective、草稿未保存拒绝、`modbus.tcp`/`TcpClient`类型检查、操作者显式连接/点名选择/读取/停止。网络未连接不产生假结果，不提供FC06或旁路设备写权限。
+- **实际执行**：正式 `FTRTcpClientChannel` → `MCNConnectorModule` → `MPAModbusTcpProtocol` → `ReadContiguousPointsAsync`；按单帧FC03读取1～64个同站相邻寄存器。界面只保留当次 `TCTPlcPointReadEvidence` 诊断值，不生成另一份MDS Current/Quality；失败时清空上一次结果。
+- **可自动操作点位**：`TCT.Module.Page.connector-plc`、`TCT.Plc.Connect`、`TCT.Plc.PointNames`、`TCT.Plc.Read`、`TCT.Plc.Stop`、`TCT.Plc.ReadEvidence`、`TCT.Plc.Status`。
+- **真实UIA测试**：`TCTPlcReadOnlyUiSmoke` 在实际WPF窗口中从MHS保存生效Connector、通过TCP测试设备读取holding:100/101并验证90/99及UTC、仅一帧、非法反序不发包且清除旧结果、显式断链。原有Compute/Simulation/Service/Connector四项UIA仍要同时通过。固定运行时需上传五份同SHA报告。
+- **证据限制**：本次新增WPF UIA采用Windows TCP本机夹具，是软件G1而非真实PLC G2；现场设备身份/安全/固件及真实MDS Provider采样需另外核实。源码和UIA测试已提交，五项新工作流结论以新SHA的Actions为准；未完成前不得填PASS。
