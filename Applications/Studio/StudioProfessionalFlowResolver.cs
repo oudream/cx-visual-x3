@@ -169,6 +169,19 @@ namespace CxVisual.Studio
                     !string.IsNullOrWhiteSpace(version))
                     versions.Add(item.Id,version);
             }
+            // Mixed projects may include legacy AI/CV simulation nodes
+            // alongside genuine Vision CPU. Their original versions remain
+            // in the same pinned publication closure (no invented version).
+            IMOCCapabilityProvider simulated=_simulation as IMOCCapabilityProvider;
+            if(simulated!=null)
+                foreach(var descriptor in simulated.DescribeCapabilities())
+                {
+                    string version;
+                    if(!versions.ContainsKey(descriptor.Id) &&
+                        _simulation.TryGetCapabilityVersion(descriptor.Id,out version) &&
+                        !string.IsNullOrWhiteSpace(version))
+                        versions.Add(descriptor.Id,version);
+                }
             return versions;
         }
 
