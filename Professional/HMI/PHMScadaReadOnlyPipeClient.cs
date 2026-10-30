@@ -100,7 +100,8 @@ namespace CxVisual.Professional.HMI
             StablePointId=point.StablePointId;VariableId=point.VariableId;
             ValueTypeName=point.Type;
             Unit=point.Unit??"";Source=point.SourceId??"";
-            Revision=point.Revision;RefreshUtc=refreshed.ToUniversalTime();
+            Revision=point.Revision;RefreshUtc=point.HasValue?
+                refreshed.ToUniversalTime():default(DateTime);
             Quality=quality;HasValue=point.HasValue;
             Value=point.HasValue?ParseValue(point.Type,point.Value):null;
             Text=!HasValue?"—":Convert.ToString(Value,CultureInfo.InvariantCulture);
