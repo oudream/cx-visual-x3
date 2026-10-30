@@ -440,6 +440,11 @@
 - **用户继续编辑便利性**：[ee1526e5](https://github.com/oudream/cx-visual-x3/commit/ee1526e52e805853ef6fc84660b5e3ea9db140a1)使工程ROI MRK Run显示时，原MPW图窗自动选择来自MEM配方的面积ROI，允许从Mask返回原图后直接继续编辑；[dac1e806](https://github.com/oudream/cx-visual-x3/commit/dac1e806e6a9dd4f6e391194b698c8f464955703)为原生UIA增加**恢复可信RAW→重新MRK→真实结果列表选择Mask→返回原图→点击保存ROI→旧Result已释放且旧Run列表清空、当前ROI保留**的末段正反验收。
 - **严格门禁**：独立[ROI UIA #41046725138](https://github.com/oudream/cx-visual-x3/actions/runs/41046725138)对应`dac1e806`提交时尚未运行通过，**本条内容为G2源码与测试合同，不声称G3/G4/G5成功**。后续以实际Windows固定SHA日志为准。IMG-05仍为`InProgress`，人工多DPI、失捕和工业G6待验。
 
+### 7.20 IMG-05 原生鼠标操作异常退出保护与Windows等待状态（2026-10-30）
+
+- [5f26f5d5](https://github.com/oudream/cx-visual-x3/commit/5f26f5d5841e6ece0d0c172b7707e344499fd2af)修复真正Win32系统鼠标拖框测试的异常清理：`mouse_event(MouseLeftDown)`之后由`try/finally`保证正常完成、OS指针移动失败或GUI测试异常时均发送`MouseLeftUp`，避免鼠标左键持续按下干扰后续Open/Save对话框及其他Windows UIA。只涉及测试边界，不引入新的WPF模拟事件或异步工作器。
+- 截至登记，Windows专项[ROI UIA #41047082984](https://github.com/oudream/cx-visual-x3/actions/runs/41047082984)于`5f26f5d5`仍pending，没有真实G3/G4/G5成功证据。保留已触发运行的诊断输出，不将排队作业视为通过；继续由固定SHA实际日志裁决IMG-05是否可关闭。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
