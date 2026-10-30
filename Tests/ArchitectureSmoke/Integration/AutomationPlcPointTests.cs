@@ -509,6 +509,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "没有Start的周期会话必须零网络副作用");
                     Reject<InvalidOperationException>(() => neverStarted.Start());
 
+                    // 周期采样的点表非法漂移必须在首帧以前fail-closed，
+                    // 完成任务呈Faulted，且原有Good质量变Stale但没有新增采样。
+                    int requestsBeforeDriftPoll = plc.Requests;
+                    IMDSVariableSnapshot beforeDriftPoll = table.Inspect("Station.Word");
+                    PADPlcPollingSession driftPoll = new PADPlcPollingSession(
+                        bridge, new[] { "word" }, TimeSpan.FromMilliseconds(80));
+                    string priorAddress = livePoint.Address;
+                    livePoint.Address = "holding:106";
+                    try
+                    {
+                        driftPoll.Start(runImmediately: false);
+                        Check(SpinWait.SpinUntil(() => driftPoll.Completion.IsCompleted, 5000) &&
+                            driftPoll.Completion.IsFaulted,
+                            "周期采集点表漂移应在首轮预检后进入显式Faulted");
+                        Reject<InvalidOperationException>(() =>
+                            driftPoll.StopAsync().GetAwaiter().GetResult());
+                        IMDSVariableSnapshot driftQuality = table.Inspect("Station.Word");
+                        Check(plc.Requests == requestsBeforeDriftPoll &&
+                            driftPoll.CompletedCycles == 0 &&
+                            driftQuality.Quality == MDSVariableQuality.Stale &&
+                            driftQuality.RefreshUtc == beforeDriftPoll.RefreshUtc &&
+                            object.Equals(driftQuality.CurrentObject, beforeDriftPoll.CurrentObject),
+                            "非法周期点表不能发送网络帧或继续保留Good质量");
+                    }
+                    finally
+                    {
+                        livePoint.Address = priorAddress;
+                    }
+                    Check((ushort)bridge.ReadAndMapAsync("word", CancellationToken.None)
+                        .GetAwaiter().GetResult() == 91 &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good,
+                        "点表恢复后只有重新读取PLC才能恢复MDS Good");
+
                     // 连接一旦明确关闭，原Good不能继续用于现场控制；
                     // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
                     IMDSVariableSnapshot beforeClose = table.Inspect("Station.Word");
