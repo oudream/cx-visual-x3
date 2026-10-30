@@ -472,6 +472,13 @@
 - **修复精确匹配**：[a1004028](https://github.com/oudream/cx-visual-x3/commit/a1004028cb32bbf06dc8ad2936088a31e3443ce7)不再因三个控件同为1148而判“存在多个文件名框”，只接受唯一内层`Edit`且其ID或父ID匹配1148/1001，再以`AutomationElement.FromHandle + ValuePattern.IsReadOnly`实际核验可写性；若Native Edit不支持ValuePattern，记录明确原因，不误填地址栏/搜索栏。[de30df40](https://github.com/oudream/cx-visual-x3/commit/de30df40ae0b51a9eaea56e638195f4dc0ffcc04)确认和取消按钮也仅对真实IDC=1/2进行Native HWND→UIA识别；失败时`WM_CLOSE`为测试失败清理，不算PASS。
 - **固定验收**：新[Studio ROI UIA #41054217425](https://github.com/oudream/cx-visual-x3/actions/runs/41054217425)对应`a1004028`登记时为pending；不宣称系统文件路径输入已成功，更不宣称ROI/G5闭环通过。继续依据新Windows逐步推进。
 
+### 7.25 IMG-05 完整原生RAW/鼠标/MEM提交通过至Ribbon编辑Tab，修复动态命令可发现性（2026-10-30）
+
+- **真实Windows固定证据**：[Studio ROI UIA #41054217425](https://github.com/oudream/cx-visual-x3/actions/runs/41054217425)与更晚的[同专项 #41064810230](https://github.com/oudream/cx-visual-x3/actions/runs/41064810230)均已证实Windows .NET48 x64 Studio及真实引用编译成功，原生OpenFileDialog文件名`Edit(1148)`的`ValuePattern`输入成功、真实Win32确认按钮成功关闭Dialog、有效Gray16/Stride10 RAW重绑成功、真实Win32鼠标在MPW图窗拖框创建面积ROI成功、用户通过Studio“保存选中ROI”按钮提交MEM工程Revision成功。两次接下来都**失败于UIA找不到`Studio.Engineering.Undo`控件**，不是Undo事务已失败。
+- **按现有Studio动态Ribbon修复**：核实`MainWindow.xaml`已有`Studio.Engineering.Undo/Redo`身份，但`StudioShell.UpdateStudioRibbon()`只将当前`_ribbonSelection`分组的按钮挂载到`StudioRibbonActions`，默认“主页”不包含“编辑”组。不能直接从默认RootElement找到尚未装载的撤销按钮。[c50e4599](https://github.com/oudream/cx-visual-x3/commit/c50e459975e575eb6b8fa60b82a410b7585d2f2b)为原有“编辑”菜单按钮增加稳定`Studio.Ribbon.Tab.Edit`自动化身份；[02c37f09](https://github.com/oudream/cx-visual-x3/commit/02c37f0964cb6a51d8650870281b75a12f59cd42)在测试中像真实用户先点击“编辑”Tab，待原有Undo/Redo按钮动态挂载后再用`InvokePattern`操作原命令。实际命令`StudioViewModel.UndoCommand/RedoCommand`调用`MVIVisualEditor.Undo/Redo`，又只委托同一个`MEMEngineeringSession.Undo/Redo`，不新增任何独立历史。
+- **避免GUI失败变120秒假超时**：[24da24f7](https://github.com/oudream/cx-visual-x3/commit/24da24f7f95583c9e2034c1d61a8e21159462873)令隔离的`--studio-roi-dialog-ui-self-test`验收进程在写入完整PASS/FAIL报告并结束`RunAsync`后，按结果调用`Environment.Exit(0/1)`。只影响一次性验收命令，不影响Studio正式产品；过去部分失败尽管已写FAIL，WPF宿主仍等待直到CI的120秒超时，现不再遮蔽真实失败。
+- **最新门禁**：[ROI UIA #41067212893](https://github.com/oudream/cx-visual-x3/actions/runs/41067212893)对应`24da24f7`首次查询仍queued；**上述新修复为G2且未取得固定新SHA PASS**，不得用前面实际通过的OpenFileDialog/Win32鼠标部分证据推导MEM撤销/重做、MRK/Mask/CSV全链或IMG-05 G5完成。下一步只根据这条真实日志继续关闭阻塞项。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
