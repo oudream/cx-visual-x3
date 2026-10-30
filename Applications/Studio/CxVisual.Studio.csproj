@@ -27,7 +27,7 @@
     <Compile Include="StudioShell.ResourceTree.cs"/>
     <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
-    <Compile Include="StudioShell.Variables.cs"/>
+    <Compile Include="StudioShell.Variables.cs"/><Compile Include="StudioShell.Hmi.cs"/>
     <Compile Include="StudioShell.RuntimeData.cs"/>
     <Compile Include="StudioShell.ResourceEditors.cs"/>
     <Compile Include="StudioShell.GraphicsTree.cs"/>
@@ -48,6 +48,7 @@
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Automation\CxVisual.Professional.Automation.csproj"><Project>{02494452-8A8C-593B-8B49-A58D05218D88}</Project><Name>CxVisual.Professional.Automation</Name></ProjectReference>
+    <ProjectReference Include="..\..\Professional\HMI\CxVisual.Professional.HMI.csproj"><Project>{BD648041-ACE5-59F1-8124-B8E0336450B8}</Project><Name>CxVisual.Professional.HMI</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Vision\CxVisual.Professional.Vision.csproj"><Project>{828ED8C8-D754-54EB-9934-E27843EAF22D}</Project><Name>CxVisual.Professional.Vision</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\CT3D\CxVisual.Professional.CT3D.csproj"><Project>{812C9CE6-98F0-554F-AC07-8AA3155C0065}</Project><Name>CxVisual.Professional.CT3D</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Presentation.Wpf\CxVisual.Mechanism.Presentation.Wpf.csproj"><Project>{718A728A-4133-59EF-804F-62B7E8EE11EA}</Project><Name>CxVisual.Mechanism.Presentation.Wpf</Name></ProjectReference>
