@@ -101,3 +101,10 @@ npm run dev
 H5 “守护诊断”、运行总览和程序详情已补充“启动隔离（含凭证）”说明，并继续展示原隔离原因、Program ID 与扫描时刻。随机 AttemptID 不等于 OS PID 创建代次；断电耐久性、原生进程树归属及真实设备 Ready 均未完成。此为上段旧版“遗留 PID 独立扫描仍有窗口”的增量修复记录，正式验收仍以 CI 和现场数据为准。
 
 详见 [V2.0整体架构第26章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)、[S01-S12验收矩阵第21章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)、[现场部署与离线处置](deploy/README.md)。
+
+
+## OS创建时间身份核验与H5证据显示（2026-10-30）
+
+启动凭证在 `Started(PID)` 时尝试补记 OS 创建时间 `processStartMs`；Daemon 异常重启时使用同一已有 `launchjournal.Scan` 只读观察当前 PID 创建时间及真实可执行文件是否吻合，核验结果合并到隔离原因，并通过原 `GET /api/v1/guard` 呈现在“守护诊断”和“程序详情”。新增的是诊断能力，不是进程归属或远程权限。即使同一 PID、OS 创建时间及程序文件都观察一致，也不得自动 Kill、自动清账或自动解除守护隔离；无法获取 OS 证据时状态仍为未知。
+
+实现与验收详情：[全类架构第27章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)及[S01-S12验收矩阵第22章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。正式 Go/Windows/macOS CI 和现场 PID 重用验收尚需固定 SHA 结果。
