@@ -738,3 +738,12 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-20 | 若未发现弹框，须输出同进程顶层UIA Window名/Class/HWND/Enabled、原生`#32770`窗口句柄及Studio RAW状态；真实Invoke异常不得被查窗超时覆盖 | `4d526bf4`、`cf5c19f4`、`2d8ea9f7` G2，固定新版Windows复测待验 |
 | R1-UIA-21 | UIA树跨桌面不可见时以Win32 EnumWindows枚举本进程原生文件框，使用`AutomationElement.FromHandle`继续操作真实输入框，且仅以实际成功执行算G5 | [ROI UIA #41048969722](https://github.com/oudream/cx-visual-x3/actions/runs/41048969722) 初次查询 pending，禁止跳过Dialog使用Helper伪造PASS |
 
+
+### IMG-05 Windows原生文件名控件UIA回归（2026-10-30）
+
+| ID | 验收点 | 固定证据与阶段 |
+|---|---|---|
+| R1-UIA-22 | 真正Studio WPF点击RAW重绑后，实际Win32`#32770`系统文件对话框出现并由本进程GUI线程句柄发现；绝不绕过系统打开文件窗口 | [#41052451610](https://github.com/oudream/cx-visual-x3/actions/runs/41052451610) **Studio编译与原生Dialog发现成功**，随后文件名编辑控件发现失败 |
+| R1-UIA-23 | 文件名框优先识别UIAutomation 1148/1001，兼容多层ComboBox+Edit及中英文Edit Name、ValuePattern可写性；有多个未知候选则拒绝并输出UIA控件树，不误填地址/搜索框 | `987d1a81` G2；[UIA #41053041715](https://github.com/oudream/cx-visual-x3/actions/runs/41053041715) 等待Windows复测 |
+| R1-UIA-24 | Windows模态等待期间禁止从后台同步调用`GetWindowText`或高频`RootElement.FindAll`；30秒记录Invoke/Dialog状态，120秒进程退出门禁必须打印已写STEP并上传报告，绝不算PASS | `9dc78fa6`、`5fa6220b`、`8a9f8ac8`、`d60e9a12` G2，最新Windows结果待验 |
+
