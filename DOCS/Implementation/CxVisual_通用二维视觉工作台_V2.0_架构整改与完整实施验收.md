@@ -392,6 +392,14 @@
 - **Studio来源守卫**：[2083d1f4](https://github.com/oudream/cx-visual-x3/commit/2083d1f410bb3f06a3181de9c6333e85c4b71f8f)在既有`StudioShell.ModuleCenter`增加组合判断`IsStudioVisionSourceCurrent`，Bind、正式ROI Run、Contour派生与普通RAW Run均记录本次`OriginalGeneration`；页面/版本/对象身份检查保持不变，源会话代次变化不能再导出或投影旧Run为当前结果。[97b5677e](https://github.com/oudream/cx-visual-x3/commit/97b5677ef947f85e5f7bd8804ffb4a2ee69528a6)补已有Studio R1-01正式重绑测试中“切换Original/Result槽不失效，同实例SetOriginal必须失效”的正反例。
 - **验收边界**：截至本条登记，Studio新代码对应[Studio S1 #41020562945](https://github.com/oudream/cx-visual-x3/actions/runs/41020562945)、[Module Center CPU #41020562903](https://github.com/oudream/cx-visual-x3/actions/runs/41020562903)已触发，尚未核定成功；IMG-02/03/05维持`InProgress`。完整Studio真实文件弹窗/人工UIA（G5）、双Pane人手鼠标、设备HIL及工业大图（G6）尚未验收。严禁用本次已有G4代替G5/G6。
 
+### 7.14 IMG-01/02 MVI单Owner编辑类型与双Pane来源收敛（2026-10-30）
+
+- **问题**：MPW先前除了`MVIImageOverlayEditGesture.Kind`外还维护Move/Resize/Rotate/PolygonVertex多套活动布尔和主/副Pane布尔；鼠标Up按另一份标志结束，外部锁定/隐藏时部分更新只清MPW状态，没有清MVI活动手势，后续可能遇到“上一手势未结束”的悬挂状态。
+- **MVI唯一编辑State**：[ee6bd2b1](https://github.com/oudream/cx-visual-x3/commit/ee6bd2b108b29dddaf93491154fca57eb448ef65)在既有State加UI无关`MVIImageGesturePane`、`OriginPane`、`IsEditing(kind,pane)`和`CompleteFrom(pane)`。默认`Begin(item,kind)`保持Primary兼容；错误Pane MouseUp不得提交，`Cancel/Complete`清除来源，不建新Store/Undo。固定[Imaging #41027841303](https://github.com/oudream/cx-visual-x3/actions/runs/41027841303)于`ee6bd2b1`整条success，含现有.NET48 x64构建与WPF/FIM/MVI/默认Smoke；**该固定SHA不含后续MPW收敛及新负例**。
+- **MPW接线与收敛**：[2af10970](https://github.com/oudream/cx-visual-x3/commit/2af1097098e95faf4d850caf012229117136bc37)三种编辑从主/副Pane入场时把发起Pane写入MVI；两个MouseUp调用`CompleteFrom(Primary/Secondary)`并用MVI状态判断，移除三组Secondary标志。[d15d33f7](https://github.com/oudream/cx-visual-x3/commit/d15d33f7c84a7407f5387368afeefc4a857a6aae)对象被外部隐藏、锁定或几何拒绝时走统一`CancelTransientGesture`清除State。[b6012244](https://github.com/oudream/cx-visual-x3/commit/b6012244b234c77a6dbbec95d0c68bf6f8e44db2)移除Resize/Rotate/PolygonVertex活动标志；[80694dd2](https://github.com/oudream/cx-visual-x3/commit/80694dd2774593701e2576644aa4f756ab7f209d)再移除Move活动标志，四类状态归MVI唯一管理。MPW仍负责WPF输入、起始几何、鼠标捕获与渲染，正式MEM/MTC事务保持原Owner。
+- **反证**：[28292975](https://github.com/oudream/cx-visual-x3/commit/28292975d97525879bc1b9d2378cbb5651ccbc65)新增MVI跨Pane错MouseUp不得提交、不抹写另一Pane草稿，正确Pane可完成、非法枚举拒绝、手势完成后来源清空；既有TCT WPF Esc/失捕/双Pane及四类几何数值回归保持。仅用本轮代码提交不能声称所有这些回归已执行通过。
+- **固定CI门禁**：`ee6bd2b1`的Imaging G3/G4已确认；带MPW收敛的[Imaging #41028450291](https://github.com/oudream/cx-visual-x3/actions/runs/41028450291)于`80694dd2`记录时仍queued，不能借早期成功升级为新SHA G4。IMG-01/02继续`InProgress`；真实主副Pane全程鼠标/失焦G5、工业大图及多DPI G6仍需专项验收。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
