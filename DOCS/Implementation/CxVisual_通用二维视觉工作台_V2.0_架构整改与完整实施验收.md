@@ -281,6 +281,17 @@
 
 初始状态：`IMG-01～IMG-18 = Open（统筹已建立；既有局部源码和历史CI由原台账保持）`。此状态只表示整改任务未逐项关闭，不否认已有成熟功能。
 
+### 7.1 R1-01 首批正式源码：重开工程原图重绑、Run/导出与版本防串线（2026-10-30）
+
+- **任务/Case**：IMG-03（来源与请求代次，部分）、IMG-05（Studio正式工程闭环，部分）、IMG-12（错源投影，部分）、IMG-18（新增测试门禁）；CASE-01/02/07。**状态**：源码与正式Windows测试定义已提交，G2；对应Windows CI尚未返回固定SHA成功证明，G3/G4/G5/G6不得标通过。
+- **真正解决的用户操作缺口**：关闭重开MEM工程后，原Studio只允许在一次已有`displayedRun`上点击“运行工程ROI”，没有直接重绑现存ROI的原始文件入口。现在增设`Studio.ModuleCenter.BindSavedRoiRaw`及`BindSavedRoiStride`，明确从**当前工程页MEM双Aspect ROI**获得尺寸/位深/原图Hash；用`FIMRawImageReader.LoadFile`在后台读取、`CxVisionRoiEngineering.VerifySource`核验；不创建新检测页、不伪造Run、不隐式加载MHS。
+- **运行/结果改进**：重绑成功后原图进入同一MPW/MVI；`RunSavedRoi`使用MEM中真实ROI与固定参数/Revision恢复MRK，成功后展开多类型结果、激活CSV及RAW导出；`ExportRunRaw`可导出已选Image/Mask或未选时原图，调用FIM无损RAW Writer保留Stride，CSV继续使用唯一PVC导出器；恢复按钮与取消关联。`hasCurrentRun`额外验证ProjectId、PageId、Revision及原图引用；当前工程页/版本变化不允许将旧Run当作当前证据。
+- **并发防护**：重绑前验证MEM ROI存在，重绑后核对同一工程会话、当前Page、Revision及PreviewEpoch；旧异步完成不会覆盖新会话。普通RAW和正式ROI Run互斥；MRK取消不发布新Run。基础校验与幂等身份仍归PVC/MEM/MVI Owner，不添加第二运行/数据体系。
+- **新增STA测试源码**：Studio `VerifyStudioSavedRoiRebind` 用4×4 Gray16+Stride10真实文件、保存关闭重开、指纹验源、错误行步长/改像素/预取消反例、MRK配置Revision=43及6px²、MPW Mask原图关联、CSV/RAW回读同字节验证。独立CPU闭环测试新增强制第二PASS；同步更新`.github/workflows/module-center-cpu-windows.yml`验收规则，不放宽失败数或绕过旧测试。
+- **涉及源码提交**：[`b837f0a`](https://github.com/oudream/cx-visual-x3/commit/b837f0a9ee301afcbc7055fe27a516a32049f31a) PVC源校验；[`d6afefa`](https://github.com/oudream/cx-visual-x3/commit/d6afefafeffe17736106b3023a36883ffaaa4c15) Studio原图重绑；[`9dd1375`](https://github.com/oudream/cx-visual-x3/commit/9dd137547a810c086be26f3fcc9bcdc9f91f0b24) STA正反测试；[`94a8814`](https://github.com/oudream/cx-visual-x3/commit/94a8814ef0cea4591d3914a7403b156149b0524a) 修正像素Hash反例及自动化ID；[`a344b25`](https://github.com/oudream/cx-visual-x3/commit/a344b2570263d0a3e42cb27f2cbb1fee4f15fd8d) CPU双PASS强制CI；[`c5a99f2`](https://github.com/oudream/cx-visual-x3/commit/c5a99f21f92526c3ee11db449df3583eff3b8051) RAW出口；[`89b11a5`](https://github.com/oudream/cx-visual-x3/commit/89b11a5cc1ed2a65e0e8d8ff4984442d26ac9194) RAW控件测试；[`1d90c68`](https://github.com/oudream/cx-visual-x3/commit/1d90c6838e2d44517f0787c31bb31f306d327bed) 当前结果页面与Revision验证。
+- **验收待办**：核对最终对应SHA Windows编译、`--module-center-cpu-self-test`双PASS、Studio `--shell-self-test`、Imaging/默认回归；补真实Windows STA完整弹框操作/截图与多次保存重开；实测6144×3072大图性能、设备输入/许可证HIL。Headless/STA自动调用真实MPW控件不等于用户实际弹窗与设备G5/G6。当前RAW重绑仅支持明确指定Little-Endian Gray8/16与Stride，未实现通用设备/网络源绑定。
+- **下一实施切片**：在固定SHA CI确认后，补齐真实Studio鼠标/文件对话框UIA端到端和重新运行后Contour/ROI显示的交互回归；逐项升级IMG-03/04/05的Run结果合同，保留原公共API。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
