@@ -20,6 +20,21 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         public int TriangleCount {get{return TriangleIndices.Count/3;}}
     }
 
+    /// <summary>仅显示的点云快照；原值索引与浮点显示位置一一对应。</summary>
+    public sealed class MPWVolumeDisplayPointCloud
+    {
+        internal MPWVolumeDisplayPointCloud(List<Vector3> points,List<int> originalIndices,int sourceCount)
+        {
+            Points=points.AsReadOnly();
+            OriginalIndices=originalIndices.AsReadOnly();
+            SourceCount=sourceCount;
+        }
+        public ReadOnlyCollection<Vector3> Points {get;private set;}
+        public ReadOnlyCollection<int> OriginalIndices {get;private set;}
+        public int SourceCount {get;private set;}
+        public int Count {get{return Points.Count;}}
+    }
+
     /// <summary>
     /// 唯一的CT表面物理坐标→体空间显示投影桥梁。
     /// 输入mm真值来自FVO Frame；输出float仅供WPF/GL显示，绝不返回专业计量值。
@@ -90,6 +105,40 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 frame,width,height,depth,triangleBudget);
         }
 
+        /// <summary>FGE原值PointCloud→有界MVI/MPW显示，保留原始点索引以便回到double物理量。</summary>
+        public static MPWVolumeDisplayPointCloud ProjectPointCloud(
+            FGEPointCloud3D cloud,FVOVolumeSpatialFrame frame,
+            int width,int height,int depth,int maximumPoints=12000)
+        {
+            if(cloud==null)throw new ArgumentNullException("cloud");
+            if(frame==null)throw new ArgumentNullException("frame");
+            if(width<2||height<2||depth<2)throw new ArgumentOutOfRangeException("width");
+            if(maximumPoints<1||maximumPoints>12000)
+                throw new ArgumentOutOfRangeException("maximumPoints");
+            ReadOnlyCollection<int> indices=cloud.DisplaySampleIndices(maximumPoints);
+            var points=new List<Vector3>(indices.Count);
+            var selected=new List<int>(indices.Count);
+            foreach(int index in indices)
+            {
+                FGEPoint3D p=cloud.Points[index];
+                FVOVoxelCoordinate3D v=frame.PhysicalToVoxel(p.X,p.Y,p.Z);
+                double x=(v.X+.5)/width-.5;
+                double y=(v.Y+.5)/height-.5;
+                double z=(v.Z+.5)/depth-.5;
+                if(double.IsNaN(x)||double.IsInfinity(x)||
+                    double.IsNaN(y)||double.IsInfinity(y)||
+                    double.IsNaN(z)||double.IsInfinity(z)||
+                    v.X<-.00001||v.X>width-1+.00001||
+                    v.Y<-.00001||v.Y>height-1+.00001||
+                    v.Z<-.00001||v.Z>depth-1+.00001)
+                    throw new ArgumentOutOfRangeException("cloud",
+                        "PointCloud物理点超出当前Volume；检查资产Frame、尺寸和来源版本。");
+                points.Add(new Vector3((float)x,(float)y,(float)z));
+                selected.Add(index);
+            }
+            return new MPWVolumeDisplayPointCloud(points,selected,cloud.Count);
+        }
+
         public static ReadOnlyCollection<Vector3> Project(
             IReadOnlyList<FVOPhysicalPoint3D> physicalPoints,FVOVolumeSpatialFrame frame,
             int width,int height,int depth,int maxPreviewPoints=12000)
@@ -108,14 +157,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             {
                 FVOPhysicalPoint3D p=physicalPoints[i];
                 FVOVoxelCoordinate3D v=frame.PhysicalToVoxel(p.X,p.Y,p.Z);
-                double x=v.X/(width-1),y=v.Y/(height-1),z=v.Z/(depth-1);
+                // 与ProjectMesh、体素面外框和GL体绘使用同一体素中心约定。
+                double x=(v.X+.5)/width-.5,y=(v.Y+.5)/height-.5,z=(v.Z+.5)/depth-.5;
                 if(double.IsNaN(x)||double.IsInfinity(x)||
                    double.IsNaN(y)||double.IsInfinity(y)||
                    double.IsNaN(z)||double.IsInfinity(z)||
-                   x<0||x>1||y<0||y>1||z<0||z>1)
+                   v.X<-.00001||v.X>width-1+.00001||
+                   v.Y<-.00001||v.Y>height-1+.00001||
+                   v.Z<-.00001||v.Z>depth-1+.00001)
                     throw new ArgumentOutOfRangeException("physicalPoints",
                         "Surface点超出当前原始Volume范围；检查来源Frame/尺寸/版本。");
-                vertices.Add(new Vector3((float)(x-.5),(float)(y-.5),(float)(z-.5)));
+                vertices.Add(new Vector3((float)x,(float)y,(float)z));
             }
             return vertices.AsReadOnly();
         }
