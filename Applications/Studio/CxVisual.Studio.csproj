@@ -21,6 +21,7 @@
   <ItemGroup>
     <Compile Include="StudioViewModel.Engineering.cs"/>
     <Compile Include="MOLRuntimeOverlay.cs"/>
+    <Compile Include="StudioProfessionalFlowResolver.cs"/>
     <Compile Include="StudioShell.cs"/>
     <Compile Include="StudioCT3DDocument.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
