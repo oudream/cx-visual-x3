@@ -38,6 +38,13 @@ jobs:
             & msbuild.exe $p /t:Restore,Build /p:Configuration=Debug /p:Platform=x64 /v:minimal
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $p" }
           }
+      - name: Exercise owner-derived Service observation
+        shell: pwsh
+        run: |
+          $exe = 'Output/Debug/x64/CxVisual.Tests.ArchitectureSmoke.exe'
+          if (!(Test-Path $exe)) { throw "Missing ArchitectureSmoke: $exe" }
+          & $exe --service-observe
+          if ($LASTEXITCODE -ne 0) { throw "Service observation regression failed: $LASTEXITCODE" }
   supervision-go:
     strategy:
       fail-fast: false
