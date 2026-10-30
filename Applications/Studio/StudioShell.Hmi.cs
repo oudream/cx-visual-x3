@@ -34,7 +34,14 @@ namespace CxVisual.Studio
             };
             RegisterStudioResourceViewer(HmiViewerId, "HMI实时运行观察",
                 CreateStudioHmiRuntimeView, false, "core.page");
-            Closed+=(sender,args)=>ReleaseStudioScadaReadOnly();
+            // Window关闭时Dock由原Studio释放，HMI只停止后台Pipe会话，
+            // 避免在WPF Closed回调中再次操作已经拆卸的布局容器。
+            Closed+=(sender,args)=>
+            {
+                PHMScadaRemoteReadSession running=_studioRemoteHmi;
+                _studioRemoteHmi=null;
+                if(running!=null)running.Dispose();
+            };
         }
 
         /// <summary>在现有Page下打开真正的MVI/SceneView运行投影；未连接时明确提示。</summary>
