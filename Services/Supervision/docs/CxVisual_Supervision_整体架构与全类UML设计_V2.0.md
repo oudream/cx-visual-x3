@@ -866,3 +866,41 @@ sequenceDiagram
 - cmd/daemon/workers_test.go 和 owned_stop_test.go：新旧 Worker 控制器交接、退出释放、拒绝不存在的守护者，确认与未知的诊断文本严格区分。
 - 已实际在本地 Go 1.23.2/Linux amd64 **独立最小模块**运行 StopController 同构核心的 go test -race -count=15 ./...，通过；**并非主仓库完整构建、Go 三平台 CI 或 G1 通过**。需以固定 SHA 检查监督迁移 GitHub Actions。
 - 详细追溯以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 为准。
+
+
+## 22. 停止信号失败与关停PID竞态修复（2026-10-30）
+
+### 22.1 两项真实缺陷与 Owner 纠偏
+
+- 停止信号失败误归因：原 StopController.RequestStop 在 Kill 成功之前将 requested 标志置为 true。若 Kill 失败，原 Worker 后续 cmd.Wait 完成时 finish 仍会把这次真实退出归为受控停止，误清 ErrorCount。现在仅在原 os.Process.Kill 成功后、同一个锁区内标记 requested；失败保持 signal-failed，不掩盖真正的崩溃及重试阈值。
+- 关停漏停：Daemon 主循环通过 _runProgramIds 列举正在运行的子进程，而 EventStart 尚未被消费时该表没有真实 PID。现在由 programWorkerGate.ownedChildren 在现有守护代次中读取 StopController.ActivePID，拿到已 Attach 的原始 exec.Cmd.Process，再交 queueOwnedStop 检查代次与进程句柄。关闭时不再依赖事件驱动的旧 PID 表扫描或 os.FindProcess 裸 PID 停止。
+
+~~~mermaid
+sequenceDiagram
+ participant Worker as 原守护Worker
+ participant Gate as programWorkerGate
+ participant Main as Daemon主循环
+ participant Child as exec.Cmd子进程
+ Worker->>Child: cmd.Start
+ Worker->>Gate: 当前代StopController持有实际子进程
+ Note over Worker,Main: EventStart可能仍在事件通道等待处理
+ Main->>Gate: ownedChildren(当前原始句柄快照)
+ Gate-->>Main: ProgramId与原始活动PID
+ Main->>Worker: queueOwnedStop经原代次控制器请求停止
+ Worker->>Child: Kill原始os.Process
+ Child-->>Worker: 子进程真正退出
+ Worker->>Worker: cmd.Wait及finish
+ Worker-->>Main: wait-confirmed或unknown/failed
+~~~
+
+**类清单无需新增条目**：这些实现属于既有 StopController、programWorkerGate、RunProgramContextWithStop 的职责细化，避免另造进程管理或采样状态真源。现有 136 项全类对象条目数不变。
+
+### 22.2 真实测试与验收层级
+
+- stop_test.go 增加 Kill 失败后不设受控停止、ActivePID 的附着/Wait 生命周期测试。
+- workers_test.go 以真实隔离子进程故意堵住 EventStart 消费，验证旧 PID 表尚未更新时仍能发现活动子进程；取消后 Wait 真实清理。
+- supervision-migration.yml 的 Linux Go job 添加针对 internal/daemonc 停止路径的 Go -race 测试；Windows/macOS 原编译与单元测试矩阵仍在。
+- 当前 Linux/Go 1.23.2 上同步关键算法的独立最小工程执行 go test -race -count=20 ./... 与 go test -count=20 ./... 均成功。**主仓库全部包构建与 CI 状态未取得可验证的完成记录**，按 S 已提交、G1/G2/G3 未验处理。
+- 启动前旧 PID 文件清理仍只有保守可执行文件身份校验，不具备原 Worker Wait 确认；业务流程、设备进程树和 S11 权限审计继续待实现。
+
+实施完成度统一追溯 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十七章。
