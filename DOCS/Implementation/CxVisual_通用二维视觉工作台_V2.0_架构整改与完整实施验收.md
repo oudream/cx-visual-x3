@@ -332,6 +332,15 @@
 - 为重新覆盖经过跨专业修复的当前代码，在`RuntimeVisionResultTests`补充“Empty候选但有效零统计仍为Valid、未提供当前源必须Stale”测试（`86aa81a5`，`f57ccda8`修正按唯一输出名取值）。[Imaging最新SHA `f57ccda8` #41004342250](https://github.com/oudream/cx-visual-x3/actions/runs/41004342250)和[Unified Runtime #41004342241](https://github.com/oudream/cx-visual-x3/actions/runs/41004342241)触发时均在队列，不能提前宣布完整G4。
 - **保留判据**：结果Kind=Statistic且值为0属于有效统计，不因数值为零自动Empty；只有候选计数为0的DetectionSummary标记Empty。Run执行失败、Cancelled、Rejected的证据仍由原MRK状态Owner负责，不能在PVC制造新成功Run。
 
+### 7.7 IMG-01/02 第一切片：单Owner图元编辑State与取消回滚（2026-10-30）
+
+- **目标/风险**：既有MPW多布尔标志控制Move/Resize/Rotate/PolygonVertex，编辑途中向唯一MVI OverlayStore写入不可变新对象，Esc、意外失捕、切工具/图像之前没有统一回滚路径。此为已观察到的结构风险，本切片不声称已经移除所有MPW状态字段或关闭18项。
+- **GoF State/OOP**：[`32716947`](https://github.com/oudream/cx-visual-x3/commit/32716947dd0dee3a704876354c925e687a4880b0)新增无WPF `MVIImageOverlayEditGesture`，只持有`MVIImageOverlayStore`引用、编辑前快照和最后一次自身写入；接口`Begin/TryUpdate/Complete/Cancel`，单次仅一对象；取消恢复同一稳定Guid的原始几何，而外部已经删除/锁定/替换时不覆盖新状态。[`5bae2ef1`](https://github.com/oudream/cx-visual-x3/commit/5bae2ef16bb239c2a7f183ba3611e96dfd72948b)加入原MVI .NET4.8 csproj，不建新项目、持久Undo或复制Store。
+- **MPW协作**：[`65744af0`](https://github.com/oudream/cx-visual-x3/commit/65744af09f3dca99790fac9dfafd24b9f50b884c)现有`MPWImageViewerControl`四类图元鼠标编辑使用同一State合同，`CancelTransientGesture`承接工具切换、ShowOriginal、Clear及帧更新；[`b0824bb5`](https://github.com/oudream/cx-visual-x3/commit/b0824bb51edd0fef93339c90432476e3f96ff27e)双Pane注册Escape/LostMouseCapture；[`ae623a9a`](https://github.com/oudream/cx-visual-x3/commit/ae623a9a9086e3c64f82b391fd435684d33a24cc)按手势来源Pane提交，避免右Pane鼠标Up结束左Pane编辑；[`ab4564e5`](https://github.com/oudream/cx-visual-x3/commit/ab4564e51b4a1f484627da07a767a4e27a8af911)避免两个Pane重叠拖动。
+- **反证**：[`eba9d445`](https://github.com/oudream/cx-visual-x3/commit/eba9d4453635a5cbdbf3bd3ecdddbd7ab1919e13)在`MVIImageOverlayTests`增加独占Begin、非法类型/GUID、Cancel恢复同一对象、Complete后取消幂等、外部样式改动/锁定/删除不回滚覆盖；保留既有矩形/多边形/八柄/旋转/双Pane及图元状态测试。
+- **架构限制**：手势更新遵循`MVIImageOverlayStore`原有“UI Owner线程串行调用”约束，没有虚报跨线程CAS；正式MEM/MTC提交及Undo未改变。WPF路径新加Esc/失捕事件接线，但真实鼠标拖动/键盘操作G5须单独验证，不能用SDK测试代替。
+- **初始状态**：IMG-01/02=`InProgress`；新代码和反例已提交=G2；针对最新源码的Imaging Windows/Studio/TestCenter CI G3/G4应附SHA和run实际结论，尚未完成时不能写Passed。后续按行为逐类取消MPW重复标志，先保证现有工具正反和PNG可视测试稳定，再扩展复杂ROI。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
