@@ -52,12 +52,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 frame.VoxelToPhysical(10,20,30)
             };
             var projected=MPWVolumeSurfaceProjection.Project(physical,frame,11,21,31);
-            Check(projected.Count==3 && Math.Abs(projected[0].X+.5)<.000001 &&
-                Math.Abs(projected[0].Y+.5)<.000001 &&
+            Check(projected.Count==3 &&
+                Math.Abs(projected[0].X-(.5/11-.5))<.000001 &&
+                Math.Abs(projected[0].Y-(.5/21-.5))<.000001 &&
                 Math.Abs(projected[1].X)<.000001 &&
                 Math.Abs(projected[1].Y)<.000001 &&
-                Math.Abs(projected[2].Z-.5)<.000001,
+                Math.Abs(projected[2].Z-(30.5/31-.5))<.000001,
                 "非等距/旋转的物理毫米Source经Frame逆变换投影到真实三维体空间");
+            var realCloud=new FGEPointCloud3D(new[]{
+                new FGEPoint3D(physical[0].X,physical[0].Y,physical[0].Z),
+                new FGEPoint3D(physical[1].X,physical[1].Y,physical[1].Z),
+                new FGEPoint3D(physical[2].X,physical[2].Y,physical[2].Z)
+            });
+            MPWVolumeDisplayPointCloud projectedCloud=
+                MPWVolumeSurfaceProjection.ProjectPointCloud(realCloud,frame,11,21,31);
+            Check(projectedCloud.SourceCount==3&&projectedCloud.Count==3&&
+                projectedCloud.OriginalIndices[1]==1&&
+                Math.Abs(projectedCloud.Points[0].X-projected[0].X)<1e-7&&
+                Math.Abs(projectedCloud.Points[1].Y-projected[1].Y)<1e-7&&
+                Math.Abs(projectedCloud.Points[2].Z-projected[2].Z)<1e-7,
+                "同一旋转/非等距Frame下PointCloud与Surface必须落在相同GL/WPF空间且保留原值索引");
+            bool invalidCloud=false;
+            try{MPWVolumeSurfaceProjection.ProjectPointCloud(new FGEPointCloud3D(
+                new[]{new FGEPoint3D(5000,5000,5000)}),frame,11,21,31);}
+            catch(ArgumentOutOfRangeException){invalidCloud=true;}
+            Check(invalidCloud,"PointCloud不同Frame或体外数据禁止误叠加到当前CT Volume");
             bool invalidFrame=false;
             try
             {
