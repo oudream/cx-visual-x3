@@ -187,3 +187,14 @@ A增加真实OS Modbus TCP的`--automation-plc` G1：Decision/MRK正式Plan发�
 HMI-B必须通过只读Pipe`discover`先取得`DeviceRef/ConfigVersion/Generation`，且来自当前批准的项目`DeploymentVersion`；HMI发送命令时应同时携带对应`SessionGeneration`及`EffectiveVersion`。旧版、旧代次、字段缺失、权限/模式/专业点授权失败必须直接拒绝并显示，不得由UI补猜、重试或直接访问F17/PLC。Runtime.Host当前普通CLI仍只读，A仅提供**受信宿主内部**正式`MRHScadaRuntime.Open(...,additionalApproval,authorizeWrite)` + `RegisterTrustedWriteCommands`组合；并未向HMI启用一个未经认证的写Pipe。跨进程控制继续复用公共MRKCommandPipeServer/Client，须由Host的真实操作员授权、模式、安全联锁、审计与现场部署审核满足后才实际开放。
 
 在同一OS TCP Modbus G1中检查MRK通过的真实FC06+FC03、错误Effective、缺失Effective、错误/过期Generation、MOC Plan旧会话、Stop后旧Host以及ACK后读回不一致的`PLC_REGISTER_OUTCOME_UNKNOWN`。本轮相关源码`dd086170`、`7767f8f0`、`02b0cdca`、`08e29cbc`、`9c9fe459`；是否通过以相应固定SHA的Windows结果为准，不把未验证代码说成G1通过。寄存器读回一致不代表实际机械动作完成。
+
+
+## 16. A4受信MRK Windows Pipe宿主组合器（内部显式启用）（2026-10-30）
+
+`Applications/Runtime.Host/MRHScadaTrustedCommandPipe.cs` 将**既有** `MRKCommandCenter`、`MRKCommandPipeServer`和`PADScadaDeviceSession.RegisterWriteCommands`组合为一个必须显式启动的Host控制端点。构造时必须传入真实已批准且带`authorizeWrite`的`MRHScadaRuntime`、受控PipeName、CommandId、`Func<string,bool> authorizePeer`和`Func<MRKCommandContext,bool> authorizeCommand`；任何授权委托缺失即拒绝。先注册命令、后启动采集会话，只有`device.IsRunning && device.IsStillApproved`才允许`Start()`受信Pipe。
+
+MRK服务端以Windows命名管道ACL限制为宿主Windows账户，并由OS `GetImpersonationUserName()`取得真实调用方标识，再执行Host提供的Peer认证与MRK命令授权；**不使用客户端传入的`Caller`字符串作为身份**。专业PAD Provider仍有独立点级写授权、Connector EffectiveVersion及SessionGeneration门禁；MRK继续提供统一ResourceLease、OperationId去重及`QueryAsync`。控制前置条件还需要真正Host提供的操作员角色、控制模式、设备Ready/物理联锁政策；不可把Windows同账户当成生产权限许可。
+
+**供HMI-B消费的公共API**：使用既有`MRKCommandPipeClient(".", approvedPipeName)`，执行`InvokeAsync(new MRKCommandRequest(PADPlcMrkCommandRegistration.TargetForDevice(deviceRef), PADPlcMrkCommandRegistration.WriteUInt16Code, new Dictionary<string,object>{{"StableId",stableId},{"Value",(ushort)value},{"EffectiveVersion",configEffective},{"SessionGeneration",sessionGeneration}}, operationId:operationId, options:new MRKCommandOptions(remote:true), expectedSchemaVersion:1))`。对端的真实Caller从Windows peer获取；`QueryAsync(operationId)`只查询同一身份的受控操作，**Unknown时仅查询、不可自动重发**。当Session/Effective改变，旧命令被拒绝；场景释放时必须`StopAsync`并注销命令。
+
+首轮实际Windows Socket G1在`MRHScadaSmoke.RunAuthorizedDevice`中新增独立的OS NamedPipe收发、FC06+FC03、Query、错误Generation、命令模式撤权、Peer撤权及Stop拒写；关联实现SHA `a0aa314a`、`c5687ad5`、`7aeb1253`。**这些增量尚须对应SHA的Windows CI成功才算G1通过。** 本Host内部装配**没有默认生产CLI参数或配置自动启用控制**，原`scada-serve/scada-group-serve`继续只读，也未完成真正HMI窗口跨进程联合执行、Windows SCM、实机安全/HIL。
