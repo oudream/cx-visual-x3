@@ -277,6 +277,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "保持原Voxel四角/样本的毫米区间修改必须更新专业参数签名");
                 Reject<InvalidDataException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
                     persistedEdited.Source,.8,.1));
+                Reject<InvalidDataException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    persistedEdited.Source,double.NaN,.5));
+                Reject<InvalidDataException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    persistedEdited.Source,.48,double.PositiveInfinity));
                 Reject<InvalidOperationException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
                     shiftedSource,.48,.52));
                 Check(engineering.Revision==editRevision+1&&
