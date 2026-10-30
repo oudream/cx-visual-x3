@@ -9,6 +9,10 @@ on:
       - 'Mechanism/Connectivity/**'
       - 'Mechanism/Data/Variables/**'
       - '.github/workflows/scada-runtime-host-g1-windows.yml'
+# 同一master不断并行提交时仅验最新版，避免旧SHA排队占用Windows Runner。
+concurrency:
+  group: scada-host-g1-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   scada-real-tcp-g1:
     runs-on: windows-2022
