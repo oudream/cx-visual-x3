@@ -130,3 +130,10 @@
 - 正式`MRHScadaSmoke.RunTwoDevices`在原OS TCP Modbus FC03真实双工站运行时，另起**独立Windows进程**调用同一Host二进制的Probe而不是使用测试进程内的Group或MDS；验证双设备发现、PLC-A的MDS Value=73/Quality=Good/Revision>0、错误Generation返回`SESSION_VERSION_MISMATCH`、双PLC零FC06。它证明Host真实跨进程读通道，**尚不能冒称已经运行HMI-B的真实WPF窗口或跨账户认证**。
 - 关联源码SHA：`c437a9ab`（受限只读Probe）、`e1b6b341`（CLI入口）、`ecca26c65`（双PLC真实子进程正反G1）。本新增测试需以当前固定SHA的Windows真实CI成功证据为准。
 - 前次A5预检已在`f4b36a540adc3e800ad877a076a33d1a9326e95c`的Run `41048486875`通过 Windows x64 Restore/Build/真实TCP`scada-g1-smoke`；该结果不自动覆盖此轮跨进程新增断言。HMI-B独立G1已在Run `41049097234`通过Windows WPF/MDS/Pipe模拟合同，但那一轮未与A实际双PLC进程联合运行。
+
+
+## 16. 独立进程工程预检CLI验收（2026-10-30）
+- 在软件G1增加`PreflightFromProcess(project,configs,expectedExit)`，真正使用`Process.Start`运行另一个`CxVisual.Runtime.Host.exe scada-project-check`进程；它只能从保存的MEM工程与MHS Effective构建JSON，成功返回0、错误输出stderr和非零退出码。
+- 两个实际本机Modbus TCP夹具存在，但预检期间两台设备的FC03/FC06计数均必须严格为0；独立进程JSON必须证明相同的Project Deployment Effective、两个DeviceRef/Scope与正式点表，DeviceCommunicationValidated严格false。
+- 在工程配置故意复用同一个F17 ChannelId后，独立进程必须以退出码1拒绝，stdout不能出现表示通过的部署JSON，且无额外PLC IO。G1测试源码固定提交 `edd3c74d5f28075a32799922ba164a5bdd2e87ac`，具体Windows结果应以该SHA Actions运行成功为准。
+- 已关闭的旧门禁：`41048486875`对应SHA`f4b36a5`通过A5工程预检（进程内）；`41052078725`对应SHA`ecca26c`通过A3真实跨进程Pipe发现、MDS Good和旧Generation拒绝。这两项历史PASS不能自动证明本次新独立进程预检已经通过。
