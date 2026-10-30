@@ -160,3 +160,10 @@
 - 正式ArchitectureSmoke `--automation-plc`增MRK直接调用与MOC真实Flow两类正反：匹配Generation与Effective得到真实FC06+FC03，旧/错误Generation、缺少或旧Effective必须拒绝且不产生设备写入；`RunAuthorizedDevice` 在Runtime.Host新增明确项目审批和专业授权下真实FC06、回读、MDS质量、去重、业务Unknown与Stop禁写，同时拒绝未认证身份和过期会话。
 - 首批Host运行CI Run `41054939828` SHA `08e29cbc` 已证实.NET48 Host编译通过，但新G1运行失败，旧CLI只输出聚合异常简短信息。SHA `17fe287e`为测试命令加完整调用栈输出；检查测试夹具发现旧`TcpPlcFixture` FC03仅接受 count=2，实际受控PLC写入后的FC03读回count=1被错误拒绝，因此SHA `e8095c7e`把可写测试夹具的FC03返回长度/MBAP改为请求点数对应值；默认只读双工站夹具仍拒绝未批准的单点/写入。此为针对真实源码和日志的修复，**尚待新固定SHA Windows G1成功**。
 - G1纯软件真实OS TCP/身份委托/寄存器回读，不代表生产级认证、危险设备功能安全、SCM安装、跨进程命令操作审计持久化、物理执行器完成或HIL G2/G3。
+
+
+## 20. A4已通过的固定SHA软件G1证据（2026-10-30）
+- **正式Automation PLC Capability双版本G1 PASS**：SHA `9c9fe4598a4ef6a49b808cc2933707c00edd974f`，Actions Run `41055114657`，.NET Framework 4.8 Windows x64编译和`ArchitectureSmoke --automation-plc`真实本机OS Modbus TCP测试均成功。覆盖Decision/MRK真实FC06与FC03、MHS Effective/SessionGeneration双栅栏及其旧版负例；原G1 FC03/06和Unknown路径一同回归。
+- **正式独立Runtime.Host A1～A5本机软件G1 PASS**：SHA `e8095c7e8555a0b51837ab27af6f9abf9f026bcc`，Actions Run `41055614332`，Restore、Windows x64 Build和真实`scada-g1-smoke`均成功。Windows日志明确输出“PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift and MRK signed-in-process A4 PLC FC06/FC03”。测试包含正式MEM工程、正式MHS Effective、真实本机Modbus TCP、MDS Good/Revision、读端Pipe、单设备隔离恢复、受信Host MRK注入的单设备FC06+FC03回读、无授权拒绝、版本不符、旧Generation拒绝、ACK后回读不符Unknown、同OperationId去重、Stop后禁写。
+- **与此前失败的区分**：Run `41054939828`的Host构建虽成功，原G1新A4测试失败。根因在测试夹具仅允许FC03 count=2而正式写回读使用count=1；SHA `e8095c7e`已修复测试PLC按请求寄存器数返回标准MBAP，不放宽生产Modbus库或正常只读双PLC夹具验证。新版G1已通过，不再将该历史失败描述为当前阻断。
+- **仍未闭合**：OS验证的可信Operator身份接入SCADA Host生产命令端点、认证后的HMI跨进程MRK访问、模式/设备Ready/现场SafetyPLC联锁、受信Plan装载与SCADA设备绑定、命令持久Journal以及Windows SCM服务正式安装、断电恢复、PLC设备HIL G2/G3和长稳。G1只证明本机软件/寄存器闭环，不得扩大到物理执行器已动作或危险能量控制安全达标。
