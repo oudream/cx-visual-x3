@@ -578,3 +578,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - 同一结果面板：`RunSavedRoi`从现存MEM配方运行后真正展开MPW/ResultItem/CSV，并开放`Studio.ModuleCenter.ExportRunRaw`按Image/Mask或本Run原图输出FIM无损RAW（`c5a99f21`）；取消及异步晚到由已有MRK/MVI与Studio Epoch防护，`hasCurrentRun`纳入PageId和工程Revision（`1d90c683`）。
 - 新增Studio STA自动化代码：4×4 Gray16/Stride10→MEM提交/保存重开→重绑SHA验证→MRK（配置Revision43，面积6px²）→真实MPW结果选择→CSV+RAW；负例含错Stride、错像素、预取消，且检查工程Revision/Dirty不变（`9dd13754`、`94a8814e`、`89b11a5c`）。
 - CI：`module-center-cpu-windows.yml`改为原CPU路径与R1-01路径两条独立PASS、0 FAIL强制门禁（`a344b257`），Studio Shell原回归仍保留。**本条为已提交测试源码，不是Windows运行成功结论**；须以最终固定SHA CI、真实WPF输入/文件弹框UIA和场景复演升级G3/G4/G5。工业大图、设备Frame/HIL、长期Artifact仍待单独验收。
+
+### R1-01 固定SHA实测追记（2026-10-30）
+
+- 固定源码 `1d90c6838e2d44517f0787c31bb31f306d327bed` 的 [Module Center CPU Windows #40995860566](https://github.com/oudream/cx-visual-x3/actions/runs/40995860566) `raw-cpu-closure` **success**：.NET Framework4.8 Release/x64正式统一工程构建以及Studio WPF STA CPU路径与R1-01工程ROI RAW重绑两条测试均成功。此证据支持对应测试的G3/G4，测试中含真实MEM保存重开、Gray16 Stride、同源Mask/Measurement/导出。
+- 未取得手动文件弹窗、完整UIA/截图及工业HIL/大图实测，仍不可标R1产品级CASE-07全部G5/G6。代码工作与持续任务状态见最新实施统筹7.1～7.2。
+
