@@ -271,3 +271,46 @@ func TestProgramWorkerGateRejectsTerminalNoise(t *testing.T) {
 		t.Fatal("invalid program ID cannot be terminally locked")
 	}
 }
+
+
+func TestRecoveryProgramsSkipsDisabledAndTerminalLatch(t *testing.T) {
+	oldPrograms := getPrograms()
+	oldWorkers := _programWorkers
+	oldPIDs := _runProgramIds
+	_programWorkers = newProgramWorkerGate()
+	_runProgramIds = make(map[int64]int)
+	_programsMu.Lock()
+	_programs = []program.Program{
+		{ID: 810, Enabled: program.DISABLE, FirstWaitTime: 3600},
+		{ID: 811, Enabled: program.ENABLE, FirstWaitTime: 3600},
+	}
+	_programsMu.Unlock()
+	t.Cleanup(func() {
+		_programsMu.Lock()
+		_programs = oldPrograms
+		_programsMu.Unlock()
+		_programWorkers = oldWorkers
+		_runProgramIds = oldPIDs
+	})
+	_programWorkers.markTerminal(program.Event{
+		Event: program.EventMaxError, Status: program.Status{Id: 811},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		recoveryPrograms(ctx, make(chan program.Event))
+		close(done)
+	}()
+	select {
+	case <-done:
+		if ctx.Err() != nil {
+			t.Fatal("disabled or terminally locked program caused an unnecessary wait")
+		}
+	case <-ctx.Done():
+		t.Fatal("recovery waited despite disabled/terminally locked configuration")
+	}
+	if _programWorkers.has(810) || _programWorkers.has(811) {
+		t.Fatal("recovery started a disabled or terminally locked guardian")
+	}
+}
