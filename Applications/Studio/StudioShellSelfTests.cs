@@ -3658,6 +3658,36 @@ namespace CxVisual.Studio
                                 SelectedSliceRectangle==null,
                             "备用Case的未提交ROI不能污染正式MEM结果");
                         workspace.SelectCaseByIndex(0);
+                        // 已保存MEM Case的专业Mesh射线命中与多面ROI走Studio同一异步待保存流程。
+                        CT3DAnalysisCase beforeFace=workspace.CurrentAnalysis;
+                        CT3DMeshFaceReference faceHit;
+                        FGEMeshRayHit hit;
+                        Assert(workspace.TryPickMeshFace(
+                            new FGEPoint3D(25.25,35.25,55),
+                            new FGEVector3D(0,0,-1),out faceHit,out hit,
+                            CancellationToken.None)&&
+                            faceHit!=null&&Math.Abs(hit.Point.Z-46.5)<1e-9,
+                            "Studio SDK必须使用FGE原始Mesh物理射线命中真实面片。");
+                        var selectedFaces=new List<CT3DMeshFaceReference>();
+                        for(int triangle=0;triangle<beforeFace.Mesh.Mesh.TriangleCount;triangle++)
+                        {
+                            CT3DMeshFaceReference face=
+                                CT3DMeshFaceSelection.Reference(beforeFace,triangle);
+                            if(Math.Abs(face.PointA.Z-46.5)<1e-9&&
+                                Math.Abs(face.PointB.Z-46.5)<1e-9&&
+                                Math.Abs(face.PointC.Z-46.5)<1e-9)selectedFaces.Add(face);
+                        }
+                        var selectedFaceResult=AwaitStudioTask(workspace.RecomputeMeshFaceRoiAsync(
+                            selectedFaces,CancellationToken.None));
+                        Assert(workspace.HasPendingAnalysis&&selectedFaces.Count==8&&
+                            selectedFaceResult.Plane.SampleCount==9&&
+                            selectedFaceResult.RoiSignature==beforeFace.RoiSignature&&
+                            selectedFaceResult.Plane.ResultId!=beforeFace.Plane.ResultId,
+                            "Studio多真实Mesh面片ROI须后台原值重算并形成新的待保存Feature。");
+                        workspace.DiscardPendingAnalysis();
+                        Assert(!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
+                            "放弃三角面预览不能修改已提交MEM结果或跨Case身份。");
                         Assert(window.StudioEngineeringRevision==originalRevision,
                             "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
                         window.CloseStudioDocument("doc.ct3d");

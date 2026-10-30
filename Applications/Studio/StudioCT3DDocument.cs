@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Core;
@@ -602,6 +603,55 @@ namespace CxVisual.Studio
                     !Object.ReferenceEquals(original,_current)||index!=_caseIndex||
                     !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle))
                     throw new OperationCanceledException("ROI配方对应的工程会话或选区已变化，拒绝过期结果。");
+                PublishPendingResult(result);
+                return result;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_roiCancellation,linked))_roiCancellation=null;
+                linked.Dispose();
+            }
+        }
+
+        /// <summary>Studio调用专业FGE双精度原Mesh射线拾取，不使用显示LOD或虚拟面片。</summary>
+        public bool TryPickMeshFace(FGEPoint3D origin,FGEVector3D direction,
+            out CT3DMeshFaceReference reference,out FGEMeshRayHit hit,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(_disposed||_current==null||_engineering==null)
+                throw new InvalidOperationException("当前没有可拾取的CT3D专业Mesh工程。");
+            return CT3DMeshFaceSelection.TryPick(_current,origin,direction,
+                out reference,out hit,cancellation);
+        }
+
+        /// <summary>多个专业三角面子元素直接复用已有CT3D分析、取消、Scene预览与MEM提交，
+        /// 面片来源/拓扑在后台重新提取的原值Mesh上严格校验。</summary>
+        public async Task<CT3DAnalysisCase> RecomputeMeshFaceRoiAsync(
+            IReadOnlyList<CT3DMeshFaceReference> faces,CancellationToken cancellation)
+        {
+            if(_disposed||_engineering==null||_current==null||_state==null)
+                throw new InvalidOperationException("当前没有CT3D专业工程Case。");
+            if(faces==null)throw new ArgumentNullException("faces");
+            if(_roiCancellation!=null)
+                throw new InvalidOperationException("已有ROI分析运行中。");
+            CT3DAnalysisCase original=_current;
+            MVIVolumeViewState state=_state;
+            FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
+            int index=_caseIndex;
+            string root=_root;
+            long epoch=++_roiEpoch;
+            var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _roiCancellation=linked;
+            try
+            {
+                _status.Text="按双精度原Mesh真实三角面在后台重算专业结果。";
+                CT3DAnalysisCase result=await Task.Run(()=>
+                    original.RecomputeWithMeshFaces(root,faces,linked.Token),linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                if(_disposed||epoch!=_roiEpoch||!Object.ReferenceEquals(state,_state)||
+                    !Object.ReferenceEquals(original,_current)||index!=_caseIndex||
+                    !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle))
+                    throw new OperationCanceledException("面片ROI分析完成前工程或交互会话已变化。");
                 PublishPendingResult(result);
                 return result;
             }

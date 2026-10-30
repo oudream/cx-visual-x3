@@ -367,3 +367,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - CT3DMeshFaceSelection复用FGE已有双精度射线三角求交，CT3DMeshFaceReference持有来源签名、原Mesh提取方法/阈值、三角面索引与三个双精度原值顶点、稳定引用指纹，不创建WPF/GPU几何真值或第二MEM树。
 - 多三角面输入先按资产、Revision、Frame、提取配方及实际三角顶点逐项核验，再按SortedSet形成有序唯一原Mesh顶点ROI；CT3DAnalysisCase.RecomputeWithMeshFaces通过既有Analyze/FNU重新计算Feature/Measurement与签名。
 - ArchitectureSmoke使用真实UInt16 12³样本、物理射线、8个顶面三角面→9个不同顶点的确定性平面拟合，覆盖未命中、非法/重复面、取消、来源Revision以及Threshold变化拒绝。此包尚不等于完整WPF子元素鼠标选择或GPU实机G4/计量精度G5。
+
+
+### 10.29 B包：Studio专业Mesh面片拾取与异步ROI原值分析接入（2026-10-30）
+
+- StudioCT3DDocument公开TryPickMeshFace（复用FGE物理射线）及RecomputeMeshFaceRoiAsync（复用专业CT3DMeshFaceSelection、Case原值重算、Studio epoch取消、待保存Scene和唯一MEM提交），不允许旧Case/选区异步结果覆盖当前会话。
+- StudioShellSelfTests使用真实双Case MEM+UInt16工程，恢复CaseA后通过物理射线命中真实三角面，聚合8个顶面三角面原值重算9点平面，验证新ResultId与同RoiSignature、待保存、Discard后原Case结果身份不变。
+- Studio物理射线API是正式SDK路径，不等同已经实现3D视口鼠标射线反投影；后者与CAD拓扑、复杂ROI/工业精度仍在B包后续范围。本增量须取得独立固定SHA Studio S1与CT3D专项CI证据。
