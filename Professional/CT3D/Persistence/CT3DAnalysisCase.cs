@@ -441,6 +441,19 @@ namespace CxVisual.Professional.CT3D
                 mesh=>selectedVertexIndices,cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
         }
 
+        /// <summary>真实Mesh三角面子元素组合ROI；重新提取Mesh后验证资产及顶点，
+        /// 复用已有原值拟合/Result合同，MEM持久化仍由原工程Owner负责。</summary>
+        public CT3DAnalysisCase RecomputeWithMeshFaces(string root,
+            IReadOnlyList<CT3DMeshFaceReference> faces,CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("非MeshPlane案例不能使用三角面ROI。");
+            if(faces==null)throw new ArgumentNullException("faces");
+            return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
+                mesh=>CT3DMeshFaceSelection.ResolveVertices(Source,mesh,faces,cancellation),
+                cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
+        }
+
         /// <summary>更新圆柱轴向约束并进行原值重算，返回新Feature/Measurement。</summary>
         public CT3DAnalysisCase RecomputeWithCylinderAxis(string root,
             FVOPhysicalPoint3D axisDirection,CancellationToken cancellation)

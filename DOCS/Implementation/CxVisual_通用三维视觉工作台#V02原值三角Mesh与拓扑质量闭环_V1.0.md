@@ -360,3 +360,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **正反例**：ArchitectureSmoke/MVIVolumeViewTests在真实MEM Schema2保存重开后验证Mesh/CAD/PointCloud三类对象一次批量分组、幂等Revision、非法Layer整体拒绝，再执行隐藏、删除及主选择降级检查。StudioShellSelfTests用真实双Case RAW/MEM工程验证Mesh+Measurement组合选择后单次Data+Visual提交及重开选择顺序/隔离。
 - **已验证固定SHA**：多选基础修复SHA 5ed566d6bca57774efcdf26a04c5902649bd3096 对应CT3D B Windows G1～G3 41020403175、Imaging/MVI 41020403281、Studio S1 41020403295均SUCCESS；覆盖旧Schema1、组合Scene V2、WPF自测及编译。后续组合分组SHA 5029b26ba301744ce2a33fe698baa615703c19c2 的CT3D、Studio、TestCenter等Windows CI另行触发，状态未取得SUCCESS时不得把此增量标成已验证。
 - **剩余边界**：当前组合的是Scene实例选择与组织操作，不是Mesh三角面/点云点/CAD拓扑的工业级子元素拾取；复杂3D ROI、实时GPU G4及实测量具对照G5仍需实际开发和硬件证据。
+
+
+### 10.28 B包：原始Mesh三角面子元素引用及多面组合ROI（2026-10-30）
+
+- CT3DMeshFaceSelection复用FGE已有双精度射线三角求交，CT3DMeshFaceReference持有来源签名、原Mesh提取方法/阈值、三角面索引与三个双精度原值顶点、稳定引用指纹，不创建WPF/GPU几何真值或第二MEM树。
+- 多三角面输入先按资产、Revision、Frame、提取配方及实际三角顶点逐项核验，再按SortedSet形成有序唯一原Mesh顶点ROI；CT3DAnalysisCase.RecomputeWithMeshFaces通过既有Analyze/FNU重新计算Feature/Measurement与签名。
+- ArchitectureSmoke使用真实UInt16 12³样本、物理射线、8个顶面三角面→9个不同顶点的确定性平面拟合，覆盖未命中、非法/重复面、取消、来源Revision以及Threshold变化拒绝。此包尚不等于完整WPF子元素鼠标选择或GPU实机G4/计量精度G5。

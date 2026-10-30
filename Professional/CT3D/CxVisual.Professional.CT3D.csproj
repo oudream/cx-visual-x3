@@ -27,6 +27,7 @@
     <Compile Include="Analysis\CT3DSurfaceSphereAnalysis.cs"/>
     <Compile Include="Analysis\CT3DVoxelBoundaryMeshExtractor.cs"/>
     <Compile Include="Analysis\CT3DMeshPlaneAnalysis.cs"/>
+    <Compile Include="Analysis\CT3DMeshFaceSelection.cs"/>
     <Compile Include="Persistence\CT3DAssetReference.cs"/>
     <Compile Include="Persistence\CT3DAnalysisCase.cs"/>
     <Compile Include="Persistence\CT3DSliceRoiRecipe.cs"/>

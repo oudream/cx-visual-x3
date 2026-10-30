@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -44,6 +45,55 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(analysis.Mesh.Mesh.VertexCount==26 && analysis.Plane.SampleCount==9 &&
                 Math.Abs(analysis.Plane.PointMm.Z-46.5)<1e-9 && analysis.Plane.RmsResidualMm<1e-9 &&
                 !analysis.HasEvaluatedMeasurementUncertainty,"真实UInt16 Mesh到局部平面质量合同");
+            // 物理射线命中真实FGE原值三角面，多面组合ROI不依赖显示LOD。
+            var topFaces=new List<CT3DMeshFaceReference>();
+            for(int face=0;face<analysis.Mesh.Mesh.TriangleCount;face++)
+            {
+                CT3DMeshFaceReference triangle=CT3DMeshFaceSelection.Reference(analysis,face);
+                if(Math.Abs(triangle.PointA.Z-46.5)<1e-9&&
+                    Math.Abs(triangle.PointB.Z-46.5)<1e-9&&
+                    Math.Abs(triangle.PointC.Z-46.5)<1e-9)topFaces.Add(triangle);
+            }
+            Check(topFaces.Count==8,"原值2x2顶面应有8个真实三角面片。");
+            CT3DMeshFaceReference picked;
+            CxVisual.Foundation.Geometry.FGEMeshRayHit meshHit;
+            Check(CT3DMeshFaceSelection.TryPick(analysis,
+                new CxVisual.Foundation.Geometry.FGEPoint3D(25.25,35.25,55),
+                new CxVisual.Foundation.Geometry.FGEVector3D(0,0,-1),
+                out picked,out meshHit,CancellationToken.None)&&
+                picked.TriangleIndex==meshHit.TriangleIndex&&
+                topFaces.Any(face=>face.StableId==picked.StableId)&&
+                Math.Abs(meshHit.Point.Z-46.5)<1e-9,
+                "物理射线命中原值顶面，面片StableId与三角索引可追溯。");
+            Check(!CT3DMeshFaceSelection.TryPick(analysis,
+                new CxVisual.Foundation.Geometry.FGEPoint3D(100,100,55),
+                new CxVisual.Foundation.Geometry.FGEVector3D(0,0,-1),
+                out picked,out meshHit,CancellationToken.None)&&picked==null,
+                "空射线不得伪造专业子元素引用。");
+            var indices=CT3DMeshFaceSelection.ResolveVertices(source,analysis.Mesh,
+                topFaces,CancellationToken.None);
+            var recomputedByFaces=analysis.RecomputeWithMeshFaces(folder,topFaces,CancellationToken.None);
+            Check(indices.Count==9&&recomputedByFaces.Plane.SampleCount==9&&
+                recomputedByFaces.Plane.ResultId!=analysis.Plane.ResultId&&
+                recomputedByFaces.RoiSignature==analysis.RoiSignature&&
+                recomputedByFaces.ParameterSignature==analysis.ParameterSignature&&
+                recomputedByFaces.Plane.RmsResidualMm<1e-9,
+                "8个真实三角面展开9个唯一顶点，直接原值重算生成独立Feature。");
+            Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.Reference(analysis,-1));
+            Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.Reference(
+                analysis,analysis.Mesh.Mesh.TriangleCount));
+            Reject<ArgumentException>(()=>analysis.RecomputeWithMeshFaces(folder,
+                new CT3DMeshFaceReference[]{topFaces[0],topFaces[0]},CancellationToken.None));
+            Reject<OperationCanceledException>(()=>CT3DMeshFaceSelection.ResolveVertices(
+                source,analysis.Mesh,topFaces,new CancellationToken(true)));
+            var revisionChanged=CT3DAssetReference.Capture(folder,"source.raw",info,frame,8,
+                CancellationToken.None);
+            Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ResolveVertices(
+                revisionChanged,analysis.Mesh,topFaces,CancellationToken.None));
+            var differentThreshold=CT3DAnalysisCase.Analyze(folder,source,900,100,
+                CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None);
+            Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ResolveVertices(
+                source,differentThreshold.Mesh,topFaces,CancellationToken.None));
             var planeQuality=analysis.GetQualityEvidence();
             Check(planeQuality.Count==4&&
                 planeQuality.Any(m=>m.Kind=="plane.planarity-ratio"&&m.Unit=="ratio")&&
