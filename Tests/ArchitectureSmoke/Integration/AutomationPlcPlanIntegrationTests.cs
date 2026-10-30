@@ -194,6 +194,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(denied&&writes()==beforeReject,
                     "changed PLC point version was not rejected before device execution");
 
+                // A forged principal cannot be supplied through the MEM plan.
+                // It is injected by the Host and checked by MRKCommandCenter
+                // before the Modbus backend can execute any physical IO.
+                var untrusted=new PADPlcMrkWriteCapabilityProvider(commands,
+                    "station01","guest",ApprovedVersion);
+                var guestVision=new CxVisionThresholdProvider(options,12,untrusted);
+                MOCCompiledPlan guestPlan=binder.Bind(reopened,catalog,
+                    new RawCaptureResolver(guestVision),
+                    professionalTypes:professionalTypes,expectedCapabilityVersions:versions);
+                MRKFlowHandle guestFlow=engine.StartFlow(guestPlan.Plan,
+                    guestPlan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                Check(guestFlow.Completion.Wait(TimeSpan.FromSeconds(12)),
+                    "unauthorized PLC Flow did not settle");
+                MRKFlowResult refused=guestFlow.Completion.GetAwaiter().GetResult();
+                Check(refused.State==MRKFlowState.Failed&&
+                    refused.Results.ContainsKey(visionStep)&&
+                    !refused.Results.ContainsKey(plcStep)&&
+                    writes()==beforeReject,
+                    "untrusted Host caller escaped MRK authorization in a mixed professional Plan");
+
                 // Even if a Modbus command was acknowledged, a mismatched
                 // readback is UNKNOWN, not Completed PLC StepResult.
                 ignoreWrite(true);
