@@ -60,7 +60,7 @@ async function openDetail(row: Program): Promise<void> {
     </div>
     <el-alert v-if="guardError || !guardReport?.terminal.available || !guardReport?.orphans.available"
       type="warning" :closable="false" class="guard-notice"
-      title="守护证据来源不完整，程序运行状态不能排除闭锁或孤儿隔离"
+      title="守护证据来源不完整，不能排除闭锁、旧 PID 或未清算启动凭证"
       :description="guardError || '请查看“守护诊断”核查原始来源；这里不会把缺失数据视为正常。'" />
     <el-table :data="filtered" class="cx-table" row-key="id" empty-text="没有匹配的程序">
       <el-table-column label="程序 / 路径" min-width="240">
@@ -103,7 +103,7 @@ async function openDetail(row: Program): Promise<void> {
         <el-descriptions-item v-if="guardReport?.terminal.available" label="终止闭锁原因">
           {{ guardReport?.terminal.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="guardReport?.orphans.available" label="遗留进程隔离原因">
+        <el-descriptions-item v-if="guardReport?.orphans.available" label="启动隔离／凭证原因">
           {{ guardReport?.orphans.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
         </el-descriptions-item>
         <el-descriptions-item label="CPU">{{ detail.cpuPercent.toFixed(1) }}%</el-descriptions-item>
