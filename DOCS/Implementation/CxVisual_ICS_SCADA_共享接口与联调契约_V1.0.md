@@ -144,3 +144,8 @@ A新增可选 `scada-group-serve ... --recover [--read-pipe <pipeName>]`；当�
 Host新增可选 `scada-group-serve <project.cxproj> <mhsRoot> --recover-device [--read-pipe <pipeName>]`：仅通信异常影响的DeviceRef被摘除和重装，其余DeviceRef/Scope/Generation和MDS采集继续。**同一Pipe不退出**：故障PLC暂时不在Discover.Devices中，新世代恢复成功后以同DeviceRef/Scope、新Generation重新出现。原有客户端旧Generation请求要么返回DEVICE_NOT_FOUND（恢复空档），要么SESSION_VERSION_MISMATCH（恢复完成），均必须清除上一次Good并重新Discover后绑定；其余健康设备订阅可继续使用原会话版本。A在设备替换期间锁住读端快照与旧设备Dispose，保证快照不会引用已释放的MDS。
 
 本版只允许本机同账户只读Snapshot；尚无跨账户授权、可靠推送、SCADA远程可信控制或工业硬件身份判定。HMI-B保持公共Owner及原Pipe v1协议，不应将PLC reconnect认为现场执行器状态已确认。A的双PLC真TCP回归新增A断包重连而B不停采的反证，CI状态以提交SHA对应实际Windows运行日志为准。
+
+
+## 11. A2只读采集诊断计数（2026-10-30）
+
+A侧Runtime.Host的v1 Pipe discover/snapshot中，Devices[]增加仅附加的long字段：CompletedCycles、SuccessfulCycles、PartialCycles。它们直接透传同一个设备现有FCR/PADPlcPollingSession统计，只表示**当前SessionGeneration**已完成的FC03轮次、全成功轮次及部分失败轮次，不是设备物理执行动作或可持久趋势。断线替换后新Generation计数重新开始；HMI不得跨代次累计后认为是同一次稳定会话。旧B客户端无需以这些字段作为必填项；DataContractJsonSerializer对额外字段可忽略，SchemaVersion仍为1，旧字段、ACL、版本拒绝及只读操作保持不变。新的G1会验证两台PLC设备的独立SuccessCount>=2、PartialCycles=0与无写报文。
