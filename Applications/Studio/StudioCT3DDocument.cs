@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Media.Media3D;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Volume;
@@ -44,6 +45,9 @@ namespace CxVisual.Studio
         private CT3DAnalysisCase _current,_pending;
         // 与待保存结果绑定的MVI选区实例；ROI变更后不可保存过期专业结果。
         private FVOPhysicalSliceRectangle _pendingRoiSelection;
+        private readonly List<CT3DMeshFaceReference> _selectedMeshFaces=
+            new List<CT3DMeshFaceReference>();
+        private long _faceSelectionRevision,_pendingFaceSelectionRevision;
         private int _caseIndex=-1;
         private CancellationTokenSource _roiCancellation;
         private long _roiEpoch;
@@ -89,6 +93,13 @@ namespace CxVisual.Studio
                 catch(Exception error){_status.Text="已存ROI重算失败："+error.Message;}
             };
             toolbar.Children.Add(saved);
+            var faces=Button("选中面片重算","Studio.CT3D.AnalyzeFaces");
+            faces.Click+=async(sender,e)=>{
+                try{await RecomputeSelectedMeshFacesAsync(CancellationToken.None);}
+                catch(OperationCanceledException){_status.Text="面片ROI计算已取消，工程未修改。";}
+                catch(Exception error){_status.Text="面片ROI计算失败："+error.Message;}
+            };
+            toolbar.Children.Add(faces);
             var cancel=Button("取消分析","Studio.CT3D.CancelRoi");
             cancel.Click+=(s,e)=>CancelPendingAnalysis();
             toolbar.Children.Add(cancel);
@@ -101,6 +112,16 @@ namespace CxVisual.Studio
             SetRow(toolbar,0);SetColumnSpan(toolbar,2);Children.Add(toolbar);
             var host=new Grid();
             host.Children.Add(_scene);
+            _scene.MeshFaceRayRequested+=(sender,e)=>{
+                try
+                {
+                    CT3DMeshFaceReference face;FGEMeshRayHit hit;
+                    if(TryPickMeshFaceFromDisplayRay(e.DisplayOrigin,e.DisplayHit,
+                        out face,out hit,CancellationToken.None))
+                        ToggleMeshFaceSelection(face);
+                }
+                catch(Exception error){_status.Text="三维面片选取失败："+error.Message;}
+            };
             _workbench=new MPWVolumeFourViewWorkbenchControl(_xy,_yz,_xz,host,
                 ()=>_scene.ResetCamera(),steps=>_scene.Zoom(steps),
                 (dx,dy)=>_scene.Pan(dx,dy));
@@ -244,6 +265,7 @@ namespace CxVisual.Studio
                 _workbench.Bind(_volume,_state);
                 _state.PropertyChanged+=OnVolumeStateChanged;
                 _current=analysis;_pending=null;_pendingRoiSelection=null;_caseIndex=index;
+                _selectedMeshFaces.Clear();_faceSelectionRevision++;
                 BuildSceneReferences(analysis,false);
                 if(_owners[index].Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
                     a.ProviderId==MVI3DSceneLayoutPersistence.ProviderId))
@@ -427,6 +449,11 @@ namespace CxVisual.Studio
             }
             if(e.PropertyName=="SelectedSliceRectangle")
             {
+                if(_selectedMeshFaces.Count>0)
+                {
+                    _selectedMeshFaces.Clear();
+                    _faceSelectionRevision++;
+                }
                 // 唯一MVI ROI意图入口：鼠标、SDK、清除和跨正交视图均使旧预览失效。
                 CancelPendingAnalysis();
                 if(_pending!=null)
@@ -613,6 +640,56 @@ namespace CxVisual.Studio
             }
         }
 
+        public int SelectedMeshFaceCount {get{return _selectedMeshFaces.Count;}}
+
+        /// <summary>WPF显示射线经过原Voxel及FVO标定Frame变为真实毫米射线；
+        /// 只有专业FGE原Mesh重新求交的三角面StableId可进入选择集。</summary>
+        public bool TryPickMeshFaceFromDisplayRay(Point3D displayOrigin,Point3D displayHit,
+            out CT3DMeshFaceReference reference,out FGEMeshRayHit hit,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(_disposed||_volume==null||_state==null||_current==null)
+                throw new InvalidOperationException("缺少当前原Volume和CT3D专业案例。");
+            Point3D origin=_scene.DisplayPointToVoxel(displayOrigin);
+            Point3D target=_scene.DisplayPointToVoxel(displayHit);
+            FVOPhysicalPoint3D p=_volume.SpatialFrame.VoxelToPhysical(origin.X,origin.Y,origin.Z);
+            FVOPhysicalPoint3D q=_volume.SpatialFrame.VoxelToPhysical(target.X,target.Y,target.Z);
+            return TryPickMeshFace(new FGEPoint3D(p.X,p.Y,p.Z),
+                new FGEVector3D(q.X-p.X,q.Y-p.Y,q.Z-p.Z),
+                out reference,out hit,cancellation);
+        }
+
+        /// <summary>每个工程Case独立的临时面片选择集。修改即取消旧分析预览。</summary>
+        public void ToggleMeshFaceSelection(CT3DMeshFaceReference face)
+        {
+            if(face==null)throw new ArgumentNullException("face");
+            if(_disposed||_current==null||_current.Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("当前没有可编辑的原值MeshPlane案例。");
+            CT3DMeshFaceReference current=CT3DMeshFaceSelection.Reference(
+                _current,face.TriangleIndex);
+            if(current.StableId!=face.StableId)
+                throw new InvalidOperationException("面片的原始来源或拓扑发生变化。");
+            int existing=_selectedMeshFaces.FindIndex(x=>x.StableId==face.StableId);
+            if(existing<0&&_selectedMeshFaces.Count>=30000)
+                throw new InvalidOperationException("面片选择不得超过30000个。");
+            CancelPendingAnalysis();
+            if(_pending!=null)DiscardPendingAnalysis();
+            if(existing>=0)_selectedMeshFaces.RemoveAt(existing);
+            else _selectedMeshFaces.Add(current);
+            _faceSelectionRevision++;
+            _status.Text="选中原Mesh面片："+_selectedMeshFaces.Count+
+                "（Ctrl+Shift增删面片，点击「选中面片重算」）。";
+        }
+
+        public Task<CT3DAnalysisCase> RecomputeSelectedMeshFacesAsync(
+            CancellationToken cancellation)
+        {
+            if(_selectedMeshFaces.Count<1)
+                throw new InvalidOperationException("请先Ctrl+Shift点击原Mesh上的面片。");
+            return RecomputeMeshFaceRoiAsync(
+                new List<CT3DMeshFaceReference>(_selectedMeshFaces).AsReadOnly(),cancellation);
+        }
+
         /// <summary>Studio调用专业FGE双精度原Mesh射线拾取，不使用显示LOD或虚拟面片。</summary>
         public bool TryPickMeshFace(FGEPoint3D origin,FGEVector3D direction,
             out CT3DMeshFaceReference reference,out FGEMeshRayHit hit,
@@ -680,6 +757,7 @@ namespace CxVisual.Studio
         {
             _pending=result;
             _pendingRoiSelection=_state.SelectedSliceRectangle;
+            _pendingFaceSelectionRevision=_faceSelectionRevision;
             BuildSceneReferences(result,true);
             RefreshProfessionalOverlay();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
@@ -708,8 +786,9 @@ namespace CxVisual.Studio
             if(_pending==null||_engineering==null||_owners==null||_caseIndex<0)
                 throw new InvalidOperationException("当前没有待保存的专业编辑结果。");
             if(_state==null||
-                !Object.ReferenceEquals(_pendingRoiSelection,_state.SelectedSliceRectangle))
-                throw new InvalidOperationException("物理ROI已改变，拒绝保存与当前选区不一致的旧专业结果。");
+                !Object.ReferenceEquals(_pendingRoiSelection,_state.SelectedSliceRectangle)||
+                _pendingFaceSelectionRevision!=_faceSelectionRevision)
+                throw new InvalidOperationException("物理ROI或面片选择已变化，拒绝保存过期专业结果。");
             var visual=MVI3DSceneLayoutPersistence.CreateAspect(_state.Scene3D,CancellationToken.None);
             CT3DAnalysisPersistence.Commit(_engineering,_owners[_caseIndex],_engineering.Revision,
                 _root,_pending,visual,CancellationToken.None);
@@ -728,6 +807,7 @@ namespace CxVisual.Studio
             _workbench.Bind(null,null);_objects.Bind(null);_scene.Clear();
             if(_volume!=null){_volume.Dispose();_volume=null;}
             _state=null;_current=null;_pending=null;_pendingRoiSelection=null;
+            _selectedMeshFaces.Clear();_faceSelectionRevision++;
             if(_engineering!=null){_engineering.Close(true);_engineering=null;}
             _owners=null;_projectPath=null;_root=null;_caseIndex=-1;
         }
