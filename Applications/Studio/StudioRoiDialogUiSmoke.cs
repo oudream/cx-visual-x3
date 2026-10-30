@@ -41,6 +41,13 @@ namespace CxVisual.Studio
         [DllImport("user32.dll",SetLastError=true)]
         private static extern bool EnumThreadWindows(uint threadId,
             EnumWindowsCallback callback,IntPtr state);
+        [DllImport("user32.dll",SetLastError=true)]
+        private static extern bool EnumChildWindows(IntPtr parent,
+            EnumWindowsCallback callback,IntPtr state);
+        [DllImport("user32.dll")]
+        private static extern int GetDlgCtrlID(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetParent(IntPtr hwnd);
         private static uint _studioUiThreadId;
         private static string _activeReport;
         private static readonly object _reportGate=new object();
@@ -136,6 +143,58 @@ namespace CxVisual.Studio
             catch(ElementNotAvailableException){return null;}
         }
 
+        private static AutomationElement FindFileNameEditorFromNativeChildren(
+            AutomationElement dialog,
+            System.Collections.Generic.List<string> diagnostics)
+        {
+            IntPtr parent=new IntPtr(dialog.Current.NativeWindowHandle);
+            if(parent==IntPtr.Zero)return null;
+            var candidates=new System.Collections.Generic.List<Tuple<IntPtr,string,int,int>>();
+            bool enumerationOk=EnumChildWindows(parent,(hwnd,state)=>{
+                var buffer=new StringBuilder(128);
+                GetClassName(hwnd,buffer,buffer.Capacity);
+                string cls=buffer.ToString();
+                int id=GetDlgCtrlID(hwnd);
+                IntPtr ancestor=GetParent(hwnd);
+                int parentId=ancestor==IntPtr.Zero?0:GetDlgCtrlID(ancestor);
+                if(diagnostics.Count<48)
+                    diagnostics.Add("Win32Child="+hwnd+" Class="+cls+
+                        " Id="+id+" ParentId="+parentId);
+                if(String.Equals(cls,"Edit",StringComparison.OrdinalIgnoreCase)||
+                   String.Equals(cls,"ComboBox",StringComparison.OrdinalIgnoreCase)||
+                   String.Equals(cls,"ComboBoxEx32",StringComparison.OrdinalIgnoreCase))
+                    candidates.Add(Tuple.Create(hwnd,cls,id,parentId));
+                return true;
+            },IntPtr.Zero);
+            if(!enumerationOk)
+                diagnostics.Add("EnumChildWindows ended early, Win32="+
+                    Marshal.GetLastWin32Error());
+            // 常规文件框的1001 Edit优先于1148 ComboBox；不能操作未知
+            // 地址栏/搜索栏，也不能在多个同优先级控件中随意选一个。
+            foreach(int id in new[]{1001,1148})
+            {
+                var matching=candidates.Where(x=>x.Item3==id ||
+                    (id==1148&&x.Item4==1148)).ToArray();
+                if(matching.Length!=1)continue;
+                try
+                {
+                    AutomationElement entry=AutomationElement.FromHandle(
+                        matching[0].Item1);
+                    object pattern;
+                    if(entry.TryGetCurrentPattern(ValuePattern.Pattern,out pattern) &&
+                       !((ValuePattern)pattern).Current.IsReadOnly)
+                    {
+                        Mark("通过原生子窗口定位可写文件名UIA控件：Class="+
+                            matching[0].Item2+" Id="+matching[0].Item3);
+                        return entry;
+                    }
+                }
+                catch(ElementNotAvailableException){}
+                catch(InvalidOperationException){}
+            }
+            return null;
+        }
+
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
         {
             AutomationElementCollection controls=dialog.FindAll(TreeScope.Descendants,
@@ -175,13 +234,18 @@ namespace CxVisual.Studio
                 catch(ElementNotAvailableException){}
             }
             if(namedEditors.Count==1)return namedEditors[0];
-            // 仅当整棵系统对话框恰有一个可写Edit时才可安全退化。
+            // UIA根节点可能只提供Window，无Edit/ComboBox子树；继续查询
+            // 实际#32770下的Win32子窗口，只接受可识别的1001/1148。
+            AutomationElement nativeEditor=FindFileNameEditorFromNativeChildren(
+                dialog,diagnostics);
+            if(nativeEditor!=null)return nativeEditor;
             if(namedEditors.Count==0&&anonymousEditors.Count==1)
                 return anonymousEditors[0];
             throw new InvalidOperationException(
                 "IMG05_UIA 未能唯一识别可写文件名框，具名="+namedEditors.Count+
                 "，其他Edit="+anonymousEditors.Count+
-                "；原生UIA控件="+String.Join(" | ",diagnostics));
+                "，UIA子节点="+controls.Count+
+                "；Win32/UIA诊断="+String.Join(" | ",diagnostics));
         }
 
         private static void ConfirmNativeFileDialog(string title,string file)
