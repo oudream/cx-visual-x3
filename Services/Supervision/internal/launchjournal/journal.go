@@ -120,8 +120,14 @@ func writeRecord(path string, rec *Record) error {
 	if err != nil { return err }
 	if len(data) > MaxBytes { return errors.New("launch evidence exceeds limit") }
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir,0700); err != nil { return err }
-	temp, err := os.CreateTemp(dir,".launch-intent-*")
+	if err := os.MkdirAll(dir, 0700); err != nil { return err }
+	// A redirected evidence directory could place safety records outside
+	// the intended Daemon work directory. Reject symlinks/other file types.
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() {
+		return errors.New("unsafe launch evidence directory")
+	}
+	temp, err := os.CreateTemp(dir, ".launch-intent-*")
 	if err != nil { return err }
 	defer os.Remove(temp.Name())
 	if err = temp.Chmod(0600); err != nil { temp.Close(); return err }
