@@ -22,7 +22,7 @@
                         <TextBlock Text="搜索资源" VerticalAlignment="Center" Margin="0,0,6,0"
                                    FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
                         <TextBox x:Name="StudioGlobalResourceSearch" Width="190"
-                                 ToolTip="搜索当前MEM工程的页面、Content和Symbol；与左侧资源树同一过滤条件"
+                                 ToolTip="搜索当前MEM工程的资源、流程和资产；与左侧资源树使用同一过滤条件"
                                  TextChanged="OnStudioGlobalResourceSearchChanged"/>
                     </DockPanel>
                     <TextBlock Text="统一工程工作区" FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"
@@ -116,11 +116,11 @@
                     <dock:LayoutAnchorablePane DockWidth="250">
                         <dock:LayoutAnchorable ContentId="tool.resources" Title="工程资源管理器" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
                             <DockPanel Background="{DynamicResource StudioPanelBrush}" Margin="5">
-                                <TextBlock DockPanel.Dock="Bottom" Text="仅工程与资源定义；Group/Element在独立图形结构面板管理。"
+                                <TextBlock DockPanel.Dock="Bottom" Text="右键目录可新建、导入或打开公共中心；此树只投影工程定义。Group/Element请在图形结构中管理。"
                                            TextWrapping="Wrap" FontSize="11" Margin="6,8,6,4"/>
                                 <StackPanel DockPanel.Dock="Top">
                                     <TextBox x:Name="StudioResourceSearch"
-                                             ToolTip="筛选页面、Content和Symbol；不修改MEM工程"
+                                             ToolTip="按资源名称筛选页面、共享Content、Symbol、流程与资产；不修改MEM工程"
                                              TextChanged="OnStudioResourceSearchChanged" Margin="4" />
                                     <Button x:Name="StudioResourceBackButton" Content="返回上次位置"
                                             Command="{Binding BackCommand}" HorizontalAlignment="Left"
