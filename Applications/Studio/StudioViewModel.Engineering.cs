@@ -357,6 +357,28 @@ namespace CxVisual.Studio
                             Properties.Add(Row(visual.Id,"text",MPMValueKind.String,
                                 textBinding,false,true));
                         }
+                        MRCWidgetElement control=visual as MRCWidgetElement;
+                        if(control!=null)
+                        {
+                            // 原MPM Binding即为Widget Settings；不复制一套HMI控制属性。
+                            foreach(string member in new[]{"content","tooltip"})
+                                Properties.Add(Row(control.Id,member,MPMValueKind.String,
+                                    control.GetBinding(member)??MPMBinding.Literal(
+                                        MPMValue.String(member=="content"?control.Name:"")),
+                                    false,true));
+                            Properties.Add(Row(control.Id,"enabled",MPMValueKind.Boolean,
+                                control.GetBinding("enabled")??MPMBinding.Literal(
+                                    MPMValue.Boolean(true)),false,true));
+                            if(control.TypeId=="core.widget.progressbar"||
+                                control.TypeId=="core.widget.slider")
+                            {
+                                foreach(string member in new[]{"minimum","maximum"})
+                                    Properties.Add(Row(control.Id,member,MPMValueKind.Number,
+                                        control.GetBinding(member)??MPMBinding.Literal(
+                                            MPMValue.Number(member=="minimum"?0:100)),
+                                        false,true));
+                            }
+                        }
                     }
                 }
                 Ports.Clear();Connections.Clear();if(_editor.CurrentResourceId.HasValue)
@@ -510,6 +532,30 @@ namespace CxVisual.Studio
                             e.SetText(textElement,binding.Value.AsString());
                         }
                         else e.SetBinding(item,"text",binding);
+                    }
+                    else if(item is MRCWidgetElement &&
+                        new[]{"content","tooltip","enabled","minimum","maximum"}
+                            .Contains(row.Member))
+                    {
+                        // Widget声明是标准MPM Binding，文字/范围/Enabled通过原MEM事务
+                        // 保存并触发Undo，运行值始终由MVI/MDS解析。
+                        if(binding.Kind==MPMBindingKind.Literal&&
+                            (row.Member=="minimum"||row.Member=="maximum"))
+                        {
+                            double numeric=binding.Value.AsNumber();
+                            MRCWidgetElement widget=(MRCWidgetElement)item;
+                            string other=row.Member=="minimum"?"maximum":"minimum";
+                            MPMBinding otherBinding=widget.GetBinding(other);
+                            double limit=otherBinding!=null&&
+                                otherBinding.Kind==MPMBindingKind.Literal?
+                                otherBinding.Value.AsNumber():
+                                other=="minimum"?0:100;
+                            if((row.Member=="minimum"&&numeric>=limit)||
+                               (row.Member=="maximum"&&numeric<=limit))
+                                throw new InvalidOperationException(
+                                    "HMI量程必须满足maximum大于minimum");
+                        }
+                        e.SetBinding(item,row.Member,binding);
                     }
                     else if(binding.Kind!=MPMBindingKind.Literal)e.SetBinding(item,row.Member,binding);
                     else
