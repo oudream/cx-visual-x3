@@ -71,6 +71,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                       summary.DefinitionRevision==null &&
                       summary.ValidatedSourceHash==null,
                     "普通MRK预览不能伪造正式MEM ROI来源与Revision");
+                Check(summary.ExecutionState==MRKFlowState.Completed &&
+                      summary.AssessItemValidity(summary.Items[0],"Camera-A/frame-01")==
+                          CxVisionResultValidity.Valid &&
+                      summary.AssessItemValidity(summary.Items[0],"Camera-B/frame-01")==
+                          CxVisionResultValidity.Stale,
+                    "已提交Run完成态与来源错误的Item过期判定不一致");
                 Check(summary.Items.Count == 5 &&
                       summary.Items.Select(i => i.ItemId).Distinct().Count() == 5 &&
                       summary.Items.All(i => i.SourceId == summary.SourceId &&
@@ -108,6 +114,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     CxVisionDataFlow.CreateCpuInspectionPlan(Options(255), 69),
                     Inputs(Sample())).Completion.GetAwaiter().GetResult();
                 var noRegions = CxVisionRunSummary.FromCpuFlow(clean, "Batch-A/Frame-02");
+                Check(noRegions.ExecutionState==MRKFlowState.Completed &&
+                      noRegions.AssessItemValidity(noRegions.Items.Single(i=>
+                          i.Kind==CxVisionResultKind.DetectionSummary),
+                          "Batch-A/Frame-02")==CxVisionResultValidity.Empty,
+                    "成功无缺陷必须是Completed Run + Empty Item，不能冒充执行失败");
                 Check(noRegions.HasNoRegions && noRegions.Items.Count == 4 &&
                       noRegions.Items.All(i => i.Kind != CxVisionResultKind.Region) &&
                       noRegions.Items.Single(i => i.Kind == CxVisionResultKind.DetectionSummary)
@@ -136,6 +147,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .Completion.GetAwaiter().GetResult();
                 var x = CxVisionRunSummary.FromCpuFlow(a, "same-source");
                 var y = CxVisionRunSummary.FromCpuFlow(b, "same-source");
+                Check(x.AssessItemValidity(y.Items[0],"same-source")==
+                          CxVisionResultValidity.Invalid &&
+                      x.AssessItemValidity(null,"same-source")==
+                          CxVisionResultValidity.Invalid,
+                    "同源不同Run或空Item不得被视为有效的当前Run产物");
                 Check(x.RunId != y.RunId && x.Items[0].ItemId != y.Items[0].ItemId,
                     "同源重跑必须生成独立RunId与ResultItemId");
 
