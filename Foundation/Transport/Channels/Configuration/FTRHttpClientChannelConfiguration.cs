@@ -6,7 +6,13 @@ namespace CxVisual.Foundation.Transport
 {
 public sealed class FTRHttpClientChannelConfiguration : FTRChannelConfiguration
     {
-        public FTRHttpClientChannelConfiguration() : base(FTRChannelKind.HttpClient) { }
+        public FTRHttpClientChannelConfiguration() : base(FTRChannelKind.HttpClient)
+        {
+            // HTTP消息需在响应体聚合+扩容+Received隔离快照期间同时持有内存。
+            // 默认MaxResponseBytes=4MiB至少需要覆盖2份完整消息与容量增长；
+            // 显式FCM保存的旧预算仍然优先，不暗改用户已配置的资源上限。
+            ReceiveByteBudget=12*1024*1024;
+        }
         [FCMConfigItem("请求地址", Order = 10, Category = "HTTP")]
         [Required]
         public string Url { get; set; } = "http://127.0.0.1:8080/";
