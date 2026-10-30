@@ -591,3 +591,14 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - 专业Run投影`CxVisionRunSummary`增加**可选**`ValidatedSourceHash`、`DefinitionRoiId`、`DefinitionRevision`。仅`CxVisionRoiEngineering.RunSavedAsync`在真实ROI SourceHash和MEM Revision通过校验后以只读派生方式提供，普通MRK预览保持null；`WithThresholdMaskContours`保留来源，不改写旧Run。对应`e3182a1e`、`1518cadf`。
 - 正反测试已提交`2640a9e8`、`71b0550f`、`e2778676`：正式双Run/Contour源Hash和MEM版本、普通预览不伪造正式ROI证据、Studio重绑真实Run标识一致。**固定SHA Windows CI尚待完成，不能据源码声明G3/G4。**
 - Owner归属仍为MVI与PVC，MRK/MDS数据所有权不变。仍未交付长期Artifact/Review、失败Run完整状态机及真实UIA/HIL。
+
+
+### IMG-04 Run/Item状态和有效性正式实装（2026-10-30）
+
+- `CxVisionRunSummary.cs`（`be335c67626fcc2538b0e6529d855d8974548332`）：在既有专业只读Run上添加`ExecutionState`（已发布Completed）、`CxVisionResultValidity`与`AssessItemValidity`（Invalid/Valid/Empty/Stale/MissingArtifact）。原MRK`MRKFlowState`仍持有失败/取消/拒绝，专业结果投影不能创建不存在的成功输出或第二执行状态机。
+- `RuntimeVisionResultTests.cs`（`2e870e4ee0f39b9707a8a463543e6fd76b80dda4`）：真实MRK Completed与无候选Empty共存、失败不发布、跨Run源项Invalid、错图Stale。
+- `RuntimeVisionArtifactsTests.cs`（`6f940672d7b329cb7c4cb371cf60f20153b81c78`）：绑定真实MEM源Hash/Revision时Result Valid，错Hash、错Revision和上下文缺失Stale，旧证据对象不变。
+- Studio `StudioShell.ModuleCenter.cs`（`adbe2740213cfc2019e44c813f54f01e48f270a9`）：复用原有Project/Page/Revision/原图引用防护，结果点击时按专业合同验证Item有效性，Empty给出正常空候选提示，Stale/Invalid拒绝误投影。未引入新WPF ResultStore或专有调度器。
+- 固定SHA`adbe2740`的[Module Center CPU Windows #41003894207](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)及[Studio S1 Windows #41003894214](https://github.com/oudream/cx-visual-x3/actions/runs/41003894214)均成功，支持该固定SHA Release/x64编译与相应CPU/Studio STA G4；完整Imaging独立运行、真实UIA/设备HIL另行确认。
+- 跨体系公共回归阻塞：曾有CT3D `TCTVolumeViewerSmoke.cs`超作用域的`roiEditCommand`导致全工程CS0103，本轮在`96c2094223dda15cccf07db0bb74b73122b1f740`修复为通过`frame.Commands`获取当前命令，未删测试。后续默认Smoke显示Automation Modbus `PROTOCOL_IO_MISMATCH`，已由Automation Owner在`5552a931ff9a`修复独立测试；必须分别核对最终CI不能假设整体已通过。
+
