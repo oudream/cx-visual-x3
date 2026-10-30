@@ -28,7 +28,7 @@
     <Compile Include="StudioShell.SharedResourceCenters.cs"/>
     <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
-    <Compile Include="StudioShell.Variables.cs"/><Compile Include="StudioShell.Hmi.cs"/><Compile Include="StudioShell.Hmi.Remote.cs"/><Compile Include="StudioShell.Hmi.Preflight.cs"/><Compile Include="StudioShell.Hmi.CommandEditor.cs"/><Compile Include="StudioHmiCommandAuthoringTests.cs"/>
+    <Compile Include="StudioShell.Variables.cs"/><Compile Include="StudioShell.Hmi.cs"/><Compile Include="StudioShell.Hmi.Remote.cs"/><Compile Include="StudioShell.Hmi.Preflight.cs"/><Compile Include="StudioShell.Hmi.CommandEditor.cs"/><Compile Include="StudioShell.Hmi.WritePrecheck.cs"/><Compile Include="StudioHmiCommandAuthoringTests.cs"/>
     <Compile Include="StudioShell.RuntimeData.cs"/>
     <Compile Include="StudioShell.ResourceEditors.cs"/>
     <Compile Include="StudioShell.GraphicsTree.cs"/>

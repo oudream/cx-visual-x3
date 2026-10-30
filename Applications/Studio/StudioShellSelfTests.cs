@@ -4969,6 +4969,11 @@ namespace CxVisual.Studio
                 Assert(hmi.Items.OfType<MenuItem>().Any(x=>
                     Convert.ToString(x.Header)=="工程/设备点表预检（正式Runtime.Host，只读）"),
                     "HMI实际资源菜单没有提供正式Host工程预检入口");
+                MenuItem valuePrecheck=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)==
+                    "确认UInt16设定值与版本（只预检，不发PLC）");
+                Assert(!valuePrecheck.IsEnabled,
+                    "没有认证Host和正式MRK目录时必须禁用写入意图预检");
                 MenuItem numeric=hmi.Items.OfType<MenuItem>().Single(x=>
                     Convert.ToString(x.Header).StartsWith("word100",StringComparison.Ordinal));
                 MenuItem add=numeric.Items.OfType<MenuItem>().Single(x=>

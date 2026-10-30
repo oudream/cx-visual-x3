@@ -132,3 +132,10 @@
 - 工程师在原HMI Page选择现有Button、当前注册命令及当前运行数据源的UInt16 PointId，由`PHMHmiScreenAuthoring.AssignSavedAction`以**原MEM事务/Undo/Redo/Serializer**保存`MRCVisualEventAction.Click(ActionId,ParameterBindingId)`；ActionId由可信注册映射提供，不能靠手填字符串或预检配置臆造。选错资源、旧注册、旧点位、工程切换时事务前拒绝。这里仅保存绑定意图，未为用户输入的`Value`或受信双版本建立远程控制通道；不可宣称HMI按钮已具备PLC写执行。
 - `StudioHmiCommandAuthoringTests`使用真正MRK注册表+正式A4输入Schema（仅软件测试Handler，保证没有PLC副作用），验证原工程按钮的ActionId/PointId、MVI事件路由、错误点位零工程修改、MEM Undo/Redo；Studio STA在既有HMI G1进一步验证未注入受信目录时菜单默认禁用，以及完整MEM保存重开的原Click行为。
 - 本批前已修复共享Content/Symbol中心两处阻断C#编译的错误（Refresh可选参数委托、Thickness两参），独立提交`481dab83`；后续Windows CI需检查固定SHA，不能从提交成功推断G1通过。远程授权MRK写Host仍归A和安全Owner。
+
+## 2026-10-30 第十三批：HMI UInt16设定值人工确认及安全预检（不发PLC）
+
+- `Professional/HMI/PHMHmiWritePreparation.cs`：从**原MEM已保存Click/MVI实例地址**及只读Pipe真实Device/Point观察建立不可变`PHMHmiPreparedWrite`。逐次校验工程Project/Revision、Widget身份、原ActionId、PointId唯一与UInt16类型、Quality=Good及采样时效、DeviceRef/Scope/Deployment/ConnectorEffective/SessionGeneration一致，并要求显式人工确认；设定值只接受Invariant十进制0～65535，不能用字符串伪充`ushort`。只读构造四个MRK输入候选StableId/Value/EffectiveVersion/SessionGeneration，无Caller/OperationId/设备写通道。
+- `Applications/Studio/StudioShell.Hmi.WritePrecheck.cs`：现有Page HMI菜单增加受信目录+当前Host可用时的写入意图检查窗口，可选择已保存Click的按钮、人工输入当前UInt16设定值并勾选确认。再次核验原注册`MRKCommandDescriptor`和`FDCCommandDefinition.BindInputs`，显示DeviceRef/Scope/双版本和“仅准备未发送”；没有真实Host或MRK目录禁用。此时不做现场写入、不伪造ACK/Readback/机械完成。
+- `HmiScadaPipeTests`用真实NamedPipe合同采样与MEM Page/Button/Action/MVI路由，验证四个强类型输入和65535上界；反证65536、负数、浮点、16进制、空值、前后空格、未确认、点位Stale及错误ActionId，并确保MEM Revision不变。`StudioShellSelfTests`确认未授权来源下UI入口默认禁用。
+- 本批仅实现“用户输入→类型/时效/版本检查→待认证操作意图”，A侧正式Runtime.Host远程Operator认证、授权在线提交、FC06/FC03业务回执与Unknown实机联调仍未关闭；请勿把G1软件预检冒充G2/G3真实控制验收。

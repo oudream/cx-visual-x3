@@ -218,6 +218,17 @@ namespace CxVisual.Studio
                 OpenStudioHmiCommandEditor(origin,pageId);
             });
             hmi.Items.Add(actionEditor);
+            var writePrecheck=new MenuItem {
+                Header="确认UInt16设定值与版本（只预检，不发PLC）",
+                IsEnabled=_studioRemoteHmi!=null&&_studioHmiCommandCatalog!=null&&
+                    _studioHmiActionIdResolver!=null
+            };
+            writePrecheck.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                OpenStudioHmiWritePrecheckDialog(origin,pageId);
+            });
+            hmi.Items.Add(writePrecheck);
             menu.Items.Add(new Separator());
             menu.Items.Add(hmi);
         }

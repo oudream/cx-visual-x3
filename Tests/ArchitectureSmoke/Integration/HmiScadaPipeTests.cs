@@ -1,5 +1,8 @@
 using System;
 using System.Globalization;
+using System.Linq;
+using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Visual;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
@@ -95,6 +98,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     sample.Points[0].RefreshUtc.AddSeconds(-1))==
                     CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Stale,
                 "同一Host Good原值应按本地时效统一降级且拒绝未来采样时间");
+            // HMI强类型设定值预检消费同一真实Pipe样本与原MEM Click，
+            // 只准备候选MRK参数，不能由软件G1绕过可信Host设备授权。
+            using(MEMEngineeringSession engineering=MEMEngineering.Create("HMI写入意图"))
+            {
+                MEMPage page=engineering.AddPage("HMI预检页");
+                Guid buttonId=PHMHmiScreenAuthoring.AddButton(engineering,page.Id,
+                    "安全设定值",25,25);
+                string actionId="Automation/PLC/"+device+"/WriteUInt16";
+                PHMHmiScreenAuthoring.AssignSavedAction(engineering,
+                    buttonId,actionId,"word100");
+                int revision=engineering.Revision;
+                var actions=MVIVisualEventRouter.Resolve(engineering,
+                    engineering.GetAddress(engineering.Find(buttonId)),"Click",null);
+                Check(actions.Count==1,"预检必须读取真实MEM保存的按钮Click");
+                DateTime sampleNow=sample.Points[0].RefreshUtc.AddSeconds(1);
+                PHMHmiPreparedWrite prepared=PHMHmiWritePreparation.Prepare(
+                    engineering,revision,actions[0],actionId,
+                    devices[0],devices[0],sample.Points,"65535",true,
+                    TimeSpan.FromSeconds(5),sampleNow);
+                Check(prepared.DeviceRef==devices[0].DeviceRef&&
+                    prepared.StablePointId=="word100"&&prepared.Value==65535&&
+                    prepared.Inputs.Count==4&&
+                    (ushort)prepared.Inputs["Value"]==65535&&
+                    (string)prepared.Inputs["SessionGeneration"]=="GEN1"&&
+                    (string)prepared.Inputs["EffectiveVersion"]=="CFG1",
+                    "HMI未形成已确认的强类型UInt16+Effective+Generation候选参数");
+                foreach(string invalid in new[]{"65536","-1","1.5","0x10"," 9",""})
+                {
+                    bool rejected=false;
+                    try{PHMHmiWritePreparation.Prepare(engineering,revision,
+                        actions[0],actionId,devices[0],devices[0],sample.Points,
+                        invalid,true,TimeSpan.FromSeconds(5),sampleNow);}
+                    catch(ArgumentOutOfRangeException){rejected=true;}
+                    Check(rejected,"非法UInt16输入未被拒绝："+invalid);
+                }
+                bool confirmationRejected=false;
+                try{PHMHmiWritePreparation.Prepare(engineering,revision,actions[0],
+                    actionId,devices[0],devices[0],sample.Points,"10",false,
+                    TimeSpan.FromSeconds(5),sampleNow);}
+                catch(InvalidOperationException){confirmationRejected=true;}
+                Check(confirmationRejected,"未确认的设备写入意图不应通过");
+                bool qualityRejected=false;
+                try{PHMHmiWritePreparation.Prepare(engineering,revision,actions[0],
+                    actionId,devices[0],devices[0],sample.Points,"10",true,
+                    TimeSpan.Zero,sampleNow);}
+                catch(InvalidOperationException){qualityRejected=true;}
+                Check(qualityRejected,"过期MDS Good不得进入HMI写入意图");
+                bool identityRejected=false;
+                try{PHMHmiWritePreparation.Prepare(engineering,revision,actions[0],
+                    "wrong.action",devices[0],devices[0],sample.Points,"10",true,
+                    TimeSpan.FromSeconds(5),sampleNow);}
+                catch(InvalidOperationException){identityRejected=true;}
+                Check(identityRejected,"替换已保存的ActionId不得冒充受信命令");
+                Check(engineering.Revision==revision,
+                    "HMI设定值预检污染了原MEM工程Revision");
+                engineering.Close(true);
+            }
             bool denied=false;
             try{client.Snapshot(devices[0]);}
             catch(PHMScadaPipeRejectedException error)
