@@ -31,6 +31,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalMeshTriangles=
             new Dictionary<Guid,int>();
+        private readonly Dictionary<Guid,ModelVisual3D> _additionalPointClouds=
+            new Dictionary<Guid,ModelVisual3D>();
+        private readonly Dictionary<Guid,int> _additionalPointCloudSizes=
+            new Dictionary<Guid,int>();
+        public int AdditionalPointCloudCount {get{return _additionalPointClouds.Count;}}
+        public int AdditionalPointCount
+        {
+            get
+            {
+                int count=0;
+                foreach(int size in _additionalPointCloudSizes.Values)count=checked(count+size);
+                return count;
+            }
+        }
         private MVI3DSceneState _selectionScene;
 
         /// <summary>Ctrl+点击真实3D几何选择唯一MVI实例；WPF只消费场景引用。</summary>
@@ -57,6 +71,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                     if(!Object.ReferenceEquals(pair.Value.Content,mesh.ModelHit))continue;
                     MVI3DSceneItem item;
                     if(_selectionScene.TryGet(pair.Key,out item)&&item.Visible)
+                    {
+                        selected=pair.Key;return HitTestResultBehavior.Stop;
+                    }
+                }
+                foreach(var pair in _additionalPointClouds)
+                {
+                    if(!Object.ReferenceEquals(pair.Value.Content,mesh.ModelHit))continue;
+                    MVI3DSceneItem cloudItem;
+                    if(_selectionScene.TryGet(pair.Key,out cloudItem)&&cloudItem.Visible&&
+                        cloudItem.Kind==MVI3DSceneKind.PointCloud)
                     {
                         selected=pair.Key;return HitTestResultBehavior.Stop;
                     }
@@ -301,6 +325,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             BindSceneSelection(null);
             ClearSurfaceMesh();
             ClearAdditionalMeshes();
+            ClearAdditionalPointClouds();
         }
 
         /// <summary>索引三角Mesh真正进入WPF Viewport3D，不退化为点云伪显示。</summary>
@@ -423,6 +448,73 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             var material=new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(255,198,56)));
             _surfaceOverlay.Content=new GeometryModel3D(mesh,material){BackMaterial=material};
             SurfacePreviewPointCount=normalizedPoints.Count;
+        }
+
+        /// <summary>点云显示独立实例：原始点由专业Owner持有，WPF只接收显示投影。</summary>
+        public void SetAdditionalPointCloud(Guid id,IReadOnlyList<Vector3> points,double opacity=1)
+        {
+            Dispatcher.VerifyAccess();
+            if(id==Guid.Empty)throw new ArgumentException("点云Scene实例Id无效。","id");
+            if(points==null)throw new ArgumentNullException("points");
+            if(double.IsNaN(opacity)||double.IsInfinity(opacity)||opacity<0||opacity>1)
+                throw new ArgumentOutOfRangeException("opacity");
+            int previous=0;
+            _additionalPointCloudSizes.TryGetValue(id,out previous);
+            if(points.Count>12000||AdditionalPointCount-previous+points.Count>12000)
+                throw new ArgumentOutOfRangeException("points","WPF三维点云显示超出12000点合计预算。");
+            GeometryModel3D model=BuildPointCloudModel(points,opacity);
+            ModelVisual3D visual;
+            if(!_additionalPointClouds.TryGetValue(id,out visual))
+            {
+                visual=new ModelVisual3D();
+                _additionalPointClouds.Add(id,visual);
+                _viewport.Children.Add(visual);
+            }
+            visual.Content=model;
+            _additionalPointCloudSizes[id]=points.Count;
+        }
+        private GeometryModel3D BuildPointCloudModel(IReadOnlyList<Vector3> points,double opacity)
+        {
+            var positions=new Point3DCollection();
+            var triangles=new Int32Collection();
+            const double radius=.0024;
+            for(int i=0;i<points.Count;i++)
+            {
+                Vector3 p=points[i];
+                if(float.IsNaN(p.X)||float.IsNaN(p.Y)||float.IsNaN(p.Z)||
+                    float.IsInfinity(p.X)||float.IsInfinity(p.Y)||float.IsInfinity(p.Z)||
+                    Math.Abs(p.X)>.50001||Math.Abs(p.Y)>.50001||Math.Abs(p.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("points","点云显示坐标超出标准化体空间。");
+                int start=positions.Count;
+                double x=p.X*_displaySx,y=-p.Y*_displaySy,z=p.Z*_displaySz;
+                positions.Add(new Point3D(x,y+radius,z));
+                positions.Add(new Point3D(x-radius,y-radius,z-radius));
+                positions.Add(new Point3D(x+radius,y-radius,z-radius));
+                positions.Add(new Point3D(x,y-radius,z+radius));
+                int[] faces={0,1,2,0,2,3,0,3,1,1,3,2};
+                foreach(int face in faces)triangles.Add(start+face);
+            }
+            var mesh=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
+            byte alpha=(byte)Math.Round(opacity*255);
+            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(alpha,82,214,242)));
+            return new GeometryModel3D(mesh,material){BackMaterial=material};
+        }
+        public void RemoveAdditionalPointCloud(Guid id)
+        {
+            Dispatcher.VerifyAccess();
+            ModelVisual3D visual;
+            if(!_additionalPointClouds.TryGetValue(id,out visual))return;
+            _viewport.Children.Remove(visual);
+            _additionalPointClouds.Remove(id);
+            _additionalPointCloudSizes.Remove(id);
+        }
+        public void ClearAdditionalPointClouds()
+        {
+            Dispatcher.VerifyAccess();
+            foreach(ModelVisual3D visual in _additionalPointClouds.Values)
+                _viewport.Children.Remove(visual);
+            _additionalPointClouds.Clear();
+            _additionalPointCloudSizes.Clear();
         }
 
         public void ClearSurfacePoints()
