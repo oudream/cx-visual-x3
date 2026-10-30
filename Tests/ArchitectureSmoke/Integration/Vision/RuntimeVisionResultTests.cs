@@ -119,6 +119,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           i.Kind==CxVisionResultKind.DetectionSummary),
                           "Batch-A/Frame-02")==CxVisionResultValidity.Empty,
                     "成功无缺陷必须是Completed Run + Empty Item，不能冒充执行失败");
+                Check(noRegions.AssessItemValidity(noRegions.Items.Single(i=>
+                          i.Kind==CxVisionResultKind.Statistic),
+                          "Batch-A/Frame-02")==CxVisionResultValidity.Valid &&
+                      noRegions.AssessItemValidity(noRegions.Items.Single(i=>
+                          i.Kind==CxVisionResultKind.DetectionSummary),
+                          null)==CxVisionResultValidity.Stale,
+                    "合法零统计值仍是Valid，缺失当前SourceId必须拒绝投影");
                 Check(noRegions.HasNoRegions && noRegions.Items.Count == 4 &&
                       noRegions.Items.All(i => i.Kind != CxVisionResultKind.Region) &&
                       noRegions.Items.Single(i => i.Kind == CxVisionResultKind.DetectionSummary)
