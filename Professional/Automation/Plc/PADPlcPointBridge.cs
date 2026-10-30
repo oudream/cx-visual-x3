@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -36,6 +37,36 @@ namespace CxVisual.Professional.Automation.Plc
             ProtocolPointName = pointName;
         }
         public string ProtocolPointName { get; private set; }
+    }
+
+    /// <summary>单个已绑定PLC点的本次扫描结果；历史值仍只有MDS拥有。</summary>
+    public sealed class PADPlcPointScanResult
+    {
+        internal PADPlcPointScanResult(string stableId, object value, string failureCode)
+        {
+            StableId = stableId;
+            Value = value;
+            FailureCode = failureCode ?? string.Empty;
+        }
+        public string StableId { get; private set; }
+        public object Value { get; private set; }
+        public string FailureCode { get; private set; }
+        public bool Succeeded { get { return FailureCode.Length == 0; } }
+    }
+
+    /// <summary>有界顺序扫描报告；不是PLC多寄存器单报文或跨点原子快照。</summary>
+    public sealed class PADPlcScanResult
+    {
+        internal PADPlcScanResult(IList<PADPlcPointScanResult> items)
+        {
+            PADPlcPointScanResult[] copy = items.ToArray();
+            Points = Array.AsReadOnly(copy);
+            SucceededCount = copy.Count(x => x.Succeeded);
+        }
+        public IReadOnlyList<PADPlcPointScanResult> Points { get; private set; }
+        public int SucceededCount { get; private set; }
+        public int FailedCount { get { return Points.Count - SucceededCount; } }
+        public bool AllSucceeded { get { return FailedCount == 0; } }
     }
 
     /// <summary>
@@ -110,6 +141,67 @@ namespace CxVisual.Professional.Automation.Plc
             }
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
             _transport.StateChanged += OnChannelStateChanged;
+        }
+
+        /// <summary>
+        /// 多点顺序轮询：限制数量、预检全部点位和映射、共享现有写互斥，
+        /// 各点独立FC03事务，成功写入MDS，超时/协议失败只标Stale并继续后续点。
+        /// 调用取消、连接代次变化、运行配置不合法时立即失败；之前已完成的
+        /// 单点采样不能回滚，不返回虚假的跨点原子快照。
+        /// </summary>
+        public async Task<PADPlcScanResult> ScanAsync(
+            IEnumerable<string> stableIds, CancellationToken cancellationToken)
+        {
+            if (stableIds == null) throw new ArgumentNullException("stableIds");
+            string[] selected = stableIds.ToArray();
+            if (selected.Length == 0 || selected.Length > 64)
+                throw new ArgumentOutOfRangeException("stableIds", "单次扫描必须包含1～64个点");
+            HashSet<string> unique = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string stableId in selected)
+            {
+                if (string.IsNullOrWhiteSpace(stableId) || !unique.Add(stableId))
+                    throw new ArgumentException("PLC扫描点位不能为空或重复", "stableIds");
+                Resolve(stableId);
+                if (_catalog.FindById(stableId) == null)
+                    throw new InvalidOperationException("PLC扫描设备定义已不存在: " + stableId);
+            }
+
+            await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                string generation = _connector.Channel.SessionId.ToString("N");
+                List<PADPlcPointScanResult> records =
+                    new List<PADPlcPointScanResult>(selected.Length);
+                foreach (string stableId in selected)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (_connector.Channel.SessionId.ToString("N") != generation)
+                        throw new InvalidOperationException("PLC扫描过程连接代次变化，须重新建立会话");
+                    try
+                    {
+                        object value = await ReadAndMapAsync(stableId, cancellationToken)
+                            .ConfigureAwait(false);
+                        records.Add(new PADPlcPointScanResult(stableId, value, null));
+                    }
+                    catch (Exception error) when (
+                        error is TimeoutException || error is IOException ||
+                        error is PADPlcOutcomeUnknownException)
+                    {
+                        // 上游 ReadAndMapAsync 已按真实失败标记 Stale，不生成新的Good采样。
+                        // 只隔离允许恢复的单点协议失败；配置漂移、权限和取消仍中断扫描。
+                        if (_connector.Channel.SessionId.ToString("N") != generation)
+                            throw new InvalidOperationException("PLC扫描过程连接代次变化，禁止继续请求", error);
+                        string code = error is TimeoutException ? "Timeout" :
+                            (error is IOException ? "ProtocolIo" : "OutcomeUnknown");
+                        records.Add(new PADPlcPointScanResult(stableId, null, code));
+                    }
+                }
+                return new PADPlcScanResult(records);
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
         /// <summary>
