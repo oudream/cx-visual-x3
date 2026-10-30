@@ -58,3 +58,19 @@ CI 已增加完整 build/vet、Linux全包 race、关键并发重复和锁定依
 - 源码 `ac81a21f` 已推送；Git 凭据不具备 workflow scope，工作流增强改由已连接 GitHub 工具提交为 `83f1c0aa`，没有强推或要求更换凭据。
 - [83f1c0aa 实际 CI](https://github.com/oudream/cx-visual-x3/actions/runs/41053407430) 的 macOS 首轮失败来自目录安全检查误拒绝系统 `/var` 别名，而非 Go 锁实现缺失。补充只允许 macOS 根路径 `/var`、`/tmp` 解析到各自 `/private/...` 的系统映射，保留用户目录/祖先链接拒绝；新增原生临时目录与祖先链接未写出边界反证。该修复的三平台结果以后续 SHA 记录为准。
 - 继续核查发现原 `MonA` 忽略 Daemon 状态/事件 JSON 解码错误，可能把损坏响应计为新鲜并纳入部分状态。现新增整包校验：拒绝损坏/null、非法或重复 ProgramID、负数计数、运行却没有PID的矛盾状态；拒绝前不改变旧快照/观察时间。保留原帧、字段名及合法旧格式的回归，不把CRC当身份认证。
+
+## 最终固定 SHA 的跨平台结果
+
+**源码 SHA：`5760a30d2ecae7809a2138c978d6f9320287583d`**。已读取每项 job 的最终状态及实际日志，[CI run 41053957545](https://github.com/oudream/cx-visual-x3/actions/runs/41053957545) 的五项任务全部 `completed / success`。
+
+| 任务 | Job ID | 真实结果 |
+|---|---|---|
+| Windows Go | 124056665604 | Monitor/Daemon及全包构建、全包测试、vet通过；SQLite集成测试实际执行 |
+| Linux Go | 124056665585 | 构建/测试/vet、全包race及关键用例10次重复通过 |
+| macOS Go | 124056665439 | Go 1.23.12 darwin/arm64构建/全包测试/vet通过，系统目录兼容修复生效，SQLite集成测试实际执行 |
+| Vue H5 | 124056665125 | npm ci、typecheck、5文件25项测试、生产build通过 |
+| Windows C# | 124056665472 | 原Lifecycle撤销结构检查及Core/Runtime.Host/ArchitectureSmoke项目编译通过；该job没有执行C#测试exe，不冒充运行回归 |
+
+提交链：`ac81a21f`（主体源码/测试/H5/本机验收）、`83f1c0aa`（工作流）、`5760a30d`（实际macOS CI修复及UDP损坏状态防护）。本节为后续文档登记，引用上述已验证源码SHA，不把文档提交本身当作重新执行的设备验收。
+
+本轮完成的是可复核的软件修复与跨平台构建/测试，以及本机真实Monitor/H5验收。S03/S04/S06/S07/S11/S12的完整接入、远程运维身份授权审计、设备Ready、现场长稳和断电仍未完成，不能据此宣称整个工业服务监督目标已经验收。
