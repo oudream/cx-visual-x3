@@ -1896,6 +1896,11 @@ namespace CxVisual.Studio
         }
         private void OnFlowDebugPause(object sender,RoutedEventArgs args)
         {
+            if(_logicDebug==null)
+            {
+                LogicInfo.Text="当前没有活跃MRK调试会话";
+                return;
+            }
             if(!HasCurrentFlowDebugScope())
             {
                 LogicInfo.Text="当前工程/Revision无可控制的MRK调试会话";
@@ -1906,6 +1911,11 @@ namespace CxVisual.Studio
         }
         private void OnFlowDebugResume(object sender,RoutedEventArgs args)
         {
+            if(_logicDebug==null)
+            {
+                LogicInfo.Text="当前没有活跃MRK调试会话";
+                return;
+            }
             if(!HasCurrentFlowDebugScope())
             {
                 LogicInfo.Text="当前工程/Revision无可控制的MRK调试会话";
