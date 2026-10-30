@@ -150,6 +150,8 @@ namespace CxVisual.TestCenter.UI
             roiRange.Children.Add(new TextBlock {Text="上限",VerticalAlignment=VerticalAlignment.Center});
             roiRange.Children.Add(_sliceRoiMaximumMm);
             AddButton(roiRange,"框选ROI拟合平面","TCT.Volume.FitSliceRoiPlane",StartSliceRoiPlaneFromUi);
+            AddButton(roiRange,"提交已保存ROI修改","TCT.Volume.CommitSliceRoi",
+                StartPersistedSliceRoiEditFromUi);
             display.Children.Add(roiRange);
             Label(display,"切片导航 / 三刀联动");
             AddAxis(display,"X",_sliderX,"TCT.Volume.SliceX");
