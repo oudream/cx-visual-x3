@@ -63,6 +63,14 @@ namespace CxVisual.Mechanism.Visual
         {
             if(!IsActive)return false;
             bool owned=ReferenceEquals(_store.Find(_original.Id),_lastWritten);
+            if(owned && (!_store.GetVisibleItems().Any(x=>x.Id==_original.Id) ||
+                         _lastWritten.IsLocked))
+            {
+                // 隐藏图层不更换Item实例；MouseUp不能因此提交不可见的草稿。
+                // 恢复自己的最后写入，保留外部图层可见性/锁定设置。
+                Cancel();
+                return false;
+            }
             Abandon();
             return owned;
         }
