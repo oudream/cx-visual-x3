@@ -1,0 +1,115 @@
+name: CxVisual B1-B6 Unified Software Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Applications/Studio/**'
+      - 'Applications/Runtime.Host/**'
+      - 'Foundation/**'
+      - 'Mechanism/**'
+      - 'Professional/**'
+      - 'Tests/ArchitectureSmoke/**'
+      - 'Tests/TestCenter/**'
+      - 'Build/**'
+      - '.github/workflows/orchestration-software-baseline-windows.yml'
+concurrency:
+  group: b1-b6-software-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  b1-b6-same-sha:
+    name: B1-B6 same SHA engineering, Vision, PLC, runtime, Studio WPF
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore and build whole .NET Framework 4.8 solution Release x64
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter restore failed' }
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Studio restore failed' }
+          & $msbuild .\CxVisual.Unified.sln /m:1 /nr:false /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Release unified build failed' }
+      - name: B1-B4 Decision and Engineering real professional vertical
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          foreach ($argument in @('--orchestration-vertical','--orchestration-industrial','--automation-plc','--concurrency','--command-center','--organization-wpf','--organization-benchmark')) {
+            & $exe $argument
+            if ($LASTEXITCODE -ne 0) { throw "B1-B4 failed: $argument" }
+          }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'B1-B4 complete default architecture regression failed' }
+      - name: B6 Debug x64 and real industrial regression
+        shell: pwsh
+        run: |
+          & msbuild.exe .\CxVisual.Unified.sln /m:1 /nr:false /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Debug unified build failed' }
+          $exe = '.\Output\Debug\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          foreach ($argument in @('--orchestration-vertical','--orchestration-industrial')) {
+            & $exe $argument
+            if ($LASTEXITCODE -ne 0) { throw "Debug industrial failed: $argument" }
+          }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'Debug default architecture regression failed' }
+      - name: B6 trusted signed Plan execution and Host recovery
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Runtime.Host.exe'
+          $root = Join-Path $env:RUNNER_TEMP ('CxB1B6-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          & $exe release-trusted-smoke (Join-Path $root 'trusted')
+          if ($LASTEXITCODE -ne 0) { throw 'Host signed Plan execution failed' }
+          $journal = Join-Path $root 'runtime.journal'
+          & $exe runtime-run $journal
+          if ($LASTEXITCODE -ne 0) { throw 'Host runtime failed' }
+          & $exe runtime-recover $journal
+          if ($LASTEXITCODE -ne 0) { throw 'Host restart recovery failed' }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-soak 20000
+          if ($LASTEXITCODE -ne 0) { throw 'MDS sustained ownership gate failed' }
+      - name: B5 actual WPF STA Studio complete UI regression
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\Output\Release\x64\CxVisual.Studio.exe').Path
+          $report = Join-Path (Split-Path $exe) 'StudioShellSelfTest.txt'
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $exe -ArgumentList '--shell-self-test' -PassThru
+          if (-not $p.WaitForExit(150000)) {
+            try { $p.Kill() } catch { }
+            throw 'Studio WPF STA timed out'
+          }
+          if (Test-Path $report) { Get-Content $report }
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $report)) { throw 'Studio WPF self-test failed or report missing' }
+          $passed = @(Select-String -Path $report -Pattern '^PASS:')
+          $failed = @(Select-String -Path $report -Pattern '^FAIL:')
+          if ($passed.Count -lt 58 -or $failed.Count -ne 0) { throw "Studio WPF STA failed: $($passed.Count) PASS, $($failed.Count) FAIL" }
+          foreach ($required in @(
+            'B5 活跃MRK断点单步继续取消真实WPF交互',
+            'B5 活跃运行结果跨工程版本与多Flow隔离真实WPF反例',
+            'P0-4 Studio真实CPU候选按钮到MRK运行及跨根页面/过期拒绝',
+            'S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环'
+          )) {
+            if (-not @($passed | Where-Object { $_.Line.Contains($required) }).Count) {
+              throw "Missing mandatory real Studio assertion: $required"
+            }
+          }
+      - name: Unified Owner and project structure
+        shell: pwsh
+        run: |
+          & .\Build\Verify-Structure.ps1
+          if (-not $?) { throw 'Structure guard failed' }
+          & .\Build\Verify-OwnerDependencies.ps1
+          if (-not $?) { throw 'Owner dependency guard failed' }
+      - name: Upload same SHA software evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: B1-B6-Same-SHA-Software-Reports
+          if-no-files-found: warn
+          path: |
+            Output/Release/x64/StudioShellSelfTest.txt
+            Output/Release/x64/Studio-*.png
