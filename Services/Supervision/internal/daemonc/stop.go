@@ -36,6 +36,7 @@ type ownedChild struct {
 	cmd       *exec.Cmd
 	done      chan childWaitResult
 	requested bool
+	late      func(StopReceipt)
 }
 
 // StopController belongs to one guardian Worker generation. It does not own
@@ -82,21 +83,55 @@ func (c *StopController) finish(cmd *exec.Cmd, waitErr error) bool {
 		return false
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	child := c.child
-	if child != nil && child.cmd == cmd {
-		c.child = nil
-		child.done <- childWaitResult{waitError: waitErr, reaped: cmd.ProcessState != nil}
-		close(child.done)
-		return child.requested
+	if child == nil || child.cmd != cmd {
+		c.mu.Unlock()
+		return false
 	}
-	return false
+	c.child = nil
+	outcome := childWaitResult{waitError: waitErr, reaped: cmd.ProcessState != nil}
+	child.done <- outcome
+	close(child.done)
+	requested := child.requested
+	late := child.late
+	receipt := receiptAfterWait(c.programID, cmd.Process.Pid, outcome)
+	c.mu.Unlock()
+	// Do not invoke callbacks under the controller lock: the Daemon might
+	// inspect the active PID or issue another request while reporting.
+	if requested && late != nil {
+		late(receipt)
+	}
+	return requested
+}
+
+// receiptAfterWait is the only path from an original Worker's Wait result
+// to a confirmed receipt. A successful OS Kill by itself never reaches it.
+func receiptAfterWait(id int64, pid int, outcome childWaitResult) StopReceipt {
+	receipt := StopReceipt{ProgramID: id, PID: pid, State: StopUnknown}
+	if !outcome.reaped {
+		receipt.SignalError = "Wait returned without a child ProcessState"
+		return receipt
+	}
+	receipt.State = StopConfirmed
+	receipt.WaitCompleted = true
+	if outcome.waitError != nil && !errors.Is(outcome.waitError, context.Canceled) {
+		receipt.WaitError = outcome.waitError.Error()
+	}
+	return receipt
 }
 
 // RequestStop never uses os.FindProcess or a bare stored PID. It refuses an
 // absent/stale child and prevents repeated stop signals for the same child.
 // Timeout yields unknown, never a fabricated "stopped" confirmation.
 func (c *StopController) RequestStop(ctx context.Context, expectedPID int) StopReceipt {
+	return c.RequestStopWithLateReceipt(ctx, expectedPID, nil)
+}
+
+// RequestStopWithLateReceipt preserves the immediate bounded receipt and,
+// only if it timed out, delivers the original Worker's eventual Wait outcome.
+// It does not spawn a goroutine waiting forever on a lost child, and it does
+// not perform any new PID lookup or signal after the first stop request.
+func (c *StopController) RequestStopWithLateReceipt(ctx context.Context, expectedPID int, onLate func(StopReceipt)) StopReceipt {
 	result := StopReceipt{State: StopRefused, PID: expectedPID}
 	if c == nil {
 		result.SignalError = "guardian has no owned stop controller"
@@ -134,18 +169,24 @@ func (c *StopController) RequestStop(ctx context.Context, expectedPID int) StopR
 	result.State = StopUnknown
 	select {
 	case outcome := <-child.done:
-		if !outcome.reaped {
-			result.SignalError = "Wait returned without a child ProcessState"
-			return result
-		}
-		result.State = StopConfirmed
-		result.WaitCompleted = true
-		if outcome.waitError != nil && !errors.Is(outcome.waitError, context.Canceled) {
-			result.WaitError = outcome.waitError.Error()
-		}
-		return result
+		return receiptAfterWait(c.programID, expectedPID, outcome)
 	case <-ctx.Done():
 		result.SignalError = "timed out before original Worker Wait confirmation: " + ctx.Err().Error()
+		if onLate != nil {
+			c.mu.Lock()
+			stillActive := c.child == child
+			if stillActive {
+				child.late = onLate
+			}
+			c.mu.Unlock()
+			if !stillActive {
+				// finish raced the timeout and has already buffered its
+				// definitive Wait result. This select branch chose ctx;
+				// do not lose the reconciliation.
+				outcome := <-child.done
+				onLate(receiptAfterWait(c.programID, expectedPID, outcome))
+			}
+		}
 		return result
 	}
 }
