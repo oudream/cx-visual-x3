@@ -1233,7 +1233,7 @@ namespace CxVisual.TestCenter.UI
                     "Studio/Headless可在重开后复用物理切片ROI与CT3D公共API继续编辑");
                 Guid originalPlaneId=restored.Plane.ResultId;
                 viewport.SelectRectangleRoi(5,5,6,6);
-                Check(roiEditCommand.CanExecute()&&
+                Check(frame.Commands.Any(c=>c.Id=="ct3d.case.roi.commit"&&c.CanExecute())&&
                     FindVisualByAutomationId<Button>(frame,"TCT.Volume.CommitSliceRoi")!=null,
                     "重开后物理ROI编辑应有可执行工作区命令与实际操作按钮");
                 AwaitProfessional(frame.SaveEditedSliceRoiAsync(.49,.51,
