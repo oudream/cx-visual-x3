@@ -282,7 +282,7 @@ namespace CxVisual.Studio
                 await Task.Run(()=>{
                     AutomationElement list=Find(AutomationElement.FromHandle(hwnd),
                         "Studio.ModuleCenter.ResultItems");
-                    AutomationElementCollection entries=list.FindAll(TreeScope.Children,
+                    AutomationElementCollection entries=list.FindAll(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.ControlTypeProperty,
                             ControlType.ListItem));
                     AutomationElement selected=null;
