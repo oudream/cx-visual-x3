@@ -117,7 +117,38 @@ namespace CxVisual.Professional.Vision
         public bool HasNoRegions { get; private set; }
         public IReadOnlyList<CxVisionResultItem> Items { get; private set; }
 
+        /// <summary>
+        /// 仅正式ROI验证过的原图内容指纹；普通预览为null。
+        /// SHA256基于有效像素紧排字节，不代表持久Artifact地址。
+        /// </summary>
+        public string ValidatedSourceHash { get; private set; }
+        public Guid? DefinitionRoiId { get; private set; }
+        /// <summary>正式工程运行时的MEM Revision，区别于算法ConfigRevision。</summary>
+        public int? DefinitionRevision { get; private set; }
+
         private CxVisionRunSummary() { }
+
+        /// <summary>在已验证正式工程边界生成独立只读证据，不篡改原Run结果。</summary>
+        internal CxVisionRunSummary WithValidatedRoiEvidence(Guid roiId,
+            string sourceHash,int definitionRevision)
+        {
+            if(roiId==Guid.Empty)throw new ArgumentException("ROI身份不能为空","roiId");
+            if(definitionRevision<0)throw new ArgumentOutOfRangeException("definitionRevision");
+            if(string.IsNullOrEmpty(sourceHash)||sourceHash.Length!=64 ||
+               !System.Linq.Enumerable.All(sourceHash,
+                   c=>(c>='0'&&c<='9')||(c>='a'&&c<='f')))
+                throw new ArgumentException("原图SHA256必须为64位小写十六进制","sourceHash");
+            if(RunId==Guid.Empty||Items==null || string.IsNullOrWhiteSpace(SourceId))
+                throw new InvalidOperationException("vision.roi.run_evidence_invalid");
+            return new CxVisionRunSummary{
+                RunId=RunId,SourceId=SourceId,CompletedUtc=CompletedUtc,
+                ConfigRevision=ConfigRevision,Width=Width,Height=Height,
+                PlanFingerprint=PlanFingerprint,CapabilityVersion=CapabilityVersion,
+                HasNoRegions=HasNoRegions,Items=Items,
+                DefinitionRoiId=roiId,DefinitionRevision=definitionRevision,
+                ValidatedSourceHash=sourceHash
+            };
+        }
 
         /// <summary>
         /// 按需将已提交的ThresholdMask提取为Contour结果项。默认结果不自动扫描大Mask；
@@ -161,7 +192,9 @@ namespace CxVisual.Professional.Vision
                 RunId = RunId, SourceId = SourceId, CompletedUtc = CompletedUtc,
                 ConfigRevision = ConfigRevision, Width = Width, Height = Height,
                 PlanFingerprint = PlanFingerprint, CapabilityVersion = CapabilityVersion,
-                HasNoRegions = HasNoRegions, Items = items.AsReadOnly()
+                HasNoRegions = HasNoRegions, Items = items.AsReadOnly(),
+                DefinitionRoiId=DefinitionRoiId,DefinitionRevision=DefinitionRevision,
+                ValidatedSourceHash=ValidatedSourceHash
             };
         }
 
