@@ -16,7 +16,7 @@ import (
 
 	"gogo/common/utilities"
 	"gogo/internal/daemonc"
-		"gogo/internal/monitorc"
+	"gogo/internal/monitorc"
 	"gogo/internal/program"
 )
 
