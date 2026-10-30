@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：145 项（S/R 源码存在或复用 68 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 145 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：146 项（S/R 源码存在或复用 69 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 146 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -133,6 +133,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go cmd/daemon | verifyManagedExecutablePID [函数] | 无活跃 Worker 的旧 PID 文件最小身份校验 | 不消除 PID 复用竞态 |
 | S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
 | S | Go internal/launchjournal | Journal / Record / Scan | 持久化启动意图、观察 PID、原 Wait 后清算 | 仅重启恢复证据，非 OS 进程真源 |
+| S | Go internal/launchjournal | observedBirthMs / DescribeCurrentPID / birthEvidence | OS 创建时间及真实可执行文件的只读恢复核验 | 仅缩小 PID 复用疑点，不证明进程归属 |
 | S | Go internal/daemonc | LaunchRecorder / RunProgramContextWithLaunchEvidence | 原守护 Worker Start/Wait 两端记录启动凭证 | 保留原签名与 UDP Event |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
 | S | Go cmd/daemon | recoveryPrograms [函数] | 旧程序恢复装配入口 | 保留旧守护兼容 |
@@ -1077,3 +1078,35 @@ Daemon 首次启动前通过 scanUnreconciledPrograms 合并旧 PID 文件与新
 已提交 journal_test.go、launch_evidence_test.go、orphan_guard_test.go 与 workers_test.go 回归：启动前崩溃意图、OS Start 后但 EventStart 未消费、坏文件、无旧 PID、Wait 清算、跨代阻止重复启动、写盘故障拒启；Linux Go Race CI 覆盖相应测试。正式仓库三平台 CI 的通过记录及工业 G2/G3 证据当前仍未取得，不能声称 G1 已通过。
 
 AttemptID 是 Daemon 生成的启动尝试标识，**不是 OS PID 创建代次证明**。此阶段针对 Daemon 进程 SIGKILL 的遗漏窗口进行保守封堵，不证明突然断电的文件系统持久性、完整进程树退出、停止操作持久审计或业务 Ready。S11 登录、权限、审计和受控解锁仍需后续正式开发。旧章节中“启动意图待实现”是当时状态，此处为最新源码进展。
+
+
+## 27. OS创建时间证据与守护诊断（2026-10-30）
+
+### 27.1 Owner 和真实实现
+
+不改变唯一 Go Daemon 进程 Owner。`internal/launchjournal/identity.go` 仅通过已有 `gopsutil/v3/process` 查询 OS 进程创建时间与可执行路径、使用 `os.SameFile` 做观察对照；`Record.processStartMs` 为新增可选持久字段。原 Worker 调用 `Started(PID)` 时尝试记录创建毫秒值，查询失败记录 0 并保留未清算隔离，不把读不到创建代次当作未发生启动。
+
+~~~mermaid
+flowchart TD
+ A[原始Worker Start成功] --> B[保存 PID 与可观察的OS创建时间]
+ B --> C[原Worker Wait后清算正常退出]
+ B --> D[Daemon异常退出仍有未清算凭证]
+ D --> E[新Daemon Scan只读核对当前OS]
+ E --> F{PID创建时间/程序文件是否吻合}
+ F -->|不吻合| G[标记不一致并继续隔离]
+ F -->|无法读取| H[标记未知并继续隔离]
+ F -->|观察吻合| I[明确不代表归属并继续隔离]
+ G --> J[H5本机只读展示]
+ H --> J
+ I --> J
+~~~
+
+只有相同 PID、创建时间与同一可执行文件的观察证据，不等于重新获得上次 Worker 的原始 Process 句柄。核验与实际操作之间仍有 TOCTOU；不自动 Kill、不清锁、不准许重启、不返回业务 Ready。此能力不触碰 Runtime/Professional Owner，也不新增 UDP、SQLite 或远程写接口。
+
+### 27.2 界面与测试证据
+
+现有 `GuardView.vue` 增加“进程身份观察（非授权）”列；`ProgramsView.vue` 详情新增同类解释，`utils/guard.ts` 仅解释 Daemon 已输出的 `identity=...` 标识，仍保留原始原因和时间。若是仅有 intent、PID 已不存在、出生时间不一致、文件身份不一致或 OS 权限不足，则按来源语义解释；即使观察时间和文件吻合，也醒目标记“未证明归属”。
+
+`identity_test.go` 增加真实当前进程创建时间读取、不同创建时间判别、无创建时间/仅 intent、旧记录拒绝自动放行等回归。`guard.test.ts` 验证 UI 不把“吻合”当作放行。Linux Race CI 追加创建时间相关用例；**固定 SHA 的 Go 三平台 CI、前端 typecheck/build 和设备 G2/G3 仍待取得真实执行日志，不能冒称已通过**。
+
+详见 [Supervision S01～S12 矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第二十二章。
