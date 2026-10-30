@@ -108,3 +108,9 @@
 - 实际修复：SHA 2870d9de 串行化同一项目级 Deployment Effective 的OpenExisting；SHA 5a4d0d32 在每个设备的同一Connector Effective读取闭包增加本地互斥，避免采集、Pipe、诊断对同一Connector的竞态。两者仍每次读取正式MHS持久版本，未缓存旧Effective替代检测，仍不放宽真实版本变化的FailClosed。
 - 回归：SHA d470b037 在两个真实本机Modbus TCP工站FC03持续采集时，四个并发任务重复查验项目级和各Connector Effective并断言PLC会话未因误报漂移退出；既有后续正式Deployment漂移负例保持有效。该新增用例是已提交测试源码，需对应固定SHA的Windows运行完成并通过后才能标记G1验收成功。
 - 边界：若其他进程正在持有MHS独占写锁，当前Host仍可能暂时读失败而FailClosed；跨进程读写协调和非阻塞只读版本查询应交由MHS Owner收敛，SCADA不在本层绕过存储审计/签名/文件锁。
+
+
+## 13. A2 FCR计数跨进程诊断与G1门禁（2026-10-30）
+- A3只读Pipe v1的Discover/Snapshot设备记录增加可选采集统计：CompletedCycles、SuccessfulCycles、PartialCycles（SHA 9f14ba0f）。数值直接来自现有PADScadaDeviceSession/FCRPeriodicJob运行计数，不复制MDS数据，也不产生新诊断状态Owner；新PLC SessionGeneration重新计数，客户端不能跨代次将计数连续拼接。
+- 双PLC真实Windows G1在每个设备完成两轮FC03后验证上述三个字段与真实MDS Good/原值；其中两台各SuccessfulCycles>=2且PartialCycles=0，任一设备失败需继续诊断而非声称PLC数据已正常（SHA 784b5e9b）。HMI-B不需修改旧有必填字段，SchemaVersion仍为1。
+- A/B共享联调契约追加独立说明，原`DeviceRef/ScopeId/ConfigVersion/Generation`的版本锁与只读默认拒写仍保留。只有固定SHA Windows x64真实CI通过后才认定G1成功；本机Socket G1不证明现场设备G2/G3。
