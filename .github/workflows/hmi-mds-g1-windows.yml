@@ -5,7 +5,13 @@ on:
     branches: [master]
     paths:
       - 'Professional/HMI/**'
+      - 'Mechanism/Presentation.Wpf/Visual/MPWLiveSceneControl.cs'
+      - 'Applications/Studio/StudioShell.Hmi.cs'
+      - 'Applications/Studio/CxVisual.Studio.csproj'
+      - 'Applications/Studio/StudioShell.cs'
+      - 'Applications/Studio/StudioShell.Variables.cs'
       - 'Tests/ArchitectureSmoke/Integration/HmiRuntimeTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/HmiWpfTests.cs'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
       - '.github/workflows/hmi-mds-g1-windows.yml'
@@ -26,11 +32,23 @@ jobs:
         run: |
           & msbuild.exe Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
           if($LASTEXITCODE -ne 0) { throw 'HMI build failed' }
+      - name: Restore and build real Studio HMI dock host
+        shell: pwsh
+        run: |
+          & msbuild.exe Applications/Studio/CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'HMI Studio restore failed' }
+          & msbuild.exe Applications/Studio/CxVisual.Studio.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'HMI Studio build failed' }
       - name: Run real MDS value and quality regression
         shell: pwsh
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi
           if($LASTEXITCODE -ne 0) { throw 'HMI G1 failed' }
+      - name: Run WPF STA real Page and MDS update
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi-wpf
+          if($LASTEXITCODE -ne 0) { throw 'HMI WPF STA G1 failed' }
       - name: Report verification boundary
         shell: pwsh
         run: |
