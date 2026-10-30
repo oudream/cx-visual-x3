@@ -71,21 +71,57 @@ namespace CxVisual.Studio
             pattern.SetValue(value);
         }
 
-        private static AutomationElement FindNativeDialog(string title)
+        private static AutomationElementCollection NativeProcessWindows()
         {
-            AutomationElementCollection windows=AutomationElement.RootElement.FindAll(
-                TreeScope.Children,new AndCondition(
+            return AutomationElement.RootElement.FindAll(TreeScope.Children,
+                new AndCondition(
                     new PropertyCondition(AutomationElement.ProcessIdProperty,
                         Process.GetCurrentProcess().Id),
                     new PropertyCondition(AutomationElement.ControlTypeProperty,
                         ControlType.Window)));
+        }
+
+        private static string NativeWindowDiagnostics()
+        {
+            var windows=NativeProcessWindows();
+            var descriptions=new System.Collections.Generic.List<string>();
             foreach(AutomationElement window in windows)
             {
-                string name=window.Current.Name;
-                if(name!=null && name.IndexOf(title,StringComparison.Ordinal)>=0)
-                    return window;
+                try
+                {
+                    descriptions.Add("Name="+window.Current.Name+
+                        " Class="+window.Current.ClassName+
+                        " Hwnd="+window.Current.NativeWindowHandle+
+                        " Enabled="+window.Current.IsEnabled);
+                }
+                catch(ElementNotAvailableException)
+                { descriptions.Add("(窗口在枚举中已关闭)"); }
             }
-            return null;
+            return descriptions.Count==0?"(当前桌面没有本进程顶层Window)":
+                String.Join(" | ",descriptions);
+        }
+
+        private static AutomationElement FindNativeDialog(string title)
+        {
+            AutomationElement nativeCandidate=null;
+            foreach(AutomationElement window in NativeProcessWindows())
+            {
+                try
+                {
+                    if(window.Current.Name.IndexOf(title,StringComparison.Ordinal)>=0)
+                        return window;
+                    // Win32通用文件对话框稳定窗口类；地区语言/自定义标题在
+                    // UIA Name上可能不同，但必须确实是本进程原生#32770。
+                    if(String.Equals(window.Current.ClassName,"#32770",
+                        StringComparison.Ordinal))
+                    {
+                        if(nativeCandidate!=null)return null; // 多弹框不可猜
+                        nativeCandidate=window;
+                    }
+                }
+                catch(ElementNotAvailableException){}
+            }
+            return nativeCandidate;
         }
 
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
@@ -118,7 +154,8 @@ namespace CxVisual.Studio
                     dialog=FindNativeDialog(title);
                     if(dialog==null)Thread.Sleep(50);
                 }
-                Require(dialog!=null,"系统文件对话框未出现："+title);
+                Require(dialog!=null,"系统文件对话框未出现："+title+
+                    "；本进程窗口快照："+NativeWindowDiagnostics());
                 AutomationElement editor=FindFileNameEditor(dialog);
                 ((ValuePattern)editor.GetCurrentPattern(ValuePattern.Pattern))
                     .SetValue(file);
@@ -157,7 +194,14 @@ namespace CxVisual.Studio
             Task dialog=Task.Run(()=>ConfirmNativeFileDialog(title,file));
             Task pair=Task.WhenAll(click,dialog);
             if(await Task.WhenAny(pair,Task.Delay(22000))!=pair)
+            {
+                // Click的InvokePattern若早已抛错，优先保留真实控件异常，
+                // 不应被另一Task的“没有文件弹框”14秒超时掩盖。
+                if(click.IsFaulted)await click;
+                if(dialog.IsFaulted)await dialog;
                 throw new TimeoutException("IMG05_UIA 原生文件对话框操作超时："+title);
+            }
+            if(click.IsFaulted)await click;
             await pair;
         }
 
