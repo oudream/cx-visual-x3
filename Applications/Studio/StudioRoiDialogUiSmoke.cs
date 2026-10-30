@@ -491,6 +491,55 @@ namespace CxVisual.Studio
                 Require(details.Text.Contains("原图来源失效") &&
                     vm.ProjectSession.Revision==revision,
                     "来源代次已变时用户重新点击工程ROI不得发布旧Run");
+                // 恢复可信RAW后再次MRK复算，实际切换Mask/Original再显式提交：
+                // 新Revision必须立即释放旧Run像素，不能只禁用Export按钮。
+                Trace(report,"重新可信RAW重绑与MRK复算，检查旧Result像素释放");
+                await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
+                    "重新绑定工程ROI原图",raw);
+                await Until(()=>status.Text.Contains("原图校验通过") ||
+                    status.Text.Contains("失败"),"恢复可信ROI原图");
+                Require(status.Text.Contains("原图校验通过"),
+                    "可信源无法重新恢复："+status.Text);
+                await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
+                await Until(()=>details.Text.Contains("工程ROI复算完成") ||
+                    details.Text.Contains("失败"),"恢复可信源MRK再次运行");
+                Require(details.Text.Contains("工程ROI复算完成") &&
+                    viewer.SelectedOverlayId==newlyDrawnRoi &&
+                    results.Items.Count>=4,
+                    "MRK重跑后必须从MEM正式配方恢复并选中同一面积ROI");
+                await Task.Run(()=>{
+                    AutomationElement list=Find(AutomationElement.FromHandle(hwnd),
+                        "Studio.ModuleCenter.ResultItems");
+                    AutomationElementCollection entries=list.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty,
+                            ControlType.ListItem));
+                    AutomationElement selected=null;
+                    foreach(AutomationElement entry in entries)
+                        if(entry.Current.Name.StartsWith("Mask",StringComparison.Ordinal))
+                        {selected=entry;break;}
+                    Require(selected!=null,"恢复Run的Mask结果不可见");
+                    SelectionItemPattern item=selected.GetCurrentPattern(
+                        SelectionItemPattern.Pattern) as SelectionItemPattern;
+                    Require(item!=null,"恢复Run的Mask不支持UIA选择");
+                    item.Select();
+                });
+                await Until(()=>viewer.Session.Result!=null &&
+                    viewer.Session.ActiveSlot==MVIImageSlot.Result,"Mask应显示真实Result");
+                await Click(hwnd,"Studio.ModuleCenter.ShowRunOriginal");
+                Require(viewer.Session.ActiveSlot==MVIImageSlot.Original &&
+                    viewer.Session.Result!=null &&
+                    viewer.SelectedOverlayId==newlyDrawnRoi,
+                    "从Mask切回原图应保留ROI选择且仍持有尚未失效的Run结果");
+                int revisionBeforeCommit=vm.ProjectSession.Revision;
+                await Click(hwnd,"Studio.ModuleCenter.CommitSelectedRoi");
+                Require(vm.ProjectSession.Revision==revisionBeforeCommit+1 &&
+                    viewer.Session.Result==null &&
+                    viewer.SelectedOverlayId==newlyDrawnRoi &&
+                    viewer.Overlays.Find(newlyDrawnRoi)!=null &&
+                    results.Items.Count==0 &&
+                    details.Text.Contains("旧Run已失效"),
+                    "ROI新Revision须清除旧Run像素/结果列表而保留当前正式ROI");
+                Trace(report,"Run像素已随MEM新Revision释放，ROI几何仍在当前图窗");
                 File.AppendAllText(report,
                     "PASS: IMG05 Studio真实WPF按钮/Windows Open Save文件对话框/RAW重绑/MRK复算/CSV与错源拒绝"+Environment.NewLine+
                     "NOTE: 初始MEM ROI由夹具创建；随后原生Win32鼠标拖框新ROI、实际点击Studio Undo/Redo。非人工或工业HIL。"+Environment.NewLine,
