@@ -131,12 +131,13 @@ namespace CxVisual.Runtime.Host
         /// read-only. The existing MRK center owns authentication and leases;
         /// this method neither creates one nor opens a write IPC endpoint.
         /// </summary>
-        internal IDisposable RegisterTrustedWriteCommands(MRKCommandCenter center,long commandId)
+        internal IDisposable RegisterTrustedWriteCommands(MRKCommandCenter center,long commandId,
+            Func<bool> currentControlGuard = null)
         {
             if(_stopped||!_stillApproved())
                 throw new InvalidOperationException(
                     "scada.command.deployment_or_session_stale");
-            return _device.RegisterWriteCommands(center,commandId);
+            return _device.RegisterWriteCommands(center,commandId,currentControlGuard);
         }
         internal Task Completion {get{return _device.Completion;}}
         internal Task StartAsync(CancellationToken cancellationToken)
