@@ -325,6 +325,9 @@ namespace CxVisual.Professional.CT3D
 
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
         {
+            if(a.Kind==CT3DAnalysisKind.MeshPlane&&a.SliceRoiRecipe!=null&&
+                a.FaceRoiRecipe!=null)
+                throw new InvalidOperationException("一个MeshPlane制品不得同时保存切片和面片两种ROI编辑配方。");
             // 元数据Aspect保持Schema1；结果制品V2增加明确种类，读取仍兼容已有V1 Mesh/平面。
             w.Write(Magic);w.Write(a.Kind==CT3DAnalysisKind.MeshPlane&&a.FaceRoiRecipe!=null?5:
                 a.Kind==CT3DAnalysisKind.MeshPlane&&a.SliceRoiRecipe!=null?4:
