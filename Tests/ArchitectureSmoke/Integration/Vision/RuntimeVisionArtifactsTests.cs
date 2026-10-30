@@ -61,6 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SeparatedGray16AndInputSafety();
             SeparatedMemoryImagePreview();
             RoiFIMMaskToMrkInspection();
+            SavedRoiDataVisualEngineering();
             SavedMemoryVisionR1RoundTrip();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
@@ -1096,6 +1097,112 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             Check(image.CopyPixels().SequenceEqual(source),
                 "非法ROI/取消不能修改共享原始FIM像素");
+        }
+
+        /// <summary>
+        /// CASE-07：真实MVI多边形→MEM Data/Visual一次提交→Undo/Redo→
+        /// 磁盘重开→原图内容Hash绑定→MRK恢复Run，错图与版本冲突拒绝。
+        /// </summary>
+        private static void SavedRoiDataVisualEngineering()
+        {
+            string path=Path.Combine(Path.GetTempPath(),
+                "vision-roi-"+Guid.NewGuid().ToString("N")+".cxproj");
+            var bytes=Enumerable.Repeat((byte)210,16).ToArray();
+            var source=new FIMImageBuffer(4,4,FIMPixelFormat.Gray8,bytes);
+            var roi=new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,3.6,3.6),new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
+                    new FGEPoint2D(0,3.6)
+                },"R1三角ROI");
+            var opts=Options(CxVisionPixelDepth.Bits8,200);
+            opts.MinDefectArea=1;
+            MRIObjectAddress address=null;
+            int before=0;
+            try
+            {
+                using(var engineering=MEMEngineering.Create("Vision R1 ROI工程"))
+                {
+                    var owner=engineering.AddPage("二维视觉").RootContent;
+                    before=engineering.Revision;
+                    address=CxVisionRoiEngineering.Commit(engineering,owner,before,
+                        source,"r1/source/frame-A",roi,opts,21,
+                        CancellationToken.None);
+                    Check(engineering.Revision==before+1 &&
+                        owner.Aspects.Count(x=>x.ProviderId==
+                            CxVisionRoiEngineering.ProviderId)==2,
+                        "ROI必须由一笔MEM编辑共同提交Data与Visual Aspect");
+                    var saved=CxVisionRoiEngineering.Open(engineering,address);
+                    Check(saved.Roi.Id==roi.Id &&
+                        saved.Roi.Kind==MVIImageOverlayKind.PolygonRoi &&
+                        saved.Roi.Points.Count==3 && saved.SourceHash.Length==64 &&
+                        saved.SourceId=="r1/source/frame-A" &&
+                        saved.Options.GrayThreshold==200,
+                        "ROI保存时几何身份、源和阈值未完整持久化");
+                    Reject<InvalidOperationException>(()=>
+                        CxVisionRoiEngineering.Commit(engineering,owner,before,
+                            source,"source",roi,opts,21,CancellationToken.None),
+                        "已过期工程Revision应拒绝并保持无部分写入");
+                    engineering.Undo().RequireValue();
+                    Reject<InvalidDataException>(()=>
+                        CxVisionRoiEngineering.Open(engineering,address),
+                        "撤销ROI必须同时删除两种Aspect");
+                    engineering.Redo().RequireValue();
+                    Check(CxVisionRoiEngineering.Open(engineering,address)
+                        .Roi.Id==roi.Id,
+                        "重做ROI必须同时恢复Data/Visual与稳定Guid");
+                    engineering.SaveAs(path);
+                    engineering.Close(true);
+                }
+                using(var reopened=MEMEngineering.Open(path))
+                {
+                    try
+                    {
+                        int stable=reopened.Revision;
+                        var recipe=CxVisionRoiEngineering.Open(reopened,address);
+                        Check(recipe.Roi.ContainsRoiPixelCenter(0,2) &&
+                            !recipe.Roi.ContainsRoiPixelCenter(2,2) &&
+                            recipe.Roi.Bounds.Width==3.6 &&
+                            recipe.SourceHash.Length==64,
+                            "磁盘重开丢失MVI像素中心形状谓词或ROI几何");
+                        var first=CxVisionRoiEngineering.RunSavedAsync(
+                            reopened,address,source,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        var second=CxVisionRoiEngineering.RunSavedAsync(
+                            reopened,address,source,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Check(first.RunId!=second.RunId &&
+                            first.SourceId==second.SourceId &&
+                            first.Items.Single(x=>x.Name=="阈值命中像素数")
+                                .IntegerValue==6 &&
+                            second.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                                .IntegerValue==6 &&
+                            first.Items.Single(x=>x.Kind==CxVisionResultKind.Mask)
+                                .Image.GetGrayValue(3,3)==0 &&
+                            reopened.Revision==stable && !reopened.IsDirty,
+                            "保存重开后真实MRK复算不为6px²或错误修改MEM");
+                        byte[] changed=(byte[])bytes.Clone();changed[15]=209;
+                        var foreign=new FIMImageBuffer(4,4,FIMPixelFormat.Gray8,changed);
+                        Reject<InvalidOperationException>(()=>
+                            CxVisionRoiEngineering.RunSavedAsync(reopened,address,
+                                foreign,CancellationToken.None)
+                                .GetAwaiter().GetResult(),
+                            "同尺寸的不同原图不得冒充已保存ROI Source");
+                        using(var stop=new CancellationTokenSource())
+                        {
+                            stop.Cancel();
+                            Reject<OperationCanceledException>(()=>
+                                CxVisionRoiEngineering.RunSavedAsync(reopened,address,
+                                    source,stop.Token).GetAwaiter().GetResult(),
+                                "取消已保存ROI检测不得发布旧结果");
+                        }
+                        Check(reopened.Revision==stable && !reopened.IsDirty,
+                            "错误来源与取消不能污染正式工程");
+                    }
+                    finally{reopened.Close(true);}
+                }
+            }
+            finally{if(File.Exists(path))File.Delete(path);}
         }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
