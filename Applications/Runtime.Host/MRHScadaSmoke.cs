@@ -317,7 +317,11 @@ namespace CxVisual.Runtime.Host
                         group.Find(b).Device.Inspect("word100").Quality==
                             MDSVariableQuality.Good,
                         "PLC-A停止不得影响PLC-B的Channel/采集/MDS");
-                    group.StopAsync().GetAwaiter().GetResult();
+                    Task stopFirst=group.StopAsync();
+                    Task stopAgain=group.StopAsync();
+                    Check(Object.ReferenceEquals(stopFirst,stopAgain),
+                        "多设备并发Stop必须共享同一生命周期完成Task");
+                    Task.WhenAll(stopFirst,stopAgain).GetAwaiter().GetResult();
                     int readsA=plcA.Reads,readsB=plcB.Reads;
                     Thread.Sleep(220);
                     Check(plcA.Reads==readsA&&plcB.Reads==readsB,
