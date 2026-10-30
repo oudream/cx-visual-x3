@@ -114,6 +114,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 doc.Close(true);
             }
+            // 真MEM磁盘保存重开：text绑定和静态定义仍由唯一MEM保存。
+            string archive = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cxvisual-hmi-binding-" + Guid.NewGuid().ToString("N") + ".cxproj");
+            try
+            {
+                table.Update<ushort>("word100", 99);
+                using (MEMEngineeringSession project = MEMEngineering.Create("HMI Save/Open"))
+                {
+                    MEMPage screen = project.AddPage("工站监控");
+                    MRCTextElement item = project.AddText(screen.RootContent,
+                        "当前速度", "等待通讯", 20, 20);
+                    project.SetBinding(item, "text", MPMBinding.Variable("word100"));
+                    int revision = project.Revision;
+                    project.SaveAs(archive);
+                    using (MEMEngineeringSession restored = MEMEngineering.Open(archive))
+                    using (PHMHmiRuntimeSession runtime = new PHMHmiRuntimeSession(
+                        restored.Project.Id, restored.Revision, table,
+                        PHMHmiMode.DesignPreview, TimeSpan.FromMinutes(1)))
+                    {
+                        MRCTextElement loaded = restored.Find(item.Id) as MRCTextElement;
+                        Check(loaded != null && loaded.GetBinding("text") != null &&
+                            loaded.GetBinding("text").SourceId == "word100",
+                            "真正保存重开丢失MDS变量绑定");
+                        var dynamicFrame = CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(restored, screen.Id, runtime);
+                        var designFrame = CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(restored, screen.Id);
+                        Check(dynamicFrame.Count == 1 && dynamicFrame[0].Text == "99" &&
+                            designFrame.Count == 1 && designFrame[0].Text == "等待通讯" &&
+                            restored.Revision == revision,
+                            "实时Text没有从保存工程和MDS一体投影或污染了工程");
+                        restored.Close(true);
+                    }
+                    project.Close(true);
+                }
+            }
+            finally
+            {
+                if (System.IO.File.Exists(archive)) System.IO.File.Delete(archive);
+                if (System.IO.File.Exists(archive + ".cx-lock"))
+                    System.IO.File.Delete(archive + ".cx-lock");
+            }
             Console.WriteLine("PASS HMI-G1 UInt16/Int16, Quality, Stale and safe mode gates");
         }
     }
