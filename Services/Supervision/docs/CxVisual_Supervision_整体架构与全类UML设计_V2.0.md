@@ -715,3 +715,32 @@ sequenceDiagram
 - 仍未解决：旧 Worker 退出期间立即启用的续接通知；MaxError/MaxCount 跨五分钟恢复周期锁定；PID 代次与进程树停止确认；S11 认证、授权与审计。**不能因此声称 SX-B 全部完成**。
 
 实际完成度仍以 [12大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引。
+
+
+## 18. Daemon终止闭锁与合法续接（2026-10-30）
+
+本章承接第 17 章的唯一 Worker 归属，但将 **Worker 活跃占用**、**上限终止闭锁**、**配置启用待续接**严格分开。三者都在 cmd/daemon/workers.go 中集中治理，不将程序配置、PID、Trace 或业务状态复制成第二套真源。
+
+~~~mermaid
+stateDiagram-v2
+ [*] --> Idle
+ Idle --> Active: start(合法配置)
+ Active --> Active: 周期恢复拒绝重复启动
+ Active --> Pending: 显式配置启用请求
+ Pending --> Active: 旧Worker返回后交接给新Worker
+ Active --> Idle: Worker正常返回
+ Active --> Latched: MaxError或MaxCount回调
+ Pending --> Latched: 终止上限触发，丢弃待续接
+ Latched --> Latched: 周期恢复/旧重启/配置启用拒绝
+ Latched --> [*]: Daemon进程结束（当前内存闭锁清除）
+~~~
+
+**同步边界**：RunProgramContextWithTerminal 在向既有 Program.Event 通道发送 EventMaxError/EventMaxCount 前调用 markTerminal；markTerminal 的互斥锁同时保护 terminal 与 pending。因此即使 Monitor/Daemon 主循环尚未处理终止事件，周期恢复也不能在 Worker 退出间隙重启。新增回调没有修改旧 wire Event 编码，也不改变 RunProgram、RunProgramContext 的原调用合同。
+
+**合法续接**：新增 gate.request，仅供原配置新增或禁用→启用路径；旧 Worker 未返回时记录待续接，真正退出后同步交接 ID 的占用，确保两个 Worker 不会同时执行。更新为禁用/删除会清除待续接。周期恢复 gate.start 绝不创建待续接请求。旧 UDP 仍未认证，此处的“配置合法”指内容/状态检查，**不能代表 S11 身份和操作授权已完成**。
+
+**安全默认**：终止锁不能由旧重启请求或配置重新启用自动清除；后续需要独立认证、授权、审计、幂等和解除原因确认的管理端处理。当前锁仅存 Daemon 内存，Daemon 自身重启后不保留，不具备跨进程重启的持久熔断保证。
+
+**代码与测试**：internal/daemonc/daemon.go、cmd/daemon/workers.go、cmd/daemon/main.go；新增 MaxError/MaxCount 终止回调先于事件发布、同 ID 排队续接无重叠、闭锁跨恢复拒绝、取消/禁用队列、恢复提前跳过禁用和锁定等正反测试。独立 Go 1.19 门禁核心隔离工程的 go test -count=30 -race ./... 已成功，但主仓库 Go CI/Windows/Linux/macOS/G1、真实 Daemon/受管进程 G2 还没有本轮通过记录。以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)作为完成度唯一来源。
+
+**仍需实现**：上限锁的安全持久化与管理授权解锁、Worker 退出后的真实 OS PID 身份与进程树停止回执、受控远程操作认证审计、服务/设备真正 Ready 验证。
