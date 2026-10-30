@@ -45,6 +45,10 @@ namespace CxVisual.Runtime.Host
         [DataMember] public string ConfigVersion {get;set;}
         [DataMember] public string Generation {get;set;}
         [DataMember] public bool Running {get;set;}
+        // 可选兼容v1字段：只读当前周期计数，不保存第二套运行状态。
+        [DataMember(EmitDefaultValue=false)] public long CompletedCycles {get;set;}
+        [DataMember(EmitDefaultValue=false)] public long SuccessfulCycles {get;set;}
+        [DataMember(EmitDefaultValue=false)] public long PartialCycles {get;set;}
         [DataMember] public MRHScadaPipePoint[] Points {get;set;}
     }
     [DataContract] internal sealed class MRHScadaPipeReply
@@ -141,6 +145,9 @@ namespace CxVisual.Runtime.Host
                         DeviceRef=x.DeviceRef,ScopeId=x.ScopeId,
                         ConfigVersion=x.ConfigVersion,Generation=x.Generation,
                         Running=x.IsRunning&&x.IsStillApproved,
+                        CompletedCycles=x.CompletedCycles,
+                        SuccessfulCycles=x.Device.SuccessfulCycles,
+                        PartialCycles=x.PartialCycles,
                         Points=new MRHScadaPipePoint[0]}).ToArray()};
             if(req.Operation!="snapshot")return Reject("READ_ONLY_OPERATION");
             if(String.IsNullOrEmpty(group.DeploymentVersion)||
@@ -180,7 +187,9 @@ namespace CxVisual.Runtime.Host
                 Devices=new[]{new MRHScadaPipeDevice{
                     DeviceRef=device.DeviceRef,ScopeId=device.ScopeId,
                     ConfigVersion=device.ConfigVersion,Generation=device.Generation,
-                    Running=true,Points=points}}};
+                    Running=true,CompletedCycles=device.CompletedCycles,
+                    SuccessfulCycles=device.Device.SuccessfulCycles,
+                    PartialCycles=device.PartialCycles,Points=points}}};
         }
 
         internal static Task RunAsync(MRHScadaRuntimeGroup group,string name,
