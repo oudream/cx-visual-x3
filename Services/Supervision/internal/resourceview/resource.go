@@ -3,7 +3,6 @@
 package resourceview
 
 import (
-	"errors"
 	"math"
 	"path/filepath"
 	"time"
@@ -24,7 +23,7 @@ type Storage struct {
 	Available bool    `json:"available"`
 	TotalBytes uint64 `json:"totalBytes"`
 	UsedBytes uint64  `json:"usedBytes"`
-	FreeBytes uint64  `json:"freeBytes"`
+	AvailableBytes uint64  `json:"availableBytes"`
 	UsedPercent float64 `json:"usedPercent"`
 	SampledAt string `json:"sampledAt"`
 	Error string `json:"error,omitempty"`
@@ -93,16 +92,12 @@ func storageSample(total, used, free uint64, at string) Storage {
 		return out
 	}
 	out.Available = true
-	out.TotalBytes, out.UsedBytes, out.FreeBytes = total, used, free
+	out.TotalBytes, out.UsedBytes, out.AvailableBytes = total, used, free
 	out.UsedPercent = float64(used) * 100 / float64(total)
 	return out
 }
 
-func sampleError(err error, fallback string) string {
-	if err == nil {
-		err = errors.New(fallback)
-	}
+func sampleError(_ error, fallback string) string {
 	// Do not return raw OS paths or credentials through this diagnostics API.
-	_ = err
 	return fallback
 }
