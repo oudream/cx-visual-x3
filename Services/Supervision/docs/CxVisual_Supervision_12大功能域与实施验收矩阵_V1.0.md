@@ -396,3 +396,18 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **实测范围**：使用独立 Go 最小模块复现此次 StopController 核心逻辑，在 Go 1.23.2/Linux amd64 执行 go test -race -count=20 ./...，返回 ok。**这是独立算法验证，不是本仓库全部 Go 依赖、Daemon 主循环或 Windows/Linux/macOS CI 的通过证明**。本轮为源码/测试已提交（S），主仓库 G1 与真实设备 G2/G3 待核查。
 
 **剩余风险**：Daemon 强制退出/断电后迟到回执不可可靠记录；跨进程操作账本与幂等操作编号、原 UDP 身份授权/审计、进程树/孤儿进程、PID 复用与业务 Ready 验证尚未完成。该功能没有对 H5 开放未经认证的停止/启动接口。
+
+
+## 十九、Daemon异常退出的遗留进程隔离（2026-10-30）
+
+**实际源码 S02**：`cmd/daemon/main.go` 删除原 `exitPidFiles` 按旧 PID 文件自动 Kill 的启动行为。旧 PID 文件及同名可执行文件不能证明创建代次/原守护归属，自动杀死存在误伤风险。`cmd/daemon/orphan_guard.go` 使用只读 `scanLegacyPIDFiles` 检查既有 pid 文件：文件缺失或 OS 确认 PID 已不存在时，保留原自动启动；其他不安全或无法核实情况均隔离该 Program，包括同一可执行文件仍存活（归属不明）、PID 已被其他进程复用、权限/检查失败、非普通文件、损坏、异常长度、零/负 PID、自身 PID，以及多个 Program 共享旧 PID 文件名。
+
+**唯一归属**：`cmd/daemon/workers.go` 在已有 `programWorkerGate` 增设进程内 orphaned 隔离标记，不取代 MaxError/MaxCount 的持久锁，不创建新的进程管理中心或第二份 Program 数据库。Daemon 在启动任何 Worker 之前完成扫描和隔离登记；初始化启动、周期恢复与配置启用/待续接均经过该门禁拒绝，日志记录 ProgramId 与隔离原因。保留 PID 文件作为排查证据，不自动删除、不因收到旧 UDP 重启而清除隔离。
+
+**工业兼容与现场处置**：原先“启动后自动清理旧 PID 进程”的行为已被保守隔离取代。上线前必须核对真实旧 PID 文件命名、部署路径、权限及监护策略；隔离后先查清设备实际进程与业务运行情况，授权人员在确认设备安全状态后停止 Daemon、备份记录、离线处理遗留 PID，随后重启验证。旧 UDP 控制仍未认证，不允许在线绕过隔离或自动执行 Kill。
+
+**回归源码**：`cmd/daemon/orphan_guard_test.go` 以当前测试二进制创建一次性真实测试子进程，验证扫描既不自动杀死它也不会重复启动同 ID；覆盖空/损坏/非法 PID、共享文件名、无遗留 PID、已退出且 Wait 的历史 PID、隔离的持续性及配置请求拒绝。`.github/workflows/supervision-migration.yml` 扩充 Linux Race 筛选；原三平台 Go build/test 仍保持。
+
+**证据等级**：修改及测试源码已提交（S）。**没有取得本轮固定 SHA 的主仓库 Go 全量测试和 Windows/Linux/macOS CI 成功输出；G1/G2/G3 未验**，不得把测试文件存在等同测试通过。
+
+**残留窗口**：旧 PID 文件仅在 Daemon 主循环接收 EventStart 后写入。如果它在原子进程成功启动、事件尚未消费之前被强制杀死，仍可能漏报。因此后续应在原 Worker `exec.Cmd.Start` 后、发布 EventStart 前持久化绑定 Program ID/原始进程代次的启动凭证，持久化失败则安全处置原始子进程。OS PID 复用、子孙进程树、SIGKILL/断电场景与专业业务 Ready 仍需专项验收。
