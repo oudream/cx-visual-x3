@@ -59,6 +59,15 @@ namespace CxVisual.Studio
             if (_symbolManagementCenter != null) _symbolManagementCenter.Refresh();
         }
 
+        /// <summary>可信专业代码经现有IMPMTypeProvider注册冻结类型契约，
+        /// 两中心只读取MEM注册结果，不做未知DLL反射扫描或私有CLR工厂持久化。</summary>
+        public void RegisterStudioSharedResourceTypes(IMPMTypeProvider provider)
+        {
+            if(provider==null)throw new ArgumentNullException("provider");
+            _viewModel.ProjectSession.RegisterTypes(provider);
+            RefreshStudioSharedResourceCenters();
+        }
+
         // These methods are also consumed by STA self-tests without native file dialogs.
         internal Guid CreateStudioSharedDefinition(bool symbol, string name, string typeId = null)
         {
@@ -226,7 +235,7 @@ namespace CxVisual.Studio
                 _external.SelectionChanged += (s,e) => UpdateDetails();
                 _types.SelectionChanged += (s,e) => UpdateDetails();
                 _local.MouseDoubleClick += (s,e) => TryAction(OpenEditor);
-                _search.TextChanged += (s,e) => Refresh();
+                _search.TextChanged += (s,e) => Refresh(true);
                 SetDock(_feedback, Dock.Bottom); Children.Add(_feedback);
                 SetDock(_details, Dock.Bottom); Children.Add(_details);
                 Children.Add(_catalog);
@@ -290,10 +299,13 @@ namespace CxVisual.Studio
                     if (selected == resource.Id) item.IsSelected = true;
                 }
             }
-            internal void Refresh()
+            internal void Refresh(bool force=false)
             {
                 if (_disposed) return;
                 MEMEngineeringSession session = Session();
+                if (!force && ReferenceEquals(session,_project) &&
+                    LastProject==session.Project.Id && LastRevision==session.Revision)
+                    return;
                 // 换工程后清除任何旧工程所选对象；包只是外部只读来源。
                 if (!ReferenceEquals(_project,session))
                 {
@@ -509,7 +521,7 @@ namespace CxVisual.Studio
                 MEMEngineeringSession previous=_package;
                 _package=candidate; _sourcePath=path;
                 if(previous!=null)previous.Close(true);
-                Refresh();_catalog.SelectedIndex=1;
+                Refresh(true);_catalog.SelectedIndex=1;
                 _feedback.Text="资源包已加载为只读来源，尚未修改当前工程："+path;
             }
             private void ImportSelected()
