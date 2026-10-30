@@ -17,6 +17,7 @@ namespace CxVisual.Studio
             MDSVariableProviderHost provider = null, bool allowRuntimeWrites = false)
         {
             if (table == null) throw new ArgumentNullException("table");
+            if (_studioRemoteHmi != null) ReleaseStudioScadaReadOnly();
             if (!ReferenceEquals(_studioVariableScope, table)) CloseStudioHmiRuntimeDocuments();
             _studioVariableScope = table;
             if (_viewModel != null) _viewModel.RefreshRuntimeVariableChoices();
