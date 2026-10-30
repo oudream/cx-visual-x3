@@ -107,3 +107,17 @@ Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
 G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写入拒绝、Channel断链 Stale。桥接不再保留未使用的 `IMPADataTargetAccess dataOwner` 构造参数。**运行合同要求先创建/注册/绑定/启动PAD Provider Host，再读取设备点**；否则操作应拒绝，而不是宣称数据提交成功。由于当前 ProviderHost 接收回调不返回逐点提交ACK，批量采样的可观察确认还应在正式MDS Owner中进一步完善，不以单个Emit布尔值代表最终下游存储/观察者都成功。
 
 本段代码及本批正反测试已提交；必须以新SHA的 Windows CI为准判断G1，G2/G3仍未执行。
+
+## 十、WP02→WP03：PLC 寄存器写入接入现有 MRK Command/Lease（2026-10-30）
+
+正式程序集新增 `Professional/Automation/Plc/PADPlcMrkCommandRegistration.cs`，并由 `CxVisual.Professional.Automation.csproj` 引用现有 `Mechanism.Runtime`。没有新建 CommandCenter/Queue/ResourceRegistry：
+
+- `RegisterUInt16Write(MRKCommandCenter, PADDeviceVariableProvider, DeviceRef, CommandId)` 利用现有 `FDCCommandDefinition` 声明 `StableId:string`、`Value:ushort` 和 `RegisterReadbackMatched:bool` 的版本化 Schema，注册 `MRKCommandKind.Device`；设备目标为 `Automation/PLC/{DeviceRef}`。
+- 通过 `MRKCommandPolicy(ResourceId = Automation.PLC.Device/{DeviceRef}, MaxConcurrent=1, SupportsCancellation=false, MaxAttempts=1, Idempotent=false)` 使用 Host 的 `MRKResourceLeaseCoordinator`。同一设备的其他命令必须选择相同资源键；这只是同一 Runtime Host 进程内的软件租约，不等于硬件 Safety/跨进程互锁。
+- `MRKCommandCenter` 的授权器不可为 null，Host必须对真实身份、角色、工站、模式和设备联锁进行验证；之后 PAD Provider 还执行专业写入授权。直接信任外部 Caller 字符串不构成身份认证。
+- `PADPlcOutcomeUnknownException` 映射为 `MRKCommandHandlerResult(BusinessSuccess=false, BusinessCode=PLC_REGISTER_OUTCOME_UNKNOWN, RegisterReadbackMatched=false)`；当前 MRK 命令 State=Completed 表示**Handler已结算**，绝不意味着物理动作已完成。不能只检查 State，必须联合 BusinessSuccess/BusinessCode/专业物理证据判断。
+- 设备写入没有自动重试；重复相同 OperationId 由 MRK 正式账本去重，同资源租约及拒绝未授权的逻辑在 MRK 正式 Owner 实施，不在 Automation 重复。
+
+新增 `Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs` 的真实 TCP/HMI 无关 G1 场景：无 Host 授权拒绝、Guest 拒绝、外部持有设备资源租约时不应发送写报文、释放后 FC06+FC03 回读确认、同 OperationId 不重发，以及写寄存器 ACK 后读回不一致时 BusinessCode=UNKNOWN 且只发送一次。相关 G1/Config L1 结论需要以**本批固定 Commit SHA** 的 Actions 日志为准。
+
+**未关闭**：MRK 层当前返回 Completed+业务未知，而不是全局 CommandState.Unknown；如需统一改变状态语义，必须由 MRK 唯一 Owner 决议和全系统回归，不可只在专业库更改。设备回读不是运动到位/光源安全停止的证明。Studio/TestCenter 设备调试页、跨进程 Host 认证、跨宿主资源协调与现场 G2/G3 仍待后续开发。
