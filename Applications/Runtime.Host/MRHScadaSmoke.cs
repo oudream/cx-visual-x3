@@ -307,6 +307,69 @@ namespace CxVisual.Runtime.Host
                     Check(plcA.Reads==readsA&&plcB.Reads==readsB,
                         "设备组Stop后不允许任何残余TCP采样");
                 }
+                // 工程多PLC显式组恢复：A一次真实FC03丢响应导致旧世代故障；
+                // 必须Stop/Dispose两套旧Session，重新从MEM/MHS装配并产生新代次。
+                // B在组级恢复期间也短暂停止，这不是单设备无缝热迁移。
+                using(CancellationTokenSource recoverStop=new CancellationTokenSource())
+                {
+                    MRHScadaGroupRecoverySupervisor supervisor=
+                        new MRHScadaGroupRecoverySupervisor(project,configs,null,2,50);
+                    string firstA=null,firstB=null,secondA=null,secondB=null;
+                    Task recovery=supervisor.RunAsync(recoverStop.Token,group=>
+                    {
+                        if(firstA==null)
+                        {
+                            firstA=group.Find(a).Generation;
+                            firstB=group.Find(b).Generation;
+                        }
+                        else
+                        {
+                            secondA=group.Find(a).Generation;
+                            secondB=group.Find(b).Generation;
+                            Check(firstA!=secondA&&firstB!=secondB,
+                                "组恢复没有同时替换两个独立PLC SessionGeneration");
+                            MRHScadaPipeReply stale=MRHScadaReadOnlyPipe.Respond(group,
+                                new MRHScadaPipeRequest{
+                                    SchemaVersion=1,Operation="snapshot",DeviceRef=a.ToString("N"),
+                                    ExpectedDeploymentVersion=group.DeploymentVersion,
+                                    ExpectedConfigVersion=group.Find(a).ConfigVersion,
+                                    ExpectedGeneration=firstA});
+                            Check(stale.Status=="Rejected"&&
+                                stale.ErrorCode=="SESSION_VERSION_MISMATCH",
+                                "组恢复之后旧HMI Generation不能读取新的PLC世代");
+                        }
+                    });
+                    try
+                    {
+                        Check(SpinWait.SpinUntil(()=>
+                            supervisor.ConnectedGenerations==1&&plcA.Reads>=4&&plcB.Reads>=4,
+                            10000),"组恢复首世代没有实际读取两台TCP设备");
+                        int beforeA=plcA.Reads,beforeB=plcB.Reads;
+                        plcA.DropNextReplies(1);
+                        Check(SpinWait.SpinUntil(()=>
+                            supervisor.ConnectedGenerations>=2,12000),
+                            "PLC-A真实FC03丢回包未触发有界组重建");
+                        Check(supervisor.RecoveryAttempts==1&&secondA!=null&&
+                            secondB!=null&&secondA!=firstA&&secondB!=firstB,
+                            "组恢复的重试预算或代次所有权异常");
+                        Check(SpinWait.SpinUntil(()=>
+                            plcA.Reads>=beforeA+2&&plcB.Reads>=beforeB+2,10000),
+                            "组恢复后两台PLC没有重新取得真实FC03数据");
+                        Check(plcA.Writes==0&&plcB.Writes==0,
+                            "组恢复不能重放PLC写指令");
+                    }
+                    finally
+                    {
+                        recoverStop.Cancel();
+                        try{recovery.GetAwaiter().GetResult();}
+                        catch(OperationCanceledException)
+                            when(recoverStop.IsCancellationRequested){}
+                    }
+                    int stoppedA=plcA.Reads,stoppedB=plcB.Reads;
+                    Thread.Sleep(220);
+                    Check(plcA.Reads==stoppedA&&plcB.Reads==stoppedB,
+                        "组恢复停止后仍存在遗留的PLC采集请求");
+                }
                 // 项目级Deployment的生效版本同样必须被每台PLC轮询守卫：
                 // 不允许Studio部署调整后旧Host继续采集或沿用原设备控制上下文。
                 using(MRHScadaRuntimeGroup pinned=MRHScadaRuntimeGroup.OpenFromEngineering(

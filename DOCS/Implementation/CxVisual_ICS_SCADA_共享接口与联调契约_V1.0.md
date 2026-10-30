@@ -132,3 +132,8 @@ HMI-B可按以上合同用Windows NamedPipeClientStream连接本机同账户Host
 2. MDS首次尚未获得PLC真实FC03采样时 HasValue=false；A的v1 Point.Value、Point.RefreshUtc、Point.ChangeUtc可为null，Quality初始可能Uncertain；B的 PHMScadaPointObservation 目前无条件 DateTime.TryParse(RefreshUtc)，应先检查 HasValue，仅在存在真实采样时解析非空UTC时间。不能把DateTime.MinValue或当前系统时间冒充设备采样时间。
 
 已有真实采样时A提供ISO8601 RefreshUtc/ChangeUtc；MDS质量降级为Stale仍保留上一笔真实采样时间。以上是 **A与B接口语义对齐要求**，不表示B代码已修复或完成联合Windows CI。其他共享点：SchemaVersion=1、同Windows用户ACL、三重版本锁、无远程写命令均不变。
+
+
+## 9. 多设备组恢复对HMI-B的会话语义（2026-10-30）
+
+A新增可选 `scada-group-serve ... --recover [--read-pipe <pipeName>]`；当前失败后**整个组**关闭并重新从同版MEM+MHS Effective装配，所有Device Generation同时换代，Pipe可能在退避期间断开。B应在Pipe不可达/旧Generation拒绝时清除旧Good显示，待新Discover成功后主动重新建立绑定；不得凭相同DeviceRef/Scope假设旧Session仍可控制或继续显示实时值。非通信错误、部署版本变更不得自动恢复。此版本仍只读，没有HMI远程MRK写入口。

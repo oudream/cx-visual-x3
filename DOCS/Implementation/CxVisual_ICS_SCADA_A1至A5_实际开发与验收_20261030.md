@@ -67,3 +67,10 @@
 - **正式CLI**：`CxVisual.Runtime.Host.exe scada-group-serve <saved.cxproj> <mhsRoot>`，无需Studio/HMI进程或手工传每个PLC寄存器地址。多设备共用同一独立Host进程，各自持有不同的MCN Channel、PAD桥接和MDS Scope，组Stop遍历全部设备。不另建Timer/数据缓存/命令总线；首批组进程默认只读，某个采集出现不可恢复错误时FailClosed、外部Supervision后续联调。
 - **真实测试**：`MRHScadaSmoke.RunTwoDevices` 保存MEM双Station资源及项目级MHS SCADA Deployment，两套Connector Effective向独立本机TCP夹具发送真实FC03，分别读73与45；A单独Stop后B继续读Good。拒绝重复DeviceRef、Scope、Module和ChannelId，验证修改项目级部署版本时两个旧采样会话进入Faulted并将原Quality置Stale，整个测试不发送FC06。
 - **交付状态**：上述源码与测试已提交到master；新运行批次 <https://github.com/oudream/cx-visual-x3/actions/runs/41029431596> 的实际Windows成功是最终G1验收门禁，不可把较早单设备成功冒充新双设备/FCM Schema通过。现场PLC身份、生产部署SCM、跨进程认证IPC、分布式租约和真实机台安全仍未验收。
+
+
+## 8. A2/A5 项目级多PLC显式有界只读恢复（2026-10-30增量）
+
+源文件 `Applications/Runtime.Host/MRHScadaGroupRecoverySupervisor.cs`；新入口 `scada-group-serve <saved.cxproj> <mhsRoot> --recover [--read-pipe <pipeName>]`，原有非恢复入口完全保留。仅在一个PLC周期采集真实通信不可用或Socket连接失败时，先Stop/Dispose当前整组MDS/Connector/Provider/Channel，再重新以MEM工程和MHS正式Effective打开新组；检查项目保存时间、项目部署Effective、各设备Connector Effective与DeviceRef集合均未变，并要求每台设备SessionGeneration必须换代。允许最多3次有界重试及指数退避；业务/点表/配置/版本漂移、不可确认的写入和其它异常均不会自动恢复。**当前是组级重建，非单PLC无中断热切换；其余PLC在恢复期间暂时中断。** Pipe若显式启用，则跟随组世代停启；旧HMI Generation不能用于新会话，必须重新Discover。没有建立第二套定时器、协议、可写变量仓或独立运行平台。
+
+`MRHScadaSmoke.RunTwoDevices` 增加OS原生TCP丢失一笔FC03响应、两PLC新SessionGeneration、旧HMI请求拒绝、恢复后真实FC03采样、零FC06与Stop后无残留报文反例。测试源码已提交时应标记为待Windows G1结果，不能把本地模拟器等同现场G2/G3；仍缺单设备无中断切换、生产SCM、跨账户安全IPC、告警历史及设备HIL。
