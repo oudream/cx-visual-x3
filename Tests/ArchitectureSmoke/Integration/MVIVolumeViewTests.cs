@@ -146,6 +146,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(scene3d.RemoveOlderSourceRevisions("ct3d:measurement:source",3)==0,
                     "重复来源版本失效不得产生冗余修改");
                 scene3d.Remove(latest);
+                Guid persistentMesh=scene3d.Add(MVI3DSceneKind.Mesh,
+                    "ct3d:mesh:old-result",4,"frame:stable",.45);
+                Guid persistentMeasure=scene3d.Add(MVI3DSceneKind.Measurement,
+                    "ct3d:plane:old-result",4,"frame:stable",.65);
+                scene3d.SetOrganization(persistentMesh,"analysis","stable");
+                scene3d.SetOrganization(persistentMeasure,"measurement","stable");
+                scene3d.Select(persistentMeasure);
+                long beforeRemap=scene3d.Revision;
+                scene3d.RemapSources(item=>item.Id==persistentMesh?"ct3d:mesh:new-result":
+                    item.Id==persistentMeasure?"ct3d:plane:new-result":item.SourceRef);
+                MVI3DSceneItem changedMesh,changedMeasure;
+                Check(scene3d.Revision==beforeRemap+1&&
+                    scene3d.TryGet(persistentMesh,out changedMesh)&&
+                    scene3d.TryGet(persistentMeasure,out changedMeasure)&&
+                    changedMesh.SourceRef=="ct3d:mesh:new-result"&&
+                    changedMeasure.SourceRef=="ct3d:plane:new-result"&&
+                    changedMesh.Id==persistentMesh&&changedMeasure.Id==persistentMeasure&&
+                    changedMesh.GroupKey=="stable"&&changedMeasure.Opacity==.65&&
+                    scene3d.SelectedId==persistentMeasure,
+                    "一次专业重算应原位更新多个Scene来源并保留对象身份、组、透明度和选择");
+                bool badRemapRejected=false;
+                try{scene3d.RemapSources(item=>
+                    item.Id==persistentMeasure?null:"unexpected:change");}
+                catch(ArgumentException){badRemapRejected=true;}
+                Check(badRemapRejected&&scene3d.Revision==beforeRemap+1&&
+                    scene3d.TryGet(persistentMesh,out changedMesh)&&
+                    changedMesh.SourceRef=="ct3d:mesh:new-result",
+                    "任一专业来源重绑定失败必须拒绝全部修改，避免半旧半新的Scene状态");
+                scene3d.Remove(persistentMesh);
+                scene3d.Remove(persistentMeasure);
                 scene3d.Remove(cadRef);
                 scene3d.Remove(maskRef);
                 scene3d.Remove(resultRef);
