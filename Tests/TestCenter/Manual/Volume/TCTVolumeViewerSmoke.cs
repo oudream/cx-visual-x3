@@ -942,10 +942,20 @@ namespace CxVisual.TestCenter.UI
                     var pointCloudScene=new MVI3DSceneState();
                     Guid cloudId=pointCloudScene.Add(MVI3DSceneKind.PointCloud,
                         "ct3d:pointcloud:test",1,"frame:verified",.45);
-                    var normalizedCloud=new[]{
-                        new System.Numerics.Vector3(-.1f,-.1f,-.1f),
-                        new System.Numerics.Vector3(.1f,.1f,.1f),
-                        new System.Numerics.Vector3(.2f,.1f,.0f)};
+                    var originalCloudPoints=new List<FGEPoint3D>();
+                    foreach(FVOPhysicalPoint3D point in new[]{
+                        frame.Volume.SpatialFrame.VoxelToPhysical(3,4,5),
+                        frame.Volume.SpatialFrame.VoxelToPhysical(4,5,6),
+                        frame.Volume.SpatialFrame.VoxelToPhysical(5,6,7)})
+                        originalCloudPoints.Add(new FGEPoint3D(point.X,point.Y,point.Z));
+                    var sourceCloud=new FGEPointCloud3D(originalCloudPoints);
+                    MPWVolumeDisplayPointCloud cloudDisplay=
+                        MPWVolumeSurfaceProjection.ProjectPointCloud(sourceCloud,
+                        frame.Volume.SpatialFrame,frame.Volume.OriginalWidth,
+                        frame.Volume.OriginalHeight,frame.Volume.OriginalDepth);
+                    var normalizedCloud=cloudDisplay.Points;
+                    Check(cloudDisplay.Count==3&&cloudDisplay.OriginalIndices[2]==2,
+                        "真实标定物理PointCloud应通过正式MPW转换且保留原值点索引");
                     frame.Scene.BindSceneSelection(pointCloudScene);
                     frame.Scene.SetAdditionalPointCloud(cloudId,normalizedCloud,.45);
                     Check(frame.Scene.AdditionalPointCloudCount==1&&
