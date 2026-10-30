@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"gogo/internal/program"
 	"time"
 )
 
@@ -98,4 +100,47 @@ func TestProgramWorkerGateScopesIDsAndRejectsCancelledStarts(t *testing.T) {
 	close(second)
 	waitWorkerReleased(t, gate, 11)
 	waitWorkerReleased(t, gate, 12)
+}
+
+func TestRecoveryProgramsSkipsReservedGuardian(t *testing.T) {
+	// A PID=0 occurs before EventStart and during restart backoff. Recovery
+	// must not wait out FirstWaitTime or start another guardian in this state.
+	const id int64 = 517
+	previousPrograms := getPrograms()
+	previousWorkers := _programWorkers
+	previousPIDs := _runProgramIds
+	_programWorkers = newProgramWorkerGate()
+	_runProgramIds = map[int64]int{id: 0}
+	_programsMu.Lock()
+	_programs = []program.Program{{ID: id, FirstWaitTime: 3600}}
+	_programsMu.Unlock()
+	t.Cleanup(func() {
+		_programsMu.Lock()
+		_programs = previousPrograms
+		_programsMu.Unlock()
+		_programWorkers = previousWorkers
+		_runProgramIds = previousPIDs
+	})
+
+	held := make(chan struct{})
+	if !_programWorkers.start(context.Background(), id, func() { <-held }) {
+		t.Fatal("could not reserve the test guardian")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		recoveryPrograms(ctx, make(chan program.Event))
+		close(done)
+	}()
+	select {
+	case <-done:
+		if ctx.Err() != nil {
+			t.Fatal("recovery waited for initial delay despite active guardian")
+		}
+	case <-ctx.Done():
+		t.Fatal("recovery blocked during another worker's startup/backoff")
+	}
+	close(held)
+	waitWorkerReleased(t, _programWorkers, id)
 }
