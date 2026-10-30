@@ -82,3 +82,27 @@ export interface GuardEnvelope extends Envelope<GuardReport> {
   scope: 'local-only'
   kind: 'local-daemon-artifact-observation'
 }
+
+/** Append-only Daemon stop attempt, reconciled by operation ID. */
+export interface StopOperation {
+  operationId: string
+  programId: string
+  pid: number
+  action: string
+  state: 'requested' | 'unknown' | 'refused' | 'signal-failed' | 'wait-confirmed'
+  waitCompleted: boolean
+  signalError?: string
+  waitError?: string
+  recordedAt: string
+}
+
+export interface StopHistory {
+  available: boolean
+  error?: string
+  items: StopOperation[]
+}
+
+export interface StopHistoryEnvelope extends Envelope<StopHistory> {
+  scope: 'local-only'
+  kind: 'durable-stop-history'
+}
