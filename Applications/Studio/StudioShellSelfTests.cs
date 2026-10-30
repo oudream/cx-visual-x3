@@ -3421,6 +3421,13 @@ namespace CxVisual.Studio
                         Assert(workspace.CaseCount==1&&workspace.CurrentAnalysis!=null&&
                             workspace.CurrentAnalysis.Kind==CT3DAnalysisKind.MeshPlane,
                             "真实CT3D MEM工程和原始RAW未进入Studio工作台");
+                        Assert(!workspace.TryRestoreSavedSliceRoi(),
+                            "无原始ROI配方的历史Case不能伪造可重开切片矩形");
+                        bool legacyRejected=false;
+                        try{AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(CancellationToken.None));}
+                        catch(InvalidOperationException){legacyRejected=true;}
+                        Assert(legacyRejected&&!workspace.HasPendingAnalysis,
+                            "旧版Case的Studio保存配方复算必须明确拒绝且不污染工程");
                         var viewport=workspace.Workbench.GetViewport(FVOSlicePlane.XY);
                         var physical=viewport.SelectRectangleRoi(5,5,6,6);
                         Assert(physical.Unit=="mm"&&
@@ -3484,6 +3491,25 @@ namespace CxVisual.Studio
                         Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
                             workspace.CurrentAnalysis.GetFeatureMeasurements().Count==2,
                             "Studio重新打开不能恢复已保存的Feature及Measurement");
+                        Assert(workspace.CurrentAnalysis.SliceRoiRecipe!=null&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MinimumOffsetMm==.49&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MaximumOffsetMm==.51&&
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
+                                SelectedSliceRectangle!=null&&
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
+                                SelectedSliceRectangle.Plane==FVOSlicePlane.XY,
+                            "Studio工程重开必须把原Voxel四角配方映回真实MVI四视图，并恢复毫米区间");
+                        string savedSignature=workspace.CurrentAnalysis.ParameterSignature;
+                        var replay=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(CancellationToken.None));
+                        Assert(workspace.HasPendingAnalysis&&replay.Plane.ResultId!=editedId&&
+                            replay.ParameterSignature==savedSignature&&
+                            replay.SliceRoiRecipe.Signature==
+                                workspace.CurrentAnalysis.SliceRoiRecipe.Signature,
+                            "Studio从工程保存配方复算应产生新Feature身份而保留物理ROI真值");
+                        workspace.DiscardPendingAnalysis();
+                        Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
+                            !workspace.HasPendingAnalysis,
+                            "放弃已存配方复算预览不得修改MEM已提交的专业结果");
                         Assert(workspace.Scene3D.Snapshot().Single(x=>
                             x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement&&
                             workspace.Scene3D.SelectedId==hiddenMeasurement,

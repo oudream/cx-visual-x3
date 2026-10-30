@@ -307,3 +307,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **源代码**：CT3DSliceRoiRecipe只记录来源/Frame、原Voxel四角和法向毫米区间，Case与复算共用CT3DMeshPlaneAnalysis原值选点核心；不会将旧预览像素坐标作为工程几何。ParameterSignature包含配方签名，顶点集合未变化但配方不同仍使旧参数失效。
 - **版本**：MEM Aspect Schema仍为1；有配方的MeshPlane结果制品写V4，既有V1～V3照旧读，旧Case不伪造配方，RecomputeWithSavedSliceRoi明确拒绝缺配方。
 - **验收**：ArchitectureSmoke增加MEM持久化原Voxel四角、配方稳定原值重算与旧Case拒绝；提交后以固定SHA Windows CT3D B G1～G3及交叉CI审定，不以源码存在代替运行、GPU或工业精度证据。
+
+
+### 10.21 B包：Studio正式已存ROI恢复与一键原值复算（2026-10-30）
+
+- **交互新增**：StudioCT3DDocument在打开具有V4原Voxel ROI配方的工程后，将ROI法向毫米区间恢复到原有参数控件，并尝试用FVO VoxelToImage/RectangleToPhysical原有采样映射将四角重绘到MVI/MPW四视图。只有四角物理精确相等才绘制，不可逆降采样显示明确提示，不借伪造的预览几何替代专业ROI。
+- **实际操作**：“按已存ROI复算”按钮及RecomputeSavedSliceRoiAsync公开API，后台调用同一专业Case.RecomputeWithSavedSliceRoi；取消、工程/Case切换、用户新ROI选择及旧结果回传均使用现有epoch失效控制。专业结果仍待用户通过已有“保存专业结果”提交唯一MEM Data+Visual事务。
+- **测试与范围**：扩展StudioShellSelfTests真实MEM文件/RAW/四视图/Scene/Undo链，覆盖老Case拒绝虚构ROI、保存后重开选区/毫米参数恢复、后台按已存配方重算、待提交丢弃。正式GPU及不同DPI人工操作仍需独立验收。

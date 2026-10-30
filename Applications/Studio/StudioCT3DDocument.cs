@@ -79,6 +79,13 @@ namespace CxVisual.Studio
                 catch(Exception error){_status.Text="ROI分析失败："+error.Message;}
             };
             toolbar.Children.Add(analyze);
+            var saved=Button("按已存ROI复算","Studio.CT3D.RecomputeSavedRoi");
+            saved.Click+=async(s,e)=>{
+                try{await RecomputeSavedSliceRoiAsync(CancellationToken.None);}
+                catch(OperationCanceledException){_status.Text="已存ROI重算已取消，工程未修改。";}
+                catch(Exception error){_status.Text="已存ROI重算失败："+error.Message;}
+            };
+            toolbar.Children.Add(saved);
             var cancel=Button("取消分析","Studio.CT3D.CancelRoi");
             cancel.Click+=(s,e)=>CancelPendingAnalysis();
             toolbar.Children.Add(cancel);
@@ -238,10 +245,72 @@ namespace CxVisual.Studio
                 _state.Scene3D.Changed+=OnSceneChanged;
                 RefreshSlices();
                 RefreshProfessionalOverlay();
-                _status.Text="已验证原值和专业工程："+
+                _status.Text="已验证原值和专业工程："+ 
                     analysis.Kind+" · "+analysis.GetFeatureMeasurements().Count+"项量值。";
+                if(analysis.SliceRoiRecipe!=null)
+                {
+                    if(TryRestoreSavedSliceRoi())
+                        _status.Text+=" 已恢复原体素ROI及毫米法向区间，可直接编辑。";
+                    else
+                    {
+                        _minimum.Text=analysis.SliceRoiRecipe.MinimumOffsetMm.ToString("R",CultureInfo.InvariantCulture);
+                        _maximum.Text=analysis.SliceRoiRecipe.MaximumOffsetMm.ToString("R",CultureInfo.InvariantCulture);
+                        _status.Text+=" 已恢复ROI专业配方；当前降采样预览无法精确画出原体素矩形，可按已存ROI直接复算。";
+                    }
+                }
             }
             finally{if(volume!=null)volume.Dispose();}
+        }
+
+        /// <summary>从MEM保存的物理ROI配方恢复MVI三刀和MPW真实矩形。
+        /// 仅在显示采样像素能精确映回四个原Voxel中心时显示，不改变原始物理配方。</summary>
+        public bool TryRestoreSavedSliceRoi()
+        {
+            if(_disposed||_volume==null||_state==null||_current==null||
+                _current.SliceRoiRecipe==null)
+                return false;
+            if(IsAnalyzing||HasPendingAnalysis)
+                throw new InvalidOperationException("存在未完成ROI分析，禁止恢复旧选区。");
+            var recipe=_current.SliceRoiRecipe;
+            var source=_current.Source;
+            var corner0=recipe.GetPhysicalCorner(source,0);
+            var corner2=recipe.GetPhysicalCorner(source,2);
+            var first=source.SpatialFrame.PhysicalToVoxel(corner0.X,corner0.Y,corner0.Z);
+            var last=source.SpatialFrame.PhysicalToVoxel(corner2.X,corner2.Y,corner2.Z);
+            int x0=checked((int)Math.Round(first.X)),y0=checked((int)Math.Round(first.Y)),
+                z0=checked((int)Math.Round(first.Z));
+            int x2=checked((int)Math.Round(last.X)),y2=checked((int)Math.Round(last.Y)),
+                z2=checked((int)Math.Round(last.Z));
+            int left,top,right,bottom;
+            FVOSliceImageBuilder.VoxelToImage(_volume,recipe.Plane,x0,y0,z0,out left,out top);
+            FVOSliceImageBuilder.VoxelToImage(_volume,recipe.Plane,x2,y2,z2,out right,out bottom);
+            int normalX=_state.SliceX,normalY=_state.SliceY,normalZ=_state.SliceZ;
+            switch(recipe.Plane)
+            {
+                case FVOSlicePlane.XY:normalZ=z0;break;
+                case FVOSlicePlane.XZ:normalY=y0;break;
+                case FVOSlicePlane.YZ:normalX=x0;break;
+                default:return false;
+            }
+            if(left>=right||top>=bottom)return false;
+            // 原体素到预览像素的映射有可能多对一；不允许误画一个看似准确的ROI。
+            var projected=FVOSliceImageBuilder.RectangleToPhysical(_volume,normalX,
+                normalY,normalZ,recipe.Plane,left,top,right,bottom);
+            for(int i=0;i<4;i++)
+            {
+                var expected=recipe.GetPhysicalCorner(source,i);
+                FVOPhysicalPoint3D actual=i==0?projected.TopLeft:i==1?
+                    projected.TopRight:i==2?projected.BottomRight:projected.BottomLeft;
+                if(Math.Abs(actual.X-expected.X)>1e-7||
+                    Math.Abs(actual.Y-expected.Y)>1e-7||
+                    Math.Abs(actual.Z-expected.Z)>1e-7)
+                    return false;
+            }
+            _minimum.Text=recipe.MinimumOffsetMm.ToString("R",CultureInfo.InvariantCulture);
+            _maximum.Text=recipe.MaximumOffsetMm.ToString("R",CultureInfo.InvariantCulture);
+            _state.SetSlices(normalX,normalY,normalZ,_volume);
+            _workbench.GetViewport(recipe.Plane).SelectRectangleRoi(left,top,right,bottom);
+            return true;
         }
 
         private static bool IsCurrentReference(MVI3DSceneItem item,CT3DAnalysisCase analysis)
@@ -440,6 +509,43 @@ namespace CxVisual.Studio
                     !Object.ReferenceEquals(roi,_state.SelectedSliceRectangle)||
                     index!=_caseIndex)
                     throw new OperationCanceledException("专业会话/ROI已经变化，拒绝过期提交。");
+                PublishPendingResult(result);
+                return result;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_roiCancellation,linked))_roiCancellation=null;
+                linked.Dispose();
+            }
+        }
+
+        /// <summary>Studio真实入口：不要求旧WPF视口仍可精确映出ROI，
+        /// 始终由CT3D保存的原体素几何配方在后台重算，不使用屏幕矩形作为真源。</summary>
+        public async Task<CT3DAnalysisCase> RecomputeSavedSliceRoiAsync(CancellationToken cancellation)
+        {
+            if(_disposed||_engineering==null||_current==null||_state==null||
+                _current.SliceRoiRecipe==null)
+                throw new InvalidOperationException("当前Case没有可重播的已保存原体素ROI配方。");
+            if(_roiCancellation!=null)
+                throw new InvalidOperationException("已有专业ROI分析正在进行。");
+            CT3DAnalysisCase original=_current;
+            MVIVolumeViewState state=_state;
+            FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
+            int index=_caseIndex;
+            string root=_root;
+            long epoch=++_roiEpoch;
+            var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _roiCancellation=linked;
+            try
+            {
+                _status.Text="使用保存的原Voxel四角及毫米范围在后台重算；旧WPF预览不参与专业选点。";
+                CT3DAnalysisCase result=await Task.Run(()=>
+                    original.RecomputeWithSavedSliceRoi(root,linked.Token),linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                if(_disposed||epoch!=_roiEpoch||!Object.ReferenceEquals(state,_state)||
+                    !Object.ReferenceEquals(original,_current)||index!=_caseIndex||
+                    !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle))
+                    throw new OperationCanceledException("ROI配方对应的工程会话或选区已变化，拒绝过期结果。");
                 PublishPendingResult(result);
                 return result;
             }
