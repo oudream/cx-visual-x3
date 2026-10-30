@@ -411,3 +411,20 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **证据等级**：修改及测试源码已提交（S）。**没有取得本轮固定 SHA 的主仓库 Go 全量测试和 Windows/Linux/macOS CI 成功输出；G1/G2/G3 未验**，不得把测试文件存在等同测试通过。
 
 **残留窗口**：旧 PID 文件仅在 Daemon 主循环接收 EventStart 后写入。如果它在原子进程成功启动、事件尚未消费之前被强制杀死，仍可能漏报。因此后续应在原 Worker `exec.Cmd.Start` 后、发布 EventStart 前持久化绑定 Program ID/原始进程代次的启动凭证，持久化失败则安全处置原始子进程。OS PID 复用、子孙进程树、SIGKILL/断电场景与专业业务 Ready 仍需专项验收。
+
+
+## 二十、守护诊断只读API与H5多页面联动（2026-10-30）
+
+**实际接通的完整链路**：原 Daemon 仍为终止上限/孤儿隔离唯一运行 Owner。`cmd/daemon/orphan_observation.go` 在启动扫描完成后将 `ProgramId→隔离原因` 写入工作目录 `supervision/daemon-orphan-observation.json`，包含版本与 UTC 观察时间，私有文件权限、同目录临时写、Sync 和原子替换；**此文件仅供诊断展示，不替代内存 programWorkerGate，也不能解除隔离**。原 `daemon-terminal-latches.json` 继续是 MaxError/MaxCount 的持久闭锁文件，没有新增第二个锁库。
+
+`internal/guardview/report.go` 只读两份诊断文件，1 MiB 有界读取、严格版本/字段/64 位 ProgramId 检查、稳定排序，每份来源分别返回 `available / observedAt / error / items`。文件缺失、损坏、读取失败时明确报告 `available=false`，不以空数组表示“没有故障”。终止锁观察时间为文件修改时间，孤儿扫描时间为原 Daemon 启动扫描时刻；**两者不是当下业务或 OS Ready**。`cmd/monitor/web.go` 通过已有共享工作目录注入只读 Provider，`internal/httpapi/guard.go` 提供 `GET /api/v1/guard`；复用 `security.LocalOnly` / `ReadOnlyHeaders`，HTTP 403 必须在执行 Provider 前拒绝，未引入 POST/PUT/DELETE 或登录、解锁、启停路由。
+
+**已提交的H5界面**：`web/src/views/GuardView.vue` 新增“守护诊断”正式页面，展示闭锁/孤儿两个独立数据源的可用性、更新时间、问题计数、完整原因、类别筛选与 Program ID 定位。`DashboardView` 增加闭锁/孤儿只读计数与来源不完整提醒；`ProgramsView` 增加保护项筛选、详情原始原因与未知状态标识；`EventsView` 和 `AlertsView` 的 Program ID 可定位到程序清单，纠正原 HTTP 403 显示条件；`AppShell` 加入新导航和相关页面的定时刷新；现有 Element Plus、Pinia、Vue Router、深浅主题与自适应 CSS 继续复用，不另造 UI 框架。
+
+**关键安全交互**：程序状态来自 Monitor 当前快照；守护状态来自不同时间的 Daemon 文件。UI 的“无已记录保护项”仅在两份文件都能读取、且该 Program 都不在记录时展示；只要任一来源不可用且未查到明确保护项，就显示“来源不可用”，防止误报安全。查询失败保留旧快照但明确提示可能过期。只读界面**不提供启停/重启、旧 UDP 代理、清锁、告警确认或设备操作**。
+
+**回归与CI**：`internal/guardview/report_test.go` 验证缺失/损坏文件、64 位 ID、来源独立性、时间与格式；`internal/httpapi/guard_test.go` 验证远端 IP、Host、Forwarded、跨 Origin 403/零 Provider 调用和本机只读 HTTP 200；`cmd/daemon/orphan_observation_test.go` 检查 Daemon 写入与 Monitor Reader 互通；`web/src/utils/guard.test.ts` 与 `web/src/api/client.test.ts` 检查未知/闭锁/隔离组合、403 与成功 JSON 契约。`supervision-migration.yml` 三系统 Go Build/Test + H5 typecheck/Vitest/build 原门禁不变，Linux Race Test 增加 guardview/httpapi/monitor/daemon 定向检查。
+
+**证据等级**：相关源码、页面、测试和 CI 配置已提交 GitHub master（S）；本轮仍未取得固定 SHA 的主仓库三平台 Go/前端测试成功日志（G1 待核），现场部署、真实浏览器操作、进程树/业务 Ready 仍未验（G2/G3）。不要以页面显示信息替代安全授权或硬件验收。
+
+**残余风险与下阶段**：历史 PID 文件只在 EventStart 被 Daemon 消费后写入，子进程 Start 成功到凭证持久化的崩溃窗口仍在；必须继续推进 Worker 启动前意图与启动后代次证据持久化、OS 真实进程身份/退出回执对账。守护诊断文件不是可写控制或正式审计账本，S11 认证、授权、持久操作审计及受控解锁仍待实现。若 Monitor/Daemon 使用不同的工作目录或权限，UI 应显示来源不可用，不得假设它们自动共享数据。
