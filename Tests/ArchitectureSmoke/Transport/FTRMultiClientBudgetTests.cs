@@ -299,9 +299,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         evidence.PeakBufferedPayloadBytes<=clientConfig.ReceiveByteBudget&&
                         evidence.PayloadBufferByteBudget==clientConfig.ReceiveByteBudget,
                         "真实HTTP 4MiB响应没有正确使用FCM总额度或未回收");
+                    // 只做传输计数/诊断而不注册Legacy Received：完整4MiB仍要
+                    // 接收、计数且无多余context.Clone，7MiB必须覆盖真实扩容峰值。
+                    var noObserverConfig=new FTRHttpClientChannelConfiguration {
+                        Id="f17-large-http-unobserved",Url=url,RequestTimeoutMs=15000,
+                        MaxResponseBytes=bytes,ReceiveByteBudget=7*1024*1024,
+                        CapturePayloadEvidence=false
+                    };
+                    using(var unobserved=new FTRHttpClientChannel(noObserverConfig))
+                    {
+                        unobserved.Open();
+                        unobserved.Send(new byte[]{9});
+                        FTRChannelDiagnosticsSnapshot measure=unobserved.Diagnostics;
+                        Check(measure.ReceivedBytes==bytes&&measure.Received==1&&
+                            measure.BufferedPayloadBytes==0&&
+                            measure.PeakBufferedPayloadBytes<=noObserverConfig.ReceiveByteBudget,
+                            "无Legacy订阅者时不应分配/预留整报文Context副本");
+                        unobserved.Close();
+                    }
                     Console.WriteLine("F17.HTTP_LARGE_PASS bytes="+bytes+
                         " peakBudgetBytes="+evidence.PeakBufferedPayloadBytes+
-                        " budget="+evidence.PayloadBufferByteBudget);
+                        " budget="+evidence.PayloadBufferByteBudget+
+                        " unobservedBudgetBytes="+(7*1024*1024));
                 }
                 finally
                 {
