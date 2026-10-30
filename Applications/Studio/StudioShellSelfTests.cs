@@ -703,6 +703,29 @@ namespace CxVisual.Studio
                         "普通资源树不应展开图形Element");
                     Assert(window.StudioEngineeringRevision==revision,"资源树刷新修改了MEM工程Revision");
                 });
+                CheckStep("CAT-02 分类菜单打开现有中心而不改变工程Revision", () =>
+                {
+                    window.RefreshStudioResourceTree();
+                    TreeViewItem project=window.StudioResourceTree.Items.OfType<TreeViewItem>().Single();
+                    TreeViewItem[] categories=project.Items.OfType<TreeViewItem>().ToArray();
+                    TreeViewItem moduleGroup=categories.Single(x=>
+                        String.Equals(x.Tag as string,"modules",StringComparison.Ordinal));
+                    MenuItem openModules=moduleGroup.ContextMenu.Items.OfType<MenuItem>().Single();
+                    openModules.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    Assert(window.GetStudioContentIds().Contains("doc.modules"),
+                        "设备与模块分类不能打开已有功能模块中心");
+                    window.CloseStudioDocument("doc.modules");
+
+                    TreeViewItem dataGroup=categories.Single(x=>
+                        String.Equals(x.Tag as string,"data",StringComparison.Ordinal));
+                    MenuItem openVariables=dataGroup.ContextMenu.Items.OfType<MenuItem>().First();
+                    openVariables.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    Assert(window.GetStudioContentIds().Contains("doc.variables"),
+                        "数据与交互定义无法打开现有变量工作区");
+                    window.CloseStudioDocument("doc.variables");
+                    Assert(window.StudioEngineeringRevision==revision,
+                        "打开或关闭公共工作区不能修改MEM Revision");
+                });
                 CheckStep("S1-10 图形结构与资源树分离且指向真实MEM视觉对象", () =>
                 {
                     window.OpenStudioDocument("doc.visual");
