@@ -216,7 +216,17 @@ namespace CxVisual.Professional.HMI
             using(NamedPipeClientStream pipe=new NamedPipeClientStream(".",
                 _pipeName,PipeDirection.InOut,PipeOptions.None))
             {
-                pipe.Connect(3000);pipe.ReadTimeout=3000;pipe.WriteTimeout=3000;
+                // .NET Framework 4.8 NamedPipeClientStream的Stream同步Read/Write不能
+                // 直接设置Timeout（CanTimeout=false）。用单次IO总截止关闭句柄解除阻塞。
+                pipe.Connect(3000);
+                int timedOut=0;
+                using(System.Threading.Timer deadline=new System.Threading.Timer(state=>
+                {
+                    System.Threading.Interlocked.Exchange(ref timedOut,1);
+                    try{pipe.Dispose();}catch(ObjectDisposedException){}
+                },null,3000,System.Threading.Timeout.Infinite))
+                try
+                {
                 byte[] bytes;
                 using(MemoryStream output=new MemoryStream())
                 {
@@ -245,7 +255,22 @@ namespace CxVisual.Professional.HMI
                     throw new PHMScadaPipeRejectedException(
                         result.ErrorCode??"HOST_REJECTED");
                 if(result.Status!="Ok")throw new InvalidDataException("hmi.pipe.status_invalid");
+                if(System.Threading.Volatile.Read(ref timedOut)!=0)
+                    throw new TimeoutException("hmi.pipe.exchange_deadline");
                 return result;
+                }
+                catch(IOException error)
+                {
+                    if(System.Threading.Volatile.Read(ref timedOut)!=0)
+                        throw new TimeoutException("hmi.pipe.exchange_deadline",error);
+                    throw;
+                }
+                catch(ObjectDisposedException error)
+                {
+                    if(System.Threading.Volatile.Read(ref timedOut)!=0)
+                        throw new TimeoutException("hmi.pipe.exchange_deadline",error);
+                    throw;
+                }
             }
         }
         private static void ReadExactly(Stream input,byte[] bytes)
