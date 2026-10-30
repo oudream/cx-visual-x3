@@ -11,6 +11,8 @@ using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Data;
 using CxVisual.Mechanism.Data.Variables;
+using CxVisual.Mechanism.Runtime.Commands;
+using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Professional.Automation.DeviceVariables;
 using CxVisual.Professional.Automation.Plc;
 
@@ -245,6 +247,98 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check((ushort)bridge.ReadAndMapAsync("word", CancellationToken.None)
                         .GetAwaiter().GetResult() == 88,
                         "点表恢复后必须重新采样，不可复用已拒绝的回包");
+
+                    // 对接正式MRK，而不是在Automation新建命令中心/线程/资源表。
+                    // 同一个PLC设备的命令使用Host唯一ResourceLease并且没有自动重试。
+                    string plcTarget = PADPlcMrkCommandRegistration.TargetForDevice("station01");
+                    string plcResource = PADPlcMrkCommandRegistration.ResourceForDevice("station01");
+                    MRKResourceLeaseCoordinator sharedLeases = new MRKResourceLeaseCoordinator();
+                    int writesBeforeMrk = plc.Writes;
+                    using (MRKCommandCenter insecure = new MRKCommandCenter(leases: sharedLeases))
+                    using (PADPlcMrkCommandRegistration.RegisterUInt16Write(
+                        insecure, provider, "station01", 970601))
+                    {
+                        MRKCommandResponse rejected = insecure.InvokeAsync(
+                            new MRKCommandRequest(plcTarget,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string, object> {
+                                    { "StableId", "word" }, { "Value", (ushort)91 }
+                                }, caller: "operator")).GetAwaiter().GetResult();
+                        Check(rejected.Stage == MRKCommandStage.Rejected &&
+                            rejected.ErrorCode == "Unauthorized" && plc.Writes == writesBeforeMrk,
+                            "MRK设备命令无Host授权器必须拒绝、不能调用PLC写");
+                    }
+                    using (MRKCommandCenter commandHost = new MRKCommandCenter(
+                        leases: sharedLeases,
+                        authorize: ctx => ctx.Caller == "operator" &&
+                            ctx.Descriptor.Definition.PermissionKey ==
+                                PADPlcMrkCommandRegistration.WritePermission))
+                    using (PADPlcMrkCommandRegistration.RegisterUInt16Write(
+                        commandHost, provider, "station01", 970601))
+                    {
+                        MRKCommandResponse rejected = commandHost.InvokeAsync(
+                            new MRKCommandRequest(plcTarget,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string, object> {
+                                    { "StableId", "word" }, { "Value", (ushort)91 }
+                                }, caller: "guest")).GetAwaiter().GetResult();
+                        Check(rejected.Stage == MRKCommandStage.Rejected &&
+                            rejected.ErrorCode == "Unauthorized" && plc.Writes == writesBeforeMrk,
+                            "MRK不可信身份在实际写设备以前被拒绝");
+
+                        Guid operationId = Guid.NewGuid();
+                        MRKCommandRequest authorized = new MRKCommandRequest(
+                            plcTarget, PADPlcMrkCommandRegistration.WriteUInt16Code,
+                            new Dictionary<string, object> {
+                                { "StableId", "word" }, { "Value", (ushort)91 }
+                            }, caller: "operator", operationId: operationId,
+                            expectedSchemaVersion: 1);
+                        MRKResourceLease externallyHeld = sharedLeases.TryAcquire(plcResource, "line-maintenance");
+                        Check(externallyHeld != null, "共享MRK资源租约须可获取");
+                        Task<MRKCommandResponse> pending = commandHost.InvokeAsync(authorized);
+                        try
+                        {
+                            Check(plc.Writes == writesBeforeMrk,
+                                "同资源租约占用时设备写入不得提前发生");
+                        }
+                        finally { externallyHeld.Dispose(); }
+                        MRKCommandResponse accepted = pending.GetAwaiter().GetResult();
+                        Check(accepted.Stage == MRKCommandStage.Accepted &&
+                            accepted.State == MRKCommandState.Completed &&
+                            accepted.BusinessSuccess == true &&
+                            accepted.BusinessCode == "PLC_REGISTER_READBACK_CONFIRMED" &&
+                            (bool)accepted.Outputs["RegisterReadbackMatched"] &&
+                            plc.ActualRegister == 91 && plc.Writes == writesBeforeMrk + 1,
+                            "MRK强类型Schema/双重授权/设备资源租约/FC06+FC03回读链应成功");
+
+                        MRKCommandResponse dedup = commandHost.InvokeAsync(
+                            new MRKCommandRequest(plcTarget,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string, object> {
+                                    { "StableId", "word" }, { "Value", (ushort)91 }
+                                }, caller: "operator", operationId: operationId,
+                                expectedSchemaVersion: 1)).GetAwaiter().GetResult();
+                        Check(dedup.OperationId == operationId &&
+                            dedup.State == MRKCommandState.Completed &&
+                            plc.Writes == writesBeforeMrk + 1,
+                            "MRK同OperationId必须复用已结算响应，不允许重复物理写请求");
+
+                        plc.IgnoreWrite = true;
+                        MRKCommandResponse unknown = commandHost.InvokeAsync(
+                            new MRKCommandRequest(plcTarget,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string, object> {
+                                    { "StableId", "word" }, { "Value", (ushort)94 }
+                                }, caller: "operator")).GetAwaiter().GetResult();
+                        Check(unknown.Stage == MRKCommandStage.Accepted &&
+                            unknown.State == MRKCommandState.Completed &&
+                            unknown.BusinessSuccess == false &&
+                            unknown.BusinessCode == "PLC_REGISTER_OUTCOME_UNKNOWN" &&
+                            !(bool)unknown.Outputs["RegisterReadbackMatched"] &&
+                            plc.Writes == writesBeforeMrk + 2 && plc.ActualRegister == 91,
+                            "MRK Handler可以结算，但未知现场结果不得伪报寄存器确认或自动重试");
+                        plc.IgnoreWrite = false;
+                    }
 
                     // 连接一旦明确关闭，原Good不能继续用于现场控制；
                     // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
