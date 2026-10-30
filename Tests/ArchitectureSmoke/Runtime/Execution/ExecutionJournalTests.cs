@@ -64,8 +64,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     string runText;
                     int runCode = HostProcess(executable, "runtime-run",
                         journalPath, out runText);
-                    Check(runCode == 1 && runText.Contains("宿主启动隔离"),
-                        "B6 未结案Journal被独立Host错误接管");
+                    Check(runCode == 1 && runText.Contains("ERROR:") &&
+                        runText.Contains(flowId.ToString()),
+                        "B6 未结案Journal未收到针对指定Flow的明确拒绝: code=" +
+                        runCode + " message=" + runText);
                     Check(new FileInfo(journalPath).Length == originalLength &&
                         !Directory.Exists(Path.Combine(root, "F19-Audit")),
                         "B6 Host拒绝接管时仍改写运行记录或创建审计会话");
