@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using CxVisual.Foundation.Data.Messages;
 using CxVisual.Mechanism.Data.Messages;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
