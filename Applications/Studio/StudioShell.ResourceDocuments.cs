@@ -950,7 +950,8 @@ namespace CxVisual.Studio
                 try
                 {
                     MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
-                    MOCBuildResult result=new MOCBuildService().Build(snapshot,context.ResourceId,_simulation);
+                    MOCBuildResult result=new MOCBuildService().Build(snapshot,
+                        context.ResourceId,ResolverForFlow(snapshot,context.ResourceId));
                     LogicInfo.Text=FormatBuildDiagnostics(result);
                     FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
                         ContentId=x.ContentId,ProjectId=snapshot.ProjectId,
@@ -975,9 +976,13 @@ namespace CxVisual.Studio
                 string capability=command=="join"?"Judge":
                     (FlowActionCapability.Text??"").Trim();
                 MOCCapabilityCatalogItem entry=CurrentCatalog().Find(capability);
-                if(entry==null||!entry.RuntimeAvailable)
+                // Only offline ACTION editing may use an unresolved
+                // professional contract. JOIN must stay an executable logic
+                // capability. PLC authorization remains exclusively in Host.
+                if(entry==null||(command=="join"&&!entry.RuntimeAvailable))
                 {
-                    _viewModel.ReportStudioShellWarning("未注册或未实现运行能力："+capability);
+                    _viewModel.ReportStudioShellWarning(
+                        "能力合同不存在或Join未具备软件实现："+capability);
                     return true;
                 }
                 if(command=="action")context.AddFlowCapability(entry.Definition);
