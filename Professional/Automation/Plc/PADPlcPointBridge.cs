@@ -205,6 +205,83 @@ namespace CxVisual.Professional.Automation.Plc
         }
 
         /// <summary>
+        /// 同一PLC站点、按地址连续且已批准的点通过单个FC03帧采样。
+        /// MPA负责协议地址与回包，PAD负责稳定ID/配置/Session二次校验，
+        /// 通过后才将逐点数据提交给唯一MDS ProviderHost。
+        /// 不使用另一套Current，逐点MDS发布不承诺跨点原子事务。
+        /// </summary>
+        public async Task<PADPlcScanResult> ScanContiguousAsync(
+            IEnumerable<string> stableIds, CancellationToken cancellationToken)
+        {
+            if (stableIds == null) throw new ArgumentNullException("stableIds");
+            string[] selected = stableIds.ToArray();
+            if (selected.Length < 1 || selected.Length > 64)
+                throw new ArgumentOutOfRangeException("stableIds", "单帧扫描必须包含1～64个已批准点");
+            HashSet<string> unique = new HashSet<string>(StringComparer.Ordinal);
+            string[] pointNames = new string[selected.Length];
+            PADDeviceVariableDefinition[] definitions =
+                new PADDeviceVariableDefinition[selected.Length];
+            for (int i = 0; i < selected.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(selected[i]) || !unique.Add(selected[i]))
+                    throw new ArgumentException("连续扫描点位不能为空或重复", "stableIds");
+                pointNames[i] = Resolve(selected[i]);
+                definitions[i] = _catalog.FindById(selected[i]);
+                if (definitions[i] == null)
+                    throw new InvalidOperationException("设备变量定义不存在: " + selected[i]);
+            }
+
+            await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string generation = _connector.Channel.SessionId.ToString("N");
+                // 协议Owner在发包前校验同一Station/地址严格连续/不越界。
+                // 数据仅以局部数组返回，任意报文错误不会发布半批MDS值。
+                IReadOnlyList<object> values;
+                try
+                {
+                    values = await _connector.ReadContiguousPointsAsync(
+                        pointNames, _destination, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (generation != _connector.Channel.SessionId.ToString("N") ||
+                        values == null || values.Count != selected.Length)
+                        throw new PADPlcOutcomeUnknownException(pointNames[0],
+                            "PLC连续批读响应的会话或点数量已变化");
+                    for (int i = 0; i < selected.Length; i++)
+                    {
+                        if (Resolve(selected[i]) != pointNames[i] ||
+                            !definitions[i].ValueType.IsInstanceOfType(values[i]))
+                            throw new PADPlcOutcomeUnknownException(pointNames[i],
+                                "PLC连续批读配置或返回类型发生漂移，禁止提交MDS");
+                    }
+                }
+                catch
+                {
+                    // 未能可信确认该FC03批读时，旧样本保留但不能继续展示Good。
+                    // 质量不是新采样，不修改MDS的Current/RefreshUtc。
+                    foreach (string id in selected) MarkStale(id);
+                    throw;
+                }
+                PADDeviceVariableProvider publisher = Volatile.Read(ref _qualityProvider);
+                if (publisher == null)
+                    throw new InvalidOperationException("PLC设备采样Provider未装配");
+                List<PADPlcPointScanResult> results =
+                    new List<PADPlcPointScanResult>(selected.Length);
+                for (int i = 0; i < selected.Length; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!publisher.Emit(selected[i], values[i],
+                        CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good))
+                        throw new InvalidOperationException("PLC设备Provider未运行: " + selected[i]);
+                    results.Add(new PADPlcPointScanResult(selected[i], values[i], null));
+                }
+                return new PADPlcScanResult(results);
+            }
+            finally { _writeGate.Release(); }
+        }
+
+        /// <summary>
         /// 规约回包先进入操作局部暂存。会话世代和点表经二次核验后，才向唯一MDS仓提交；
         /// 对超时、配置漂移、迟到回包均不将未经确认的数据发布为Good。
         /// </summary>
