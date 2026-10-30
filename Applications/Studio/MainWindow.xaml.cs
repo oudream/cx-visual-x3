@@ -1237,7 +1237,11 @@ namespace CxVisual.Studio
             if(invalid!=null)throw new InvalidOperationException(
                 "studio.vision.invalid_software_options:"+invalid);
             if(options.MinDefectArea<1 || options.MaxDefectArea>10000000 ||
-                options.GrayThreshold<0)
+                options.GrayThreshold<0 || options.GrayThreshold>65535 ||
+                double.IsNaN(options.MinDefectArea) ||
+                double.IsNaN(options.MaxDefectArea) ||
+                double.IsInfinity(options.MinDefectArea) ||
+                double.IsInfinity(options.MaxDefectArea))
                 throw new InvalidOperationException("studio.vision.options_out_of_range");
             return options;
         }
