@@ -33,7 +33,14 @@ func queueOwnedStop(id int64, pid int, action string, receipts chan<- ownedStopO
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), ownedStopWaitTimeout)
 		defer cancel()
-		result := controller.RequestStop(ctx, pid)
+		result := controller.RequestStopWithLateReceipt(ctx, pid, func(late daemonc.StopReceipt) {
+			// A timed-out request is UNKNOWN, not the final truth. The
+			// original Worker's eventual Wait result is written even if
+			// the Daemon main loop is no longer reading stopReceipts.
+			writeOwnedStopLog(_logger, ownedStopOutcome{
+				Action: action + "/late", Receipt: late,
+			})
+		})
 		outcome := ownedStopOutcome{Action: action, Receipt: result}
 		// The response queue is bounded and the Daemon owns the reader. If
 		// unavailable, a receipt must not be mistaken for success.
@@ -41,7 +48,8 @@ func queueOwnedStop(id int64, pid int, action string, receipts chan<- ownedStopO
 		case receipts <- outcome:
 		default:
 			if _logger != nil {
-				_logger.Printf("CRITICAL: stop receipt queue full Program=%d PID=%d action=%s result=%s", id, pid, action, result.State)
+				_logger.Printf("CRITICAL: stop receipt queue full; writing result directly")
+				writeOwnedStopLog(_logger, outcome)
 			}
 		}
 	}()
