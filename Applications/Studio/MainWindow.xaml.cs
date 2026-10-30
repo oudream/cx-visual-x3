@@ -1212,9 +1212,101 @@ namespace CxVisual.Studio
             catch(Exception ex){LogicInfo.Text="插入Join失败："+ex.Message;}
         }
 
+        private CxVisionInspectionOptions ReadProfessionalCpuOptions()
+        {
+            int depth=int.Parse(((ComboBoxItem)FlowRawBits.SelectedItem).Content.ToString(),
+                System.Globalization.CultureInfo.InvariantCulture);
+            var options=new CxVisionInspectionOptions {
+                PixelDepth=(CxVisionPixelDepth)depth,
+                GrayThreshold=int.Parse(FlowCpuThreshold.Text,
+                    System.Globalization.CultureInfo.InvariantCulture),
+                MinDefectArea=double.Parse(FlowCpuMinArea.Text,
+                    System.Globalization.CultureInfo.InvariantCulture),
+                MaxDefectArea=double.Parse(FlowCpuMaxArea.Text,
+                    System.Globalization.CultureInfo.InvariantCulture),
+                UseAi=false, AiModelName=""
+            };
+            string invalid=CxVisionInspectionOptions.Validate(options);
+            if(invalid!=null)throw new InvalidOperationException(
+                "studio.vision.invalid_software_options:"+invalid);
+            if(options.MinDefectArea<1 || options.MaxDefectArea>10000000 ||
+                options.GrayThreshold<0)
+                throw new InvalidOperationException("studio.vision.options_out_of_range");
+            return options;
+        }
+
+        private StudioProfessionalFlowResolver CreateProfessionalFlowResolver(bool bindRaw)
+        {
+            CxVisionInspectionOptions options=ReadProfessionalCpuOptions();
+            byte[] raw=null;
+            string source=FlowRawPath.Text==null?"":FlowRawPath.Text.Trim();
+            if(bindRaw && source.Length>0)
+            {
+                int width=int.Parse(FlowRawWidth.Text,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                int height=int.Parse(FlowRawHeight.Text,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                raw=CxVisionRawCpuRunner.ReadRaw(source,width,height,
+                    options.PixelDepth,CancellationToken.None);
+            }
+            return new StudioProfessionalFlowResolver(options,
+                StudioProfessionalFlowResolver.ComputeSoftwareRevision(options),raw,_simulation);
+        }
+
         private MOCCapabilityCatalog CurrentCatalog()
         {
-            return MOCCapabilityCatalogRuntimeFactory.Create(new IMOCCapabilityProvider[]{_simulation},_simulation);
+            // One read-only MOC catalog. The CPU entries use real Professional
+            // implementations; PLC is a contract for offline authoring only.
+            StudioProfessionalFlowResolver scope=CreateProfessionalFlowResolver(false);
+            return MOCCapabilityCatalogRuntimeFactory.Create(
+                new IMOCCapabilityProvider[]{_simulation,scope},scope);
+        }
+
+        private void OnBrowseFlowRaw(object sender,RoutedEventArgs args)
+        {
+            var dialog=new Microsoft.Win32.OpenFileDialog {
+                Filter="Raw images (*.raw;*.bin)|*.raw;*.bin|All files (*.*)|*.*",
+                CheckFileExists=true,Multiselect=false
+            };
+            if(dialog.ShowDialog()==true)FlowRawPath.Text=dialog.FileName;
+        }
+
+        private void OnCreateProfessionalCpuFlow(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                MEMContent content=ActiveFlowContent();
+                MEMNodeSnapshot node=_viewModel.ProjectSession.GetSnapshot().Find(content.Id);
+                if(MOLWiringCodec.Get(node)!=null||MOLLogicCodec.Get(node)!=null)
+                    throw new InvalidOperationException(
+                        "当前Content已有正式编排；请在空Content创建，禁止覆盖原工程");
+                int width=int.Parse(FlowRawWidth.Text,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                int height=int.Parse(FlowRawHeight.Text,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                if(width<=0||height<=0||(long)width*height>32000000)
+                    throw new InvalidOperationException("RAW宽高超出专业CPU软件限制");
+                var scope=CreateProfessionalFlowResolver(false);
+                var inspect=scope.DescribeCapabilities().Single(x=>
+                    x.Id==CxVisionThresholdProvider.CapabilityId);
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,content,b=>{
+                    Guid raw=b.Step(StudioProfessionalFlowResolver.RawDescriptor());
+                    Guid cpu=b.Step(inspect);
+                    b.Move(raw,35,55);
+                    b.Move(cpu,255,55);
+                    b.SetParameter(cpu,"Width",width.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture));
+                    b.SetParameter(cpu,"Height",height.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture));
+                    b.Connect(raw,"Done",cpu,"Start");
+                    b.Connect(raw,"Pixels",cpu,"RawPixels",MPCPortKind.Data);
+                });
+                RefreshScene();
+                LogicInfo.Text="真实Vision CPU节点已写入MEM/MOL，可保存重开；执行需绑定本地RAW文件，"+
+                    "不允许直接从Studio向PLC发命令。";
+            }
+            catch(Exception ex){LogicInfo.Text="创建真实CPU工作流被拒绝："+ex.Message;}
         }
         private void OnSearchCapabilities(object sender,RoutedEventArgs args)
         {
