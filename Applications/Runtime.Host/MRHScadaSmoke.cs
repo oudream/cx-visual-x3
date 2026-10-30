@@ -484,9 +484,31 @@ namespace CxVisual.Runtime.Host
                         Check(stale.Status=="Rejected"&&
                             stale.ErrorCode=="SESSION_VERSION_MISMATCH",
                             "旧HMI请求不能读取单PLC重新连接的新会话");
-                        Check(SpinWait.SpinUntil(()=>plcA.Reads>=4,6000)&&
-                            plcA.Writes==0&&plcB.Writes==0,
-                            "单PLC隔离恢复后没有真实FC03或发生了错误FC06重放");
+                        string currentA=after.Devices.Single(x=>
+                            x.DeviceRef==a.ToString("N")).Generation;
+                        string currentVersion=after.Devices.Single(x=>
+                            x.DeviceRef==a.ToString("N")).ConfigVersion;
+                        bool newSample=SpinWait.SpinUntil(()=>
+                        {
+                            if(isolatedTask.IsCompleted)return false;
+                            try
+                            {
+                                MRHScadaPipeReply value=MRHScadaReadOnlyPipe.ExchangeForSmoke(
+                                    isolatedPipe,new MRHScadaPipeRequest{
+                                        SchemaVersion=1,Operation="snapshot",
+                                        DeviceRef=a.ToString("N"),
+                                        ExpectedDeploymentVersion=after.DeploymentVersion,
+                                        ExpectedConfigVersion=currentVersion,
+                                        ExpectedGeneration=currentA});
+                                return value.Status=="Ok"&&value.Devices.Length==1&&
+                                    value.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
+                                        x.HasValue&&x.Value=="73"&&x.Quality=="Good"&&
+                                        x.Revision>0);
+                            }
+                            catch(IOException){return false;}
+                        },8000);
+                        Check(newSample&&plcA.Writes==0&&plcB.Writes==0,
+                            "单PLC隔离恢复的新Generation没有再次发布真实MDS Good或重发FC06");
                     }
                     finally
                     {
