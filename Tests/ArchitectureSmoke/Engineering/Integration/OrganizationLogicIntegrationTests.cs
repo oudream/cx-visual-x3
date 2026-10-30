@@ -2074,7 +2074,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             finally {session.Close(true);}
             byte[] archive=MDCPlanArchiveCodec.Serialize(serializedPlan);
-            MDCDeclarativePlan reloaded=MDCPlanArchiveCodec.Deserialize(archive);
+            // Exercise actual disk transport, not just an in-memory array
+            // round-trip; the source MEM session has already been closed.
+            string archivePath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cx-visual-b2-"+Guid.NewGuid().ToString("N")+".plan");
+            MDCDeclarativePlan reloaded;
+            try
+            {
+                System.IO.File.WriteAllBytes(archivePath,archive);
+                reloaded=MDCPlanArchiveCodec.Deserialize(
+                    System.IO.File.ReadAllBytes(archivePath));
+            }
+            finally
+            {
+                if(System.IO.File.Exists(archivePath))
+                    System.IO.File.Delete(archivePath);
+            }
             var versions=new Dictionary<string,string>(StringComparer.Ordinal){
                 {G06ArchivedInputResolver.SourceId,G06ArchivedInputResolver.SourceVersion},
                 {CxVisionThresholdProvider.CapabilityId,vision.ReleaseVersion}
