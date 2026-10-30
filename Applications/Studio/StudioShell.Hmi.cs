@@ -25,6 +25,7 @@ namespace CxVisual.Studio
                     .OrderBy(x => x, StringComparer.Ordinal).ToArray();
             RegisterStudioResourceViewer(HmiViewerId, "HMI实时运行观察",
                 CreateStudioHmiRuntimeView, false, "core.page");
+            Closed+=(sender,args)=>ReleaseStudioScadaReadOnly();
         }
 
         /// <summary>在现有Page下打开真正的MVI/SceneView运行投影；未连接时明确提示。</summary>
@@ -40,6 +41,8 @@ namespace CxVisual.Studio
             if (engineering.Project.Id != identity.ProjectId ||
                 !(engineering.Find(identity.ResourceId) is MEMPage))
                 throw new InvalidOperationException("HMI页面工程身份已经失效");
+            if (_studioRemoteHmi != null)
+                return CreateStudioRemoteHmiView(engineering,identity.ResourceId);
             MDSVariableTable table = _studioVariableScope;
             if (table == null)
                 return new TextBlock {
@@ -139,6 +142,14 @@ namespace CxVisual.Studio
                         Header="仅显示前100项，请按需缩小工程点位范围",IsEnabled=false});
             }
             hmi.Items.Add(new Separator());
+            var remoteConnect=new MenuItem {
+                Header="连接独立Runtime.Host（同账户Pipe，只读）" };
+            remoteConnect.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                OpenStudioScadaReadOnlyDialog(origin,pageId);
+            });
+            hmi.Items.Add(remoteConnect);
             var button=new MenuItem {
                 Header="添加控制按钮（未分配命令，在线禁止操作）" };
             button.Click+=(sender,args)=>SafeStudioAction(()=>
