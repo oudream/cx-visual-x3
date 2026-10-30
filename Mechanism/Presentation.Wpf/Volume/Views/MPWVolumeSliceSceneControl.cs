@@ -31,6 +31,57 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalMeshTriangles=
             new Dictionary<Guid,int>();
+        private MVI3DSceneState _selectionScene;
+
+        /// <summary>Ctrl+点击真实3D几何选择唯一MVI实例；WPF只消费场景引用。</summary>
+        public void BindSceneSelection(MVI3DSceneState scene)
+        {
+            Dispatcher.VerifyAccess();
+            _selectionScene=scene;
+        }
+        public bool TrySelectSceneAtPoint(Point viewportPoint)
+        {
+            Dispatcher.VerifyAccess();
+            if(_selectionScene==null||(double.IsNaN(viewportPoint.X)||double.IsInfinity(viewportPoint.X))||
+                (double.IsNaN(viewportPoint.Y)||double.IsInfinity(viewportPoint.Y))||_viewport.ActualWidth<=0||
+                _viewport.ActualHeight<=0||viewportPoint.X<0||viewportPoint.Y<0||
+                viewportPoint.X>=_viewport.ActualWidth||
+                viewportPoint.Y>=_viewport.ActualHeight)return false;
+            Guid selected=Guid.Empty;
+            VisualTreeHelper.HitTest(_viewport,null,result=>
+            {
+                var mesh=result as RayMeshGeometry3DHitTestResult;
+                if(mesh==null)return HitTestResultBehavior.Continue;
+                foreach(var pair in _additionalMeshes)
+                {
+                    if(!Object.ReferenceEquals(pair.Value.Content,mesh.ModelHit))continue;
+                    MVI3DSceneItem item;
+                    if(_selectionScene.TryGet(pair.Key,out item)&&item.Visible)
+                    {
+                        selected=pair.Key;return HitTestResultBehavior.Stop;
+                    }
+                }
+                MVI3DSceneKind kind;
+                if(Object.ReferenceEquals(_meshOverlay.Content,mesh.ModelHit))
+                    kind=MVI3DSceneKind.Mesh;
+                else if(Object.ReferenceEquals(_surfaceOverlay.Content,mesh.ModelHit))
+                    kind=MVI3DSceneKind.Surface;
+                else return HitTestResultBehavior.Continue;
+                Guid match=Guid.Empty;
+                foreach(MVI3DSceneItem item in _selectionScene.Snapshot())
+                {
+                    if(!item.Visible||item.Kind!=kind)continue;
+                    if(match!=Guid.Empty)return HitTestResultBehavior.Stop;
+                    match=item.Id;
+                }
+                if(match!=Guid.Empty)selected=match;
+                return HitTestResultBehavior.Stop;
+            },new PointHitTestParameters(viewportPoint));
+            if(selected==Guid.Empty)return false;
+            _selectionScene.Select(selected);
+            return true;
+        }
+
         private MVI3DSceneState _additionalScene;
         private Func<MVI3DSceneItem,MPWVolumeDisplayMesh> _additionalMeshResolver;
         private readonly HashSet<Guid> _sceneMeshIds=new HashSet<Guid>();
@@ -247,6 +298,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
             BindAdditionalMeshes(null,null);
+            BindSceneSelection(null);
             ClearSurfaceMesh();
             ClearAdditionalMeshes();
         }
@@ -551,6 +603,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         private void OnDown(object sender, MouseButtonEventArgs e)
         {
+            if((Keyboard.Modifiers&ModifierKeys.Control)!=0&&
+                TrySelectSceneAtPoint(e.GetPosition(_viewport)))
+            {
+                e.Handled=true;
+                return;
+            }
             _dragOrigin = e.GetPosition(this);
             _panning=(Keyboard.Modifiers & ModifierKeys.Shift)!=0;
             _dragging = true;
