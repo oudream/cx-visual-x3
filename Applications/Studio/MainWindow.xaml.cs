@@ -1275,6 +1275,37 @@ namespace CxVisual.Studio
             if(dialog.ShowDialog()==true)FlowRawPath.Text=dialog.FileName;
         }
 
+        /// <summary>
+        /// The WPF button and the STA acceptance test share the identical
+        /// original MEM/MOC edit. No second project graph or editor store.
+        /// </summary>
+        internal static void CreateProfessionalCpuFlow(MEMEngineeringSession session,
+            MEMContent content,MOCCapabilityDescriptor inspector,
+            int width,int height)
+        {
+            if(session==null||content==null||inspector==null)
+                throw new ArgumentNullException("studio.professional.cpu_flow");
+            if(inspector.Id!=CxVisionThresholdProvider.CapabilityId)
+                throw new InvalidOperationException("studio.professional.inspector_contract_required");
+            if(width<=0||height<=0||(long)width*height>32000000)
+                throw new ArgumentOutOfRangeException("width/height");
+            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            if(node==null||MOLWiringCodec.Get(node)!=null||MOLLogicCodec.Get(node)!=null)
+                throw new InvalidOperationException("studio.professional.content_not_empty");
+            MOCFlowBuilder.Edit(session,content,b=>{
+                Guid raw=b.Step(StudioProfessionalFlowResolver.RawDescriptor());
+                Guid cpu=b.Step(inspector);
+                b.Move(raw,35,55);
+                b.Move(cpu,255,55);
+                b.SetParameter(cpu,"Width",width.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+                b.SetParameter(cpu,"Height",height.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+                b.Connect(raw,"Done",cpu,"Start");
+                b.Connect(raw,"Pixels",cpu,"RawPixels",MPCPortKind.Data);
+            });
+        }
+
         private void OnCreateProfessionalCpuFlow(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
@@ -1294,18 +1325,8 @@ namespace CxVisual.Studio
                 var scope=CreateProfessionalFlowResolver(false);
                 var inspect=scope.DescribeCapabilities().Single(x=>
                     x.Id==CxVisionThresholdProvider.CapabilityId);
-                MOCFlowBuilder.Edit(_viewModel.ProjectSession,content,b=>{
-                    Guid raw=b.Step(StudioProfessionalFlowResolver.RawDescriptor());
-                    Guid cpu=b.Step(inspect);
-                    b.Move(raw,35,55);
-                    b.Move(cpu,255,55);
-                    b.SetParameter(cpu,"Width",width.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture));
-                    b.SetParameter(cpu,"Height",height.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture));
-                    b.Connect(raw,"Done",cpu,"Start");
-                    b.Connect(raw,"Pixels",cpu,"RawPixels",MPCPortKind.Data);
-                });
+                CreateProfessionalCpuFlow(_viewModel.ProjectSession,content,
+                    inspect,width,height);
                 RefreshScene();
                 LogicInfo.Text="真实Vision CPU节点已写入MEM/MOL，可保存重开；执行需绑定本地RAW文件，"+
                     "不允许直接从Studio向PLC发命令。";
