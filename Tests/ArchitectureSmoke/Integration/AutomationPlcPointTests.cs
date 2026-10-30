@@ -397,6 +397,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
                         "只允许新的实际FC03成功采样将失败点恢复Good");
 
+                    // 连续holding:100/101必须仅发送一个真实FC03数量=2的请求。
+                    int requestsBeforeBlock = plc.Requests;
+                    int blockReadsBefore = plc.BlockReads;
+                    PADPlcScanResult contiguous = bridge.ScanContiguousAsync(
+                        new[] { "word", "input" }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(contiguous.AllSucceeded && contiguous.Points.Count == 2 &&
+                        (ushort)contiguous.Points[0].Value == 91 &&
+                        (ushort)contiguous.Points[1].Value == 99 &&
+                        plc.Requests == requestsBeforeBlock + 1 &&
+                        plc.BlockReads == blockReadsBefore + 1 &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good &&
+                        table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
+                        "相邻寄存器必须通过单个MBAP FC03(count=2)取回两个强类型结果");
+
+                    int noPacketBefore = plc.Requests;
+                    Reject<ArgumentException>(() => bridge.ScanContiguousAsync(
+                        new[] { "input", "word" }, CancellationToken.None).GetAwaiter().GetResult());
+                    Reject<ArgumentException>(() => bridge.ScanContiguousAsync(
+                        new[] { "word", "word" }, CancellationToken.None).GetAwaiter().GetResult());
+                    Reject<ArgumentOutOfRangeException>(() => bridge.ScanContiguousAsync(
+                        new string[0], CancellationToken.None).GetAwaiter().GetResult());
+                    Check(plc.Requests == noPacketBefore,
+                        "连续批读反向地址/重复/空集合不能发送PLC请求");
+
+                    IMDSVariableSnapshot wordBeforeBroken = table.Inspect("Station.Word");
+                    IMDSVariableSnapshot inputBeforeBroken = table.Inspect("Station.Input");
+                    plc.CorruptNextBlockRead();
+                    Reject<InvalidDataException>(() => bridge.ScanContiguousAsync(
+                        new[] { "word", "input" }, CancellationToken.None).GetAwaiter().GetResult());
+                    IMDSVariableSnapshot wordAfterBroken = table.Inspect("Station.Word");
+                    IMDSVariableSnapshot inputAfterBroken = table.Inspect("Station.Input");
+                    Check(wordAfterBroken.Quality == MDSVariableQuality.Stale &&
+                        inputAfterBroken.Quality == MDSVariableQuality.Stale &&
+                        wordAfterBroken.RefreshUtc == wordBeforeBroken.RefreshUtc &&
+                        inputAfterBroken.RefreshUtc == inputBeforeBroken.RefreshUtc &&
+                        object.Equals(wordAfterBroken.CurrentObject, wordBeforeBroken.CurrentObject) &&
+                        object.Equals(inputAfterBroken.CurrentObject, inputBeforeBroken.CurrentObject),
+                        "连续FC03回包缺字节时整批拒绝，两个MDS旧值不得被部分覆盖");
+                    PADPlcScanResult retried = bridge.ScanContiguousAsync(
+                        new[] { "word", "input" }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(retried.AllSucceeded &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good &&
+                        table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
+                        "批读错误后只有新的完整真实回包才允许恢复Good");
+
                     // 连接一旦明确关闭，原Good不能继续用于现场控制；
                     // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
                     IMDSVariableSnapshot beforeClose = table.Inspect("Station.Word");
@@ -434,6 +479,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             private volatile bool _ignoreWrite;
             private volatile bool _ignoreRead;
             private int _dropInputReadOnce;
+            private int _blockReads;
+            private int _corruptBlockReadOnce;
             private volatile bool _pauseRead;
             private readonly ManualResetEventSlim _readPaused = new ManualResetEventSlim(false);
             private readonly ManualResetEventSlim _releaseRead = new ManualResetEventSlim(false);
@@ -442,9 +489,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             public ushort ActualRegister { get { return (ushort)Volatile.Read(ref _register); } }
             public int Requests { get { return Volatile.Read(ref _requests); } }
             public int Writes { get { return Volatile.Read(ref _writes); } }
+            public int BlockReads { get { return Volatile.Read(ref _blockReads); } }
             public bool IgnoreWrite { get { return _ignoreWrite; } set { _ignoreWrite = value; } }
             public bool IgnoreRead { get { return _ignoreRead; } set { _ignoreRead = value; } }
             public void DropNextInputRead() { Interlocked.Exchange(ref _dropInputReadOnce, 1); }
+            public void CorruptNextBlockRead() { Interlocked.Exchange(ref _corruptBlockReadOnce, 1); }
             public void PauseNextRead()
             {
                 _readPaused.Reset(); _releaseRead.Reset(); _pauseRead = true;
@@ -507,11 +556,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                     throw new IOException("PLC测试端被阻断的读取未及时释放");
                             }
                             byte[] reply;
-                            if (function == 3)
+                            if (function == 3 && pdu.Length == 5)
                             {
                                 int register = (pdu[1] << 8) | pdu[2];
-                                ushort value = register == 101 ? (ushort)99 : ActualRegister;
-                                reply = new byte[] { 3, 2, (byte)(value >> 8), (byte)value };
+                                int count = (pdu[3] << 8) | pdu[4];
+                                if (count < 1 || count > 125 || register + count > 65536)
+                                    throw new InvalidDataException("测试FC03数量或地址非法");
+                                if (count > 1) Interlocked.Increment(ref _blockReads);
+                                bool corrupt = count > 1 &&
+                                    Interlocked.Exchange(ref _corruptBlockReadOnce, 0) == 1;
+                                int returned = corrupt ? count - 1 : count;
+                                reply = new byte[2 + returned * 2];
+                                reply[0] = 3;
+                                reply[1] = (byte)(returned * 2);
+                                for (int i = 0; i < returned; i++)
+                                {
+                                    ushort value = register + i == 101 ? (ushort)99 : ActualRegister;
+                                    reply[2 + i * 2] = (byte)(value >> 8);
+                                    reply[3 + i * 2] = (byte)value;
+                                }
                             }
                             else if (function == 6 && pdu.Length == 5)
                             {
