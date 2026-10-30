@@ -144,3 +144,15 @@ G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写
 - **能力边界**：FC03单请求不等于跨多点MDS原子提交。一个FC03成功后的每点MDS写回仍经现有ProviderHost逐点发生；真实时间一致性、间隔周期调度、回包迟到/设备重连、安全PLC、硬实时性能及G2/G3现场还没有验收。Modbus 125寄存器上限在MPA；当前专业桥接主动限定64点，需调整时须与配置/性能基线共同评审。
 
 新增测试编号 `AUT-PI-013` 软件G1，必须引用本轮准确SHA的Actions日志确认结果，未执行G2/G3前不得填写硬件通过。
+
+## 十三、WP03：TestCenter真实Modbus TCP只读点表调试入口（2026-10-30）
+
+在 `Tests/TestCenter/Manual/Module/TCTManualModuleFrame.cs` 的现有Connector模块中心下加入 `connector-plc` 页；`TCTPlcReadOnlyPanel` 是独立的 **只读诊断呈现**，不创建Automation替代控制台，也不复制平台MDS运行Current。
+
+- **真实配置来源**：只能从现有MHS/FCM `CxVisual.Module.Connector/module/{ModuleId}` 的Effective打开，禁止未保存草稿、非Modbus TCP、非TcpClient和无可读点的设备链接；有效配置变化需要断开重新装配。
+- **连接/操作**：操作者点击“连接正式Effective”，用现有 `FTRTcpClientChannel`、`MCNConnectorModule` 与 `MPAModbusTcpProtocol` 建立真实操作系统TCP连接，点击“读取一次FC03”按照选中的1～64个点执行同站点相邻地址单报文读取，点击“断开”停止本页连接。不创建驱动写入入口、无FC06，无后台自动连接或轮询。
+- **诊断证据**：返回每个点的`PointName/Address/ValueType/ObservedValue/ReceivedUtc`，同时公开UIA ID `TCT.Plc.Connect/Read/Stop/Status/ReadEvidence`。只保留本次诊断结果；失败或断开时清除显示，不宣称值属于正式MDS Good、受认证设备身份或动作PhysicalDone。
+- **安全边界**：只读Modbus响应不保证PLC的硬件型号、SN、固件、真实安全控制器或物理现场状态；若连接到测试夹具仅能达到G1。任何危险设备写操作必须通过已有MRK/PAD授权、租约与实体安全控制，不允许这页绕开。
+- **自动测试**：`TCTPlcReadOnlyUiSmoke` 使用已生效的真实MHS配置，原生Windows TCP对端 + WPF UIA 选页/按钮，检查一个FC03双点回包90/99和UTC、非法反序点表不发报文、无效结果清空、显式停止。TestCenter原Compute/Simulation/Service/Connector四条真实UIA继续保留。
+
+**新批次验证**：`.github/workflows/testcenter-module-g1-windows.yml` 扩展为五项正式UIA，并构建 `CxVisual.TestCenter.csproj` .NET Framework 4.8 x64。以本批CI运行日志为准，未见成功之前不能标为G1 PASS；真实PLC G2/G3从未因此通过。
