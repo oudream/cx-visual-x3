@@ -1171,6 +1171,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         var second=CxVisionRoiEngineering.RunSavedAsync(
                             reopened,address,source,CancellationToken.None)
                             .GetAwaiter().GetResult();
+                        Check(first.DefinitionRoiId==roi.Id &&
+                            first.DefinitionRevision==stable &&
+                            first.ValidatedSourceHash==recipe.SourceHash &&
+                            second.DefinitionRoiId==roi.Id &&
+                            second.DefinitionRevision==stable &&
+                            second.ValidatedSourceHash==recipe.SourceHash,
+                            "正式ROI运行未随同Run留下已核验SourceHash/ROI身份/MEM Revision");
+                        var contoured=first.WithThresholdMaskContours();
+                        Check(contoured.RunId==first.RunId &&
+                            contoured.DefinitionRoiId==first.DefinitionRoiId &&
+                            contoured.DefinitionRevision==first.DefinitionRevision &&
+                            contoured.ValidatedSourceHash==first.ValidatedSourceHash &&
+                            first.Items.All(x=>x.Kind!=CxVisionResultKind.Contour),
+                            "派生Contour投影丢失来源证据或修改了原Run");
                         Check(first.RunId!=second.RunId &&
                             first.SourceId==second.SourceId &&
                             first.ConfigRevision==21 && second.ConfigRevision==21 &&
