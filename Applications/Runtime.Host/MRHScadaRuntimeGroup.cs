@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CxVisual.Foundation.Data.Configuration;
+using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Professional.Automation.Scada;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,13 +40,55 @@ namespace CxVisual.Runtime.Host
     internal sealed class MRHScadaRuntimeGroup : IDisposable
     {
         private readonly List<MRHScadaRuntime> _devices;
+        private readonly string _deploymentVersion;
         private bool _started, _stopped, _disposed;
 
-        private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices)
-        { _devices=devices; }
+        private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices,string deploymentVersion)
+        { _devices=devices;_deploymentVersion=deploymentVersion; }
+
+        /// <summary>正式入口：MEM ProjectId关联MHS已持久发布的SCADA部署配置。</summary>
+        internal static MRHScadaRuntimeGroup OpenFromEngineering(
+            string projectPath,string configRoot)
+        {
+            string projectId;
+            using(MEMEngineeringSession project=MEMEngineering.Open(projectPath))
+                projectId=project.Project.Id.ToString("N");
+            FCMConfigIdentity identity=new FCMConfigIdentity(
+                "CxVisual.Automation.ScadaDeployment","project",projectId);
+            MHSConfigService mhs=new MHSConfigService(configRoot);
+            var section=mhs.OpenExisting<PADScadaDeploymentConfiguration>(identity);
+            if(section.HasPendingApply)
+                throw new InvalidOperationException(
+                    "SCADA工程部署存在待生效变更，禁止以旧点表装配");
+            PADScadaDeploymentConfiguration deployment;
+            string version;
+            using(var pinned=section.CaptureForTask("scada-group:"+projectId))
+            {
+                deployment=pinned.Get();
+                version=pinned.Version;
+            }
+            deployment.Validate();
+            // 重新OpenExisting而不是读取缓存Section：另一个Studio进程提交也必须在发包前拒绝。
+            Func<bool> approved=()=>
+            {
+                try
+                {
+                    var live=new MHSConfigService(configRoot)
+                        .OpenExisting<PADScadaDeploymentConfiguration>(identity);
+                    return !live.HasPendingApply &&
+                        string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal);
+                }
+                catch {return false;}
+            };
+            MRHScadaDeviceLaunch[] items=deployment.Devices.Where(x=>x.Enabled)
+                .Select(x=>new MRHScadaDeviceLaunch(Guid.Parse(x.DeviceNodeGuid),
+                    x.ConnectorModuleId,x.ScopeId,x.IntervalMs,x.Contiguous)).ToArray();
+            return Open(projectPath,configRoot,items,approved,version);
+        }
 
         internal static MRHScadaRuntimeGroup Open(string projectPath,string configRoot,
-            IEnumerable<MRHScadaDeviceLaunch> definitions)
+            IEnumerable<MRHScadaDeviceLaunch> definitions,
+            Func<bool> additionalApproval = null,string deploymentVersion = null)
         {
             if(definitions==null)throw new ArgumentNullException("definitions");
             MRHScadaDeviceLaunch[] configs=definitions.ToArray();
@@ -53,6 +99,8 @@ namespace CxVisual.Runtime.Host
                 configs.Select(x=>x.ConnectorModuleId).Distinct(StringComparer.Ordinal).Count()!=configs.Length)
                 throw new InvalidOperationException(
                     "SCADA双设备不能复用DeviceRef、MDS Scope或Connector配置身份");
+            if(additionalApproval!=null&&!additionalApproval())
+                throw new InvalidOperationException("SCADA工程部署Effective已变化");
             List<MRHScadaRuntime> prepared=new List<MRHScadaRuntime>();
             try
             {
@@ -61,13 +109,16 @@ namespace CxVisual.Runtime.Host
                 {
                     MRHScadaRuntime runtime=MRHScadaRuntime.Open(projectPath,configRoot,
                         config.DeviceNodeId,config.ConnectorModuleId,
-                        config.ScopeId,config.IntervalMs,config.Contiguous);
+                        config.ScopeId,config.IntervalMs,config.Contiguous,
+                        additionalApproval);
                     prepared.Add(runtime);
                     if(!channels.Add(runtime.Device.ChannelId))
                         throw new InvalidOperationException(
                             "SCADA两个设备复用了同一F17 ChannelId，拒绝装配");
                 }
-                return new MRHScadaRuntimeGroup(prepared);
+                if(additionalApproval!=null&&!additionalApproval())
+                    throw new InvalidOperationException("SCADA设备组准备期间部署版本漂移");
+                return new MRHScadaRuntimeGroup(prepared,deploymentVersion);
             }
             catch
             {
@@ -77,6 +128,7 @@ namespace CxVisual.Runtime.Host
             }
         }
 
+        internal string DeploymentVersion {get{return _deploymentVersion;}}
         internal int Count {get{return _devices.Count;}}
         internal MRHScadaRuntime Find(Guid deviceNodeId)
         {
@@ -125,5 +177,51 @@ namespace CxVisual.Runtime.Host
             for(int i=_devices.Count-1;i>=0;i--)
                 _devices[i].Dispose();
         }
+        internal static int Serve(string projectPath,string configRoot)
+        {
+            using(MRHScadaRuntimeGroup group=OpenFromEngineering(projectPath,configRoot))
+            using(CancellationTokenSource signal=new CancellationTokenSource())
+            {
+                ConsoleCancelEventHandler onCancel=(sender,e)=>
+                {
+                    e.Cancel=true;signal.Cancel();
+                };
+                Console.CancelKeyPress+=onCancel;
+                try
+                {
+                    group.StartAsync(signal.Token).GetAwaiter().GetResult();
+                    Console.WriteLine("SCADA Group online. Devices="+group.Count+
+                        " DeploymentEffective="+group.DeploymentVersion+
+                        ". Ctrl+C stops all. Read-only; no command replay.");
+                    Task cancellation=Task.Delay(Timeout.Infinite,signal.Token);
+                    Task[] watchers=_devicesCompletion(group);
+                    Task[] all=watchers.Concat(new[]{cancellation}).ToArray();
+                    Task terminal=Task.WhenAny(all).GetAwaiter().GetResult();
+                    if(terminal==cancellation)
+                    {
+                        group.StopAsync().GetAwaiter().GetResult();
+                        return 0;
+                    }
+                    try{terminal.GetAwaiter().GetResult();}
+                    catch(Exception error)
+                    {
+                        Console.Error.WriteLine("SCADA device fault: "+error.Message);
+                        return 3;
+                    }
+                    Console.Error.WriteLine("SCADA device unexpectedly ended its collection.");
+                    return 3;
+                }
+                catch(OperationCanceledException) when(signal.IsCancellationRequested)
+                {
+                    return 0;
+                }
+                finally {Console.CancelKeyPress-=onCancel;}
+            }
+        }
+        private static Task[] _devicesCompletion(MRHScadaRuntimeGroup group)
+        {
+            return group._devices.Select(x=>x.Completion).ToArray();
+        }
+
     }
 }
