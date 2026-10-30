@@ -648,6 +648,13 @@ namespace CxVisual.Studio
             };
             System.Windows.Automation.AutomationProperties.SetAutomationId(runExportButton,
                 "Studio.ModuleCenter.ExportRunCsv");
+            var rawExportButton=new Button {
+                Content="导出Run图像RAW",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),IsEnabled=false,
+                ToolTip="选择Image/Mask结果后导出该产物；未选择时导出本Run原图。RAW保留原位深及Stride。"
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(rawExportButton,
+                "Studio.ModuleCenter.ExportRunRaw");
             var saveRoiButton=new Button {
                 Content="保存选中ROI到MEM",Padding=new Thickness(8,4,8,4),
                 Margin=new Thickness(3),IsEnabled=false,
@@ -672,6 +679,7 @@ namespace CxVisual.Studio
             resultControls.Children.Add(sourceButton);
             resultControls.Children.Add(contourButton);
             resultControls.Children.Add(runExportButton);
+            resultControls.Children.Add(rawExportButton);
             resultControls.Children.Add(saveRoiButton);
             resultControls.Children.Add(runSavedRoiButton);
             var resultStack=new StackPanel();
@@ -698,7 +706,7 @@ namespace CxVisual.Studio
                 displayedRun=null;displayedOriginal=null;
                 displayedProject=Guid.Empty;
                 contourButton.IsEnabled=false;sourceButton.IsEnabled=false;
-                runExportButton.IsEnabled=false;
+                runExportButton.IsEnabled=false;rawExportButton.IsEnabled=false;
                 saveRoiButton.IsEnabled=false;runSavedRoiButton.IsEnabled=false;
                 resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
                 resultPreview.Clear();resultPreview.Visibility=Visibility.Collapsed;
@@ -849,6 +857,7 @@ namespace CxVisual.Studio
                     resultPreview.Visibility=Visibility.Visible;
                     sourceButton.IsEnabled=true;
                     runExportButton.IsEnabled=true;
+                    rawExportButton.IsEnabled=true;
                     contourButton.IsEnabled=completed.Items.Any(x=>
                         x.Kind==CxVisionResultKind.Mask &&
                         x.OutputPort=="ThresholdMask");
@@ -894,6 +903,55 @@ namespace CxVisual.Studio
                         " 的结构化CSV；图像原像素另用FIM/RAW导出。";
                 }
                 catch(Exception ex){resultDetail.Text="Run CSV导出失败："+ex.Message;}
+            };
+            rawExportButton.Click+=(sender,args)=>{
+                if(displayedRun==null || !hasCurrentSource())
+                {
+                    resultDetail.Text="当前没有同源有效Run，禁止将其他图像导出为当前证据。";
+                    return;
+                }
+                FIMImageBuffer output=displayedOriginal;
+                var selected=resultList.SelectedItem as ListBoxItem;
+                CxVisionResultItem item=selected==null?null:
+                    selected.Tag as CxVisionResultItem;
+                if(item!=null)
+                {
+                    if(!displayedRun.Items.Any(x=>Object.ReferenceEquals(x,item)) ||
+                       item.RunId!=displayedRun.RunId ||
+                       item.SourceId!=displayedRun.SourceId)
+                    {
+                        resultDetail.Text="选择的结果不属于当前Run。";
+                        return;
+                    }
+                    if(item.Kind!=CxVisionResultKind.Image &&
+                       item.Kind!=CxVisionResultKind.Mask)
+                    {
+                        resultDetail.Text="请选中Image/Mask产物，或取消选择导出原图。";
+                        return;
+                    }
+                    output=item.Image;
+                    if(output==null)
+                    {
+                        resultDetail.Text="所选结果没有可导出的原始像素。";
+                        return;
+                    }
+                }
+                var dialog=new Microsoft.Win32.SaveFileDialog{
+                    Title="导出本Run的无损原始像素",
+                    Filter="RAW images (*.raw)|*.raw",DefaultExt=".raw",
+                    OverwritePrompt=true
+                };
+                if(dialog.ShowDialog(this)!=true)return;
+                try
+                {
+                    FIMRawImageWriter.SaveFile(dialog.FileName,output,
+                        preserveStride:true,overwrite:true);
+                    resultDetail.Text="已导出Run="+displayedRun.RunId.ToString("N")+
+                        (item==null?" 原图":" / "+item.OutputPort)+
+                        "，"+output.Width+"×"+output.Height+" "+output.PixelFormat+
+                        "，Stride="+output.Stride+"。RAW不包含尺寸元数据。";
+                }
+                catch(Exception ex){resultDetail.Text="Run RAW导出失败："+ex.Message;}
             };
             sourceButton.Click+=(sender,args)=>{
                 if(!hasCurrentSource()) {resultDetail.Text="结果来源失效或当前为非可视Run。";return;}
@@ -1023,6 +1081,7 @@ namespace CxVisual.Studio
                         Visibility.Collapsed:Visibility.Visible;
                     sourceButton.IsEnabled=report.SourceImage!=null;
                     runExportButton.IsEnabled=true;
+                    rawExportButton.IsEnabled=report.SourceImage!=null;
                     saveRoiButton.IsEnabled=report.SourceImage!=null;
                     runSavedRoiButton.IsEnabled=report.SourceImage!=null;
                     contourButton.IsEnabled=report.SourceImage!=null &&
