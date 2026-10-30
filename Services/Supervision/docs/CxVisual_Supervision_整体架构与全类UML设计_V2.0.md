@@ -904,3 +904,48 @@ sequenceDiagram
 - 启动前旧 PID 文件清理仍只有保守可执行文件身份校验，不具备原 Worker Wait 确认；业务流程、设备进程树和 S11 权限审计继续待实现。
 
 实施完成度统一追溯 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十七章。
+
+
+## 23. 停止超时的迟到结果与守护代次交接（2026-10-30）
+
+### 23.1 对象 Owner 与时序
+
+不引入第二套进程管理、业务执行或运维命令中心。复用 `StopController`、`RunProgramContextWithStop`、`programWorkerGate`，把原 Worker 的 `exec.Cmd.Wait` 作为唯一退出事实，原 Go EventExit/UDP/SQLite 合同不变。
+
+~~~mermaid
+sequenceDiagram
+ participant Main as Daemon主循环
+ participant Stop as StopController（原Worker）
+ participant OS as 原exec.Cmd子进程
+ participant Worker as RunProgramContextWithStop
+ participant Log as Daemon原日志
+ Main->>Stop: RequestStopWithLateReceipt(ctx, PID)
+ Stop->>OS: Kill原始os.Process
+ alt Wait在超时前返回
+ OS-->>Worker: 退出
+ Worker->>Stop: finish(Wait结果)
+ Stop-->>Main: wait-confirmed
+ else 超时
+ Stop-->>Main: unknown（阶段结果）
+ OS-->>Worker: 稍后实际退出
+ Worker->>Stop: finish(Wait结果)
+ Stop->>Log: action/late（最终确认或继续unknown）
+ end
+ Worker->>Worker: 原EventExit发送后结束旧代次
+ Main->>Main: 已确认旧Worker退出时，门禁才许可新代次
+~~~
+
+**关键合同**：停机超时返回 unknown 不得等同成功。`RequestStopWithLateReceipt` 在原 Worker 的 finish 与超时竞态间使用互斥锁，回调最多一次且不持锁调用；不重新查裸 PID、不重复 Kill、不启动无限阻塞的“结果等待线程”。Daemon 尚在运行时，晚到结果直接记原日志；关机或磁盘故障造成日志丢失并非此次设计已经解决。
+
+### 23.2 配置更新与旧重启的真实行为
+
+- 旧 `RunProgramContextWithStop` 在受控停止发出 EventExit 后明确返回，不会在仍 Enabled 时再次自行启动；否则会与排队的新 Worker 形成重复控制。
+- 配置更新复用 `program.IsSameProgram`：完全相同的配置不重复停止；变更后的启用配置即便旧配置也是启用状态，仍按原 gate 的 pending/activeStop 归属规则衔接；禁用则清理待续接，不把维护停止当作失败次数。
+- 旧 UDP 重启不再用收到的 Program.Path 执行新进程，而是使用 Daemon 的本地配置。对于已有受管进程，只有收到本代 StopController 的 `WaitCompleted` 才会交接后续启动；当出现 refused、signal-failed、unknown 时不自动越过状态校验启动。该接口**仍是旧 UDP 未认证控制面**，不是新增安全远程功能或完整 S11。
+- 此轮功能仍属于 S02/S08 的旧 Daemon Owner 和 P0 局部完善，不改变 136 项全类条目数量，不宣称全链路权限审计/跨进程可靠回执。
+
+### 23.3 验证与限制
+
+`internal/daemonc/stop_test.go`：新增真实测试子进程的“先 unknown、后由同一 Wait 补一次最终回执”和“原配置保持 Enabled，受控停止后旧 Worker 必须结束”正反回归；`.github/workflows/supervision-migration.yml`：Linux Race 扩展到该两项及 cmd/daemon 代次切换。独立 Go 1.19 最小模块中，同构 StopController 在 Go 1.23.2/Linux amd64 上实际运行 `go test -race -count=20 ./...`，成功。**此证据不覆盖 cx-visual-x3 主仓库正式 Go 构建及 Windows/macOS/Linux CI（尚未获得本轮通过日志）。**
+
+**G1/G2/G3 仍待验**：Daemon 被 SIGKILL/断电时的孤儿进程恢复与真实状态对账、子孙进程树/OS PID 重用、迟到结果可靠持久化、用户/角色/权限/审批/审计、安全在线解锁、专业 Service/Device Ready 均未在本轮实现。详细追溯参见 [12大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十八章。
