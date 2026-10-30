@@ -674,6 +674,30 @@ namespace CxVisual.Studio
                     Assert(root.Items.OfType<TreeViewItem>().Any(item=>
                         String.Equals(item.Tag as string, "symbols", StringComparison.Ordinal)),
                         "缺少Symbol分组");
+                    string[] expected={"pages","contents","symbols","flows","modules",
+                        "data","configuration","assets","cases"};
+                    TreeViewItem[] categories=root.Items.OfType<TreeViewItem>().ToArray();
+                    Assert(categories.Select(x=>x.Tag as string).SequenceEqual(expected),
+                        "Project九类资源目录缺失或顺序错误");
+                    Assert(root.Tag is MEMProject,"资源树根必须指向真实MEMProject");
+                    Assert(categories.All(x=>x.ContextMenu!=null&&x.ToolTip!=null),
+                        "工程目录缺少真实操作入口或说明");
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    Assert(model!=null,"Studio缺少真实工程ViewModel");
+                    TreeViewItem flowCategory=categories[3];
+                    foreach(TreeViewItem entry in flowCategory.Items.OfType<TreeViewItem>())
+                    {
+                        MEMContent content=entry.Tag as MEMContent;
+                        Assert(content!=null&&model.ProjectSession.Find(content.Id)==content&&
+                            content.Aspects.Any(a=>a.Kind==MPMAspectKind.Logic),
+                            "流程目录不得包含虚构资源或未定义逻辑的Content");
+                    }
+                    TreeViewItem assetCategory=categories[7];
+                    Assert(assetCategory.Items.Count==model.ProjectSession.Assets.Count,
+                        "资产目录未与MEM真实资产一致");
+                    Assert(categories[4].Items.Count==0&&categories[5].Items.Count==0&&
+                        categories[6].Items.Count==0&&categories[8].Items.Count==0,
+                        "公共中心目录不得创建伪MEM资源");
                     Assert(!root.Items.OfType<TreeViewItem>().Any(item=>
                         Convert.ToString(item.Tag).Contains("Element")),
                         "普通资源树不应展开图形Element");
