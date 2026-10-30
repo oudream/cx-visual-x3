@@ -16,6 +16,7 @@ namespace CxVisual.Runtime.Host
         private readonly MRHScadaRuntime _device;
         private readonly Func<string,bool> _authorizePeer;
         private readonly Func<MRKCommandContext,bool> _authorizeCommand;
+        private readonly Func<bool> _currentControlGuard;
         private readonly MRKCommandCenter _commands;
         private readonly MRKCommandPipeServer _server;
         private readonly IDisposable _registration;
@@ -29,10 +30,12 @@ namespace CxVisual.Runtime.Host
         internal MRHScadaTrustedCommandPipe(MRHScadaRuntime device,
             string pipeName, long commandId,
             Func<string,bool> authorizePeer,
-            Func<MRKCommandContext,bool> authorizeCommand)
+            Func<MRKCommandContext,bool> authorizeCommand,
+            Func<bool> currentControlGuard)
         {
             if(device==null)throw new ArgumentNullException("device");
-            if(authorizePeer==null || authorizeCommand==null)
+            if(authorizePeer==null || authorizeCommand==null ||
+                currentControlGuard==null)
                 throw new UnauthorizedAccessException(
                     "scada.command.explicit_peer_and_operation_policy_required");
             if(!device.IsStillApproved)
@@ -41,9 +44,10 @@ namespace CxVisual.Runtime.Host
             _device=device;
             _authorizePeer=authorizePeer;
             _authorizeCommand=authorizeCommand;
+            _currentControlGuard=currentControlGuard;
             _commands=new MRKCommandCenter(authorize:context=>
                 _device.IsRunning && _device.IsStillApproved &&
-                _authorizeCommand(context));
+                _currentControlGuard() && _authorizeCommand(context));
             try
             {
                 // Validate the existing MRK Pipe schema BEFORE occupying the
@@ -54,7 +58,11 @@ namespace CxVisual.Runtime.Host
                     _authorizePeer(peer));
                 // PAD requires trusted point authorization and registration
                 // before Start. The default read-only SCADA still fails closed.
-                _registration=_device.RegisterTrustedWriteCommands(_commands,commandId);
+                // Also recheck after MRK admission, immediately before PAD
+                // reaches physical FC06; a queued command cannot inherit a
+                // revoked mode/guard from an earlier authorization decision.
+                _registration=_device.RegisterTrustedWriteCommands(_commands,
+                    commandId,_currentControlGuard);
             }
             catch
             {
@@ -71,7 +79,8 @@ namespace CxVisual.Runtime.Host
                 "MRHScadaTrustedCommandPipe");
             if(_started)throw new InvalidOperationException(
                 "SCADA命令Pipe已启动");
-            if(!_device.IsRunning || !_device.IsStillApproved)
+            if(!_device.IsRunning || !_device.IsStillApproved ||
+                !_currentControlGuard())
                 throw new InvalidOperationException(
                     "scada.command.session_not_running_or_approved");
             _server.Start();
