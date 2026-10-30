@@ -161,6 +161,10 @@ namespace CxVisual.Runtime.Host
 
         internal string DeploymentVersion {get{return _deploymentVersion;}}
         internal int Count {get{return _devices.Count;}}
+        internal MRHScadaDeviceLaunch[] SnapshotLaunches()
+        {
+            return (MRHScadaDeviceLaunch[])_launches.Clone();
+        }
         internal bool IsDeploymentApproved {get{return !_disposed &&
             (_deploymentApproval==null||_deploymentApproval());}}
         internal MRHScadaRuntime[] SnapshotDevices()
