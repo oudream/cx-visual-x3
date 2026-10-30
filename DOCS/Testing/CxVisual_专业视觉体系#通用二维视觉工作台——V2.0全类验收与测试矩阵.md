@@ -697,3 +697,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-06 | 独立CI `studio-roi-dialog-uia-windows.yml`：.NET48 x64全工程编译、实际GUI窗口、原生文件框控制、唯一PASS/零FAIL并归档报告 | [固定`4ca1fd19` UIA #41032180497](https://github.com/oudream/cx-visual-x3/actions/runs/41032180497) 提交时queued；不得宣布G3/G4/G5通过 |
 
 该用例的MEM测试夹具预先构造，不能当作用户通过鼠标绘制ROI的证据。UIA不替代人工DPI/焦点/文件弹框多语言复核、真实设备HIL、工业长稳G6。
+
+### IMG-05 R1工程重绑后直接编辑ROI与真实系统鼠标（2026-10-30）
+
+| ID | 真正测试路径及断言 | 证据阶段 |
+|---|---|---|
+| R1-UIA-07 | Studio模块中心四个MVI工具入口由实际WPF Button控制；无源拒绝且MEM不变，绑定成功可切换矩形/多边形/移动/导航 | `4e49cd57`、`e4c9b512`、`e5a9abda` G2；最新STA/UIA待CI |
+| R1-UIA-08 | SaveAs/Close/Open正式ROI工程后，原RAW重绑立即投影已存ROI；在尚无MRK Run及未重读MHS Effective时，通过真实Studio按钮提交几何修改，必须一次MEM Revision、保留SourceId/Options/ConfigurationRevision，SaveAs后MEM Open保持一致 | `37ed18c8`、`c49195d2` G2；Windows软件验证待CI |
+| R1-UIA-09 | 真正Win32系统指针移动、左键按下、拖动、抬起，经MPW Viewer鼠标输入生成新的RectangleRoi进入单一MVI OverlayStore；未显式提交之前MEM Revision不变，保存后新ROI身份进入MEM | `e1b24b9e` G2；**原生鼠标G5尚未实测通过**，可能需要专用交互桌面 |
+| R1-UIA-10 | 旧UIA工作流`d5ddf497`的[CI #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)实际为**failure**，失败位于Studio源码CS0104（`Condition`类型二义性），WPF/文件弹窗步骤被跳过；改用全限定`System.Windows.Automation.Condition`后必须以新固定SHA重新验收 | 修复`4327a2a9` G2，**不得记旧失败为GUI失败或宣称新版已过G3/G5** |
+
+验收边界：真实系统鼠标测试与UIA测试是自动化Windows GUI证据；用户手动ROI操控、多分辨率、多DPI及工业现场仍需要额外复核。无完整新SHA成功不得关闭IMG-05。
