@@ -108,8 +108,11 @@ namespace CxVisual.Studio
                         System.Reflection.BindingFlags.NonPublic;
                     var controllerField=typeof(MainWindow).GetField("_logicDebug",flags);
                     var flowField=typeof(MainWindow).GetField("_logicFlow",flags);
+                    var ownerField=typeof(MainWindow).GetField("_activeFlowProjectId",flags);
+                    var revisionField=typeof(MainWindow).GetField("_activeFlowEngineeringRevision",flags);
                     TextBlock status=window.FindName("LogicInfo") as TextBlock;
-                    Assert(controllerField!=null&&flowField!=null&&status!=null,
+                    Assert(controllerField!=null&&flowField!=null&&
+                        ownerField!=null&&revisionField!=null&&status!=null,
                         "B5调试控制与可见状态组件缺失");
                     Action<string> command=name=>{
                         var handler=typeof(MainWindow).GetMethod(name,flags);
@@ -136,6 +139,9 @@ namespace CxVisual.Studio
                         var flow=engine.StartFlowWithControl(plan,debug);
                         controllerField.SetValue(window,debug);
                         flowField.SetValue(window,flow);
+                        var activeProject=((StudioViewModel)window.DataContext).ProjectSession;
+                        ownerField.SetValue(window,activeProject.Project.Id);
+                        revisionField.SetValue(window,activeProject.Revision);
                         Assert(System.Threading.SpinWait.SpinUntil(
                             ()=>debug.WaitingCount==1,3000)&&executions==0,
                             "B5真实断点没有在首节点执行前暂停");
@@ -198,7 +204,79 @@ namespace CxVisual.Studio
                     {
                         controllerField.SetValue(window,null);
                         flowField.SetValue(window,null);
+                        ownerField.SetValue(window,Guid.Empty);
+                        revisionField.SetValue(window,-1);
                         debug.Resume();
+                        engine.StopAsync(true).GetAwaiter().GetResult();
+                    }
+                });
+                CheckStep("B5 活跃运行结果跨工程版本与多Flow隔离真实WPF反例", () =>
+                {
+                    var flags=System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic;
+                    var flowField=typeof(MainWindow).GetField("_logicFlow",flags);
+                    var ownerField=typeof(MainWindow).GetField("_activeFlowProjectId",flags);
+                    var revisionField=typeof(MainWindow).GetField("_activeFlowEngineeringRevision",flags);
+                    var capture=typeof(MainWindow).GetMethod("CaptureCompletedFlowPreview",flags);
+                    var inspect=typeof(MainWindow).GetMethod("OnFlowInspectData",flags);
+                    var preview=window.FindName("FlowResultPreview") as TextBox;
+                    var session=((StudioViewModel)window.DataContext).ProjectSession;
+                    Assert(flowField!=null&&ownerField!=null&&revisionField!=null&&
+                        capture!=null&&inspect!=null&&preview!=null,
+                        "B5真实Studio的Flow身份及结果入口缺失");
+                    Action inspectClick=()=>inspect.Invoke(window,new object[]{
+                        window,new RoutedEventArgs(Button.ClickEvent)});
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+                    try
+                    {
+                        var first=engine.StartFlow(new MRKExecutionPlan("studio.b5.scope.a",
+                            new[]{new MRKExecutionStep("productA",new string[0],
+                                (ctx,ct)=>Task.FromResult((object)101))}));
+                        var second=engine.StartFlow(new MRKExecutionPlan("studio.b5.scope.b",
+                            new[]{new MRKExecutionStep("productB",new string[0],
+                                (ctx,ct)=>Task.FromResult((object)202))}));
+                        Assert(first.Completion.Wait(TimeSpan.FromSeconds(6))&&
+                            second.Completion.Wait(TimeSpan.FromSeconds(6))&&
+                            first.FlowId!=second.FlowId,"B5两条真实MRK Flow未完成或身份重复");
+                        flowField.SetValue(window,first);
+                        ownerField.SetValue(window,session.Project.Id);
+                        revisionField.SetValue(window,session.Revision);
+                        inspectClick();
+                        Assert(preview.Text.Contains(first.FlowId.ToString("N"))&&
+                            preview.Text.Contains("productA = Int32 value=101")&&
+                            !preview.Text.Contains("productB"),
+                            "B5 Flow A查看混入其它Flow结果");
+                        flowField.SetValue(window,second);
+                        inspectClick();
+                        Assert(preview.Text.Contains(second.FlowId.ToString("N"))&&
+                            preview.Text.Contains("productB = Int32 value=202")&&
+                            !preview.Text.Contains("productA"),
+                            "B5 Flow B查看混入上一Flow结果");
+                        ownerField.SetValue(window,Guid.NewGuid());
+                        inspectClick();
+                        Assert(preview.Text.Contains("无可查看的运行结果")&&
+                            !preview.Text.Contains("productB"),
+                            "B5活跃Flow跨工程仍泄露运行结果");
+                        ownerField.SetValue(window,session.Project.Id);
+                        revisionField.SetValue(window,session.Revision+1);
+                        inspectClick();
+                        Assert(preview.Text.Contains("无可查看的运行结果")&&
+                            !preview.Text.Contains("productB"),
+                            "B5活跃Flow跨Revision仍泄露运行结果");
+                        flowField.SetValue(window,null);
+                        capture.Invoke(window,new object[]{second,session.Project.Id,session.Revision+1});
+                        Assert(preview.Text.Contains("无可查看的运行结果"),
+                            "B5异步Flow在工程被修改后错误发布完成摘要");
+                        capture.Invoke(window,new object[]{second,session.Project.Id,session.Revision});
+                        inspectClick();
+                        Assert(preview.Text.Contains("productB = Int32 value=202"),
+                            "B5相同工程修订的安全完成摘要没有保留");
+                    }
+                    finally
+                    {
+                        flowField.SetValue(window,null);
+                        ownerField.SetValue(window,Guid.Empty);
+                        revisionField.SetValue(window,-1);
                         engine.StopAsync(true).GetAwaiter().GetResult();
                     }
                 });
