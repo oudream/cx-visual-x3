@@ -54,8 +54,6 @@ namespace CxVisual.Studio
         private static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
         [DllImport("user32.dll",CharSet=CharSet.Unicode)]
         private static extern int GetClassName(IntPtr hwnd,StringBuilder buffer,int capacity);
-        [DllImport("user32.dll",CharSet=CharSet.Unicode)]
-        private static extern int GetWindowText(IntPtr hwnd,StringBuilder buffer,int capacity);
 
         private static void Require(bool passed,string message)
         {
@@ -117,45 +115,24 @@ namespace CxVisual.Studio
 
         private static string NativeWindowDiagnostics()
         {
-            // Win32 HWND枚举不触碰桌面UIA树；可在WPF模态窗口阻塞UIA
-            // Provider时仍留下进程窗口诊断，避免诊断代码本身卡住。
-            var descriptions=new System.Collections.Generic.List<string>();
-            foreach(IntPtr hwnd in NativeDialogHandles())
-            {
-                var caption=new StringBuilder(256);
-                GetWindowText(hwnd,caption,caption.Capacity);
-                descriptions.Add("Win32 #32770 Hwnd="+hwnd+
-                    " Title="+caption);
-            }
-            return descriptions.Count==0?
+            // 不调用GetWindowText：同进程窗口的WM_GETTEXT可能同步等待
+            // WPF GUI线程；窗口已陷入模态时诊断本身不能再发生死锁。
+            var handles=NativeDialogHandles();
+            return handles.Count==0?
                 "(当前Win32桌面未发现本进程原生#32770文件框)":
-                String.Join(" | ",descriptions);
+                "同进程原生#32770 HWND="+String.Join(" | ",handles);
         }
 
         private static AutomationElement FindNativeDialog(string title)
         {
-            // 先找真实Win32窗口，再从明确的HWND取得UIA控制元素。
-            // 不要在每50ms轮询中执行AutomationElement.RootElement.FindAll：
-            // GitHub hosted Windows进程的桌面UIA Provider可能在模态打开时等待
-            // UI线程，而主线程仍在InvokePattern/ShowDialog上等待，导致卡住。
-            IntPtr match=IntPtr.Zero;
+            // Win32 HWND先于UIA查找。正常业务每次只能有一个原生文件框；
+            // 多个#32770绝不猜测，也不对GUI线程同步发送WM_GETTEXT。
             var handles=NativeDialogHandles();
-            foreach(IntPtr hwnd in handles)
-            {
-                var caption=new StringBuilder(256);
-                GetWindowText(hwnd,caption,caption.Capacity);
-                if(caption.ToString().IndexOf(title,StringComparison.Ordinal)>=0)
-                {
-                    match=hwnd;
-                    break;
-                }
-            }
-            if(match==IntPtr.Zero && handles.Count==1)
-                match=handles[0]; // 同进程仅有一个原生对话框，兼容地区标题差异
-            if(match==IntPtr.Zero)return null;
-            Mark("Win32已定位原生文件框 HWND="+match+
-                "，开始取得真实UIAutomation元素");
-            try{return AutomationElement.FromHandle(match);}
+            if(handles.Count!=1)return null;
+            IntPtr hwnd=handles[0];
+            Mark("Win32已定位唯一原生文件框 HWND="+hwnd+
+                "；待选择文件操作="+title+"；开始取得真实UIA元素");
+            try{return AutomationElement.FromHandle(hwnd);}
             catch(ElementNotAvailableException){return null;}
         }
 
