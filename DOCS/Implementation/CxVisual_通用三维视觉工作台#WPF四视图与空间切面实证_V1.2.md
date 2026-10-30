@@ -71,3 +71,13 @@
 - 本节后续物理ROI/Mask最新SHA仍为queued，不将旧SHA成功外推为全部通过。
 
 **B包剩余硬门禁**：跨Volume/Roi/Mask/Mesh/CAD/PointCloud的真实GL深度及半透明排序（当前深度仅几何叠加，不代表Raymarch可写入正确逐像素深度）、真实GPU工作站新PointCloud/ROI组合G4、Context丢失与显存压力上限的全量反证、正式CAD和多对象独立专业资产在MEM工程中的可靠保存重开、真实用户鼠标操作及大规模稳定性。不得把B标为完整验收。历史第三节描述的是2026-10-27初始阶段，不再代表2026-10-30源码状态。
+
+
+## 2026-10-30 B包：ROI编辑、Data/Visual一致性及Studio对象身份续进
+
+- 原有`CT3DAnalysisPersistence.Commit`已能将专业Data与Scene Visual单事务写入。此次补全`RecomputeSliceRoiAndCommit`的Visual重绑定合同（`d624990`）：MEM中存在`mvi.scene3d.layout`时，不能只更新新Mesh/Plane ResultId并留下旧Scene来源；必须在同一事务提交合法的MVI Visual Aspect。Headless测试`e8d9ad5`核对旧结果拒绝、更新后来源有效、Undo/Redo后Data与Visual均准确恢复。
+- `MVI3DSceneLayoutPersistence.CreateReboundAspect`（`d08a65f`）保留原Scene实例Id、组、透明度、显隐和选择，只映射专业结果的SourceRef，不重复创建MEM或专业资产。
+- `CT3DAnalysisPersistence.CommitAll/RecomputeAllAndCommit/RecomputeAndCommit`（`585dc95`）支持可选配套Visual Aspect及批量专业结果的原子MEM事务；存在旧MVI Visual而未重绑定时拒绝提交，避免静默数据/可视分裂；对应双Case同步复算、Undo/Redo测试`ab701da`。
+- TestCenter正式窗口`SaveEditedSliceRoiAsync`（`86cec07`）复用上述CT3D/MVI/MEM合同，检查StoreToken、Frame、旧ResultId、当前Case索引与异步场景Epoch；提交后仅当视图仍一致才恢复新结果。工作区命令`ct3d.case.roi.commit`与实际ROI按钮（`ed9729e`/`e1dc25b`）调用同一入口，WPF实测`d480795`/`62c94ad`检查磁盘Data/Visual双Aspect和入口可用性，异常时显式关闭Dirty会话（`cc3346c`）。
+- `MVI3DSceneState.RemapSources`与StudioCT3DDocument复用（`43a2d52`/`65c5a90`）：局部专业ROI预览、丢弃和再次计算不清空重建Scene实例，而在同一来源Revision/Frame下原位重绑定专业ResultId；批量先校验再一次Changed。Studio的窗口回归`15119ec`/`1a183f8`核对原Measurement实例Id、选择、显隐在异步分析、放弃、重算、MEM保存重开后保持一致；Headless MVI原子拒绝反证`0dc059b`。
+- **门禁声明**：上述增量均已提交至master，但相应CT3D B G1–G3与Studio S1固定SHA Windows工作流在本次检查时仍为queued，严禁沿用历史成功Run替代最新G1/G2/G3。真实GPU多对象渲染/显存/Context恢复的G4及实际工业标准样本G5尚无本轮通过证据。B工作包保持【实施中，未完成最终验收】。
