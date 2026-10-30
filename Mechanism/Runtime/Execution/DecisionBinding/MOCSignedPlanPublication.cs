@@ -230,6 +230,10 @@ namespace CxVisual.Mechanism.Orchestration
     /// </summary>
     public interface IMOCTrustedReleaseAdmission
     {
+        /// <summary>Side-effect-free Host principal/scope authorization. This
+        /// runs before the professional Resolver is accessed, and never consumes
+        /// a publication revision. Reserve MUST independently reauthorize.</summary>
+        bool IsAuthorized(string principal,string scope);
         bool TryAuthorizeAndReserve(string principal,string scope,
             long revision,byte[] signedPayloadSha256);
     }
@@ -262,6 +266,12 @@ namespace CxVisual.Mechanism.Orchestration
             byte[] signingPayload=release.SigningPayload();
             if(!_verifier.Verify(release.KeyId,signingPayload,release.CopySignature()))
                 throw new UnauthorizedAccessException("moc.release.signature_invalid");
+
+            // Deny unauthorized callers before any professional Resolver
+            // query or CPU-heavy compilation. Host re-checks atomically at
+            // TryAuthorizeAndReserve to prevent a time-of-check bypass.
+            if(!_admission.IsAuthorized(principal,_scope))
+                throw new UnauthorizedAccessException("moc.release.admission_denied");
 
             MDCDeclarativePlan plan=MDCPlanArchiveCodec.Deserialize(release.CopyArchive());
             // Includes exact static catalog, complete Host capability versions,

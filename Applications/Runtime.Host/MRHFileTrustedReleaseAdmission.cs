@@ -67,13 +67,19 @@ namespace CxVisual.Runtime.Host
                 FileShare.None,4096,FileOptions.WriteThrough);
         }
 
+        public bool IsAuthorized(string principal,string scope)
+        {
+            return !string.IsNullOrWhiteSpace(principal) &&
+                StringComparer.Ordinal.Equals(scope,_scope) &&
+                _authorize(principal);
+        }
+
         public bool TryAuthorizeAndReserve(string principal,string scope,
             long revision,byte[] signedPayloadSha256)
         {
-            if(string.IsNullOrWhiteSpace(principal) ||
-                !StringComparer.Ordinal.Equals(scope,_scope) ||
+            if(!IsAuthorized(principal,scope) ||
                 revision<=0||signedPayloadSha256==null||
-                signedPayloadSha256.Length!=32||!_authorize(principal))
+                signedPayloadSha256.Length!=32)
                 return false;
             // FileShare.None serializes every process using this Host ledger.
             // A crashed writer leaves either a durable reservation or a torn

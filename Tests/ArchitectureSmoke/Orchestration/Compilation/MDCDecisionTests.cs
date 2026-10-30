@@ -1463,10 +1463,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             // atomically across all processes and restarts.
             private long _highest=1;
             internal int Reservations;
+            public bool IsAuthorized(string principal,string scope)
+            {return principal=="release-officer" && scope=="station-42";}
             public bool TryAuthorizeAndReserve(string principal,string scope,
                 long revision,byte[] digest)
             {
-                if(principal!="release-officer"||scope!="station-42" ||
+                if(!IsAuthorized(principal,scope) ||
                     digest==null||digest.Length!=32||revision<=_highest)
                     return false;
                 _highest=revision;Reservations++;return true;
@@ -1546,6 +1548,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {denied=e.Message=="moc.release.scope_denied";}
                 Check(denied && admission.Reservations==0,
                     "cross-station signed release must be rejected");
+
+                var unauthorizedResolver=new VersionedProbeResolver();
+                bool admissionDenied=false;
+                try {trusted.VerifyAndStage("observer",imported,catalog,
+                    unauthorizedResolver);}
+                catch(UnauthorizedAccessException e)
+                {admissionDenied=e.Message=="moc.release.admission_denied";}
+                Check(admissionDenied && unauthorizedResolver.Binding.Calls==0 &&
+                    unauthorizedResolver.VersionChecks==0 &&
+                    admission.Reservations==0 && !publisher.PendingRevision.HasValue,
+                    "unprivileged principal may not reach the professional Resolver");
 
                 var probe=new VersionedProbeResolver();
                 MRKPlanPublicationReceipt receipt=trusted.VerifyAndStage(
