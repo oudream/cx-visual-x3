@@ -106,6 +106,8 @@ namespace CxVisual.TestCenter.UI
                 await Invoke(hwnd,"TCT.Service.Start");
                 await Until(()=>panel.State==MLCServiceModuleState.Running&&!panel.IsBusy,
                     "actual MLC Ready");
+                Check(panel.StatusMessage.Contains("本地请求Ready证据=已核验"),
+                    "TestCenter must display real handler readiness, not only Running");
                 await Set(hwnd,"TCT.Service.RequestId","req-1");
                 await Set(hwnd,"TCT.Service.Payload","hello CxVisual");
                 await Invoke(hwnd,"TCT.Service.Send");
