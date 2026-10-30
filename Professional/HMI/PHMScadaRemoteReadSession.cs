@@ -34,6 +34,7 @@ namespace CxVisual.Professional.HMI
         private Timer _timer;
         private PHMScadaDeviceSnapshot _latest;
         private string _error="等待Runtime.Host首次采样";
+        private string _lastObserverError;
         private Action _updated;
         private bool _disposed;
         private int _inFlight;
@@ -48,6 +49,8 @@ namespace CxVisual.Professional.HMI
             _client=client;_identity=identity;_maxAge=maximumAge;
         }
         public PHMScadaDeviceIdentity Identity{get{return _identity;}}
+        public string LastObserverError
+        {get{lock(_gate)return _lastObserverError;}}
         public void Start(int pollMilliseconds=1000)
         {
             if(pollMilliseconds<250||pollMilliseconds>60000)
@@ -72,7 +75,6 @@ namespace CxVisual.Professional.HMI
                     ?((PHMScadaPipeRejectedException)ex).ErrorCode:
                     ex.GetType().Name+": "+ex.Message;
             }
-            Action notify;
             try
             {
                 lock(_gate)
@@ -80,9 +82,14 @@ namespace CxVisual.Professional.HMI
                     if(_disposed)return;
                     _latest=next;
                     _error=fault;
-                    notify=_updated;
+                    // 与Dispose/Unsubscribe共锁，关闭返回后不会再访问释放的WPF控件。
+                    // 个别观察者错误不会杀死线程池或阻断其它订阅者。
+                    Action listeners=_updated;
+                    if(listeners!=null)
+                        foreach(Delegate listener in listeners.GetInvocationList())
+                            try{((Action)listener)();}
+                            catch(Exception ex){_lastObserverError=ex.ToString();}
                 }
-                if(notify!=null)notify();
             }
             finally{Interlocked.Exchange(ref _inFlight,0);}
         }
