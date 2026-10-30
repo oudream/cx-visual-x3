@@ -214,6 +214,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     writes()==beforeReject,
                     "untrusted Host caller escaped MRK authorization in a mixed professional Plan");
 
+                // 为负例准备一个不同的现场寄存器事实。此前正例已将值设为91，
+                // 再写91即使设备忽略写请求，读回仍等于91，不能伪称检测到不一致。
+                // 真实FC06后跟FC03将设备设为90，然后忽略“写91”，才形成真实的Unknown。
+                var prepareUnknown = commands.InvokeAsync(new MRKCommandRequest(
+                    PADPlcMrkCommandRegistration.TargetForDevice("station01"),
+                    PADPlcMrkCommandRegistration.WriteUInt16Code,
+                    new Dictionary<string, object> {
+                        { "StableId", "word" }, { "Value", (ushort)90 }
+                    }, caller: "operator", expectedSchemaVersion: 1))
+                    .GetAwaiter().GetResult();
+                Check(prepareUnknown.State==MRKCommandState.Completed &&
+                    prepareUnknown.BusinessSuccess==true &&
+                    actualRegister()==90 && writes()==beforeReject+1,
+                    "未能通过已授权FC06+FC03将未知结果场景准备为不同实际值");
+                int beforeUnknown=writes();
+
                 // Even if a Modbus command was acknowledged, a mismatched
                 // readback is UNKNOWN, not Completed PLC StepResult.
                 ignoreWrite(true);
@@ -233,7 +249,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(failed.State==MRKFlowState.Failed&&
                         failed.Results.ContainsKey(visionStep)&&
                         !failed.Results.ContainsKey(plcStep)&&
-                        writes()==beforeReject+1&&actualRegister()==91,
+                        writes()==beforeUnknown+1&&actualRegister()==90,
                         "unknown PLC outcome published success or retried device operation");
                 }
                 finally {ignoreWrite(false);}
@@ -273,6 +289,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "incorrect outer MRK retry policy duplicated uncertain PLC device write");
                 }
                 finally {ignoreWrite(false);}
+                // 测试结束后经正式授权命令恢复91，避免污染后续同一
+                // ArchitectureSmoke流程的点表、MDS和寄存器前置条件。
+                var recoveredCommand = commands.InvokeAsync(new MRKCommandRequest(
+                    PADPlcMrkCommandRegistration.TargetForDevice("station01"),
+                    PADPlcMrkCommandRegistration.WriteUInt16Code,
+                    new Dictionary<string, object> {
+                        { "StableId", "word" }, { "Value", (ushort)91 }
+                    }, caller: "operator", expectedSchemaVersion: 1))
+                    .GetAwaiter().GetResult();
+                Check(recoveredCommand.State==MRKCommandState.Completed &&
+                    recoveredCommand.BusinessSuccess==true && actualRegister()==91,
+                    "负例后的PLC实际寄存器未通过授权命令恢复");
                 Check((ushort)bridge.ReadAndMapAsync("word",CancellationToken.None)
                     .GetAwaiter().GetResult()==91,
                     "unknown PLC operation requires fresh readback for recovery");
