@@ -39,19 +39,28 @@ namespace CxVisual.Professional.Automation.Plc
         /// 不能将Caller字符串本身当作可信身份。
         /// </summary>
         public static IDisposable RegisterUInt16Write(MRKCommandCenter center,
-            PADDeviceVariableProvider provider, string deviceRef, long commandId)
+            PADDeviceVariableProvider provider, string deviceRef, long commandId,
+            string approvedVersion = null, Func<bool> effectiveStillApproved = null)
         {
             if (center == null) throw new ArgumentNullException("center");
             if (provider == null) throw new ArgumentNullException("provider");
             if (commandId <= 0) throw new ArgumentOutOfRangeException("commandId");
 
+            bool pinned = !string.IsNullOrWhiteSpace(approvedVersion);
+            if (!pinned && effectiveStillApproved != null)
+                throw new ArgumentException("必须先提供被批准的运行配置版本");
             string target = TargetForDevice(deviceRef);
-            FDCCommandDefinition definition = new FDCCommandDefinition(
-                commandId, WriteUInt16Code, "PLC UInt16寄存器受控写入与回读验证",
-                new[] {
+            List<FDCCommandParameterDefinition> arguments =
+                new List<FDCCommandParameterDefinition> {
                     new FDCCommandParameterDefinition("StableId", typeof(string), true),
                     new FDCCommandParameterDefinition("Value", typeof(ushort), true)
-                },
+                };
+            if (pinned)
+                arguments.Add(new FDCCommandParameterDefinition(
+                    "EffectiveVersion", typeof(string), true));
+            FDCCommandDefinition definition = new FDCCommandDefinition(
+                commandId, WriteUInt16Code, "PLC UInt16寄存器受控写入与回读验证",
+                arguments,
                 new[] {
                     new FDCCommandParameterDefinition("RegisterReadbackMatched", typeof(bool), true)
                 },
@@ -68,6 +77,16 @@ namespace CxVisual.Professional.Automation.Plc
             return center.Register(descriptor, new MRKDelegateCommandHandler(
                 async (context, inputs, cancellation) =>
                 {
+                    if (pinned)
+                    {
+                        object requested;
+                        if (!inputs.TryGetValue("EffectiveVersion", out requested) ||
+                            !string.Equals(requested as string, approvedVersion,
+                                StringComparison.Ordinal) ||
+                            (effectiveStillApproved != null && !effectiveStillApproved()))
+                            throw new InvalidOperationException(
+                                "scada.command.effective_version_mismatch");
+                    }
                     string stableId = (string)inputs["StableId"];
                     ushort value = (ushort)inputs["Value"];
                     try
