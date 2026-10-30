@@ -2157,6 +2157,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
         {
+            bool completeEdit=(_rotatingOverlay && _rotatingSecondary) ||
+                (_editingVertex && _editingVertexSecondary) ||
+                (_resizing && _resizingSecondary);
             if(_rotatingOverlay && _rotatingSecondary)
             {
                 UpdateRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
@@ -2174,7 +2177,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 RaiseSelectionChanged();
             }
             _secondaryDragging = false;
-            _overlayEdit.Complete();
+            if(completeEdit)_overlayEdit.Complete();
             if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
             e.Handled = true;
         }
@@ -2337,6 +2340,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
+            bool completeEdit=_moving ||
+                (_rotatingOverlay && !_rotatingSecondary) ||
+                (_editingVertex && !_editingVertexSecondary) ||
+                (_resizing && !_resizingSecondary);
             if(_rotatingOverlay && !_rotatingSecondary)
             {
                 UpdateRotation(e.GetPosition(ViewportRoot),_viewport);
@@ -2362,7 +2369,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (_moving) UpdateMovedOverlay(e.GetPosition(ViewportRoot));
             _dragging = _selecting = _moving = false;
             _movingOverlay = null;
-            _overlayEdit.Complete();
+            if(completeEdit)_overlayEdit.Complete();
             if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
         }
 
