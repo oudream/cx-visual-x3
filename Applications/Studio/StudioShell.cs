@@ -118,6 +118,7 @@ namespace CxVisual.Studio
                     throw new InvalidOperationException("无效或重复的工作区ContentId：" + item.ContentId);
                 _studioViews[item.ContentId] = item.Content;
             }
+            RegisterStudioHmiWorkbench();
             _legacyRibbonActions.AddRange(StudioRibbonActions.Children.Cast<UIElement>());
             // 初次加载时Ribbon尚未完成Measure；Loaded后计算组名位置。
             StudioRibbonActions.Loaded+=(sender,args)=>Dispatcher.BeginInvoke(
