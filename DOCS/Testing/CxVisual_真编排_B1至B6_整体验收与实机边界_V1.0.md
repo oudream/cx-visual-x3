@@ -43,7 +43,10 @@
 - `3cdb6299`：Runtime 成功，含 MDS 20,000 帧长稳。
 - `ae56ba57`：Runtime 成功，含 Host 五轮跨进程运行恢复。
 - `98294ee3`：Runtime 成功，含 Host 未结案/未知外部操作 Journal 的独立进程拒绝反例。
-- 新的 B5 运行数据摘要与 72 节点有界观察以**对应 CI 最终结果**为准；本文件编写时不得预先视为通过。
+- `0511c75c`：Studio S1 Windows CI 成功，已覆盖运行时结果摘要查看。
+- `f5cb1084`：Studio S1 Windows CI 成功，已覆盖 Flow 完成后摘要保留及跨工程拒绝。
+- `a9cca000`：Unified Runtime、Decision Windows CI 成功，覆盖 72 节点有界摘要。
+- `8ffa037c`：固定容量算法与 Studio 完整组合对应的 Studio S1 CI 尚需单独取得成功结果；不同 SHA 的成功证据不能冒充同 SHA 全绿。
 
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
