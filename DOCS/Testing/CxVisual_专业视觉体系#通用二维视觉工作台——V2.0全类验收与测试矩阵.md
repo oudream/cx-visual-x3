@@ -658,7 +658,7 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 | 项 | 固定证据与边界 |
 |---|---|
-| R2-02-01～02 TestCenter Esc | `8d94fa04`的[Windows TestCenter #41010129932](https://github.com/oudream/cx-visual-x3/actions/runs/41010129932)已success，真实WPF STA合成`PreviewKeyDown`首点草稿清除及重启检查G3/G4；物理键盘/鼠标UIA G5仍待验 |
+| R2-02-01～02 TestCenter Esc | `8d94fa04`的[Imaging #41010129867](https://github.com/oudream/cx-visual-x3/actions/runs/41010129867)中`Build all existing projects`与`Execute real WPF ImageViewer headless window and PNG roundtrip`两个Step成功，后者运行`--imaging-viewer-smoke`→`TCTImageViewerSmoke.Run()`，覆盖合成`PreviewKeyDown` Esc首点草稿取消与重新起点的受控WPF G3/G4。**Imaging整条Job因下一个默认Smoke失败，不得标全量成功**；物理键盘/鼠标UIA G5仍待验 |
 | R2-02-05 MVI外部隐藏 | `9944b63b`新增隐藏ROI图层时旧Gesture不能向Store写入、恢复显示可重新Begin的反例；固定SHA [Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)结果待验 |
 | 跨工程默认Smoke | `8d94fa04`的Imaging #41010129867为failure，但失败堆栈是严格`MOCManifestRuntimeBinding`缺专业TypeId映射；`10e9b1f3`只补Host显式映射，未允许Unknown通行；新CI待验 |
 | 尚未验收 | Esc/鼠标失捕真用户手势、多Pane抢占、实际大图、工业设备HIL、当前最新master同SHA一揽子G4/G5/G6 |
