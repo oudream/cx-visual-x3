@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -143,5 +144,86 @@ func TestPriorJournalWithoutOSBirthStaysUnresolved(t *testing.T) {
 	if err := writeRecord(recordPath(wd, 9007199254740995), &r); err != nil { t.Fatal(err) }
 	if found, err = Scan(wd); err != nil || !strings.Contains(found[9007199254740995], "corrupt") {
 		t.Fatalf("negative OS birth timestamp must be rejected: %+v %v", found, err)
+	}
+}
+
+
+func TestConcurrentLaunchBeginsCannotOverwriteOtherAttempt(t *testing.T) {
+	wd := t.TempDir()
+	const id int64 = 9007199254740995
+	const contenders = 32
+	var wait sync.WaitGroup
+	var success int
+	var mu sync.Mutex
+	for n := 0; n < contenders; n++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			j := New(wd, id)
+			if err := j.Begin(id, "/managed/child"); err == nil {
+				mu.Lock()
+				success++
+				mu.Unlock()
+			}
+		}()
+	}
+	wait.Wait()
+	if success != 1 {
+		t.Fatalf("exclusive intent reservation admitted %d workers, want exactly 1", success)
+	}
+	records, err := Scan(wd)
+	if err != nil || !strings.Contains(records[id], "stage=intent") {
+		t.Fatalf("exclusive Begin lost durable evidence: %+v %v", records, err)
+	}
+}
+
+func TestStartedRejectsReplacedIntentAndNeverOverwrites(t *testing.T) {
+	wd := t.TempDir()
+	j := New(wd, 909)
+	if err := j.Begin(909, "/managed/child"); err != nil {
+		t.Fatal(err)
+	}
+	path := recordPath(wd, 909)
+	replaced, err := readRecord(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced.AttemptID = "0123456789abcdef0123456789abcdef"
+	if err := writeRecord(path, &replaced); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Started(1234); err == nil {
+		t.Fatal("Started overwrote another launch attempt")
+	}
+	still, err := readRecord(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if still.AttemptID != replaced.AttemptID || still.Stage != "intent" {
+		t.Fatal("foreign launch evidence was modified")
+	}
+	if err := j.Finished(); err == nil {
+		t.Fatal("original Worker may not clear another attempt's evidence")
+	}
+}
+
+func TestStartedRefusesDisappearedOrCorruptIntent(t *testing.T) {
+	for _, corrupt := range []bool{false, true} {
+		wd := t.TempDir()
+		j := New(wd, 902)
+		if err := j.Begin(902, "/managed/child"); err != nil {
+			t.Fatal(err)
+		}
+		path := recordPath(wd, 902)
+		if corrupt {
+			if err := os.WriteFile(path, []byte("bad"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Started(1234); err == nil {
+			t.Fatal("missing/corrupt pre-start evidence must prevent PID recording")
+		}
 	}
 }
