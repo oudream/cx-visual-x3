@@ -16,6 +16,7 @@ import (
 
 	"gogo/common/utilities"
 	"gogo/internal/daemonc"
+	"gogo/internal/launchjournal"
 	"gogo/internal/monitorc"
 	"gogo/internal/program"
 )
@@ -112,6 +113,21 @@ func main() {
 	// cannot authorize a Kill or establish original Worker ownership.
 	// Quarantine uncertain programs BEFORE any new worker admission.
 	orphans := scanLegacyPIDFiles(*_workDir, getPrograms())
+	// A launch intent is persisted BEFORE exec.Cmd.Start. Even when the old
+	// PID file was never written, any unresolved intent quarantines its ID.
+	launchEvidence, err := launchjournal.Scan(*_workDir)
+	if err != nil {
+		_logger.Printf(_title.Error+"Fatal: cannot audit launch evidence directory: %v; refusing all starts\n", err)
+		os.Exit(-8)
+		return
+	}
+	for id, reason := range launchEvidence {
+		if previous, exists := orphans[id]; exists {
+			orphans[id] = previous + "; " + reason
+		} else {
+			orphans[id] = reason
+		}
+	}
 	if err := _programWorkers.quarantineOrphans(orphans); err != nil {
 		_logger.Printf(_title.Error+"Fatal legacy process quarantine failed: %v\n", err)
 		os.Exit(-7)
