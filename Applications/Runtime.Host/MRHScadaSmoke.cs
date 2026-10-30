@@ -489,7 +489,15 @@ namespace CxVisual.Runtime.Host
                         remoteWritten.BusinessSuccess==true &&
                         remoteWritten.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
                         plc.ActualWord==86 && plc.Writes==beforeIpc+1,
-                        "真实Windows MRK Pipe OS认证→MRK→FC06→FC03回读未成功");
+                        "真实Windows MRK Pipe OS认证→MRK→FC06→FC03回读未成功" +
+                        " Stage=" + remoteWritten.Stage +
+                        " State=" + remoteWritten.State +
+                        " BusinessSuccess=" + remoteWritten.BusinessSuccess +
+                        " BusinessCode=" + remoteWritten.BusinessCode +
+                        " ErrorCode=" + remoteWritten.ErrorCode +
+                        " Error=" + remoteWritten.Error +
+                        " ActualWord=" + plc.ActualWord +
+                        " WritesBefore=" + beforeIpc + " WritesAfter=" + plc.Writes);
                     MRKCommandResponse remoteQuery=ipc.QueryAsync(ipcOperation)
                         .GetAwaiter().GetResult();
                     Check(remoteQuery.State==MRKCommandState.Completed &&
