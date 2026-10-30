@@ -113,7 +113,7 @@ namespace CxVisual.Professional.Automation.Scada
             _providerHost.Register(_provider);
             _catalog.Bind(_providerHost,_scopeId);
             _polling=new PADPlcPollingSession(_bridge,bindings.Select(b=>b.StableId),
-                interval,contiguous,effectiveStillApproved);
+                interval,contiguous,effectiveStillApproved,maxConsecutiveFailedCycles:3);
         }
 
         public string DeviceRef {get{return _deviceRef;}}
