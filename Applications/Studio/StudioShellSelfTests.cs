@@ -301,9 +301,11 @@ namespace CxVisual.Studio
                             .SelectMany(x=>x.Children.OfType<Button>())
                             .Count(x=>new[]{"Studio.ModuleCenter.ShowRunOriginal",
                                 "Studio.ModuleCenter.GenerateRunContours",
-                                "Studio.ModuleCenter.ExportRunCsv"}.Contains(
-                                System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==3,
-                        "Studio模块中心缺少统一MPW图窗、结果列表、Contour或Run CSV入口");
+                                "Studio.ModuleCenter.ExportRunCsv",
+                                "Studio.ModuleCenter.CommitSelectedRoi",
+                                "Studio.ModuleCenter.RunSavedRoi"}.Contains(
+                                System.Windows.Automation.AutomationProperties.GetAutomationId(x)))==5,
+                        "Studio模块中心缺少MPW图窗、Contour、CSV或正式ROI保存/重开运行操作");
                     Button createVisionFlow=actions.FirstOrDefault(x=>
                         System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
                         "Studio.ModuleCenter.CreateVisionFlow");
