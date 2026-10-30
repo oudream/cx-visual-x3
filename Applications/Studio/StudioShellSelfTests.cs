@@ -3786,6 +3786,34 @@ namespace CxVisual.Studio
                             workspace.VisibleMeshFaceHighlightCount==8&&!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
                             "共面扩展须从一片选择8片原Mesh且即时高亮，不提前改写MEM结果。");
+                        // 工业ROI质量由CT3D原值拓扑给出，Stage/Preview不改动MEM。
+                        CT3DMeshRegionQuality singleQuality=workspace.InspectSelectedMeshRegion();
+                        Assert(singleQuality.FaceCount==8&&
+                            singleQuality.ConnectedComponentCount==1&&
+                            singleQuality.ClosedBoundaryLoopCount==1&&
+                            Math.Abs(singleQuality.SurfaceAreaMm2-4)<1e-9,
+                            "Studio正式质量API必须反映原Mesh 4mm²顶面而不是显示LOD。");
+                        CT3DMeshFaceReference bottomExtra=null;
+                        for(int triangle=0;triangle<beforeFace.Mesh.Mesh.TriangleCount;triangle++)
+                        {
+                            CT3DMeshFaceReference one=
+                                CT3DMeshFaceSelection.Reference(beforeFace,triangle);
+                            if(Math.Abs(one.PointA.Z-44.5)<1e-9&&
+                               Math.Abs(one.PointB.Z-44.5)<1e-9&&
+                               Math.Abs(one.PointC.Z-44.5)<1e-9){bottomExtra=one;break;}
+                        }
+                        Assert(bottomExtra!=null,"真实体网格底面必须存在孤立误选测试面片。");
+                        workspace.ToggleMeshFaceSelection(bottomExtra);
+                        Assert(workspace.SelectedMeshFaceCount==9&&
+                            workspace.InspectSelectedMeshRegion().ConnectedComponentCount==2,
+                            "跨两个真实原Mesh面片区域应识别为2个连通分量。");
+                        int remaining=AwaitStudioTask(workspace.KeepLargestSelectedMeshRegionAsync(
+                            CancellationToken.None));
+                        Assert(remaining==8&&workspace.SelectedMeshFaceCount==8&&
+                            workspace.VisibleMeshFaceHighlightCount==8&&
+                            workspace.InspectSelectedMeshRegion().HasSingleSimpleBoundary&&
+                            !workspace.HasPendingAnalysis,
+                            "Studio清理孤立面片必须恢复8面原ROI，不污染MEM与高亮。");
                         var grownPreview=AwaitStudioTask(workspace.RecomputeSelectedMeshFacesAsync(
                             CancellationToken.None));
                         Assert(grownPreview.Plane.SampleCount==9&&workspace.HasPendingAnalysis&&

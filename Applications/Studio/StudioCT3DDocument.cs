@@ -120,6 +120,24 @@ namespace CxVisual.Studio
                 catch(Exception error){_status.Text="面片区域扩展失败："+error.Message;}
             };
             toolbar.Children.Add(expand);
+            var inspect=Button("检查面片ROI","Studio.CT3D.InspectFaces");
+            inspect.Click+=(s,e)=>TryAction(()=>{
+                CT3DMeshRegionQuality quality=InspectSelectedMeshRegion();
+                _status.Text=String.Format(CultureInfo.InvariantCulture,
+                    "原Mesh ROI：{0}面/{1}点、{2}连通分量、边界{3}条、闭环{4}条、异常边界{5}、非流形边{6}、表面积{7:0.###} mm²、边界长度{8:0.###} mm；未认证工业精度。",
+                    quality.FaceCount,quality.VertexCount,quality.ConnectedComponentCount,
+                    quality.BoundaryEdgeCount,quality.ClosedBoundaryLoopCount,
+                    quality.IrregularBoundaryComponentCount,quality.NonManifoldEdgeCount,
+                    quality.SurfaceAreaMm2,quality.BoundaryLengthMm);
+            });
+            toolbar.Children.Add(inspect);
+            var clean=Button("清理孤立面片","Studio.CT3D.CleanFaces");
+            clean.Click+=async(s,e)=>{
+                try{await KeepLargestSelectedMeshRegionAsync(CancellationToken.None);}
+                catch(OperationCanceledException){_status.Text="连通ROI清理已取消，选择未改变。";}
+                catch(Exception error){_status.Text="连通ROI清理失败："+error.Message;}
+            };
+            toolbar.Children.Add(clean);
             var cancel=Button("取消分析","Studio.CT3D.CancelRoi");
             cancel.Click+=(s,e)=>CancelPendingAnalysis();
             toolbar.Children.Add(cancel);
@@ -760,6 +778,62 @@ namespace CxVisual.Studio
                 _status.Text="原Mesh共面连通区域已扩展为"+combined.Count+
                     "个面片，可通过「选中面片重算」生成专业结果（高亮最多512片）。";
                 return combined.Count;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_roiCancellation,linked))_roiCancellation=null;
+                linked.Dispose();
+            }
+        }
+
+        /// <summary>已选原Mesh面片的Headless/Studio一致质量证据，不使用显示LOD。</summary>
+        public CT3DMeshRegionQuality InspectSelectedMeshRegion()
+        {
+            if(_disposed||_current==null||_current.Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("当前没有可检查的原Mesh专业案例。");
+            return CT3DMeshFaceSelection.InspectRegion(_current,
+                _selectedMeshFaces,CancellationToken.None);
+        }
+
+        /// <summary>异步清理误选孤岛；不修改MEM、原值Mesh及当前专业Feature。
+        /// 完成前重新确认Case、交互版本和取消状态，统一投递选择/高亮。</summary>
+        public async Task<int> KeepLargestSelectedMeshRegionAsync(CancellationToken cancellation)
+        {
+            if(_disposed||_engineering==null||_current==null||_state==null||
+                _current.Kind!=CT3DAnalysisKind.MeshPlane||_selectedMeshFaces.Count==0)
+                throw new InvalidOperationException("请先选择至少一个真实原Mesh面片。");
+            if(_roiCancellation!=null)
+                throw new InvalidOperationException("已有专业操作运行中，请先取消或结束。");
+            CT3DAnalysisCase original=_current;
+            MVIVolumeViewState state=_state;
+            FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
+            CT3DMeshFaceReference[] before=_selectedMeshFaces.ToArray();
+            long revision=_faceSelectionRevision,epoch=++_roiEpoch;
+            int caseIndex=_caseIndex;
+            var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _roiCancellation=linked;
+            try
+            {
+                IReadOnlyList<CT3DMeshFaceReference> kept=await Task.Run(()=>
+                    CT3DMeshFaceSelection.KeepLargestConnectedRegion(
+                        original,before,linked.Token),linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                if(_disposed||epoch!=_roiEpoch||revision!=_faceSelectionRevision||
+                    !Object.ReferenceEquals(original,_current)||
+                    !Object.ReferenceEquals(state,_state)||
+                    !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle)||
+                    caseIndex!=_caseIndex)
+                    throw new OperationCanceledException("Case或ROI已改变，拒绝发布过期连通清理结果。");
+                if(kept.Count==before.Length)return kept.Count;
+                _roiCancellation=null;
+                DiscardPendingAnalysis();
+                _selectedMeshFaces.Clear();
+                _selectedMeshFaces.AddRange(kept);
+                _faceSelectionRevision++;
+                RefreshSelectedMeshFaceHighlight();
+                _status.Text="已保留最大原Mesh连通区域："+kept.Count+
+                    "个真实面片。请重新拟合并通过原MEM工程保存。";
+                return kept.Count;
             }
             finally
             {

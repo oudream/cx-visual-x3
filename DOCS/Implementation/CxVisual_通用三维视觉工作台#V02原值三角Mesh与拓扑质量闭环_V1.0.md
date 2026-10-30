@@ -430,3 +430,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **异步发布与失效**：Studio先在后台计算只读区域；完成后核对工程Case、MVI选区、交互代次和取消epoch，再合并当前已选面片，验证顶点预算通过后一次更换临时选择集，旧pending立即失效。取消/参数错误/预算错误不会更改原选择、已提交MEM结果或专业Scene。黄色高亮512片仅是渲染预算，不截断原专业ROI。
 - **真实测试**：现有12³ UInt16 RAW/原Mesh顶面8三角面，用一片扩展为8片、解析9个顶点，核验与手工8面相同参数签名、同一原值平面；验证90°/负偏差、面片预算、预取消及过时阈值拒绝。Studio已有双Case真实MEM工程加入一片→扩展8片→9点拟合→撤销选区及回归；原V5提交/重开/Undo保留。
 - **验收边界**：本条源码提交与测试是否通过应以固定SHA Windows CT3D B G1～G3、Studio S1的实际Run为准；并非曲面区域生长、任意自由体积ROI、CAD拓扑选择、G4真实GPU性能或G5工业计量精度全部通过。
+
+
+### 10.38 B包：多面片ROI质量与孤岛清理（2026-10-30）
+
+- **基于原值的质量证据**：`CT3DMeshFaceSelection.InspectRegion` 和不可变 `CT3DMeshRegionQuality` 对已验证同资产/Frame/Revision的原始三角Mesh面片计算实际曲面面积(mm²)、选区边界物理周长(mm)、边界边数、闭合边界环数、异常边界分量、非流形边数及共享边连通分量。明确区域开边界≠整个体表水密性；面积是原三角面面积而非CAD投影/工业认证面积，`IsIndustrialAccuracyCertified=false`。
+- **清理孤岛**：`KeepLargestConnectedRegion` 只对已选原Mesh面片建立共享边邻接；保留最大连通分量，面数相同时按最小真实TriangleIndex确定性选择。返回原稳定面片身份，支持原V5 Capture/重算和MEM保存重开，不更改FGE、FVO、MVI、MPW或MEM职责，不凭屏幕邻近删面。
+- **Studio交付**：新增“检查面片ROI”“清理孤立面片”按钮与SDK入口；质量信息含单位与认证限制。异步清理先持有原选择快照、Case/选区版本和取消令牌，计算与校验完成后才原子替换Studio临时面片选择，复用黄色高亮、待保存预览失效、正式原值重算及MEM原有V5流程；失败/取消不修改旧面片选择或工程。
+- **真实验收源**：12³ UInt16 RAW/物理Frame，2×2顶面8三角形与9顶点应有1个连通分量、8条边界边、1条闭合边界环、面积4mm²、周长8mm；加入底面1片识别2个分量及非简单ROI，清理后恢复8片，重算参数签名与手工选面一致。增加取消、重复和过期Mesh反例及Studio真实WPF交互质量/清理/原V5重算保存链。Windows测试结果依提交SHA核对，当前不声明G4硬件性能/G5工业计量已验证。

@@ -137,6 +137,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 differentThreshold,topFaces[0],3,0.01,30000,CancellationToken.None));
             Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ResolveVertices(
                 source,differentThreshold.Mesh,topFaces,CancellationToken.None));
+            CT3DMeshRegionQuality regionQuality=CT3DMeshFaceSelection.InspectRegion(
+                analysis,topFaces,CancellationToken.None);
+            Check(regionQuality.FaceCount==8&&regionQuality.VertexCount==9&&
+                regionQuality.ConnectedComponentCount==1&&
+                regionQuality.BoundaryEdgeCount==8&&
+                regionQuality.ClosedBoundaryLoopCount==1&&
+                regionQuality.IrregularBoundaryComponentCount==0&&
+                regionQuality.NonManifoldEdgeCount==0&&
+                regionQuality.HasSingleSimpleBoundary&&
+                !regionQuality.IsIndustrialAccuracyCertified&&
+                Math.Abs(regionQuality.SurfaceAreaMm2-4)<1e-9&&
+                Math.Abs(regionQuality.BoundaryLengthMm-8)<1e-9,
+                "真实2x2毫米原Mesh顶面8三角形，质量应为1连通/1闭环/4mm²/8mm。");
+            var bottomFaces=new List<CT3DMeshFaceReference>();
+            for(int face=0;face<analysis.Mesh.Mesh.TriangleCount;face++)
+            {
+                CT3DMeshFaceReference triangle=CT3DMeshFaceSelection.Reference(analysis,face);
+                if(Math.Abs(triangle.PointA.Z-44.5)<1e-9&&
+                    Math.Abs(triangle.PointB.Z-44.5)<1e-9&&
+                    Math.Abs(triangle.PointC.Z-44.5)<1e-9)bottomFaces.Add(triangle);
+            }
+            Check(bottomFaces.Count==8,"原值底面应包含与顶面分离的8个三角面。");
+            var disjoint=new List<CT3DMeshFaceReference>(topFaces);
+            disjoint.Add(bottomFaces[0]);
+            CT3DMeshRegionQuality disjointQuality=CT3DMeshFaceSelection.InspectRegion(
+                analysis,disjoint,CancellationToken.None);
+            Check(disjointQuality.FaceCount==9&&disjointQuality.ConnectedComponentCount==2&&
+                disjointQuality.ClosedBoundaryLoopCount==2&&
+                !disjointQuality.HasSingleSimpleBoundary&&
+                Math.Abs(disjointQuality.SurfaceAreaMm2-4.5)<1e-9,
+                "顶面8片+非连通底面1片不得被误报成单连通专业ROI。");
+            var cleaned=CT3DMeshFaceSelection.KeepLargestConnectedRegion(
+                analysis,disjoint,CancellationToken.None);
+            Check(cleaned.Count==8&&
+                cleaned.Select(face=>face.StableId).SequenceEqual(
+                    topFaces.OrderBy(face=>face.TriangleIndex).Select(face=>face.StableId))&&
+                analysis.RecomputeWithMeshFaces(folder,cleaned,CancellationToken.None).
+                    ParameterSignature==recomputedByFaces.ParameterSignature,
+                "清理孤立面片须只留下原值顶面并复用V5规范配方/专业重算。");
+            Reject<OperationCanceledException>(()=>CT3DMeshFaceSelection.InspectRegion(
+                analysis,disjoint,new CancellationToken(true)));
+            Reject<ArgumentException>(()=>CT3DMeshFaceSelection.InspectRegion(
+                analysis,new CT3DMeshFaceReference[]{topFaces[0],topFaces[0]}));
+            Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.KeepLargestConnectedRegion(
+                differentThreshold,topFaces,CancellationToken.None));
             var planeQuality=analysis.GetQualityEvidence();
             Check(planeQuality.Count==4&&
                 planeQuality.Any(m=>m.Kind=="plane.planarity-ratio"&&m.Unit=="ratio")&&
