@@ -19,10 +19,13 @@ public sealed class FTRSerialChannelConfiguration : FTRChannelConfiguration
         public string Parity { get; set; } = "None";
         [FCMConfigItem("停止位", Order = 24, Category = "串口")]
         public string StopBits { get; set; } = "One";
+        [FCMConfigItem("串口硬件/软件流控", Order = 25, Category = "串口")]
+        public string Handshake { get; set; } = "None";
         public override void Validate()
         {
             base.Validate();
-            if (string.IsNullOrWhiteSpace(PortName) || BaudRate < 1 || DataBits < 5 || DataBits > 8 || Array.IndexOf(new[] {"None","Even","Odd","Mark","Space"}, Parity) < 0 || Array.IndexOf(new[] {"One","OnePointFive","Two"}, StopBits) < 0) throw new ArgumentException("无效串口参数");
+            if (string.IsNullOrWhiteSpace(PortName) || BaudRate < 1 || DataBits < 5 || DataBits > 8 || Array.IndexOf(new[] {"None","Even","Odd","Mark","Space"}, Parity) < 0 || Array.IndexOf(new[] {"One","OnePointFive","Two"}, StopBits) < 0 ||
+                Array.IndexOf(new[] {"None","XOnXOff","RequestToSend","RequestToSendXOnXOff"}, Handshake) < 0) throw new ArgumentException("无效串口参数");
         }
     }
 }
