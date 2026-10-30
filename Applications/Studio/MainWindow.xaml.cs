@@ -106,9 +106,10 @@ namespace CxVisual.Studio
             {
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择工程主流程页面");
+                StudioProfessionalFlowResolver resolver=CreateProfessionalFlowResolver(true);
                 _preparedCpuRelease=MOCProjectRelease.Prepare(
                     _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,
-                    _simulation,_simulation.DescribeReleaseVersions());
+                    resolver,resolver.DescribeSoftwareVersions());
                 LogicInfo.Text="CPU仿真软件候选已锁定：Revision "+
                     _preparedCpuRelease.EngineeringRevision+"；能力版本 "+
                     _preparedCpuRelease.CapabilityVersions.Count+"；指纹 "+
@@ -1148,12 +1149,15 @@ namespace CxVisual.Studio
                 string capability=FlowActionCapability.Text==null?"":FlowActionCapability.Text.Trim();
                 var found=CurrentCatalog().Find(capability);
                 if(found==null)throw new InvalidOperationException("能力尚未注册，请先在工具箱搜索并选择。");
-                if(!found.RuntimeAvailable)
-                    throw new InvalidOperationException("当前Provider未提供此能力的执行实现。");
+                // Offline engineering may reference a formally described
+                // professional capability without impersonating its device Host.
+                // Build/Run will fail closed until the authorized provider exists.
                 MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
                     b=>b.Step(found.Definition));
                 RefreshScene();
-                LogicInfo.Text="已插入未连线的类型化能力节点；请选取两个节点并选择端口连接。";
+                LogicInfo.Text=found.RuntimeAvailable?
+                    "已插入真实合同的类型化能力节点；请连接端口并保存工程。":
+                    "已插入离线专业能力合同；尚未授权执行，须在Runtime.Host装配Provider。";
             }
             catch(Exception ex){LogicInfo.Text="添加能力失败: "+ex.Message;}
         }
@@ -1326,7 +1330,8 @@ namespace CxVisual.Studio
                 FlowActionCapability.Text=item.Definition.Id;
                 LogicInfo.Text=item.Definition.Name+" · "+item.Definition.Category+
                     " · 契约V"+item.Definition.Version+
-                    (item.RuntimeAvailable?"（已提供运行实现）":"（暂无运行实现）");
+                    (item.RuntimeAvailable?"（本地软件可执行；不代表设备授权）":
+                        "（仅离线编辑；运行须由正式Host授权）");
             }
         }
         private void OnToggleWiring(object sender,RoutedEventArgs args)
@@ -1479,8 +1484,8 @@ namespace CxVisual.Studio
             {
                 Guid id=SelectedFlowBlock();
                 var entry=CurrentCatalog().Find(FlowInspectorCapability.Text.Trim());
-                if(entry==null||!entry.RuntimeAvailable)
-                    throw new InvalidOperationException("能力Provider尚未注册或不可执行");
+                if(entry==null)
+                    throw new InvalidOperationException("能力合同尚未注册");
                 ApplyFlowProperty(b=>b.SetCapability(id,entry.Definition.Id),"节点能力ID已更新");
             }
             catch(Exception ex){LogicInfo.Text="能力修改拒绝："+ex.Message;}
@@ -2300,7 +2305,7 @@ namespace CxVisual.Studio
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
                 var result=new MOCBuildService().Build(snapshot,
-                    page.RootContent.Id,_simulation);
+                    page.RootContent.Id,CreateProfessionalFlowResolver(true));
                 LogicInfo.Text=FormatBuildDiagnostics(result);
                 FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
                     ContentId=x.ContentId,ProjectId=snapshot.ProjectId,
@@ -2368,8 +2373,9 @@ namespace CxVisual.Studio
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 MEMProjectSnapshot runSnapshot=_viewModel.ProjectSession.GetSnapshot();
+                StudioProfessionalFlowResolver resolver=CreateProfessionalFlowResolver(true);
                 var checkedBuild=new MOCBuildService().Build(
-                    runSnapshot,page.RootContent.Id,_simulation);
+                    runSnapshot,page.RootContent.Id,resolver);
                 if(!checkedBuild.Succeeded)
                 {
                     LogicInfo.Text=FormatBuildDiagnostics(checkedBuild);
@@ -2390,7 +2396,7 @@ namespace CxVisual.Studio
                     // 候选锁定旧Revision、子Content和Host声明能力版本；
                     // 过期/未授权时绝不自动回退为普通CPU运行。
                     compiled=StageCpuSoftwareRelease(_preparedCpuRelease,runSnapshot,
-                        _simulation,_simulation.DescribeReleaseVersions(),
+                        resolver,resolver.DescribeSoftwareVersions(),
                         new StudioCpuSoftwarePolicy());
                     releaseFingerprint=_preparedCpuRelease.Fingerprint;
                     publicationRevision=1;
@@ -2469,7 +2475,8 @@ namespace CxVisual.Studio
                 {Interval=TimeSpan.FromMilliseconds(150)};
                 timer.Tick+=(o,e)=>update();
                 timer.Start();
-                LogicInfo.Text="CPU仿真运行中：Plan Revision "+compiled.EngineeringRevision;
+                LogicInfo.Text="MRK软件运行中（真实Vision CPU / 模拟逻辑；PLC禁用）：Plan Revision "+
+                    compiled.EngineeringRevision;
                 var result=await _logicFlow.Completion;
                 update();
                 CaptureCompletedFlowPreview(_logicFlow,
