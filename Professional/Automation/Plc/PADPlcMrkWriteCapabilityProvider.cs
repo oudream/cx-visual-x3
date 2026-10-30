@@ -102,6 +102,12 @@ namespace CxVisual.Professional.Automation.Plc
             CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
+            // A general MRK Plan may have been marked idempotent in error.
+            // The PLC command itself is NEVER retry-safe after an uncertain
+            // acknowledgement. Reject subsequent policy attempts before IO.
+            if (context != null && context.AttemptIndex > 1)
+                throw new InvalidOperationException(
+                    "automation.plc.nonidempotent_retry_denied");
             object id, value;
             if (context == null ||
                 !context.BoundInputs.TryGetValue("StableId", out id) ||
