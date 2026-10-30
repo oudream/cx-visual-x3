@@ -187,7 +187,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             foreach(MVI3DSceneItem item in _sceneMeshState.Snapshot())
             {
                 if(!item.Visible||(item.Kind!=MVI3DSceneKind.Mesh&&
-                    item.Kind!=MVI3DSceneKind.Cad))continue;
+                    item.Kind!=MVI3DSceneKind.Cad&&
+                    item.Kind!=MVI3DSceneKind.Roi&&
+                    item.Kind!=MVI3DSceneKind.Mask))continue;
                 string key=item.Kind+":"+item.SourceRef+":"+item.SourceRevision+":"+
                     item.SpatialFrameRef;
                 string old;
