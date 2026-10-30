@@ -711,7 +711,7 @@ sequenceDiagram
 
 - cmd/daemon/workers_test.go：128 个相同 64 位 ID 的并发启动、独立 ID、取消、占用期间拒绝、退出释放重入，以及 PID=0 时恢复跳过已有 Worker。
 - cmd/daemon/main_test.go：PID 0/负数/自身 PID 拒绝测试。
-- 已执行**独立 Go 1.19 最小工程**的门禁实现测试，go test -count=20 及 go test -race -count=10 均通过；该工程使用替身依赖，不等于在仓库真实模块中通过。仓库实际 CI/G1 和现场 G2 仍待验。
+- 已执行**独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 最小工程**的门禁实现测试，go test -count=20 及 go test -race -count=10 均通过；该工程使用替身依赖，不等于在仓库真实模块中通过。仓库实际 CI/G1 和现场 G2 仍待验。
 - 仍未解决：旧 Worker 退出期间立即启用的续接通知；MaxError/MaxCount 跨五分钟恢复周期锁定；PID 代次与进程树停止确认；S11 认证、授权与审计。**不能因此声称 SX-B 全部完成**。
 
 实际完成度仍以 [12大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引。
@@ -741,6 +741,6 @@ stateDiagram-v2
 
 **安全默认**：终止锁不能由旧重启请求或配置重新启用自动清除；后续需要独立认证、授权、审计、幂等和解除原因确认的管理端处理。当前锁仅存 Daemon 内存，Daemon 自身重启后不保留，不具备跨进程重启的持久熔断保证。
 
-**代码与测试**：internal/daemonc/daemon.go、cmd/daemon/workers.go、cmd/daemon/main.go；新增 MaxError/MaxCount 终止回调先于事件发布、同 ID 排队续接无重叠、闭锁跨恢复拒绝、取消/禁用队列、恢复提前跳过禁用和锁定等正反测试。独立 Go 1.19 门禁核心隔离工程的 go test -count=30 -race ./... 已成功，但主仓库 Go CI/Windows/Linux/macOS/G1、真实 Daemon/受管进程 G2 还没有本轮通过记录。以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)作为完成度唯一来源。
+**代码与测试**：internal/daemonc/daemon.go、cmd/daemon/workers.go、cmd/daemon/main.go；新增 MaxError/MaxCount 终止回调先于事件发布、同 ID 排队续接无重叠、闭锁跨恢复拒绝、取消/禁用队列、恢复提前跳过禁用和锁定等正反测试。独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 门禁核心隔离工程的 go test -count=30 -race ./... 已成功，但主仓库 Go CI/Windows/Linux/macOS/G1、真实 Daemon/受管进程 G2 还没有本轮通过记录。以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)作为完成度唯一来源。
 
 **仍需实现**：上限锁的安全持久化与管理授权解锁、Worker 退出后的真实 OS PID 身份与进程树停止回执、受控远程操作认证审计、服务/设备真正 Ready 验证。
