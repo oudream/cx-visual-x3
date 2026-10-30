@@ -336,3 +336,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - DisplayCase载入新Case时先清空上一Case毫米输入默认状态，再仅由当前Case持久ROI配方恢复毫米范围与三刀矩形；不把旧Case的ROI、选中对象、结果或厚度继承到另一个Case。
 - StudioShellSelfTests采用同一个真实工程内两个MEM Content及独立CT3D Case，覆盖CaseA编辑并保存、CaseB原始未编辑、CaseB待提交时拒绝跳Case、放弃B编辑后恢复CaseA的专业ROI/Scene/厚度、再切回B结果保持不变。
 - 工程软件验证以本次提交固定SHA Windows Studio S1与TestCenter真实Job记录为准；G4真实GPU和G5工业精度尚未关闭。
+
+
+### 10.25 B包：跨正交视图ROI统一失效与Scene恢复（2026-10-30）
+
+- **问题**：Studio原先只在MPW鼠标 PhysicalRoiSelected 里直接清 pending；通过MVI SelectRectangleRoi/ClearRectangleRoi 或跨XY/XZ修改时不会进入该回调，容易留下未提交Feature或其Scene来源，继续保存会使用旧ROI。
+- **实现**：StudioCT3DDocument改为消费当前MVIVolumeViewState.SelectedSliceRectangle唯一属性通知，统一取消后台ROI分析、失效 pending 并通过已有 BuildSceneReferences 恢复已提交专业Scene。MPW事件仅显示物理坐标；后台属性通知检查原MVI会话且投递WPF Dispatcher。ROI通知不重建FIM切片/缩放；待保存Case记录ROI对象实例并在SavePendingResult执行前再核对，从而阻断未派发通知的过期保存。
+- **真实验证**：StudioShellSelfTests真实双Case RAW/MEM工程，使用MVI直接XY→XZ切换，检验旧结果失效、Scene专业来源恢复、旧结果禁止保存、XZ原值拟合及直接ClearRectangleRoi后的结果恢复。固定提交 3bb1cafd4dd9b419415ffd2bf1538e94b4cae180，Studio S1 Windows 41017732086 为SUCCESS（含Release构建、真实WPF STA自测和依赖检查）。TestCenter Windows 41017732080 在此记录时仍执行，不能登记为成功。
+- **未完成边界**：此包仅关闭单矩形ROI跨正交视图的生命周期一致性，不代表多选集/子元素交互、复杂3D ROI、GPU实机G4或工业计量精度G5已通过。
