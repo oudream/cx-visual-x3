@@ -74,3 +74,12 @@
 源文件 `Applications/Runtime.Host/MRHScadaGroupRecoverySupervisor.cs`；新入口 `scada-group-serve <saved.cxproj> <mhsRoot> --recover [--read-pipe <pipeName>]`，原有非恢复入口完全保留。仅在一个PLC周期采集真实通信不可用或Socket连接失败时，先Stop/Dispose当前整组MDS/Connector/Provider/Channel，再重新以MEM工程和MHS正式Effective打开新组；检查项目保存时间、项目部署Effective、各设备Connector Effective与DeviceRef集合均未变，并要求每台设备SessionGeneration必须换代。允许最多3次有界重试及指数退避；业务/点表/配置/版本漂移、不可确认的写入和其它异常均不会自动恢复。**当前是组级重建，非单PLC无中断热切换；其余PLC在恢复期间暂时中断。** Pipe若显式启用，则跟随组世代停启；旧HMI Generation不能用于新会话，必须重新Discover。没有建立第二套定时器、协议、可写变量仓或独立运行平台。
 
 `MRHScadaSmoke.RunTwoDevices` 增加OS原生TCP丢失一笔FC03响应、两PLC新SessionGeneration、旧HMI请求拒绝、恢复后真实FC03采样、零FC06与Stop后无残留报文反例。测试源码已提交时应标记为待Windows G1结果，不能把本地模拟器等同现场G2/G3；仍缺单设备无中断切换、生产SCM、跨账户安全IPC、告警历史及设备HIL。
+
+
+## 9. A2/A5 单PLC隔离恢复正式实现（2026-10-30）
+
+- 已落库：`Applications/Runtime.Host/MRHScadaIsolatedRecoverySupervisor.cs`，配合原 `MRHScadaRuntimeGroup` 增加原位槽位卸载与校验后换代。可选独立入口：`scada-group-serve <saved.cxproj> <mhsRoot> --recover-device [--read-pipe <name>]`，不改变原 `--recover` 整组恢复或默认只读入口。
+- 在一个设备的真实 FCR/FC03 周期任务以 `PADPlcAcquisitionUnavailableException` / `SocketException` 结束时，只停止并释放该PLC旧Session，其他PLC不Stop、不更换Channel和MDS Scope。按原工程和已固定MHS Deployment Effective、Connector Effective、原ChannelId和新F17 SessionGeneration重开，带每设备最多3次预算及指数退避。业务错误、配置漂移、权限异常和非幂等控制结果未知一律不自动重试。
+- 单一只读Pipe在设备更换期间保持监听，变更设备在 `discover` 中暂时不可见；用组内锁串行校验设备引用与MDS快照，防止旧Session Dispose与读端交错。已采集健康设备维持原Generation，故障设备恢复后强制新Generation，旧HMI请求必须拒绝；本入口不添加写命令或第二套Current。
+- 真实Windows G1回归新增：两个本机Modbus TCP socket、A丢一帧FC03后受控重连、B继续周期扫描且原SessionGeneration不变、A恢复后重取MDS Good/Revision、旧HMI请求被拒绝、零FC06、Stop之后没有残留采集。对应 `MRHScadaSmoke.cs`；测试源码存在不等于Windows运行成功，按固定SHA CI结果判断。
+- 已修复旧Windows SCADA G1 `CS0136` 局部变量遮蔽（`MRHScadaSmoke.cs`），旧运行 `41034546591` 失败于编译，不可宣称测试通过。此批待新CI。设备级安全互锁、长稳、历史报警、远程鉴权、SCM、HIL G2/G3仍未验收。
