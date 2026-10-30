@@ -40,14 +40,16 @@ namespace CxVisual.Professional.Automation.Plc
         /// </summary>
         public static IDisposable RegisterUInt16Write(MRKCommandCenter center,
             PADDeviceVariableProvider provider, string deviceRef, long commandId,
-            string approvedVersion = null, Func<bool> effectiveStillApproved = null)
+            string approvedVersion = null, Func<bool> effectiveStillApproved = null,
+            Func<string> currentSessionGeneration = null)
         {
             if (center == null) throw new ArgumentNullException("center");
             if (provider == null) throw new ArgumentNullException("provider");
             if (commandId <= 0) throw new ArgumentOutOfRangeException("commandId");
 
             bool pinned = !string.IsNullOrWhiteSpace(approvedVersion);
-            if (!pinned && effectiveStillApproved != null)
+            if (!pinned && (effectiveStillApproved != null ||
+                currentSessionGeneration != null))
                 throw new ArgumentException("必须先提供被批准的运行配置版本");
             string target = TargetForDevice(deviceRef);
             List<FDCCommandParameterDefinition> arguments =
@@ -58,6 +60,12 @@ namespace CxVisual.Professional.Automation.Plc
             if (pinned)
                 arguments.Add(new FDCCommandParameterDefinition(
                     "EffectiveVersion", typeof(string), true));
+            // Runtime SCADA session has a live F17 Generation that is only
+            // known after Open; read it at invocation, never capture a
+            // constructor-time GUID or accept a stale HMI context.
+            if(currentSessionGeneration!=null)
+                arguments.Add(new FDCCommandParameterDefinition(
+                    "SessionGeneration",typeof(string),true));
             FDCCommandDefinition definition = new FDCCommandDefinition(
                 commandId, WriteUInt16Code, "PLC UInt16寄存器受控写入与回读验证",
                 arguments,
@@ -86,6 +94,17 @@ namespace CxVisual.Professional.Automation.Plc
                             (effectiveStillApproved != null && !effectiveStillApproved()))
                             throw new InvalidOperationException(
                                 "scada.command.effective_version_mismatch");
+                    }
+                    if(currentSessionGeneration!=null)
+                    {
+                        object expectedGeneration;
+                        string actual=currentSessionGeneration();
+                        if(!inputs.TryGetValue("SessionGeneration",out expectedGeneration)||
+                            String.IsNullOrWhiteSpace(actual)||
+                            !String.Equals(expectedGeneration as string,actual,
+                                StringComparison.Ordinal))
+                            throw new InvalidOperationException(
+                                "scada.command.session_generation_mismatch");
                     }
                     string stableId = (string)inputs["StableId"];
                     ushort value = (ushort)inputs["Value"];
