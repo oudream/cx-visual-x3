@@ -59,6 +59,7 @@ namespace CxVisual.TestCenter.UI
         public bool IsBusy { get { return _busy; } }
         public bool IsStarted { get { return _connector != null && _connector.IsStarted; } }
         public int SuccessfulReads { get { return _reads; } }
+        public IReadOnlyList<TCTPlcPointReadEvidence> LastEvidence { get; private set; }
         public string StatusMessage { get { return _status.Text; } }
 
         private static Button CreateButton(string automationId, string label)
@@ -131,6 +132,7 @@ namespace CxVisual.TestCenter.UI
             _effectiveVersion=null;
             _evidence.ItemsSource=null;
             _reads=0;
+            LastEvidence=Array.AsReadOnly(new TCTPlcPointReadEvidence[0]);
             _status.Text=string.IsNullOrWhiteSpace(moduleId) ?
                 "请先打开正式Connector配置。" :
                 "已选择 "+moduleId+"；尚未连接，必须先保存和生效配置。";
@@ -177,6 +179,7 @@ namespace CxVisual.TestCenter.UI
                 await candidate.StartAsync(CancellationToken.None);
                 _connector=candidate;_effective=effective;_effectiveVersion=version;
                 _reads=0;_evidence.ItemsSource=null;
+                LastEvidence=Array.AsReadOnly(new TCTPlcPointReadEvidence[0]);
                 _pointNames.Text=effective.Protocol.Points
                     .Where(p=>p!=null&&p.CanRead)
                     .Select(p=>p.Name).First();
@@ -236,7 +239,8 @@ namespace CxVisual.TestCenter.UI
                         ReceivedUtc=now
                     };
                 }
-                _evidence.ItemsSource=result;
+                LastEvidence=Array.AsReadOnly(result);
+                _evidence.ItemsSource=LastEvidence;
                 _reads++;
                 _status.Text="FC03单事务完成，返回"+result.Length+"个点；"+
                     "这是当次诊断回包，不是MDS运行仓，也不代表物理动作完成。";
@@ -244,6 +248,7 @@ namespace CxVisual.TestCenter.UI
             catch(Exception error)
             {
                 _evidence.ItemsSource=null;
+                LastEvidence=Array.AsReadOnly(new TCTPlcPointReadEvidence[0]);
                 _status.Text="读取失败，禁止显示旧诊断值为本次成功结果: "+error.Message;
             }
             finally{_busy=false;UpdateButtons();}
@@ -266,6 +271,7 @@ namespace CxVisual.TestCenter.UI
             {
                 _connector=null;_effective=null;_effectiveVersion=null;
                 _evidence.ItemsSource=null;
+                LastEvidence=Array.AsReadOnly(new TCTPlcPointReadEvidence[0]);
                 _busy=false;UpdateButtons();
             }
         }
