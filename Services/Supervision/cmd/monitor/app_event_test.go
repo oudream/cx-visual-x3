@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -115,5 +118,57 @@ func TestDaemonEventFormattingAndHistoricalClassification(t *testing.T) {
 				t.Fatalf("expected failure kind %q, got %q", tc.alertKind, item.Kind)
 			}
 		})
+	}
+}
+
+
+func TestDaemonFailureSerializedHistory(t *testing.T) {
+	const programID int64 = 9007199254740995
+	const nowMs int64 = 1700000010000
+	records := []program.Event{
+		{
+			Event: program.EventStart,
+			Status: program.Status{Id: programID, Pid: 42, IsRun: true, StartCount: 1},
+		},
+		{
+			Event: program.EventStart,
+			Status: program.Status{Id: programID, Pid: 0, IsRun: false, StartCount: 2, ErrorCount: 1},
+			Message: "exec: no such file or directory",
+		},
+		{
+			Event: program.EventExit,
+			Status: program.Status{Id: programID, Pid: 42, IsRun: false, StartCount: 3, ErrorCount: 0, LastRunTime: nowMs - 5000},
+			Message: "<nil>",
+		},
+	}
+
+	// Serialize the actual Monitor record schema, then read it through
+	// the same bounded historical alert reader used by /alerts/history.
+	path := filepath.Join(t.TempDir(), "program.event.list")
+	var journal strings.Builder
+	for i, event := range records {
+		normalized := formatProgramDaemonEvent(event, "inspection.exe", 10, 9, nowMs)
+		encoded, err := json.Marshal(ProgramEventRecord{
+			ProgramId: event.Status.Id,
+			PId: event.Status.Pid,
+			Event: event.Event,
+			Time: nowMs + int64(i),
+			Msg: normalized,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		journal.Write(encoded)
+		journal.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(journal.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	incidents, err := alerts.ReadHistory(path, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(incidents) != 1 || incidents[0].Kind != "start-failed" || incidents[0].ProgramID != programID {
+		t.Fatalf("expected exactly the failed start after persistence, got %+v", incidents)
 	}
 }
