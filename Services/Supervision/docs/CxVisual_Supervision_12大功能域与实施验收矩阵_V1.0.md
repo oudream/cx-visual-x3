@@ -272,3 +272,20 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 **明确留存的风险**：原 `common/channels/UdpC` 在底层读异常/关闭时的 goroutine 回收与投递阻塞需单独核查；Monitor 端口真正失联后自动重连与状态对账尚未全验；`_runProgramIds` 异步映射和恢复程序重复启动竞争尚未完整关闭；Daemon 退出时只能根据已跟踪 PID 终止现存子进程，没有完整进程树/服务安全终止回执。不得把本轮 Context 修复说成 SX-B 全链路完成。
 
 **下一交付焦点**：先核查上述隔离测试与 GitHub CI 的固定 SHA，再以真实假受管进程测试单次启动归属、退出竞态和 Daemon/Monitor 断线恢复；只有安全审计与回执、验证均成熟后再开远程控制。
+
+
+## 十二、S02守护协程唯一归属及停止目标防误判（2026-10-30）
+
+**源码实装**：cmd/daemon/workers.go 新增 programWorkerGate 和 launchProgramWorker；初始启动、周期恢复、配置变更和旧重启入口统一同步占用 ProgramId，Worker 真正结束才释放。与旧 _runProgramIds 的进程 PID 状态不同，新增对象只管理守护 goroutine 的占用，不建立第二份运行状态、Program 数据库或进程管理器。
+
+**具体故障根因**：旧 recoveryPrograms 用 PID 是否大于零判断是否需要启动。在第一次 EventStart 尚未处理、进程退出后重启延时、Daemon 正在清理时，PID=0 不代表 Worker 已退出；旧路径可能重复启动同 ID。新版在处理首次启动等待之前检查 gate.has(ProgramId)，已有 Worker 时直接跳过恢复，降低主循环被无谓 FirstWaitTime 阻塞的风险。
+
+**停止安全**：Daemon 退出、配置更新、旧重启控制三条路径在 FindProcess/Kill 前先通过 safeManagedPID 验证，排除零 PID、负 PID 和 Daemon 自身 PID，避免将不合法的 PID 当作受管子进程。正 PID 仍须后续验证进程身份/代次，不能仅凭整数认定安全。
+
+**正反测试源码**：
+- workers_test.go：128 个请求并发争抢相同 int64 ProgramId，只能一个取得守护权；不同 ID 可并行；取消、非法 ID、空 Worker 拒绝；旧 Worker 结束后可重入。
+- workers_test.go 的 TestRecoveryProgramsSkipsReservedGuardian：PID=0 且 Worker 仍占用时，周期恢复无需等待其配置的 3600 秒首次延时，也不启动第二个 Worker。
+- main_test.go 的 TestSafeManagedPID：零、负数和 Daemon 自身 PID 必须拒绝。
+- **有限实测**：以同一门禁算法搭建独立 Go 1.19 最小工程、使用 stub 的 Program/Daemon 依赖，go test -count=20 和 go test -race -count=10 均执行成功。该结果**不覆盖**主仓库的正式依赖、真实 recoveryPrograms 集成测试、Go 三系统 CI 或现场设备。
+
+**交付级别与未完风险**：GitHub 上源码及测试已提交（S）；本轮没有完整仓库 Go/Windows/macOS CI 的真实通过记录，原仓库 G1 仍待核实。旧 Worker 退出前配置启用可能被暂时拒绝并延后到下次恢复；原 MaxError/MaxCount 上限仍可能在后续周期重建 Worker 后被重置；正 PID 身份和进程树停止回执尚未关闭。当前只是同一 Program 的并发守护占用修复，不代表 S11 认证授权、完整 SX-B 故障恢复或远程写操作已验收。
