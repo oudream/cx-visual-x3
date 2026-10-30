@@ -376,7 +376,8 @@ namespace CxVisual.Runtime.Host
                          String.Equals(context.Caller,actualPeer,
                              StringComparison.OrdinalIgnoreCase)) &&
                         context.Descriptor.Definition.PermissionKey==
-                            PADPlcMrkCommandRegistration.WritePermission))
+                            PADPlcMrkCommandRegistration.WritePermission,
+                    currentControlGuard:()=>modeAllowed))
                 {
                     MRKCommandCenter commands=trusted.Commands;
                     host.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
