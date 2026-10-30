@@ -35,8 +35,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
         private readonly TextBlock _contract=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(5)};
         private readonly TextBlock _status=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(5)};
         private readonly TextBox _operation=new TextBox {MinWidth=260,Margin=new Thickness(3)};
-        private readonly Button _execute=new Button {Content="按Schema执行命令",Margin=new Thickness(3),Padding=new Thickness(9,5)};
-        private readonly Button _cancel=new Button {Content="协作取消（非急停）",Margin=new Thickness(3),Padding=new Thickness(9,5)};
+        private readonly Button _execute=new Button {Content="按Schema执行命令",Margin=new Thickness(3),Padding=new Thickness(9,5,9,5)};
+        private readonly Button _cancel=new Button {Content="协作取消（非急停）",Margin=new Thickness(3),Padding=new Thickness(9,5,9,5)};
         private MRKCommandCenter _owner;
         private MRKCommandDescriptor _selected;
         private bool _allowed;
@@ -64,7 +64,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
             actions.Children.Add(_execute);
             actions.Children.Add(new TextBlock {Text="OperationId",VerticalAlignment=VerticalAlignment.Center});
             actions.Children.Add(_operation);
-            actions.Children.Add(Button("查询",QueryOperation));
+            actions.Children.Add(Button("查询",()=>QueryOperation()));
             _cancel.Click+=(s,e)=>{try{CancelOperation();}catch(Exception ex){_status.Text="取消失败："+ex.Message;}};
             actions.Children.Add(_cancel);
             top.Children.Add(actions);
@@ -93,7 +93,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
         }
         private static Button Button(string label,Action act)
         {
-            Button button=new Button {Content=label,Margin=new Thickness(3),Padding=new Thickness(9,5)};
+            Button button=new Button {Content=label,Margin=new Thickness(3),Padding=new Thickness(9,5,9,5)};
             button.Click+=(s,e)=>{try{act();}catch(Exception ex){MessageBox.Show(ex.Message,label);}};
             return button;
         }
