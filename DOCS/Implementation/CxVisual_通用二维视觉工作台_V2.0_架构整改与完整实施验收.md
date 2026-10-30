@@ -432,6 +432,14 @@
 - **结果只读边界**：审查发现保存ROI入口原先只检查“图窗绑定有原图”，若当前显示的是本Run的Mask/Result仍可能误操作。[752025b6](https://github.com/oudream/cx-visual-x3/commit/752025b6c580baa2a7e5dd9903112dc2ce270962)要求`Session.ActiveSlot==Original`才允许显式提交MEM；[af167f6c](https://github.com/oudream/cx-visual-x3/commit/af167f6cb02ccb7f1aaf50f90b2638f4409f0bdf)增加实际UIA选择Mask再点击保存的拒绝反证，确认Run证据只读且MEM Revision不变。
 - **验收分级**：截至本条记录，代码已提交G2；固定[ROI UIA #41043512541](https://github.com/oudream/cx-visual-x3/actions/runs/41043512541)在`af167f6c`仍处于queued，**新提交未获得G3/G4/G5成功**；不得用旧失败归因为新UIA交互失败，亦不得用旧绿色Imaging SHA代替最新Studio GUI。需要真实Windows执行后根据STEP逐个修复；工业G6未开始。
 
+### 7.19 IMG-05 专项Windows构建解耦与ROI新Revision旧Run资源失效（2026-10-30）
+
+- **旧失败性质复核**：固定[ROI UIA #41043512541](https://github.com/oudream/cx-visual-x3/actions/runs/41043512541)及[ROI UIA #41043341759](https://github.com/oudream/cx-visual-x3/actions/runs/41043341759)均**failure**，现场Windows日志只有`Tests/ArchitectureSmoke/Integration/CT3DAnalysisPersistenceTests.cs`错误`CS1061`（旧`CT3DMeshFaceRoiRecipe.Resolve`调用），原生GUI**未执行**。最新master相应CT3D测试已经采用新API，历史SHA失败不能推导现存代码是否仍错。另[Studio S1 #41042891210](https://github.com/oudream/cx-visual-x3/actions/runs/41042891210)真实全解决方案编译通过，但Studio S2的16s MRK运行阶段停留在`MRK软件运行中`，为另一个待复验的业务/时序缺口，不能计作IMG-05原生UIA失败。
+- **解耦专项门禁**：[6ad4c451](https://github.com/oudream/cx-visual-x3/commit/6ad4c451534ab0f9c9070c5130d9ad5ef224f335)将`studio-roi-dialog-uia-windows.yml`的编译目标由全解决方案切换到**实际`Applications/Studio/CxVisual.Studio.csproj`及真实项目依赖**，避免因无关CT3D测试编译错误完全无法进入UIA。Studio S1/TestCenter工作流仍执行整个`CxVisual.Unified.sln`，不能由专项门禁成功替代全量G3/G4。
+- **真实产品状态修复**：[3fc24684](https://github.com/oudream/cx-visual-x3/commit/3fc246845fe3bf190e315105127c1878df771128)在用户显式保存当前ROI、MEM产生新Revision后，除重置`displayedRun`和按钮外，还调用既有`MVIImageSession.ClearResult`释放旧Result像素；按本Run`Contour.ItemId`精确移除借用单一OverlayStore的只读锁定`PolygonAnnotation`，不会误删面积ROI或普通用户Annotation。未新增图像结果存储/Undo/发布机制。
+- **用户继续编辑便利性**：[ee1526e5](https://github.com/oudream/cx-visual-x3/commit/ee1526e52e805853ef6fc84660b5e3ea9db140a1)使工程ROI MRK Run显示时，原MPW图窗自动选择来自MEM配方的面积ROI，允许从Mask返回原图后直接继续编辑；[dac1e806](https://github.com/oudream/cx-visual-x3/commit/dac1e806e6a9dd4f6e391194b698c8f464955703)为原生UIA增加**恢复可信RAW→重新MRK→真实结果列表选择Mask→返回原图→点击保存ROI→旧Result已释放且旧Run列表清空、当前ROI保留**的末段正反验收。
+- **严格门禁**：独立[ROI UIA #41046725138](https://github.com/oudream/cx-visual-x3/actions/runs/41046725138)对应`dac1e806`提交时尚未运行通过，**本条内容为G2源码与测试合同，不声称G3/G4/G5成功**。后续以实际Windows固定SHA日志为准。IMG-05仍为`InProgress`，人工多DPI、失捕和工业G6待验。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
