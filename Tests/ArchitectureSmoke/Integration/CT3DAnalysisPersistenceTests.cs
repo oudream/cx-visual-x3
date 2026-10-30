@@ -191,6 +191,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 Reject<OperationCanceledException>(()=>restored.RecomputeWithSliceRectangle(
                     folder,sliceRoi,.49,.51,new CancellationToken(true)));
+                int editRevision=engineering.Revision;
+                CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(engineering,owner,
+                    editRevision,folder,sliceRoi,.49,.51,CancellationToken.None);
+                var persistedEdited=CT3DAnalysisPersistence.Open(engineering,address,
+                    folder,CancellationToken.None);
+                Check(engineering.Revision==editRevision+1&&
+                    persistedEdited.Plane.ResultId!=restored.Plane.ResultId&&
+                    persistedEdited.RoiSignature==restored.RoiSignature&&
+                    persistedEdited.Source.Signature==restored.Source.Signature,
+                    "二维ROI编辑经过正式MEM事务形成新专业结果，旧来源/ROI身份稳定");
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(
+                    engineering,owner,editRevision,folder,sliceRoi,.49,.51,CancellationToken.None));
+                int revised=engineering.Revision;
+                Reject<OperationCanceledException>(()=>CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(
+                    engineering,owner,revised,folder,sliceRoi,.49,.51,new CancellationToken(true)));
+                Check(engineering.Revision==revised,
+                    "ROI修改的版本冲突及取消不得改变MEM工程");
+                engineering.Undo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
+                    .Plane.ResultId==restored.Plane.ResultId,
+                    "ROI编辑Undo应完整恢复旧Feature身份");
+                engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
+                    .Plane.ResultId==persistedEdited.Plane.ResultId,
+                    "ROI编辑Redo应完整恢复新Feature身份");
+                engineering.Undo().RequireValue();
                 var editedRoi=restored.RecomputeWithMeshRoi(folder,
                     restored.SelectedVertexIndices.Reverse().ToArray(),CancellationToken.None);
                 Check(editedRoi.Plane.ResultId!=restored.Plane.ResultId&&
