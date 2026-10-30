@@ -401,6 +401,14 @@
 - **公开API兼容补强**：[004270aa](https://github.com/oudream/cx-visual-x3/commit/004270aa6b98d345ef47b70892f6a6a79a0adb6a)恢复原`Begin(MVIImageOverlayItem,MVIImageOverlayEditKind)`双参CLR方法签名，委托新三参Pane入口，防止可选参数形式改签名造成旧程序集二进制不兼容；[54a680f7](https://github.com/oudream/cx-visual-x3/commit/54a680f767c2e7b4314afc8dc6cea75e8340e79f)增加反射验证两种方法签名共存。对应[Imaging #41028703159](https://github.com/oudream/cx-visual-x3/actions/runs/41028703159)需以实际Windows结果为准，不预判成功。
 - **固定CI门禁**：`ee6bd2b1`的Imaging G3/G4已确认；带MPW收敛的[Imaging #41028450291](https://github.com/oudream/cx-visual-x3/actions/runs/41028450291)于`80694dd2`记录时仍queued，不能借早期成功升级为新SHA G4。IMG-01/02继续`InProgress`；真实主副Pane全程鼠标/失焦G5、工业大图及多DPI G6仍需专项验收。
 
+### 7.15 IMG-05 独立真实Studio原生文件对话框UIAutomation验收（2026-10-30）
+
+- **目标与范围**：沿用 R1-01 真实MEM ROI配方（4×4 Gray16、Stride=10、像素SHA-256），新建**隔离的Windows UIAutomation进程验收入口**，操作实际Studio WPF模块中心按钮、Windows原生OpenFileDialog及SaveFileDialog。测试夹具由MEM正式事务创建并保存重开，不把夹具构造冒充用户亲手绘制ROI。
+- **实际源码**：[eedff33f](https://github.com/oudream/cx-visual-x3/commit/eedff33fe1093ab8376f93385e380777d74197ff)新增`StudioRoiDialogUiSmoke.cs`；[5ead3218](https://github.com/oudream/cx-visual-x3/commit/5ead3218aced1e4b7fd4293a8090a95b79a18123)给原Studio宿主加独立`--studio-roi-dialog-ui-self-test`入口；[43e29805](https://github.com/oudream/cx-visual-x3/commit/43e29805903beb4a8268c823ba2bcc9a77f1d191)将UIAutomation引用和源码纳入既有Studio工程；不修改专业/MEM/MRK的权威API。
+- **真实操作验证点**：UIAutomation的`InvokePattern`点击BindSavedRoiRaw/RunSavedRoi/ExportRunCsv/ExportRunRaw，`ValuePattern`设置Stride与原生文件名，`SelectionItemPattern`从真实结果ListBox选择Mask；检查来源像素和Stride、保存重开后工程Revision不变、MRK结果与真实CSV、Mask无损RAW及错像素文件拒绝且旧图/结果不受污染。[d5ddf497](https://github.com/oudream/cx-visual-x3/commit/d5ddf497bbaa08653b1ae0fbea5729aa80f5e41d)补实际Mask选择与RAW导出；[47b5d5ef](https://github.com/oudream/cx-visual-x3/commit/47b5d5ef83751da450789ae889db25e0a6bb839b)修正UIA对WPF ScrollViewer的完整子树搜索。
+- **Windows门禁**：[99f66871](https://github.com/oudream/cx-visual-x3/commit/99f668713212429bf577a289f233ef81618dced6)新增独立`studio-roi-dialog-uia-windows.yml`，必须真实Windows .NET48 x64编译、实际窗口操作且报告**恰好一条IMG05 PASS / 零FAIL**才通过；当前固定SHA [ROI UIA #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)此前仍queued，**源码与自动化测试定义G2已提交，但新UIA的G3/G4/G5不能提前标成功**。既有Studio S1和CPU成功证据仅对应各自历史SHA。
+- **保留边界**：此次是受控真实UIA操作，而非用户手工鼠标拖动ROI、手工项目新建/资源定位全路径、人机截图审评、不同OS地区/语言适配或工业相机HIL；这些项目依旧待G5/G6验收。不可将UIA夹具闭环宣称260项全部完成。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
