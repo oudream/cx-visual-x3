@@ -165,5 +165,5 @@
 ### HTTP-CLI-07：新建配置下4MiB合法响应的全程真实内存预算（2026-10-30）
 
 - 入口：FTRMultiClientBudgetTests.HttpClientMultiMegabyteResponse；仍自动包含在`--channel-uml-core`和`--channel-transport`。
-- FCM：HTTP Client默认MaxResponseBytes=4194304、ReceiveByteBudget=12582912（12MiB），校验Converter往返；不修改既有显式历史持久预算。HTTP Server真实HttpListener回环，发送4MiB确定性字节序列；客户端按长度与多个位置检查完整顺序、单次收包、真实ReceivedBytes、PeakBufferedPayloadBytes<=预算、完成后BufferedPayloadBytes=0。
+- FCM：HTTP Client默认MaxResponseBytes=4194304、ReceiveByteBudget=12582912（12MiB），校验Converter往返；不修改既有显式历史持久预算。HTTP Server真实HttpListener回环，发送4MiB确定性字节序列；客户端按长度及全部4194304字节检查完整顺序、单次收包、真实ReceivedBytes、PeakBufferedPayloadBytes<=预算、完成后BufferedPayloadBytes=0。
 - CI：`.github/workflows/f17-channel-windows.yml`两套Channel软件入口都必须输出`F17.HTTP_LARGE_PASS bytes=4194304`。保持原TCP/NamedPipe双向2GiB基准与Windows x64全SLN；本项在其固定SHA Actions真正结束前仍是**已提交、待验证**。
