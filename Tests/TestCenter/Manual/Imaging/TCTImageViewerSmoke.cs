@@ -34,6 +34,12 @@ namespace CxVisual.TestCenter.UI
             TabControl secondary = FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
             if (primary == null || secondary == null)
                 throw new InvalidOperationException("真实WPF双区页签不存在。");
+            FrameworkElement mainViewport=frame.Viewer.FindName("ViewportRoot") as FrameworkElement;
+            FrameworkElement secondViewport=frame.Viewer.FindName("SecondaryViewportRoot") as FrameworkElement;
+            if(!frame.Viewer.Focusable || mainViewport==null || secondViewport==null ||
+               !mainViewport.Focusable || !secondViewport.Focusable)
+                throw new InvalidOperationException(
+                    "主/副Pane必须可获得键盘焦点，以便Esc在拖动中取消编辑");
             Button fit = FindControl<Button>(frame,"TCT.Imaging.Fit");
             if (fit == null) throw new InvalidOperationException("高频适应窗口操作缺失。");
             // 真正触发按钮Click及原先异常处理，而不是直接调用业务层。
