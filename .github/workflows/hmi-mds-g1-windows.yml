@@ -7,6 +7,13 @@ on:
       - 'Professional/HMI/**'
       - 'Mechanism/Presentation.Wpf/Visual/MPWLiveSceneControl.cs'
       - 'Applications/Studio/StudioShell.Hmi.cs'
+      - 'Applications/Studio/StudioShell.ResourceTree.cs'
+      - 'Applications/Studio/StudioShell.ResourceEditors.cs'
+      - 'Applications/Studio/StudioShellSelfTests.cs'
+      - 'Applications/Studio/StudioViewModel.Engineering.cs'
+      - 'Applications/Studio/App.xaml.cs'
+      - 'Applications/Studio/MainWindow.xaml'
+      - 'Mechanism/Visual/MVISceneProjection.cs'
       - 'Applications/Studio/CxVisual.Studio.csproj'
       - 'Applications/Studio/StudioShell.cs'
       - 'Applications/Studio/StudioShell.Variables.cs'
@@ -49,6 +56,24 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi-wpf
           if($LASTEXITCODE -ne 0) { throw 'HMI WPF STA G1 failed' }
+      - name: Real Studio WPF STA HMI engineering user path
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'Output/Release/x64/CxVisual.Studio.exe').Path
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--hmi-studio-smoke') -PassThru
+          try { Wait-Process -Id $process.Id -Timeout 120 -ErrorAction Stop }
+          catch {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Studio HMI STA execution timed out'
+          }
+          $process.Refresh()
+          $report = 'Output/Release/x64/StudioShellSelfTest.txt'
+          if(Test-Path $report) { Get-Content $report | Write-Host }
+          if($process.ExitCode -ne 0) { throw "Studio HMI STA exit code $($process.ExitCode)" }
+          if(-not (Test-Path $report) -or
+             -not (Select-String -Path $report -Pattern 'PASS HMI Studio WPF STA' -Quiet)) {
+            throw 'Studio HMI WPF evidence missing'
+          }
       - name: Report verification boundary
         shell: pwsh
         run: |
