@@ -306,6 +306,15 @@
 - [`27e1381`](https://github.com/oudream/cx-visual-x3/commit/27e138115f87e77025b3be48f0e1c30eb85b4fad) 将RAW重绑加入已有取消按钮；取消或页面失效时拒绝显示晚到原图、保留之前的有效图像/Run，不新建任务中心。原FIMRawImageReader读取操作不是可中断块IO，取消承诺限定为任务完成前的验证和发布阻止，后续大图流式中断归IMG-09/10。
 - 以上修改后，`27e138115f87e77025b3be48f0e1c30eb85b4fad`的新CI为[Module Center CPU #40996427478](https://github.com/oudream/cx-visual-x3/actions/runs/40996427478)、[Studio S1 #40996427543](https://github.com/oudream/cx-visual-x3/actions/runs/40996427543)、[Imaging #40996427532](https://github.com/oudream/cx-visual-x3/actions/runs/40996427532)，记录时尚未完成；不得自动继承1d90c683历史成功为本SHA通过。
 
+### 7.4 IMG-03/04：原图Generation与Run正式ROI证据（2026-10-30）
+
+- **本次目标**：正式落实四平面证据链中原图变化与结果槽变化的不同语义。不得把MVI临时会话`SourceVersion`（同时包含Result操作）作为MEM源图/工程版本的唯一判断，也不把未绑定ROI的普通Preview虚构为正式工程结果。
+- **MVI Owner**：[`f12bf974`](https://github.com/oudream/cx-visual-x3/commit/f12bf974a6ef79603407ff9eb0e17eaa8b033d40) 为现有`MVIImageSession`增`OriginalGeneration`，仅新原图加载开始/成功、新原图设置或Clear改变；不改变既有`SourceVersion`（保留结果会话并发CAS行为与旧调用兼容）。[`fde5cac8`](https://github.com/oudream/cx-visual-x3/commit/fde5cac8ef8740ebf41e177ca561015d384345d7) 补独立代次、Observer与旧异步结果拒绝反例；[`5dcb2caf`](https://github.com/oudream/cx-visual-x3/commit/5dcb2caf71dd3d80ca41e9950bd3459ff53cbfee) 将Studio正式ROI复算和Contour投影的原图失效检查改用新代次，同时继续通过Run引用、PageId、Revision及PreviewEpoch管控其他变化。
+- **PVC Owner**：[`e3182a1`](https://github.com/oudream/cx-visual-x3/commit/e3182a1e4d0600f412635f69869bb960fecf7638) 现有`CxVisionRunSummary`补可选`ValidatedSourceHash`、`DefinitionRoiId`、`DefinitionRevision`和只读派生`WithValidatedRoiEvidence`；普通Run三字段为null，**不伪造**工程来源。[`1518cadf`](https://github.com/oudream/cx-visual-x3/commit/1518cadfe9f66a73f46d9333c96445091d5ef8a5) 在MEM原图Hash和工程Revision实际校验之后绑定这组证据，不修改MRK真实Flow/RunId/Items。Contour只读派生必须携带相同来源，原Run不被覆写。
+- **反证源码**：[`2640a9e8`](https://github.com/oudream/cx-visual-x3/commit/2640a9e811d8ecfaa74f89c9c45453388b421259) 验证双Run新身份、ROI来源Hash/工程Revision、Contour派生保留证据；[`71b0550f`](https://github.com/oudream/cx-visual-x3/commit/71b0550fb20b52eefc2f37a840c32c2f662cd5ee) 验证普通MRK预览不会带假MEM证据；[`e2778676`](https://github.com/oudream/cx-visual-x3/commit/e27786766550770d6dee1d1b4b695df407966552) 验证真实Studio复算结果身份、来源Hash及Revision。
+- **状态**：G2已提交，Windows固定SHA G3/G4待CI；后续保留真实用户文件对话框/UIA及工业HIL验收为G5/G6待完成。上述不是完整RunRecord状态机或持久Artifact/Review模型，IMG-04仍为`InProgress`，不能提前关闭。
+- **后续切片**：先确认相关Windows`imaging-foundation-windows`、`studio-shell-windows`、`module-center-cpu-windows`及`unified-runtime-windows`的固定SHA结果；再补Run Status/Validity分离的最小已批准合同以及Studio原Run失效提示。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
