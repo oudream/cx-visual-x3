@@ -543,3 +543,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **执行门禁**：`CxVisual.Unified.sln` Release/x64；`ArchitectureSmoke --vision-results`、`--imaging`、默认全回归；`TestCenter --imaging-viewer-smoke`；`Studio --module-center-cpu-self-test`和`--shell-self-test`，应检查相关工作流固定SHA及实际日志。本文仍不声称任何新提交已通过Windows实际执行。
 
+## 32. R1 CASE-01/02：精确ROI→FIM分割→MRK连通域与面积（2026-10-30）
+
+| 测试ID | 来源、可执行正反例 | 当前证据 |
+|---|---|---|
+| R1-ROI-01 | 5×3原Gray8四个命中，ROI仅包含左侧三个连续像素，FIM Mask=3、MRK已接受区域面积=3px²，图外右下250原像素保留但Mask为0 | ArchitectureSmoke `--vision-results`源码已写，G3/G4待证 |
+| R1-ROI-02 | 同Run产生有符号面积3的真实Mask Contour，ResultItem共享RunId/SourceId；不存在没有真实MRK的伪Flow | ArchitectureSmoke源码已写，G3/G4待证 |
+| R1-ROI-03 | 原位深8/16不匹配、空SourceId、ROI超出原图及预取消必须拒绝，不更改FIM原像素 | ArchitectureSmoke负例源码已写，G3/G4待证 |
+| R1-ROI-04 | 真实WPF原图4×4 Gray16→三角形6像素ROI→点击`TCT.Imaging.CpuVisionRoiRun`→Mask与Measurement同Run准确6px² | TestCenter `--imaging-viewer-smoke`源码已写，G3/G5待证 |
+| R1-ROI-05 | 清除选中ROI后取消旧Run，移除旧Result/Mask，不能将过期结果冒充现有ROI；Overlay编辑及图层变更同样触发保护 | WPF按钮正反例已写，G3/G5待证 |
+
+**仍未实施**：ROI几何与SourceVersion的长期工程Artifact、MEM事务Undo/Redo、保存重开再执行以及Studio全路径同一Case的自动复现；这里不以FIM/MRK预览替代CASE-07正式工程验收。
+
+**门禁**：`CxVisual.Unified.sln` Release/x64，`ArchitectureSmoke --imaging`、`--vision-results`、默认回归，以及`TestCenter --imaging-viewer-smoke`；Windows成功SHA日志待取得。
+
