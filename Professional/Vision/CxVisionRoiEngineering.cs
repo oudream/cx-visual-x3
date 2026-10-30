@@ -192,11 +192,7 @@ namespace CxVisual.Professional.Vision
             CxVisionRoiRecipe recipe=Open(engineering,address);
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
-            if(source.Width!=recipe.Width||source.Height!=recipe.Height ||
-               source.PixelFormat!=recipe.PixelFormat ||
-               !string.Equals(HashImage(source,cancellation),recipe.SourceHash,
-                   StringComparison.Ordinal))
-                throw new InvalidOperationException("vision.roi.source_hash_mismatch");
+            VerifySource(recipe,source,cancellation);
             cancellation.ThrowIfCancellationRequested();
             MVIImageOverlayItem roi=recipe.Roi;
             int left=Math.Max(0,(int)Math.Floor(roi.Bounds.Left));
@@ -215,6 +211,23 @@ namespace CxVisual.Professional.Vision
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("vision.roi.definition_changed_during_run");
             return completed;
+        }
+
+        /// <summary>
+        /// 在显示或复算之前验证重新绑定的原始像素；失败时调用方不得更新图窗。
+        /// 只检查已保存的MEM配方与FIM原值，不创建Run或更改工程Revision。
+        /// </summary>
+        public static void VerifySource(CxVisionRoiRecipe recipe,FIMImageBuffer source,
+            CancellationToken cancellation)
+        {
+            if(recipe==null)throw new ArgumentNullException("recipe");
+            if(source==null)throw new ArgumentNullException("source");
+            cancellation.ThrowIfCancellationRequested();
+            if(source.Width!=recipe.Width||source.Height!=recipe.Height ||
+               source.PixelFormat!=recipe.PixelFormat ||
+               !string.Equals(HashImage(source,cancellation),recipe.SourceHash,
+                   StringComparison.Ordinal))
+                throw new InvalidOperationException("vision.roi.source_hash_mismatch");
         }
 
         private static string HashImage(FIMImageBuffer image,CancellationToken cancellation)
