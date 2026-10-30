@@ -417,6 +417,13 @@
 - **实际失败与修复**：早期[Studio ROI UIA #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)在`d5ddf497` **failure**，原因是Studio编译`CS0104`：`System.Windows.Automation.Condition`与`System.Windows.Condition`引用歧义；GUI步骤未执行。已在[4327a2a9](https://github.com/oudream/cx-visual-x3/commit/4327a2a97c341d659e9fb00f42751623234ed91f)显式指定UIAutomation.Condition。此次编译修复与后续GUI代码须看后继固定SHA工作流；不能拿旧失败/旧绿证明最新UIA。
 - **仍待**：独立Windows UIA需固定SHA真正完成全解编译和原生打开/保存、鼠标绘制、Mask选择和Raw/CSV输出全流程，G5还需真实焦点/DPI/多语言和人工验证。当前R1/IMG-05不关闭，设备G6也不关闭。
 
+### 7.17 IMG-05 正式工程Undo/Redo、可见图窗滚动与跨工程构建修复（2026-10-30）
+
+- **真实失败复核**：[ROI UIA #41032180497](https://github.com/oudream/cx-visual-x3/actions/runs/41032180497)在固定`4ca1fd19`仍然`failure`，原日志明确为本专项`Condition`二义性，后继[4327a2a9](https://github.com/oudream/cx-visual-x3/commit/4327a2a97c341d659e9fb00f42751623234ed91f)已修复；[ROI UIA #41035428091](https://github.com/oudream/cx-visual-x3/actions/runs/41035428091)在`e1b24b9e`为`failure`，**阻塞于统一编译**：`PHMScadaReadOnlyPipeClient.cs`缺`System.Xml`引用(CS0012)及`MRHScadaSmoke.cs`局部变量`second`重名(CS0136)，原生GUI步骤被跳过。新`master`的Host变量现已更名为`stationBReply`；[851fcb83](https://github.com/oudream/cx-visual-x3/commit/851fcb83d573f4ed53e9a6938503cc61eb801b73)补HMI现有项目的`System.Xml`引用。两个旧SHA均不具备本专项GUI失败或G5通过的证据，必须等后继Windows完整编译。
+- **MEM一套History**：[b6a41bca](https://github.com/oudream/cx-visual-x3/commit/b6a41bca79fbb8694e136649107ecfeb7dd36e6e)扩展独立UIA测试：真实鼠标创建的临时矩形显式提交为MEM Data+Visual后，`ProjectSession.Undo()`恢复原ROI身份，`Redo()`恢复新ROI身份，并在重做后`SaveProject`及重新`MEMEngineering.Open`核对SourceId/配置版本不漂移。使用原MEM Undo/Redo，不新增MVI持久历史。
+- **真实用户可达性**：[ef218777](https://github.com/oudream/cx-visual-x3/commit/ef2187772ca2427608f6dc0dbb74d127b4239fb5)在既有`MPWModuleCenterControl`为头部长表单/结果Viewer提供限高垂直滚动，保持`HeaderContent`对外对象合同与专业模块Owner不变；避免图窗因顶栏无限增高而在较小WPF窗口中不可触达。[aa9e2c7a](https://github.com/oudream/cx-visual-x3/commit/aa9e2c7a59777911de09ce5b9a2d58a9a7d52a2f)让独立UIA在相关MPW布局及Studio模块ROI改动时自动触发。
+- **验收门禁**：截至登记，新的固定SHA [ROI UIA #41040812867](https://github.com/oudream/cx-visual-x3/actions/runs/41040812867)尚在Windows队列；GUI步骤没有可确认的成功报告，IMG-05维持`InProgress`，G5未完成，工业HIL G6未完成。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
