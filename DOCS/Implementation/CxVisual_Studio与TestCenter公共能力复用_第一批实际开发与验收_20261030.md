@@ -51,6 +51,7 @@
 - TestCenter 全量与命令专项若还在运行/未有最终结果，仍标注 **待固定SHA绿色**，不能引用旧SHA代替本批验收。
 - 额外修复全量解决方案 `Tests/ArchitectureSmoke/Integration/HmiScadaPipeTests.cs` 局部变量 `rejected` 与外层同名造成的 CS0136；只重命名局部，测试语义未变。
 
+- 提交 `dd7c8a29`：[TestCenter Command Workspace Windows #41075712052](https://github.com/oudream/cx-visual-x3/actions/runs/41075712052) **Success**；该工作流完成全部.NET Framework 4.8 x64构建、TestCenter人工命令Smoke、WPF UIA、10条正式TCT命令用例与ArchitectureSmoke `--command-center`。本次共享MPW控件同MRK目录的验证已包含在编译和人工页中；这不是PLC/现场设备HIL。后续 `836c6717` 仅增加目录刷新同步，必须按它的CI再确认。\n
 ## 5. 未完成清单与后续按Owner推进
 
 | 工作包 | 明确尚未完成 | 下一验收门槛 |
