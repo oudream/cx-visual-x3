@@ -3648,6 +3648,10 @@ namespace CxVisual.Studio
                             .GetAwaiter().GetResult();
                         Assert(run.RunId!=Guid.Empty && run.SourceId=="r1/studio/gray16" &&
                             run.ConfigRevision==43 &&
+                            run.DefinitionRevision==revision &&
+                            run.DefinitionRoiId==roi.Id &&
+                            run.ValidatedSourceHash==
+                                CxVisionRoiEngineering.Open(reopened,address).SourceHash &&
                             run.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
                                 .IntegerValue==6 &&
                             run.Items.Any(x=>x.Kind==CxVisionResultKind.Mask) &&
