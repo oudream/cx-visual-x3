@@ -38,7 +38,11 @@ func TestStartProcRedirectsAndReleasesParentLogHandle(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "managed-output.log")
 	env := append(os.Environ(), "CX_SUPERVISION_TEST_CHILD=1")
-	cmd, err := startProc([]string{os.Args[0], "-test.run=^TestManagedChildHelper$"}, env, dir, logPath)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd, err := startProc([]string{executable, "-test.run=^TestManagedChildHelper$"}, env, dir, logPath)
 	if err != nil {
 		t.Fatalf("failed to start isolated child: %v", err)
 	}
@@ -181,9 +185,13 @@ func TestEmitProgramEventDoesNotBlockAfterCancel(t *testing.T) {
 // configured minimum runtime, then the original MaxError policy stops retries.
 func TestRunProgramContextWithIsolatedChild(t *testing.T) {
 	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	a := program.Program{
 		ID: 700, // below DefaultProgramIdUser: do not append the legacy -i flag
-		Path: os.Args[0],
+		Path: executable,
 		Dir: dir,
 		ArgsString: "-test.run=^TestManagedChildHelper$",
 		EnvsString: "CX_SUPERVISION_TEST_CHILD=1",
