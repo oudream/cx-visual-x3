@@ -97,3 +97,9 @@
 - `PHMScadaRemoteReadSession.Points()` 提供当前时刻的只读显示投影，`Resolve()`共用`EffectiveQuality`；Studio点表不再硬编码另一份5秒判定。
 - A的`--recover-device`旧Generation被拒绝时，只在真实Pipe再Discover发现同DeviceRef/Scope/DeploymentVersion/ConfigVersion、不同Generation的设备后重建**只读**观察。旧Good先撤销，新Generation下一轮才采样；版本漂移/跨设备不会自动采纳，不能恢复操作授权。
 - `HmiScadaPipeTests`增加Quality源值不变/时效降级/未来时间反证，以及真实Windows Pipe旧Generation拒绝→重新发现→新快照恢复G1测试。未实施跨进程认证控制或PLC G2/HIL G3。
+
+## 2026-10-30 第九批：先撤回旧Good，再执行可能阻塞的重发现
+
+- `PHMScadaRemoteReadSession.Poll` 在Host拒绝旧Generation或返回异常时先清除最新只读帧、通知所有仍存活的WPF观察者，然后才执行`Discover`；新Generation被确认后再次通知但**不提前恢复Good**，必须等待下一轮新Snapshot。
+- `HmiScadaPipeTests` 故意将新Generation的Discover响应延迟650ms；G1必须先观察旧GEN1的Good被撤回，再观察GEN2身份及新采样恢复。防止慢网络/故障恢复期间出现错误的“仍正常”画面。
+- 全程仍无远程控制或命令自动重放，且不修改A的Runtime.Host及共享协议。

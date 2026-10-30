@@ -69,6 +69,15 @@ namespace CxVisual.Professional.HMI
                     _identity=replacement;
             }
         }
+        private void NotifySubscribersLocked()
+        {
+            // 始终在_gate下调用，Dispose返回后不会再调用释放的WPF观察者。
+            Action callbacks=_updated;
+            if(callbacks==null)return;
+            foreach(Delegate listener in callbacks.GetInvocationList())
+                try{((Action)listener)();}
+                catch(Exception ex){_lastObserverError=ex.ToString();}
+        }
         public string LastObserverError
         {get{lock(_gate)return _lastObserverError;}}
         public void Start(int pollMilliseconds=1000)
@@ -93,36 +102,38 @@ namespace CxVisual.Professional.HMI
                 if(_disposed){Interlocked.Exchange(ref _inFlight,0);return;}
                 expected=_identity;
             }
+            bool rediscover=false;
             try{next=_client.Snapshot(expected);}
             catch(Exception ex)
             {
-                // 先撤回旧Good，再尝试同Effective的只读重新发现。
-                // 此周期绝不复用旧快照或重发控制；新Generation下一轮才采样。
                 PHMScadaPipeRejectedException rejected=ex as PHMScadaPipeRejectedException;
                 fault=rejected!=null?rejected.ErrorCode:ex.GetType().Name+": "+ex.Message;
-                if(rejected!=null&&
+                rediscover=rejected!=null&&
                     (rejected.ErrorCode=="DEVICE_NOT_FOUND"||
-                     rejected.ErrorCode=="SESSION_VERSION_MISMATCH"))
-                {
-                    try{ReDiscoverReadOnly(expected);}
-                    catch(Exception discoveryError)
-                    {fault+="; rediscover:"+discoveryError.GetType().Name;}
-                }
+                     rejected.ErrorCode=="SESSION_VERSION_MISMATCH");
             }
             try
             {
+                // 关键FailClosed顺序：Host拒绝/断线后立刻撤销Good并通知UI，
+                // 不得等可能阻塞3秒的Discover结束后才把旧画面置为不可用。
                 lock(_gate)
                 {
                     if(_disposed)return;
                     _latest=next;
                     _error=fault;
-                    // 与Dispose/Unsubscribe共锁，关闭返回后不会再访问释放的WPF控件。
-                    // 个别观察者错误不会杀死线程池或阻断其它订阅者。
-                    Action listeners=_updated;
-                    if(listeners!=null)
-                        foreach(Delegate listener in listeners.GetInvocationList())
-                            try{((Action)listener)();}
-                            catch(Exception ex){_lastObserverError=ex.ToString();}
+                    NotifySubscribersLocked();
+                }
+                if(rediscover)
+                {
+                    try{ReDiscoverReadOnly(expected);}
+                    catch(Exception discoveryError)
+                    {
+                        lock(_gate)
+                            if(!_disposed)_error=fault+"; rediscover:"+
+                                discoveryError.GetType().Name;
+                    }
+                    lock(_gate)
+                        if(!_disposed)NotifySubscribersLocked(); // 新Generation只改身份，仍无新采样
                 }
             }
             finally{Interlocked.Exchange(ref _inFlight,0);}

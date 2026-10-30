@@ -154,6 +154,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         string request=Encoding.UTF8.GetString(frame);
                         if(index==4)Check(request.Contains("\"ExpectedGeneration\":\"GEN2\""),
                             "恢复后仍使用旧Generation请求PLC数值");
+                        // 故意阻塞重新发现。客户端必须在等待期间清除旧Good，
+                        // 不能把重新Discover当作撤回过期快照的前置条件。
+                        if(index==3)Thread.Sleep(650);
                         byte[] data=Encoding.UTF8.GetBytes(recoveredReplies[index]);
                         endpoint.Write(BitConverter.GetBytes(data.Length),0,4);
                         endpoint.Write(data,0,data.Length);endpoint.Flush();
@@ -168,6 +171,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(PHMScadaRemoteReadSession recovering=new PHMScadaRemoteReadSession(
                 recoveringClient,initialDevices[0],TimeSpan.FromMinutes(1)))
             using(ManualResetEventSlim observed=new ManualResetEventSlim(false))
+            using(ManualResetEventSlim revokedBeforeDiscovery=new ManualResetEventSlim(false))
             using(ManualResetEventSlim cleared=new ManualResetEventSlim(false))
             using(ManualResetEventSlim restored=new ManualResetEventSlim(false))
             using(recovering.Subscribe(()=>
@@ -176,6 +180,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "word100",typeof(double));
                 if(recovering.Identity.Generation=="GEN1"&&value is double&&(double)value==91d)
                     observed.Set();
+                if(recovering.Identity.Generation=="GEN1"&&observed.IsSet&&value==null)
+                    revokedBeforeDiscovery.Set();
                 if(recovering.Identity.Generation=="GEN2"&&value==null)cleared.Set();
                 if(recovering.Identity.Generation=="GEN2"&&value is double&&(double)value==92d)
                     restored.Set();
@@ -184,6 +190,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 recovering.Start(250);
                 Check(observed.Wait(TimeSpan.FromSeconds(5)),
                     "恢复前真实Pipe的旧Generation没有采到数据");
+                Check(revokedBeforeDiscovery.Wait(TimeSpan.FromSeconds(5)),
+                    "Discover阻塞前旧Good仍未被撤销");
                 Check(cleared.Wait(TimeSpan.FromSeconds(5)),
                     "旧Generation拒绝时没有先撤销旧Good帧");
                 Check(restored.Wait(TimeSpan.FromSeconds(5))&&
