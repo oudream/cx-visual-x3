@@ -175,3 +175,59 @@ func TestRunProgramControlledStopDoesNotCountAsCrash(t *testing.T) {
 	default:
 	}
 }
+
+
+func TestOwnedStopFailedSignalNeverMarksControlledExit(t *testing.T) {
+	// The child is already reaped, but the controller has deliberately not
+	// yet observed its Wait result. Kill must fail rather than setting the
+	// intentional-stop flag and concealing a real crash.
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestOwnedStopFastExitHelper$")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	controller := NewStopController(1001)
+	controller.attach(cmd)
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	receipt := controller.RequestStop(ctx, cmd.Process.Pid)
+	if receipt.State != StopFailed || receipt.WaitCompleted {
+		t.Fatalf("Kill after Wait must fail, got %+v", receipt)
+	}
+	if controlled := controller.finish(cmd, nil); controlled {
+		t.Fatal("a failed Kill must never mark the preceding process exit as controlled")
+	}
+	if controller.ActivePID() != 0 {
+		t.Fatal("finished child was still exposed as active")
+	}
+}
+
+func TestOwnedStopFastExitHelper(t *testing.T) {
+	// A deliberately immediate child exit, for TestOwnedStopFailedSignal...
+}
+
+func TestOwnedStopActivePIDTracksOnlyAttachedChild(t *testing.T) {
+	controller := NewStopController(1002)
+	if controller.ActivePID() != 0 {
+		t.Fatal("empty guardian unexpectedly exposed a PID")
+	}
+	cmd := startOwnedStopChild(t)
+	controller.attach(cmd)
+	if controller.ActivePID() != cmd.Process.Pid {
+		t.Fatalf("wrong active child PID: %d", controller.ActivePID())
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	err := cmd.Wait()
+	controller.finish(cmd, err)
+	if controller.ActivePID() != 0 {
+		t.Fatal("already reaped child must not appear as active")
+	}
+}
