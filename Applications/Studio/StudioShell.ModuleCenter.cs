@@ -697,7 +697,30 @@ namespace CxVisual.Studio
             resultControls.Children.Add(rawExportButton);
             resultControls.Children.Add(saveRoiButton);
             resultControls.Children.Add(runSavedRoiButton);
+            // Studio仅切换已有MPW/MVI工具，不复制图元数据与MEM工程事务。
+            var roiTools=new WrapPanel {Margin=new Thickness(3,2,3,4)};
+            var rectRoiTool=new Button {Content="矩形ROI",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),ToolTip="在原图拖动绘制，松开后自动选中"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(rectRoiTool,
+                "Studio.ModuleCenter.DrawRectangleRoi");
+            var polygonRoiTool=new Button {Content="多边形ROI",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),ToolTip="依次点击顶点，双击结束"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(polygonRoiTool,
+                "Studio.ModuleCenter.DrawPolygonRoi");
+            var moveRoiTool=new Button {Content="选择/移动ROI",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),ToolTip="选择或拖动已有ROI"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(moveRoiTool,
+                "Studio.ModuleCenter.SelectRoi");
+            var navigateRoiTool=new Button {Content="导航",Padding=new Thickness(8,4,8,4),
+                Margin=new Thickness(3),ToolTip="退出绘制并返回图窗平移"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(navigateRoiTool,
+                "Studio.ModuleCenter.NavigateRoi");
+            roiTools.Children.Add(rectRoiTool);
+            roiTools.Children.Add(polygonRoiTool);
+            roiTools.Children.Add(moveRoiTool);
+            roiTools.Children.Add(navigateRoiTool);
             var resultStack=new StackPanel();
+            resultStack.Children.Add(roiTools);
             resultStack.Children.Add(resultControls);
             resultStack.Children.Add(resultList);
             resultStack.Children.Add(resultPreview);
@@ -729,7 +752,9 @@ namespace CxVisual.Studio
                 runExportButton.IsEnabled=false;rawExportButton.IsEnabled=false;
                 saveRoiButton.IsEnabled=false;runSavedRoiButton.IsEnabled=false;
                 resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
-                resultPreview.Clear();resultPreview.Visibility=Visibility.Collapsed;
+                resultPreview.Clear();
+                resultPreview.ToolMode=MVIImageToolMode.Navigate;
+                resultPreview.Visibility=Visibility.Collapsed;
                 resultExpander.Visibility=Visibility.Collapsed;
                 resultDetail.Text="旧Run已经失效；不会保留之前的图像和轮廓投影。";
             };
@@ -747,6 +772,26 @@ namespace CxVisual.Studio
                 (displayedOriginal==null ||
                  IsStudioVisionSourceCurrent(resultPreview,displayedOriginal,
                      displayedOriginalGeneration));
+            Action<MVIImageToolMode,string> selectRoiTool=(mode,instruction)=>{
+                if(!hasCurrentSource())
+                {
+                    resultDetail.Text="当前没有同源有效原图，不能进入ROI绘制工具。";
+                    return;
+                }
+                resultPreview.SelectOriginal();
+                resultPreview.ToolMode=mode;
+                resultDetail.Text=instruction;
+            };
+            rectRoiTool.Click+=(sender,args)=>selectRoiTool(
+                MVIImageToolMode.RectangleRoi,
+                "矩形ROI：原图拖动完成即选中；点击“保存选中ROI到MEM”提交工程。");
+            polygonRoiTool.Click+=(sender,args)=>selectRoiTool(
+                MVIImageToolMode.PolygonRoi,
+                "多边形ROI：点击顶点、双击完成并选中；Esc取消草稿。");
+            moveRoiTool.Click+=(sender,args)=>selectRoiTool(
+                MVIImageToolMode.MoveOverlay,"单击选择或拖动已有ROI；编辑工程需显式提交。");
+            navigateRoiTool.Click+=(sender,args)=>selectRoiTool(
+                MVIImageToolMode.Navigate,"已退出ROI工具，恢复原图平移。");
             // 正式工程重开后不需要先运行一条新的CPU流程；
             // 只绑定用户指定的RAW原像素，原工程Revision和Run证据保持不变。
             bindRoiButton.Click+=async (sender,args)=>{
@@ -795,6 +840,7 @@ namespace CxVisual.Studio
                     }
                     invalidatePreview();
                     resultPreview.ShowOriginal(restored);
+                    resultPreview.ToolMode=MVIImageToolMode.Navigate;
                     displayedOriginal=restored;
                     displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     displayedProject=projectId;
@@ -895,6 +941,7 @@ namespace CxVisual.Studio
                         FlowId=completed.RunId,Evidence=completed,SourceImage=original
                     };
                     PopulateStudioVisionResults(report,resultPreview,resultList);
+                    resultPreview.ToolMode=MVIImageToolMode.Navigate;
                     resultExpander.Visibility=Visibility.Visible;
                     resultExpander.IsExpanded=true;
                     resultList.Visibility=Visibility.Visible;
@@ -1126,6 +1173,7 @@ namespace CxVisual.Studio
                     executionTrace.ItemsSource=report.TraceRecords;
                     executionTrace.Visibility=Visibility.Visible;
                     PopulateStudioVisionResults(report,resultPreview,resultList);
+                    resultPreview.ToolMode=MVIImageToolMode.Navigate;
                     displayedRun=report.Evidence;
                     displayedOriginal=report.SourceImage;
                     displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
