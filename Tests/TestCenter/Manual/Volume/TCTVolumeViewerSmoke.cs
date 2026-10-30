@@ -1005,6 +1005,28 @@ namespace CxVisual.TestCenter.UI
                     frame.Scene.BindAdditionalPointClouds(null,null);
                     frame.Scene.BindSceneSelection(frame.ViewState.Scene3D);
 
+                    var roiPhysical=FVOSliceImageBuilder.RectangleToPhysical(frame.Volume,
+                        3,4,5,FVOSlicePlane.XY,2,2,4,4);
+                    MPWVolumeDisplayMesh roiPrism=MPWVolumeSurfaceProjection.ProjectSliceRoiPrism(
+                        roiPhysical,-.3,.3,frame.Volume.SpatialFrame,
+                        frame.Volume.OriginalWidth,frame.Volume.OriginalHeight,
+                        frame.Volume.OriginalDepth);
+                    var geometryScene=new MVI3DSceneState();
+                    Guid roiId=geometryScene.Add(MVI3DSceneKind.Roi,"ct3d:roi:physical",1);
+                    Guid maskId=geometryScene.Add(MVI3DSceneKind.Mask,"ct3d:mask:physical",1);
+                    frame.Scene.BindAdditionalMeshes(geometryScene,item=>roiPrism);
+                    Check(roiPrism.TriangleCount==12&&
+                        frame.Scene.AdditionalMeshCount==2,
+                        "WPF空间ROI和Mask必须是独立可操作的真实三角显示对象");
+                    geometryScene.SetOpacity(roiId,.3);
+                    geometryScene.SetVisibility(maskId,false);
+                    Check(frame.Scene.AdditionalMeshCount==1,
+                        "Mask隐藏不应影响另一个ROI空间对象");
+                    geometryScene.Remove(roiId);
+                    Check(frame.Scene.AdditionalMeshCount==0,
+                        "三维ROI删除必须同步释放Viewport3D可视实例");
+                    frame.Scene.BindAdditionalMeshes(null,null);
+
                     FGEMeshRayHit picked;
                     var bounds=meshResult.Mesh;
                     double rayX=(bounds.BoundsMin.X+bounds.BoundsMax.X)*.5;
