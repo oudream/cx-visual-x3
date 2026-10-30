@@ -451,6 +451,9 @@ namespace CxVisual.TestCenter.UI
             _commands.Items.Add(remoteGroup);
             if (found.Length > 0) SelectCommand(found[0]);
             else SelectCommand(_childContract);
+            // 同一MRK Registry的正式目录刷新也同步到公共MPW视图；
+            // 不修改原人工测试所用的演示/远程Host专用条目。
+            if(_shared.Connected)_shared.RefreshCatalog();
             Changed();
         }
         private void SelectCommand(MRKCommandDescriptor descriptor)
