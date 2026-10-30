@@ -1006,6 +1006,7 @@ namespace CxVisual.Studio
                         x.OutputPort=="ThresholdMask");
                     // 工程几何只投影到当前MVI图窗，绝不从临时Overlay反写MEM。
                     resultPreview.AddOverlay(recipe.Roi);
+                    resultPreview.SelectOverlay(recipe.Roi.Id);
                     displayedRun=completed;
                     displayedOriginal=original;
                     displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
