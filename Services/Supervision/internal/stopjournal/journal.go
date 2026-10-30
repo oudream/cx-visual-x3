@@ -89,12 +89,13 @@ func Append(workDir string, entry Entry) error {
 		return errors.New("unsafe stop journal directory")
 	}
 	target := Path(workDir)
-	if info, err := os.Lstat(target); err == nil {
-		if !info.Mode().IsRegular() {
+	previous, statErr := os.Lstat(target)
+	if statErr == nil {
+		if !previous.Mode().IsRegular() {
 			return errors.New("stop journal is not a regular file")
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
 	}
 	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
@@ -104,6 +105,9 @@ func Append(workDir string, entry Entry) error {
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("unsafe opened stop journal")
+	}
+	if statErr == nil && !os.SameFile(previous, info) {
+		return errors.New("stop journal file replaced during open")
 	}
 	if info.Size()+int64(len(data))+1 > MaxBytes {
 		return errors.New("stop journal full: archive offline before further stops")
