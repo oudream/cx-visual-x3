@@ -9,6 +9,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         public static void Run()
         {
+            VerifyEditableOverlayGesture();
             // GoF State：两线四点保留唯一阶段，不把鼠标/WPF事件注入MVI。
             MVIImageLinePairGesture gesture=new MVIImageLinePairGesture();
             Ensure(gesture.Stage==MVIImageLinePairStage.FirstStart && gesture.PointCount==0,
@@ -444,6 +445,77 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Console.WriteLine("PASS MVI ImageOverlay: 原子批量叠加、完整通知、重复/空项/枚举异常反证");
 
             Console.WriteLine("PASS MVI ImageOverlay: 旋转矩形正交几何/角度/命中/异常与原有ROI");
+        }
+
+        /// <summary>
+        /// 四类编辑共用的短事务；不依赖WPF，无持久Undo或第二份OverlayStore。
+        /// 外部修改/删除优先，取消不得覆盖新的合法对象状态。
+        /// </summary>
+        private static void VerifyEditableOverlayGesture()
+        {
+            var store=new MVIImageOverlayStore();
+            var roi=store.Add(new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(2,2,6,5)));
+            int notifications=0;
+            store.Changed+=(sender,args)=>notifications++;
+            var edit=new MVIImageOverlayEditGesture(store);
+            Ensure(!edit.IsActive && edit.Kind==null && !edit.Cancel(),
+                "无活动手势取消必须幂等");
+            Fail<ArgumentNullException>(()=>edit.Begin(null,
+                MVIImageOverlayEditKind.Move),"空手势原始对象拒绝");
+            Fail<ArgumentOutOfRangeException>(()=>edit.Begin(roi,
+                (MVIImageOverlayEditKind)99),"非法手势类型拒绝");
+            Ensure(edit.Begin(roi,MVIImageOverlayEditKind.Move) &&
+                edit.Kind==MVIImageOverlayEditKind.Move,"开始独占移动手势");
+            Fail<InvalidOperationException>(()=>edit.Begin(roi,
+                MVIImageOverlayEditKind.Resize),"不能并发开始第二编辑手势");
+            Fail<ArgumentException>(()=>edit.TryUpdate(new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,2,2))),"更换Guid禁止替换旧手势对象");
+            var moved=roi.Translate(3,4);
+            Ensure(edit.TryUpdate(moved) && Object.ReferenceEquals(store.Find(roi.Id),moved),
+                "单一Store只写入当前手势新不可变几何");
+            Ensure(edit.Cancel() &&
+                Object.ReferenceEquals(store.Find(roi.Id),roi) &&
+                notifications==2 && !edit.IsActive,
+                "Esc/失捕取消应原位恢复初始对象身份并只通知有效修改");
+            Ensure(!edit.Cancel(),"重复取消不能再次写入或通知");
+
+            Ensure(edit.Begin(roi,MVIImageOverlayEditKind.Resize),"重新开始尺寸编辑");
+            var resized=roi.WithResizedRoiHandle(MVIImageResizeHandle.BottomRight,
+                new FGEPoint2D(12,12),30,30);
+            Ensure(edit.TryUpdate(resized) && edit.Complete() &&
+                Object.ReferenceEquals(store.Find(roi.Id),resized),
+                "MouseUp完成后保留最后一次有效编辑");
+            Ensure(!edit.Cancel() && Object.ReferenceEquals(store.Find(roi.Id),resized),
+                "完成后LostMouseCapture不能撤销已提交编辑");
+
+            Ensure(edit.Begin(resized,MVIImageOverlayEditKind.Rotate),
+                "同一State合同适用于旋转类别");
+            var rotated=resized.Translate(1,0);
+            Ensure(edit.TryUpdate(rotated),"手势有效更新");
+            var external=rotated.WithStyle(unchecked((int)0xFF12ABCD),1.5);
+            Ensure(store.Replace(external),"模拟外部样式修改");
+            Ensure(!edit.TryUpdate(resized) && !edit.IsActive &&
+                !edit.Cancel() && Object.ReferenceEquals(store.Find(roi.Id),external),
+                "外部替换优先：旧手势不能覆写新样式或执行虚假回滚");
+
+            Ensure(edit.Begin(external,MVIImageOverlayEditKind.PolygonVertex),
+                "顶点类复用唯一EditState合同");
+            Ensure(edit.TryUpdate(external.Translate(0,1)),"拖动草稿写入");
+            Ensure(store.SetLocked(roi.Id,true),"外部锁定图元");
+            Ensure(!edit.Cancel() && store.Find(roi.Id).IsLocked,
+                "外部锁定后取消不得把图元重新解锁");
+            Ensure(!edit.Begin(store.Find(roi.Id),MVIImageOverlayEditKind.Move),
+                "锁定对象禁止开始手势");
+            Ensure(store.SetLocked(roi.Id,false),"恢复外部解锁");
+            var unlocked=store.Find(roi.Id);
+            Ensure(edit.Begin(unlocked,MVIImageOverlayEditKind.Move),"解锁后正常编辑");
+            Ensure(edit.TryUpdate(unlocked.Translate(1,0)),"最后一次更新");
+            Ensure(store.Remove(roi.Id) && !edit.Cancel() && store.Find(roi.Id)==null,
+                "外部删除后旧手势不能重新插入已删除对象");
+            Console.WriteLine("PASS MVI ImageOverlay: 编辑State Begin/Update/Complete/Cancel、回滚与外部修改隔离");
         }
 
         private static IEnumerable<MVIImageOverlayItem> ThrowAfter(MVIImageOverlayItem item)
