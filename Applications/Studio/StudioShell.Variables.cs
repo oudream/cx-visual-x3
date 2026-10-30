@@ -17,6 +17,7 @@ namespace CxVisual.Studio
             MDSVariableProviderHost provider = null, bool allowRuntimeWrites = false)
         {
             if (table == null) throw new ArgumentNullException("table");
+            if (!ReferenceEquals(_studioVariableScope, table)) CloseStudioHmiRuntimeDocuments();
             _studioVariableScope = table;
             _studioVariableProvider = provider;
             _studioVariableWritesAllowed = allowRuntimeWrites;
