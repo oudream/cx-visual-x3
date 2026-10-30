@@ -381,3 +381,18 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **实际执行与验证等级**：当前 Go 1.23.2/Linux amd64 环境中，将已修改的 StopController 关键算法同步至独立 supervisionstopcheck 最小 Go 模块（不含全仓库依赖），执行 go test -race -count=20 ./... 和 go test -count=20 ./...，两者成功。该验证覆盖 Kill 失败不能伪装受控退出、活动 PID 生命周期、真正的原 Worker Wait 确认/未知结果；**但完整主仓库 Go 模块编译、真实 Daemon 主循环集成、GitHub 三平台 CI 尚未取得固定 SHA 通过证据**。本轮代码与测试已提交（S），G1/G2/G3 未冒称完成。
 
 **保留限制**：基于实际句柄的 ownedChildren 比异步 PID 表更可信，但不能保证进程树、外部子孙进程清理，不能解决 OS 极端重用、Daemon 强制退出、客户进程安全关停策略。unknown 不得向业务宣称停止成功；远程启停和安全解锁仍须 S11 的身份、授权、审计及后续状态核验。
+
+
+## 十八、停止超时迟到确认与原守护代次交接（2026-10-30）
+
+**源码实装**：
+1. `internal/daemonc/stop.go` 保留原 RequestStop 入口，新增 RequestStopWithLateReceipt。停止信号已经被 OS 接受，但原 Worker 的 Wait 未在有界时间内返回时，首次回执严格保持 unknown。之后由**同一原始 exec.Cmd 的 Wait**触发最终回调（wait-confirmed 或仍为 unknown）；不发第二次 Kill，不通过裸 PID 重新发现，不创建不受控的等待 goroutine。finish 与超时分支通过同一锁协调，迟到结果一次性补报；回调在锁外执行。
+2. `cmd/daemon/owned_stop.go` 把迟到结果写入现有 Daemon 日志，action 附加 /late，保证在主循环不再消费结果队列时仍尝试记录；队列拥塞时直接写完整结果，不伪造成功。但如果 Daemon 进程已被强制退出或日志不可写，**不能承诺跨故障持久审计**。
+3. `internal/daemonc/daemon.go`：本代受控停止的 EventExit 后直接结束旧守护 Worker，不再自动进入下一次启动；ErrorCount 不把此类有意停止当作崩溃。
+4. `cmd/daemon/main.go`：更新启用→启用的配置差异时在现有门禁下交接 Worker；同一配置使用既有 program.IsSameProgram 防止无意义停启。原 UDP 重启使用**本地现存配置**而非信任请求中提供的 Program 路径，只有原 Worker 的 WaitCompleted 回执才能触发重启；refused、signal-failed、unknown 不能作为重启许可。旧 UDP 的身份认证/授权仍未实现，不能冒称 S11 完成。
+
+**回归用例**：internal/daemonc/stop_test.go 新增 TestOwnedStopLateWaitReconcilesExactlyOnce（UNKNOWN 后原 Wait 只补一次 wait-confirmed）；TestRunProgramControlledStopEndsEnabledWorkerGeneration（仍启用的 Program 受控停止后，旧 Worker 不自行重启）；Linux Go Race CI 增加 cmd/daemon 守护代次交接检查，Windows/macOS/Linux 既有构建和全量 Go 测试继续保留。
+
+**实测范围**：使用独立 Go 最小模块复现此次 StopController 核心逻辑，在 Go 1.23.2/Linux amd64 执行 go test -race -count=20 ./...，返回 ok。**这是独立算法验证，不是本仓库全部 Go 依赖、Daemon 主循环或 Windows/Linux/macOS CI 的通过证明**。本轮为源码/测试已提交（S），主仓库 G1 与真实设备 G2/G3 待核查。
+
+**剩余风险**：Daemon 强制退出/断电后迟到回执不可可靠记录；跨进程操作账本与幂等操作编号、原 UDP 身份授权/审计、进程树/孤儿进程、PID 复用与业务 Ready 验证尚未完成。该功能没有对 H5 开放未经认证的停止/启动接口。
