@@ -454,10 +454,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Reject<ArgumentOutOfRangeException>(() => new PADPlcPollingSession(
                         bridge, new[] { "word" }, TimeSpan.FromMilliseconds(1)));
                     intervalPoll.Start();
+                    Check(intervalPoll.IsStarted, "启动后周期会话必须处于Running");
                     Reject<InvalidOperationException>(() => intervalPoll.Start());
                     Check(SpinWait.SpinUntil(() => intervalPoll.CompletedCycles >= 2, 5000),
                         "周期顺序轮询必须从真实PLC完成至少两轮FC03");
                     intervalPoll.StopAsync().GetAwaiter().GetResult();
+                    Check(!intervalPoll.IsStarted && intervalPoll.Completion.IsCompleted,
+                        "停止并等待后不得将周期会话继续标为Running");
                     int requestsAfterPollStop = plc.Requests;
                     Check(intervalPoll.SuccessfulCycles >= 2 &&
                         intervalPoll.PartialCycles == 0 &&
@@ -521,7 +524,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     {
                         driftPoll.Start(runImmediately: false);
                         Check(SpinWait.SpinUntil(() => driftPoll.Completion.IsCompleted, 5000) &&
-                            driftPoll.Completion.IsFaulted,
+                            driftPoll.Completion.IsFaulted && !driftPoll.IsStarted,
                             "周期采集点表漂移应在首轮预检后进入显式Faulted");
                         Reject<InvalidOperationException>(() =>
                             driftPoll.StopAsync().GetAwaiter().GetResult());
