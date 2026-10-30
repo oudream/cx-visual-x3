@@ -27,6 +27,11 @@ namespace CxVisual.Studio
         private readonly StudioViewModel _viewModel;
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
+        // B5: retain only the bounded safe text after Runtime disposes a Flow.
+        // Never retain the completed MRK handle or its large professional payload.
+        private string _lastRunResultSummary;
+        private Guid _lastRunProjectId;
+        private int _lastRunEngineeringRevision;
         private MRKExecutionDebugController _logicDebug;
         private readonly HashSet<Guid> _logicBreakpoints=new HashSet<Guid>();
         // 调试会话的限定执行路径，不参与MEM工程持久化。
@@ -1897,22 +1902,32 @@ namespace CxVisual.Studio
             LogicInfo.Text=_logicDebug!=null&&_logicDebug.StepOnce()?
                 "已单步释放一个等待的MRK节点":"当前无可单步的等待节点";
         }
-        /// <summary>只呈现MRK已提交的有界StepResult摘要，不复制图像/体数据。</summary>
-        private void OnFlowInspectData(object sender,RoutedEventArgs args)
+        /// <summary>只读MRK当次Flow的有界元数据，不保存原始StepResult。</summary>
+        private static string FormatFlowResultSummary(MRKFlowHandle flow)
         {
-            MRKFlowHandle flow=_logicFlow;
-            if(flow==null)
-            {
-                FlowResultPreview.Text="当前没有运行中的MRK Flow或可查看的结果";
-                return;
-            }
             var values=flow.Context.ResultSummariesSnapshot(32);
             string[] rows=values.Select(x=>x.Key+" = "+x.Value).ToArray();
-            FlowResultPreview.Text="Flow "+flow.FlowId.ToString("N")+
+            return "Flow "+flow.FlowId.ToString("N")+
                 " / "+flow.GetSnapshot().State+
-                " / "+values.Count+" 条已提交StepResult"+Environment.NewLine+
+                " / 显示最多32条结果，当前 "+values.Count+" 条"+Environment.NewLine+
                 (rows.Length==0?"暂无已提交StepResult":
                     string.Join(Environment.NewLine,rows));
+        }
+        private void OnFlowInspectData(object sender,RoutedEventArgs args)
+        {
+            if(_logicFlow!=null)
+            {
+                FlowResultPreview.Text=FormatFlowResultSummary(_logicFlow);
+                return;
+            }
+            if(_lastRunResultSummary!=null&&
+                _lastRunProjectId==_viewModel.ProjectSession.Project.Id&&
+                _lastRunEngineeringRevision==_viewModel.ProjectSession.Revision)
+            {
+                FlowResultPreview.Text=_lastRunResultSummary;
+                return;
+            }
+            FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
         }
         private void OnFlowDebugCancel(object sender,RoutedEventArgs args)
         {
@@ -2172,6 +2187,8 @@ namespace CxVisual.Studio
                     publicationRevision=1;
                     _preparedCpuRelease=null;
                 }
+                _lastRunResultSummary=null;
+                FlowResultPreview.Text="新的MRK Flow尚未产生已提交结果";
                 _logicDebug=new MRKExecutionDebugController();
                 foreach(Guid id in _logicBreakpoints)
                 foreach(var origin in compiled.SourceMap.Find(id))
@@ -2230,6 +2247,10 @@ namespace CxVisual.Studio
                 LogicInfo.Text="CPU仿真运行中：Plan Revision "+compiled.EngineeringRevision;
                 var result=await _logicFlow.Completion;
                 update();
+                _lastRunResultSummary=FormatFlowResultSummary(_logicFlow);
+                _lastRunProjectId=_viewModel.ProjectSession.Project.Id;
+                _lastRunEngineeringRevision=_viewModel.ProjectSession.Revision;
+                FlowResultPreview.Text=_lastRunResultSummary;
                 LogicInfo.Text="仿真执行结束: "+result.State+
                     "；FlowId="+result.FlowId.ToString("N")+
                     (result.Error==null?"":"；错误: "+result.Error.Message);
