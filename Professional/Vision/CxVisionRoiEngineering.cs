@@ -187,7 +187,11 @@ namespace CxVisual.Professional.Vision
         {
             if(source==null)throw new ArgumentNullException("source");
             cancellation.ThrowIfCancellationRequested();
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            int expectedRevision=engineering.Revision;
             CxVisionRoiRecipe recipe=Open(engineering,address);
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
             if(source.Width!=recipe.Width||source.Height!=recipe.Height ||
                source.PixelFormat!=recipe.PixelFormat ||
                !string.Equals(HashImage(source,cancellation),recipe.SourceHash,
@@ -201,11 +205,16 @@ namespace CxVisual.Professional.Vision
             int bottom=Math.Min(source.Height-1,(int)Math.Ceiling(roi.Bounds.Bottom)-1);
             if(left>right||top>bottom)
                 throw new InvalidDataException("ROI没有有效像素");
-            return await CxVisionDataFlow.RunRoiInspectionPreviewAsync(
-                source,recipe.Options,recipe.SourceId,
-                new FIMPixelRegion(left,top,right,bottom),
-                (x,y)=>roi.ContainsRoiPixelCenter(x,y),cancellation,
-                recipe.ConfigurationRevision).ConfigureAwait(false);
+            CxVisionRunSummary completed=await
+                CxVisionDataFlow.RunRoiInspectionPreviewAsync(
+                    source,recipe.Options,recipe.SourceId,
+                    new FIMPixelRegion(left,top,right,bottom),
+                    (x,y)=>roi.ContainsRoiPixelCenter(x,y),cancellation,
+                    recipe.ConfigurationRevision).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("vision.roi.definition_changed_during_run");
+            return completed;
         }
 
         private static string HashImage(FIMImageBuffer image,CancellationToken cancellation)
