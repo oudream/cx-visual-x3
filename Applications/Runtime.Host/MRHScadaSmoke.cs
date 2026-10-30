@@ -212,6 +212,44 @@ namespace CxVisual.Runtime.Host
                         Check(plc.Reads==afterStop,"SCADA Host停止后仍在发FC03");
                         }
                     }
+                    // 实际TCP设备停止响应：旧FCR采集Faulted、MDS Stale，
+                    // 独立Host必须先关闭旧Connector再以相同MEM/MHS版本重建新代次。
+                    using(CancellationTokenSource recoveryStop=new CancellationTokenSource())
+                    {
+                        MRHScadaRecoverySupervisor recovery=
+                            new MRHScadaRecoverySupervisor(project,configs,
+                                deviceGuid,moduleId,"plc",90,true,
+                                maxRecoveryAttempts:2,retryDelayMilliseconds:70);
+                        Task recoveryTask=recovery.RunAsync(recoveryStop.Token);
+                        Check(SpinWait.SpinUntil(()=>
+                            recovery.ConnectedGenerations==1,8000),
+                            "SCADA监督器没有完成第一次真正TCP连接");
+                        string firstGeneration=recovery.LastGeneration;
+                        int beforeRecovery=plc.Reads;
+                        Check(SpinWait.SpinUntil(()=>plc.Reads>=beforeRecovery+2,8000),
+                            "断线模拟前应先完成正常多次真实FC03采集");
+                        plc.DropNextReplies(1);
+                        Check(SpinWait.SpinUntil(()=>
+                            recovery.ConnectedGenerations>=2,12000),
+                            "FC03真实超时未触发SCADA新Generation有界自动重连");
+                        Check(recovery.RecoveryAttempts==1 &&
+                            recovery.PinnedEffectiveVersion==persisted.EffectiveVersion &&
+                            recovery.LastGeneration!=firstGeneration &&
+                            plc.Writes==0,
+                            "恢复须保持原生效版本、建立新会话且不得发FC06");
+                        int afterReconnect=plc.Reads;
+                        Check(SpinWait.SpinUntil(()=>
+                            plc.Reads>afterReconnect,8000),
+                            "重新连接的PLC会话没有恢复真实FC03采样");
+                        recoveryStop.Cancel();
+                        try {recoveryTask.GetAwaiter().GetResult();}
+                        catch(OperationCanceledException)
+                            when(recoveryStop.IsCancellationRequested) { }
+                        int afterSupervisionStop=plc.Reads;
+                        Thread.Sleep(230);
+                        Check(plc.Reads==afterSupervisionStop,
+                            "恢复监督器停止后仍有后台FC03");
+                    }
                     // 同一保存工程在Host重启后重新建立不同Generation，不能沿用旧运行态。
                     using(MRHScadaRuntime restarted=MRHScadaRuntime.Open(
                         project,configs,deviceGuid,moduleId,"plc",90,true))
