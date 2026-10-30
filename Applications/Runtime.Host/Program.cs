@@ -25,6 +25,8 @@ namespace CxVisual.Runtime.Host
                     return MRHUnifiedRuntimeHost.Recover(args[1]);
                 if (verb == "runtime-serve" && args.Length == 2)
                     return MRHUnifiedRuntimeHost.Serve(args[1]);
+                if (verb == "scada-g1-smoke" && args.Length == 1)
+                    return MRHScadaSmoke.Run();
                 if (verb == "scada-serve" && (args.Length == 7 || args.Length == 8))
                     return MRHScadaRuntime.Serve(args[1],args[2],args[3],
                         args[4],args[5],args[6],
