@@ -45,9 +45,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private Guid? _selectedOverlayId;
         private MVIImageOverlayItem _resizeStart;
         private MVIImageResizeHandle _resizeHandle;
-        private bool _resizing, _resizingSecondary;
-        private bool _editingVertex, _editingVertexSecondary;
-        private bool _rotatingOverlay, _rotatingSecondary;
+        private bool _resizing;
+        private bool _editingVertex;
+        private bool _rotatingOverlay;
         private MVIImageOverlayItem _rotationStart;
         private MVIImageOverlayItem _vertexEditStart;
         private int _vertexIndex;
@@ -221,7 +221,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_selecting)_region=null;
             _dragging=_selecting=_moving=_resizing=_editingVertex=_rotatingOverlay=false;
             _secondaryDragging=false;
-            _resizingSecondary=_editingVertexSecondary=_rotatingSecondary=false;
             _movingOverlay=_resizeStart=_vertexEditStart=_rotationStart=null;
             _linePairGesture.Reset();
             _polygonDraft.Clear();
@@ -1563,8 +1562,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 Point handle=RotationHandleScreenPoint(item,viewport);
                 if(Math.Abs(pointer.X-handle.X)<=9 && Math.Abs(pointer.Y-handle.Y)<=9)
                 {
-                    if(!_overlayEdit.Begin(item,MVIImageOverlayEditKind.Rotate))return false;
-                    _rotationStart=item;_rotatingOverlay=true;_rotatingSecondary=secondary;
+                    if(!_overlayEdit.Begin(item,MVIImageOverlayEditKind.Rotate,
+                        secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
+                        return false;
+                    _rotationStart=item;_rotatingOverlay=true;
                     return true;
                 }
             }
@@ -1708,9 +1709,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _overlays.GetVisibleItems().Any(x=>x.Id==selected.Id) &&
                 TryPolygonVertexHandle(pointer,viewport,selected,out index))
             {
-                if(!_overlayEdit.Begin(selected,MVIImageOverlayEditKind.PolygonVertex))return false;
+                if(!_overlayEdit.Begin(selected,MVIImageOverlayEditKind.PolygonVertex,
+                    secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
+                    return false;
                 _vertexEditStart=selected;_vertexIndex=index;
-                _editingVertex=true;_editingVertexSecondary=secondary;
+                _editingVertex=true;
                 return true;
             }
             FGEPoint2D display=new FGEPoint2D(
@@ -1791,9 +1794,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _overlays.GetVisibleItems().Any(x=>x.Id==selected.Id) &&
                 TryResizeHandle(pointer,viewport,selected,out handle))
             {
-                if(!_overlayEdit.Begin(selected,MVIImageOverlayEditKind.Resize))return false;
+                if(!_overlayEdit.Begin(selected,MVIImageOverlayEditKind.Resize,
+                    secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
+                    return false;
                 _resizeStart=selected; _resizeHandle=handle;
-                _resizing=true; _resizingSecondary=secondary;
+                _resizing=true;
                 return true;
             }
             FGEPoint2D point = _viewTransform.DisplayToSource(new FGEPoint2D(
@@ -2190,27 +2195,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
         {
-            bool completeEdit=(_rotatingOverlay && _rotatingSecondary) ||
-                (_editingVertex && _editingVertexSecondary) ||
-                (_resizing && _resizingSecondary);
-            if(_rotatingOverlay && _rotatingSecondary)
+            bool completeEdit=(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary)) ||
+                (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Secondary)) ||
+                (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Secondary));
+            if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary))
             {
                 UpdateRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
                 _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
             }
-            if (_editingVertex && _editingVertexSecondary)
+            if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Secondary))
             {
                 UpdatePolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
                 _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
             }
-            if (_resizing && _resizingSecondary)
+            if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Secondary))
             {
                 UpdateResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
                 _resizing=false; _resizeStart=null;
                 RaiseSelectionChanged();
             }
             _secondaryDragging = false;
-            if(completeEdit)_overlayEdit.Complete();
+            if(completeEdit)_overlayEdit.CompleteFrom(MVIImageGesturePane.Secondary);
             if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
             e.Handled = true;
         }
@@ -2218,12 +2223,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
             Point pointer = e.GetPosition(SecondaryViewportRoot);
-            if(_rotatingOverlay && _rotatingSecondary && e.LeftButton==MouseButtonState.Pressed)
+            if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary) && e.LeftButton==MouseButtonState.Pressed)
                 UpdateRotation(pointer,_secondaryViewport);
-            else if (_editingVertex && _editingVertexSecondary &&
+            else if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Secondary) &&
                 e.LeftButton==MouseButtonState.Pressed)
                 UpdatePolygonVertexEdit(pointer,_secondaryViewport);
-            else if (_resizing && _resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
+            else if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Secondary) && e.LeftButton == MouseButtonState.Pressed)
                 UpdateResize(pointer,_secondaryViewport);
             else if (_secondaryDragging && e.LeftButton == MouseButtonState.Pressed)
             {
@@ -2375,20 +2380,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
             bool completeEdit=_moving ||
-                (_rotatingOverlay && !_rotatingSecondary) ||
-                (_editingVertex && !_editingVertexSecondary) ||
-                (_resizing && !_resizingSecondary);
-            if(_rotatingOverlay && !_rotatingSecondary)
+                (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary)) ||
+                (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Primary)) ||
+                (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary));
+            if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary))
             {
                 UpdateRotation(e.GetPosition(ViewportRoot),_viewport);
                 _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
             }
-            if (_editingVertex && !_editingVertexSecondary)
+            if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Primary))
             {
                 UpdatePolygonVertexEdit(e.GetPosition(ViewportRoot),_viewport);
                 _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
             }
-            if (_resizing && !_resizingSecondary)
+            if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary))
             {
                 UpdateResize(e.GetPosition(ViewportRoot),_viewport);
                 _resizing=false; _resizeStart=null;
@@ -2403,7 +2408,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (_moving) UpdateMovedOverlay(e.GetPosition(ViewportRoot));
             _dragging = _selecting = _moving = false;
             _movingOverlay = null;
-            if(completeEdit)_overlayEdit.Complete();
+            if(completeEdit)_overlayEdit.CompleteFrom(MVIImageGesturePane.Primary);
             if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
         }
 
@@ -2437,12 +2442,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 UpdateDraftSelection(pointer);
             else if (_moving && e.LeftButton == MouseButtonState.Pressed)
                 UpdateMovedOverlay(pointer);
-            else if (_resizing && !_resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
+            else if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary) && e.LeftButton == MouseButtonState.Pressed)
                 UpdateResize(pointer,_viewport);
-            else if (_editingVertex && !_editingVertexSecondary &&
+            else if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Primary) &&
                 e.LeftButton==MouseButtonState.Pressed)
                 UpdatePolygonVertexEdit(pointer,_viewport);
-            else if(_rotatingOverlay && !_rotatingSecondary &&
+            else if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary) &&
                 e.LeftButton==MouseButtonState.Pressed)
                 UpdateRotation(pointer,_viewport);
             int px,py;
