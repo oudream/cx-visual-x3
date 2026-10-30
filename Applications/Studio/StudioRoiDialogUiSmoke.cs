@@ -38,6 +38,10 @@ namespace CxVisual.Studio
         private delegate bool EnumWindowsCallback(IntPtr hwnd,IntPtr state);
         [DllImport("user32.dll",SetLastError=true)]
         private static extern bool EnumWindows(EnumWindowsCallback callback,IntPtr state);
+        [DllImport("user32.dll",SetLastError=true)]
+        private static extern bool EnumThreadWindows(uint threadId,
+            EnumWindowsCallback callback,IntPtr state);
+        private static uint _studioUiThreadId;
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
         [DllImport("user32.dll",CharSet=CharSet.Unicode)]
@@ -84,16 +88,22 @@ namespace CxVisual.Studio
         {
             var handles=new System.Collections.Generic.List<IntPtr>();
             uint currentPid=unchecked((uint)Process.GetCurrentProcess().Id);
-            EnumWindows((hwnd,state)=>{
+            EnumWindowsCallback collect=(hwnd,state)=>{
                 uint pid;
                 GetWindowThreadProcessId(hwnd,out pid);
                 if(pid!=currentPid)return true;
                 var cls=new StringBuilder(128);
                 GetClassName(hwnd,cls,cls.Capacity);
-                if(String.Equals(cls.ToString(),"#32770",StringComparison.Ordinal))
+                if(String.Equals(cls.ToString(),"#32770",StringComparison.Ordinal) &&
+                   !handles.Contains(hwnd))
                     handles.Add(hwnd);
                 return true;
-            },IntPtr.Zero);
+            };
+            // EnumThreadWindows可看到实际WPF UI线程建立的原生模态窗口，
+            // 避免UIA后台线程的当前Desktop与Studio创建窗口的Desktop不同。
+            if(_studioUiThreadId!=0)
+                EnumThreadWindows(_studioUiThreadId,collect,IntPtr.Zero);
+            EnumWindows(collect,IntPtr.Zero);
             return handles;
         }
 
@@ -393,6 +403,11 @@ namespace CxVisual.Studio
                 window.UpdateLayout();
                 IntPtr hwnd=new WindowInteropHelper(window).Handle;
                 Require(hwnd!=IntPtr.Zero,"Studio真实HWND不存在");
+                uint processId;
+                _studioUiThreadId=GetWindowThreadProcessId(hwnd,out processId);
+                Require(_studioUiThreadId!=0 &&
+                    processId==unchecked((uint)Process.GetCurrentProcess().Id),
+                    "Win32 Studio窗口与测试进程/GUI线程身份不一致");
                 await Task.Run(()=>SetValue(hwnd,
                     "Studio.ModuleCenter.BindSavedRoiStride","-1"));
                 await Click(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw");
