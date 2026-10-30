@@ -292,6 +292,21 @@ namespace CxVisual.Studio
                         inspectClick();
                         Assert(preview.Text.Contains("productB = Int32 value=202"),
                             "B5相同工程修订的安全完成摘要没有保留");
+                        // Simulate project replacement while a completed preview
+                        // is visible: normal Studio RefreshScene must revoke it now,
+                        // without requiring the operator to click Inspect again.
+                        var historyProject=typeof(MainWindow).GetField("_lastRunProjectId",flags);
+                        var refreshScene=typeof(MainWindow).GetMethod("RefreshScene",flags);
+                        Assert(historyProject!=null&&refreshScene!=null,
+                            "B5工程切换失效处理缺少真实WPF入口");
+                        historyProject.SetValue(window,Guid.NewGuid());
+                        refreshScene.Invoke(window,new object[0]);
+                        Assert(preview.Text.Contains("无可查看的运行结果")&&
+                            !preview.Text.Contains("productB"),
+                            "B5切换工程后仍在可见结果面板泄漏旧Flow内容");
+                        inspectClick();
+                        Assert(preview.Text.Contains("无可查看的运行结果"),
+                            "B5失效后旧工程结果仍可再次查看");
                     }
                     finally
                     {
