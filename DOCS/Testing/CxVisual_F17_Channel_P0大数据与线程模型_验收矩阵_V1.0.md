@@ -155,3 +155,9 @@
 
 变更路径：Foundation/Transport/Channels/Implementations/HTTP/FTRHttpClientChannel.cs、IO/FTRChannelBase.cs、Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.cs；实施及x2对照见DOCS/Implementation/CxVisual_F17_Channel核心UML代码实装与验收_V2.0.md。
 已有P0 TCP与NamedPipe双向各2GiB和池化Retain跨Close回归保持原入口；本批HTTP不是完整无复制流式DataHandle或24小时/工业现场验收。
+
+### HTTP-CLI-06：真正响应体慢流截止新增反证（2026-10-30）
+
+- 用例：Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.HttpClientBodyDeadline()，由`--channel-uml-core`/`--channel-transport`自动调用；本机HttpListener真实OS回环已发送HTTP 200及首字节，持续2200ms不结束分块响应体。Client配置RequestTimeoutMs=850，必须在2900ms内返回TimeoutException、Received次数为0、FTR临时缓冲额度归0，禁止把未完成响应作为有效数据交付。
+- 直接覆盖接收慢Body、取消与资源释放；配合HTTP-CLI-01～05的同门Send重入、受限预算、诊断Payload禁用与继续服务回归。两个入口及Windows全SLN Rebuild/各方向2GiB仍在`.github/workflows/f17-channel-windows.yml`。
+- 代码固定增量：`323a4b3b`、`723c10c4`、`d7ec8b6d`、`6ae8fd4b`；**对应最新版固定SHA的Windows CI运行完成并出具日志之前，全部维持“已提交，待自动验收”**。
