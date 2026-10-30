@@ -29,6 +29,7 @@ namespace CxVisual.Studio
         private readonly string _rawVersion;
         private readonly IMRKVersionedCapabilityResolver _cpu;
         private readonly IMRKVersionedCapabilityResolver _simulation;
+        private readonly CxVisionThresholdProvider _effectiveProvider;
         private readonly IMOCCapabilityProvider[] _professionals;
         private readonly MRKResolvedCapability _rawCapability;
 
@@ -40,15 +41,25 @@ namespace CxVisual.Studio
                     "byte[]",MPCPortKind.Data) });
         }
 
+        internal StudioProfessionalFlowResolver(CxVisionThresholdProvider effectiveProvider,
+            byte[] rawBytes,IMRKVersionedCapabilityResolver simulation)
+            : this(effectiveProvider==null?null:effectiveProvider.CaptureInspectionOptions(),
+                effectiveProvider==null?0:effectiveProvider.ConfigurationRevision,
+                rawBytes,simulation,effectiveProvider)
+        {
+        }
+
         internal StudioProfessionalFlowResolver(CxVisionInspectionOptions options,
-            long softwareConfigRevision, byte[] rawBytes,
-            IMRKVersionedCapabilityResolver simulation)
+            long softwareConfigRevision,byte[] rawBytes,
+            IMRKVersionedCapabilityResolver simulation,
+            CxVisionThresholdProvider effectiveProvider=null)
         {
             if(options==null)throw new ArgumentNullException("options");
             if(simulation==null)throw new ArgumentNullException("simulation");
             string invalid=CxVisionInspectionOptions.Validate(options);
             if(invalid!=null)throw new ArgumentException(invalid,"options");
             _simulation=simulation;
+            _effectiveProvider=effectiveProvider;
             _raw=rawBytes==null?null:(byte[])rawBytes.Clone();
             if(_raw!=null)
             {
@@ -65,7 +76,10 @@ namespace CxVisual.Studio
                     inputs:new MRKCapabilityInput[0]);
             }
 
-            var threshold=new CxVisionThresholdProvider(options,softwareConfigRevision,simulation);
+            // Captured MHS Effective retains its original version/authorization
+            // fence. Local developer options are explicitly software-only.
+            var threshold=effectiveProvider??
+                new CxVisionThresholdProvider(options,softwareConfigRevision,simulation);
             var median=new CxVisionMedianEnhanceProvider(options.PixelDepth,1,threshold);
             var binary=new CxVisionBinaryThresholdProvider(options.PixelDepth,
                 options.GrayThreshold,median);
@@ -103,6 +117,14 @@ namespace CxVisual.Studio
 
         public bool TryResolve(string id,out MRKResolvedCapability capability)
         {
+            // An effective config that changed/revoked authorization must
+            // invalidate the entire software plan, not just threshold steps.
+            if(_effectiveProvider!=null)
+            {
+                string current;
+                _effectiveProvider.TryGetCapabilityVersion(
+                    CxVisionThresholdProvider.CapabilityId,out current);
+            }
             if(id==RawCapabilityId)
             {
                 capability=_rawCapability;
@@ -118,6 +140,12 @@ namespace CxVisual.Studio
 
         public bool TryGetCapabilityVersion(string id,out string version)
         {
+            if(_effectiveProvider!=null)
+            {
+                string current;
+                _effectiveProvider.TryGetCapabilityVersion(
+                    CxVisionThresholdProvider.CapabilityId,out current);
+            }
             if(id==RawCapabilityId)
             {
                 version=_rawVersion;
