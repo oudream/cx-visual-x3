@@ -230,3 +230,11 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - **事实纠偏**：旧 SR-03 的“英文错误直接进入 alerts.Classify 导致漏报”不适用于现有标准 Monitor 记录路径，因为 `dealProgramDaemonEvent` 先增加了统一中文失败描述。真正已修复的是 EventExit 语义反向。
 - **兼容性**：Go 双进程、`Program` SQLite、UDP 帧、事件码、原 `/programs_status`、`GET /api/v1/alerts/history` JSON 结构不变；新代码没有新增服务、数据库或公共模块 Owner。
 - **验收等级**：源码已提交（S）；本轮连接环境不能直接克隆仓库到本地运行完整 Go 测试，GitHub Actions 推送结果尚未证实。因此 **G1 未宣称通过**；真实进程/设备长稳属于 G2/G3 待验。触发工作流：`.github/workflows/supervision-migration.yml`，应核对最新提交上的 Go Windows/macOS/Linux 及 Web 作业后回填真实结果。
+
+
+## 九、P0 心跳快照解释与界面可信性（2026-10-30）
+
+- **改动**：`web/src/utils/format.ts` 新增纯函数 `formatHeartbeatAgeAtSnapshot`，使用 Monitor 的 `generatedAt` 与 `heartbeatAtMs` 计算距快照观察间隔，避免浏览器与监控机器时钟差异；在 `ProgramsView.vue` 的程序列表及详情中显示，明确“心跳时间不代表 Service Ready”。
+- **异常语义**：`heartbeatAtMs<=0` 为“从未上报”，非法生成时间标明“快照时间未知”，来源心跳时间晚于快照标明“时钟可能不同步”。不引入未经审批的固定心跳超时阈值，不把年龄转换成 Alive/Ready/Healthy 的权威判断。查询失败沿用已有 Store 的旧快照保留与错误提示。
+- **验证入口**：`web/src/utils/format.test.ts` 增加 0/负数/NaN、非法 `generatedAt`、15 秒/125 秒/3665 秒、未来来源时间等正反测试；Vue 的 `typecheck`、Vitest 和构建以相应 GitHub Actions SHA 为准，**本轮未报告 CI 已通过**。
+- **兼容性**：前后端现有 API 路径、返回 Schema、旧心跳计数、原 Go 数据与 Daemon 均不变。S01/S02 的完整健康判断仍需 C 阶段权威 Service/Device Provider、来源质量和可配置的探针周期，避免以本次时间间隔提示冒充业务健康。
