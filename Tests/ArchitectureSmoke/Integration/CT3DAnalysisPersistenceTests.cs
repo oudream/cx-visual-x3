@@ -442,6 +442,76 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Math.Abs(recomputed.Sphere.RadiusMm-restored.Sphere.RadiusMm)<1e-10,
                     "Surface/球复算形成新身份且原值/毫米数值不漂移");
                 Reject<OperationCanceledException>(()=>restored.Recompute(folder,new CancellationToken(true)));
+                var visualOwners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                    .Where(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId)).ToArray();
+                var originalCases=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
+                var priorLayouts=new System.Collections.Generic.Dictionary<Guid,MVI3DSceneState>();
+                var visualAspects=new System.Collections.Generic.List<MPMAspect>();
+                foreach(var value in originalCases)
+                {
+                    var layout=new MVI3DSceneState();
+                    Guid surfaceItem=layout.Add(MVI3DSceneKind.Surface,
+                        "ct3d:surface:"+value.Surface.ResultId.ToString("N"),
+                        value.Source.Revision,value.Source.Signature,.55);
+                    Guid measurementItem=layout.Add(MVI3DSceneKind.Measurement,
+                        "ct3d:sphere:"+value.Sphere.ResultId.ToString("N"),
+                        value.Source.Revision,value.Source.Signature,.75);
+                    layout.SetOrganization(measurementItem,"measurement","batch");
+                    layout.Select(measurementItem);
+                    priorLayouts.Add(value.Sphere.ResultId,layout);
+                    visualAspects.Add(MVI3DSceneLayoutPersistence.CreateAspect(layout,CancellationToken.None));
+                }
+                int initialBatchRevision=engineering.Revision;
+                CT3DAnalysisPersistence.CommitAll(engineering,visualOwners,initialBatchRevision,
+                    folder,originalCases,visualAspects,CancellationToken.None);
+                Check(engineering.Revision==initialBatchRevision+1,
+                    "批量专业结果与两个Scene Visual应在一次MEM事务中同步保存");
+                int beforeVisualRecompute=engineering.Revision;
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.RecomputeAllAndCommit(
+                    engineering,visualOwners,beforeVisualRecompute,folder,CancellationToken.None));
+                Check(engineering.Revision==beforeVisualRecompute,
+                    "批量复算不提供Scene重绑定器必须拒绝写入旧可视来源");
+                CT3DAnalysisPersistence.RecomputeAllAndCommit(engineering,visualOwners,
+                    beforeVisualRecompute,folder,(previous,next)=>
+                        MVI3DSceneLayoutPersistence.CreateReboundAspect(
+                            priorLayouts[previous.Sphere.ResultId],item=>
+                            {
+                                if(item.Kind==MVI3DSceneKind.Surface&&
+                                    item.SourceRef=="ct3d:surface:"+previous.Surface.ResultId.ToString("N"))
+                                    return "ct3d:surface:"+next.Surface.ResultId.ToString("N");
+                                if(item.Kind==MVI3DSceneKind.Measurement&&
+                                    item.SourceRef=="ct3d:sphere:"+previous.Sphere.ResultId.ToString("N"))
+                                    return "ct3d:sphere:"+next.Sphere.ResultId.ToString("N");
+                                throw new InvalidDataException("批量Scene旧专业来源不匹配。");
+                            },CancellationToken.None),CancellationToken.None);
+                var updatedCases=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
+                Check(updatedCases.Count==2&&engineering.Revision==beforeVisualRecompute+1&&
+                    updatedCases.All(c=>!priorLayouts.ContainsKey(c.Sphere.ResultId)),
+                    "两份Sphere/Surface经单事务更新专业结果身份");
+                for(int idx=0;idx<visualOwners.Length;idx++)
+                {
+                    var freshScene=new MVI3DSceneState();
+                    CT3DAnalysisCase current=updatedCases[idx];
+                    MVI3DSceneLayoutPersistence.Open(engineering,
+                        engineering.GetAddress(visualOwners[idx]),freshScene,
+                        item=>item.Kind==MVI3DSceneKind.Surface
+                            ?item.SourceRef=="ct3d:surface:"+current.Surface.ResultId.ToString("N")
+                            :item.Kind==MVI3DSceneKind.Measurement&&
+                                item.SourceRef=="ct3d:sphere:"+current.Sphere.ResultId.ToString("N"),
+                        CancellationToken.None);
+                    Check(freshScene.SnapshotLayer("measurement").Count==1&&
+                        freshScene.SelectedId.HasValue&&
+                        Math.Abs(freshScene.SnapshotLayer("measurement")[0].Opacity-.75)<1e-12,
+                        "批量复算后Scene仍保留测量选择、组和透明度且专业ResultId已更新");
+                }
+                engineering.Undo().RequireValue();
+                Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None)
+                    .Select(c=>c.Sphere.ResultId).SequenceEqual(originalCases.Select(c=>c.Sphere.ResultId)),
+                    "批量Data/Visual事务Undo应整体恢复两份旧Sphere");
+                engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None)
+                    .Select(c=>c.Sphere.ResultId).SequenceEqual(updatedCases.Select(c=>c.Sphere.ResultId)),
+                    "批量Data/Visual事务Redo应整体恢复两份新Sphere");
                 engineering.Close(true); // 测试撤销批量复算后显式丢弃未保存会话，不更改MEM保存合同。
             }
             Reject<InvalidOperationException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,6,CancellationToken.None));
