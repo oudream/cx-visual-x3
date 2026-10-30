@@ -257,6 +257,13 @@ namespace CxVisual.Studio
                 IntPtr hwnd=new WindowInteropHelper(window).Handle;
                 Require(hwnd!=IntPtr.Zero,"Studio真实HWND不存在");
                 await Task.Run(()=>SetValue(hwnd,
+                    "Studio.ModuleCenter.BindSavedRoiStride","-1"));
+                await Click(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw");
+                Require(status.Text.Contains("RAW行步长必须是非负整数") &&
+                    viewer.Session.Original==null &&
+                    vm.ProjectSession.Revision==revision,
+                    "WPF非法Stride输入必须在打开文件对话框前拒绝且不污染工程");
+                await Task.Run(()=>SetValue(hwnd,
                     "Studio.ModuleCenter.BindSavedRoiStride","10"));
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
                     "重新绑定工程ROI原图",raw);
@@ -274,6 +281,7 @@ namespace CxVisual.Studio
                     results.Items.Count>=4 && viewer.Overlays.Items.Count>0 &&
                     vm.ProjectSession.Revision==revision,
                     "WPF运行未发布真实MRK结果："+details.Text);
+                string firstRun=details.Text;
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunCsv",
                     "导出本次视觉Run",csv);
                 Require(File.Exists(csv) && File.ReadAllText(csv).Contains("AcceptedRegionPixelArea"),
@@ -305,6 +313,13 @@ namespace CxVisual.Studio
                 Require(File.Exists(rawExport) &&
                     new FileInfo(rawExport).Length==(long)mask.Stride*mask.Height,
                     "真实系统保存弹窗未导出被选中的Mask无损RAW");
+                await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
+                await Until(()=>details.Text.Contains("工程ROI复算完成") &&
+                    !String.Equals(firstRun,details.Text,StringComparison.Ordinal),
+                    "重复按钮Run应形成独立MRK运行身份");
+                Require(results.Items.Count>=4 &&
+                    vm.ProjectSession.Revision==revision,
+                    "第二次真实工程复算丢失产物或修改了工程定义");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
                     "重新绑定工程ROI原图",wrong);
                 await Until(()=>status.Text.Contains("ROI原图重绑失败"),
