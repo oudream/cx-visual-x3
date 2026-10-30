@@ -161,7 +161,27 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("Session直接切原图后未终止旧测量手势");
             frame.SetOriginal(sourceBefore);
             viewer.ToolMode=MVIImageToolMode.Navigate;
-            Console.WriteLine("PASS TCT Imaging gesture: WPF Esc/normal mouse release/external Session switch preserve correct transient state");
+            // 连续帧入口刻意保留正式属于当前Viewer的临时ROI投影；
+            // 公开Session即使重载同一个FIM实例，也必须按新原图Generation清空。
+            MVIImageOverlayItem retained=viewer.AddPolygonRoi(new[]{
+                new FGEPoint2D(0.5,0.5),new FGEPoint2D(2.5,0.5),
+                new FGEPoint2D(1.5,2.5)});
+            viewer.UpdateOriginalFrame(viewer.Session.Original);
+            if(viewer.Overlays.Find(retained.Id)==null)
+                throw new InvalidOperationException(
+                    "Viewer连续帧入口错误清除了保留的临时ROI");
+            viewer.ToolMode=MVIImageToolMode.LinePair;
+            viewer.AppendLinePairPoint(new FGEPoint2D(0.5,0.5));
+            if(draft.Visibility!=Visibility.Visible)
+                throw new InvalidOperationException("同实例重新装载前没有有效的两线草稿");
+            long previousGeneration=viewer.Session.OriginalGeneration;
+            viewer.Session.SetOriginal(viewer.Session.Original);
+            if(viewer.Session.OriginalGeneration<=previousGeneration ||
+               draft.Visibility!=Visibility.Collapsed || viewer.Overlays.Items.Count!=0)
+                throw new InvalidOperationException(
+                    "SDK同实例SetOriginal更新了Generation但旧ROI/测量草稿仍残留");
+            viewer.ToolMode=MVIImageToolMode.Navigate;
+            Console.WriteLine("PASS TCT Imaging gesture: WPF Esc/normal lost capture/external Session same-reference source generation guard");
         }
 
         private static T FindControl<T>(DependencyObject root,string id) where T : DependencyObject
