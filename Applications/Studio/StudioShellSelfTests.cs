@@ -314,6 +314,21 @@ namespace CxVisual.Studio
                         inspectClick();
                         Assert(preview.Text.Contains("productB = Int32 value=202"),
                             "B5相同工程修订的安全完成摘要没有保留");
+                        var showCompletion=typeof(MainWindow).GetMethod(
+                            "ShowFlowCompletionStatus",flags);
+                        TextBlock completionText=window.FindName("LogicInfo") as TextBlock;
+                        Assert(showCompletion!=null&&completionText!=null,
+                            "B5旧工程异步结束状态安全入口不存在");
+                        showCompletion.Invoke(window,new object[]{
+                            second.Completion.Result,Guid.NewGuid(),session.Revision});
+                        Assert(completionText.Text.Contains("旧工程MRK运行已结束")&&
+                            !completionText.Text.Contains(second.FlowId.ToString("N")),
+                            "B5旧工程完成回调污染当前工程状态区或泄露FlowId");
+                        showCompletion.Invoke(window,new object[]{
+                            second.Completion.Result,session.Project.Id,session.Revision});
+                        Assert(completionText.Text.Contains("Completed")&&
+                            completionText.Text.Contains(second.FlowId.ToString("N")),
+                            "B5当前工程真实MRK终态错误丢失");
                         // Simulate project replacement while a completed preview
                         // is visible: normal Studio RefreshScene must revoke it now,
                         // without requiring the operator to click Inspect again.
