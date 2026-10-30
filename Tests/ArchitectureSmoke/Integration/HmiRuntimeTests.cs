@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using CxVisual.Mechanism.Core;
 using System.Threading;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Data.Variables;
@@ -61,6 +63,57 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Guid.NewGuid(), 1, table, PHMHmiMode.Simulation, TimeSpan.Zero))
                 Check(stale.Read("input101").Quality == MDSVariableQuality.Stale,
                     "采样超期必须Stale");
+            // 真MDS异步LatestOnly通知：仅刷新绑定点，不制造额外Current。
+            using (PHMHmiRuntimeSession watcher = new PHMHmiRuntimeSession(
+                Guid.NewGuid(), 1, table, PHMHmiMode.DesignPreview, TimeSpan.FromMinutes(1)))
+            using (ManualResetEventSlim notified = new ManualResetEventSlim(false))
+            using (IDisposable subscription = watcher.Subscribe(names =>
+            {
+                if (names.Contains("input101")) notified.Set();
+            }, new[] { "input101" }))
+            {
+                table.Update<short>("input101", -13);
+                Check(notified.Wait(TimeSpan.FromSeconds(5)), "MDS订阅必须及时到达");
+                Check(watcher.Read("input101").Text == "-13", "变更后应重新读取唯一MDS真值");
+            }
+            // 真MEM保存的ActionId经过MVI路由，只有注入的宿主处理器才可能接收；
+            // 本测试的返回仅验证转交/Unknown UI合同，不伪称PLC动作成功。
+            using (MEMEngineeringSession doc = MEMEngineering.Create("HMI Action"))
+            {
+                MEMPage page = doc.AddPage("Monitor");
+                var button = doc.AddRectangle(page.RootContent, "Control", 10, 10, 90, 35);
+                doc.SetVisualBehavior(button, new MRCVisualBehaviorDefinition(
+                    eventActions: new[] { new MRCVisualEventAction("Click", "plc.write") }));
+                using (PHMHmiRuntimeSession runtime = new PHMHmiRuntimeSession(
+                    doc.Project.Id, doc.Revision, table,
+                    PHMHmiMode.AuthorizedOnline, TimeSpan.FromMinutes(1)))
+                {
+                    int calls = 0;
+                    var response = runtime.RequestActionAsync(doc, doc.GetAddress(button),
+                        "Click", "91", (request, token) =>
+                        {
+                            calls++;
+                            Check(request.ActionId == "plc.write" &&
+                                request.EventValue == "91", "ActionId必须来自MEM保存定义");
+                            return System.Threading.Tasks.Task.FromResult(
+                                new PHMHmiOperationFeedback(PHMHmiOperationState.Unknown,
+                                    "PLC_REGISTER_OUTCOME_UNKNOWN"));
+                        }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(calls == 1 && response.State == PHMHmiOperationState.Unknown,
+                        "未知回读不得伪报Confirmed或自动重试");
+                    doc.AddText(page.RootContent, "New", "change", 100, 100);
+                    response = runtime.RequestActionAsync(doc, doc.GetAddress(button),
+                        "Click", "92", (request, token) =>
+                        {
+                            calls++;
+                            return System.Threading.Tasks.Task.FromResult(
+                                new PHMHmiOperationFeedback(PHMHmiOperationState.Confirmed, ""));
+                        }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(response.State == PHMHmiOperationState.Rejected && calls == 1,
+                        "旧工程Revision会话不能下发");
+                }
+                doc.Close(true);
+            }
             Console.WriteLine("PASS HMI-G1 UInt16/Int16, Quality, Stale and safe mode gates");
         }
     }
