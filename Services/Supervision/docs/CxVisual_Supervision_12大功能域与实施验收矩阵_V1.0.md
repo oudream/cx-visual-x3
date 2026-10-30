@@ -289,3 +289,20 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - **有限实测**：以同一门禁算法搭建独立 Go 1.19 最小工程、使用 stub 的 Program/Daemon 依赖，go test -count=20 和 go test -race -count=10 均执行成功。该结果**不覆盖**主仓库的正式依赖、真实 recoveryPrograms 集成测试、Go 三系统 CI 或现场设备。
 
 **交付级别与未完风险**：GitHub 上源码及测试已提交（S）；本轮没有完整仓库 Go/Windows/macOS CI 的真实通过记录，原仓库 G1 仍待核实。旧 Worker 退出前配置启用可能被暂时拒绝并延后到下次恢复；原 MaxError/MaxCount 上限仍可能在后续周期重建 Worker 后被重置；正 PID 身份和进程树停止回执尚未关闭。当前只是同一 Program 的并发守护占用修复，不代表 S11 认证授权、完整 SX-B 故障恢复或远程写操作已验收。
+
+
+## 十三、S02守护上限跨恢复周期闭锁与配置续接（2026-10-30）
+
+**真实源码**：internal/daemonc/daemon.go 新增 RunProgramContextWithTerminal；原 RunProgramContext/RunProgram 保留，旧 EventMaxError、EventMaxCount 数值、JSON、发送渠道不变。到达阈值时，在事件发送之前同步调用终止钩子，cmd/daemon/workers.go 的 programWorkerGate.markTerminal 先锁定 ProgramId，避免 Worker 已退出而事件消费者尚未处理时的恢复竞态。
+
+**闭锁语义**：gate.terminal 是本 Daemon 进程内的 ProgramId→终止原因小型状态表；周期恢复、旧重启请求和配置启用都不能自动清锁，待续接意图也在终止时移除。旧 Program/Status/SQLite、UDP 不新增字段。**尚无安全的远程解锁接口**。Daemon 进程重新启动会丢失本次内存锁，不得声称跨 Daemon 重启的持久闭锁。
+
+**及时续接**：gate.request 为配置新增或禁用→启用记录待接续的 Worker，当旧 Worker 正在退出时，只能在旧 RunProgramContext 真正返回后、继续持有同 ID 占用权的情况下启动新 Worker；周期恢复仍用 gate.start 不排队。配置禁用/删除清空待续接，终止上限触发也清空。现有配置消息通道尚无 S11 正式身份认证，**配置状态满足条件不等于请求已获安全授权**。
+
+**恢复保护**：recoveryPrograms 在 FirstWaitTime 前检查 Program 是否 Enabled 和已终止锁，禁用/锁定程序不等待、不创建守护协程。
+
+**新增测试源码**：workers_test.go 覆盖 MaxError/MaxCount 跨恢复拒绝、配置启用排队交接无重叠、终止时丢弃队列、无关事件不闭锁、禁用/闭锁无延时；daemonc/daemon_test.go 检查终止钩子发生在原终止事件发布前。旧 TestRecoveryProgramsSkipsReservedGuardian 已补 Enabled 前置条件，避免因禁用短路造成虚假的防重通过。
+
+**实测与等级**：本地独立 Go 1.19 最小门禁工程执行 go test -count=30 -race ./... 成功（返回码 0），但该工程使用简化依赖，只证明门禁核心并发算法，不代表完整 cx-visual-x3、正式 RunProgramContext 集成测试或 GitHub Windows/Linux/macOS CI 已通过。仓库源码和测试已提交（S），G1/G2/G3 待真实作业/现场证据。
+
+**剩余风险**：Daemon 进程重启清除锁；人工认证解锁及持久化未实现；旧 UDP 配置与重启仍无可信身份；正 PID 身份、进程树终止、核验回执与活动告警仍未完成，不能宣称 SX-B 全链路验收。
