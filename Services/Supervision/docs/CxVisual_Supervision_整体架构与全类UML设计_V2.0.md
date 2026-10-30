@@ -101,6 +101,8 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
+**对象地图条目数：129 项（S/R 源码存在或复用 52 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 129 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
 ### E1 原 Go 守护与监控实体（均已存在）
@@ -179,6 +181,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 | 状态 | Owner/包 | 类／接口／函数或组件 | 单一职责 | 不变量／阶段 |
 |---|---|---|---|---|
+| A | Go internal/supervision | ScopeFilter | 按既有工程/机器/租户/对象 Scope 限定只读查询 | 跨域查询参数，不创建第二工程身份；C |
 | A | Go internal/supervision | ObservationRef | 对象的 Source/Owner/Scope/Kind/Id 引用 | 值对象；不创建平台第二身份；C |
 | A | Go internal/supervision | ObservationMeta | 采集/接收时间、质量、版本和 Generation | 所有跨域快照附带元数据；C |
 | A | Go internal/supervision | SourceDescriptor | Provider 名称、SchemaVersion、受支持范围与能力 | 声明不代表实际 Ready；C |
@@ -299,14 +302,49 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 ~~~mermaid
 classDiagram
  direction LR
- class Program { +int64 ID; +string Path; +int MaxCount; +int MaxError; +int Enabled }
- class Status { +int64 Id; +int Pid; +bool IsRun; +int StartCount }
- class Heartbeat { +int64 ProgramId; +int PId; +int Healthy }
- class ProgramStatus { +DaemonStatus; +HeartbeatStatus; +ProcessStatus }
- class SnapshotProgram { +string id; +bool running; +float cpuPercent; +uint64 memoryRssBytes }
- class Overview { +int total; +int running; +int stopped }
- class MonFrame { +Unmarshal(data); +UMarshal(code,data) }
- class MonC { +SendProgramHeartbeat; +SendProgramEvent; +CheckChannel }
+ class Program {
+  +int64 ID
+  +string Path
+  +int MaxCount
+  +int MaxError
+  +int Enabled
+}
+ class Status {
+  +int64 Id
+  +int Pid
+  +bool IsRun
+  +int StartCount
+}
+ class Heartbeat {
+  +int64 ProgramId
+  +int PId
+  +int Healthy
+}
+ class ProgramStatus {
+  +DaemonStatus
+  +HeartbeatStatus
+  +ProcessStatus
+}
+ class SnapshotProgram {
+  +string id
+  +bool running
+  +float cpuPercent
+  +uint64 memoryRssBytes
+}
+ class Overview {
+  +int total
+  +int running
+  +int stopped
+}
+ class MonFrame {
+  +Unmarshal(data)
+  +UMarshal(code,data)
+}
+ class MonC {
+  +SendProgramHeartbeat
+  +SendProgramEvent
+  +CheckChannel
+}
  Program --> Status : 配置/守护
  MonC --> MonFrame : UDP 兼容消息
  Status --> ProgramStatus : 状态汇聚
@@ -322,20 +360,60 @@ classDiagram
 ~~~mermaid
 classDiagram
  direction TB
- class ObservationSource { <<interface>>; +Describe(ctx); +Snapshot(ctx,scope) }
- class RuntimeObservationSource { +Snapshot(ctx,scope) }
- class ServiceObservationSource { +Snapshot(ctx,scope) }
- class ProfessionalObservationSource { +Snapshot(ctx,scope) }
- class SnapshotCoordinator { +Collect(ctx,scope); +GetCoverage() }
- class ObservationBatch { +source; +revision; +quality; +items }
- class HealthProjection { +Analyze(batch); +UnavailableReasons() }
- class StalenessPolicy { +Evaluate(now,meta) }
- class AlertEvaluator { +Evaluate(observation); +Apply(rule) }
- class AlertJournal { +Append(transition); +LoadActive() }
- class ProcessActionService { +Submit(ctx,request); +Query(id) }
- class Authorizer { <<interface>>; +Allow(principal,scope,action) }
- class ProcessActionGateway { <<interface>>; +Submit(ctx,request) }
- class TargetStateVerifier { +Verify(ctx,receipt) }
+ class ObservationSource {
+  <<interface>>
+  +Describe(ctx)
+  +Snapshot(ctx,scope)
+}
+ class RuntimeObservationSource {
+  +Snapshot(ctx,scope)
+}
+ class ServiceObservationSource {
+  +Snapshot(ctx,scope)
+}
+ class ProfessionalObservationSource {
+  +Snapshot(ctx,scope)
+}
+ class SnapshotCoordinator {
+  +Collect(ctx,scope)
+  +GetCoverage()
+}
+ class ObservationBatch {
+  +source
+  +revision
+  +quality
+  +items
+}
+ class HealthProjection {
+  +Analyze(batch)
+  +UnavailableReasons()
+}
+ class StalenessPolicy {
+  +Evaluate(now,meta)
+}
+ class AlertEvaluator {
+  +Evaluate(observation)
+  +Apply(rule)
+}
+ class AlertJournal {
+  +Append(transition)
+  +LoadActive()
+}
+ class ProcessActionService {
+  +Submit(ctx,request)
+  +Query(id)
+}
+ class Authorizer {
+  <<interface>>
+  +Allow(principal,scope,action)
+}
+ class ProcessActionGateway {
+  <<interface>>
+  +Submit(ctx,request)
+}
+ class TargetStateVerifier {
+  +Verify(ctx,receipt)
+}
  ObservationSource <|.. RuntimeObservationSource
  ObservationSource <|.. ServiceObservationSource
  ObservationSource <|.. ProfessionalObservationSource
