@@ -70,3 +70,10 @@
 - GitHub上新SHA的HMI Windows G1、工程综合CI、Studio WPF STA工作流查询时仍排队；**不能声明本批已经编译或回归测试通过**。本运行环境无Windows/.NET48 MSBuild与物理PLC，故未执行本机真正编译/设备测试。
 - 正式SCADA工程配置仍遵守MHS Pending/Effective/ACL与唯一Host root；Studio不能自行生效未授权草稿。Pipe只读、同Windows账户，没有命令认证/实机写权限；HMI当前按钮必须保持禁控。
 - 未关闭：远程授权Command Schema/PLC回读/UIA实机G2/HIL G3、完整仪表/Valve动画/P&ID/趋势/报警、生产级可安装独立HMI运行客户端。
+
+## 2026-10-30 第五批：Widget属性真编辑与CI队列优化
+
+- Applications/Studio/StudioViewModel.Engineering.cs：原MPM属性窗可选择和应用现有Widget的content/tooltip/enabled、Progress/Slider的minimum/maximum。Literal和Variable仍使用同一SetBinding事务；minimum>=maximum或maximum<=minimum的非法常量更改拒绝，不能污染工程Revision/Undo。不是新HMI控件Schema。
+- Applications/Studio/StudioShellSelfTests.cs：真实WPF STA通过Page菜单添加进度条、在原属性面板修改最大值、检测原MEM绑定已保存、再提交非法量程必须拒绝且Revision不变。
+- .github/workflows/hmi-mds-g1-windows.yml：增加master工作流concurrency及cancel-in-progress，减少并行频繁提交产生的重复CI排队，仅最新版HMI G1作为完整当前批证据；Studio综合/工程综合CI保留各自独立证据边界。
+- 最新一次验收核查：HMI G1新SHA与Studio S1真实Windows运行仍为queued；此前旧SHA通过记录不能涵盖新增的Pipe、Faceplate、MHS和Widget属性源码。禁止声称本批已验收或实机PLC操作可用。
