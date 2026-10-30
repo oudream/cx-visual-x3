@@ -201,7 +201,7 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 | SR-01 | 旧资产档案 08.4 三主进程候选与现行 Go 双进程设计 | 在部署图明确“CxVisual 主进程”和“Supervision Go 两进程”分别指什么，保持迁移成果 | P0 文档 |
 | SR-02 | /api/v1/health 只表示 Monitor HTTP 存活；HeartbeatAtMs > 0 只表示有心跳记录 | 不能推断 Service/Device Ready；补正式健康来源和过期判断 | P0 |
 | SR-03 | 已查实 `Daemon.RunProgram → Monitor.dealProgramDaemonEvent → logProgramDaemonEvent → alerts.Classify`：Monitor 原先会为失败事件写入“启动失败”，英文原始错误不会直接导致此标准链漏报 | 已完成源码确认，并补启动成功/英文原始失败/空命令/历史 NDJSON 持久读取正反测试（`app_event_test.go`）；测试通过以当前 GitHub CI 为准，历史非标准日志仍按明确标签分类 | P0 正反测试待 CI |
-| SR-04 | 旧 Gin 监听、pprof、UDP 控制协议 | 生产隔离/认证/恶意请求、跨域及控制面安全审计；远程写接口仍保持关闭 | P0 |
+| SR-04 | 已核实 Monitor `setupHttpServer` 未注册 pprof；`NewHttpServer(..., false)` 不启用通用 CORS；HTTP 监听由配置 Host/Port 决定；旧 UDP 控制协议仍存在 | pprof/跨域不能误报成当前已公开；重点核对部署实际绑定地址、只读 API 的暴露范围、UDP 控制链认证/ACL、生产隔离；远程写接口保持关闭 | P0 安全待验 |
 | SR-05 | 有界日志的异常历史不是活动告警状态机 | 后续建立规则、生命周期、通知、ACK/恢复真实状态和保留周期 | P0 |
 | SR-06 | Service、MRK、MDS、专业健康未被 Supervision 汇聚 | 先做只读 Provider 及 Scope/Trace/Version 对齐，禁止复制 Registry | P1 |
 | SR-07 | 旧 Go 跨平台守护与 sqlite3/CGO | 分别验证 Windows Service/systemd/launchd、信号、SQLite、崩溃恢复及资源闭合 | P1 |
@@ -238,3 +238,8 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - **异常语义**：`heartbeatAtMs<=0` 为“从未上报”，非法生成时间标明“快照时间未知”，来源心跳时间晚于快照标明“时钟可能不同步”。不引入未经审批的固定心跳超时阈值，不把年龄转换成 Alive/Ready/Healthy 的权威判断。查询失败沿用已有 Store 的旧快照保留与错误提示。
 - **验证入口**：`web/src/utils/format.test.ts` 增加 0/负数/NaN、非法 `generatedAt`、15 秒/125 秒/3665 秒、未来来源时间等正反测试；Vue 的 `typecheck`、Vitest 和构建以相应 GitHub Actions SHA 为准，**本轮未报告 CI 已通过**。
 - **兼容性**：前后端现有 API 路径、返回 Schema、旧心跳计数、原 Go 数据与 Daemon 均不变。S01/S02 的完整健康判断仍需 C 阶段权威 Service/Device Provider、来源质量和可配置的探针周期，避免以本次时间间隔提示冒充业务健康。
+
+
+### SR-04 安全复核补记（2026-10-30）
+
+源码检查 `cmd/monitor/web.go` 只注册原 `/programs_status`、版本化只读 API 及历史异常路由，没有调用 `channels.GinRegister`，故虽然 `common/channels/pprof.go` 定义调试路由，**不能因此宣称生产 Monitor 已开放 pprof**。当前 `cmd/monitor/main.go` 通过 `config.Monitor.Http.Host/Port` 决定监听地址，创建 HTTP Server 时传入 `useCors=false`。生产部署安全仍需验证真实配置、端口暴露、网络访问控制、旧 UDP 控制面与本机诊断端点，不把代码里存在通用 CORS 工具推断为实际已启用。
