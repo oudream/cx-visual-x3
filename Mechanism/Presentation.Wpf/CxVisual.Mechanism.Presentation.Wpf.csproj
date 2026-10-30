@@ -21,7 +21,7 @@
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
     <Reference Include="System.Numerics"/>
-    <Reference Include="System.Xml"/><Reference Include="System.Xml.Linq"/>
+    <Reference Include="System.Xml"/><Reference Include="System.Xml.Linq"/><Reference Include="System.Web.Extensions"/>
     <Reference Include="PresentationCore"/>
     <Reference Include="PresentationFramework"/>
     <Reference Include="WindowsBase"/>
@@ -32,6 +32,8 @@
     <Compile Include="Themes\MPWWorkspaceVisuals.cs"/>
     <Compile Include="Modules\MPWModuleCenterPages.cs"/>
     <Compile Include="Modules\MPWModuleCenterControl.cs"/>
+    <Compile Include="Interaction\MPWMessageCenterControl.cs"/>
+    <Compile Include="Interaction\MPWCommandCenterControl.cs"/>
     <Compile Include="Visual\MPWVisualOperationPanel.cs"/><Compile Include="Visual\MPWLiveSceneControl.cs"/><Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Renderers\MPWVisualAssetRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="MPWMoveEventArgs.cs"/><Compile Include="MPWNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="Variables\MPWVariableWorkspaceViewModel.cs"/><Compile Include="Variables\MPWVariableWorkspaceControl.xaml.cs"/><Compile Include="RuntimeData\MPWDataLifecycleWorkspaceControl.xaml.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/><Compile Include="Imaging\MPWImageViewerControl.xaml.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeShaderSources.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeGeometry.cs"/>
@@ -66,6 +68,7 @@
     <Page Include="Imaging\MPWImageViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj"><Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
