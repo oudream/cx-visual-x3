@@ -167,3 +167,16 @@
 - 入口：FTRMultiClientBudgetTests.HttpClientMultiMegabyteResponse；仍自动包含在`--channel-uml-core`和`--channel-transport`。
 - FCM：HTTP Client默认MaxResponseBytes=4194304、ReceiveByteBudget=12582912（12MiB），校验Converter往返；不修改既有显式历史持久预算。HTTP Server真实HttpListener回环，发送4MiB确定性字节序列；客户端按长度及全部4194304字节检查完整顺序、单次收包、真实ReceivedBytes、PeakBufferedPayloadBytes<=预算、完成后BufferedPayloadBytes=0。
 - CI：`.github/workflows/f17-channel-windows.yml`两套Channel软件入口都必须输出`F17.HTTP_LARGE_PASS bytes=4194304`。保持原TCP/NamedPipe双向2GiB基准与Windows x64全SLN；本项在其固定SHA Actions真正结束前仍是**已提交、待验证**。
+
+
+### 2026-10-30 F17 Serial P0与消息型无订阅者大报文回归
+
+| 编号 | 真实测试入口 | 验收断言 | 证据 |
+|---|---|---|---|
+| F17-HTTP-08 | FTRMultiClientBudgetTests.HttpClientMultiMegabyteResponse；原--channel-uml-core/--channel-transport | 真实4MiB HTTP响应在未订阅Legacy Received时仍完整收包计数，7MiB预算不触发额外Context副本，峰值不超预算且结束清零；有订阅者12MiB默认预算仍逐字节完整且独立快照 | `50926a25`、`e1b11deb` 已提交，Windows待验 |
+| F17-HTTP-09 | FTRMultiClientBudgetTests.HttpClientBoundedResponseAndReentrantSend | 同一HTTP Client收包回调同步再次Send，小响应在512字节短时重叠预算下不因初始化过大分配假拒绝；256B响应超预算时明确拒绝，之后健康小消息仍可完成 | `e89be960` 已提交，Windows待验 |
+| F17-SERIAL-01 | FTRSerialP0Tests.Run由--channel-uml-core和--channel-transport调用 | FCM配置往返、共享总线身份、无硬件连接副作用、非法数据位拒绝、Closed Send拒绝、Open预取消拒绝 | `e597280a`、`faa1a507` 已提交，Windows待验 |
+| F17-SERIAL-02 | 同上；Windows真实SerialPort的COM65534不可用路径 | 无COM口时必须Faulted，显式Close可恢复Closed；同实例再次Open失败与清理无永久残留。**不等于实物串口收发** | `e597280a` 已提交，Windows待验 |
+| F17-SERIAL-HIL | 现场RS-232/485、长时间半包与慢接收、断线重连、Send/Receive互不阻塞 | 实体测试需上位机/串口仪、线缆和驱动，验证实际后台接收Thread、StopTimeoutMs、数据可靠性、RS-485方向控制及工业负载 | 尚未执行；禁止报告通过 |
+
+原F17 Windows workflow不仅要过F17.HTTP_LARGE_PASS，还必须输出F17.SERIAL_P0_PASS；全部自动回归及两种2GiB大流门禁仍是软件G1条件。CI取消的旧运行不得代替新SHA通过。
