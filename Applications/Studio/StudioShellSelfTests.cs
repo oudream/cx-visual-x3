@@ -3589,7 +3589,39 @@ namespace CxVisual.Studio
                         Assert(switchingRejected&&workspace.CurrentCaseIndex==1&&
                             workspace.HasPendingAnalysis,
                             "跨Case切换不得丢弃尚未提交的专业ROI分析");
-                        workspace.DiscardPendingAnalysis();
+                        // 直接MVI API（不触发MPW鼠标事件）在同源Frame跨XY/XZ改选区。
+                        MVIVolumeViewState secondaryView=
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState;
+                        FVOVolumeData secondaryVolume=
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).Volume;
+                        var selectedXz=secondaryView.SelectRectangleRoi(
+                            FVOSlicePlane.XZ,5,5,6,6,secondaryVolume);
+                        Assert(selectedXz.Plane==FVOSlicePlane.XZ&&
+                            Object.ReferenceEquals(secondaryView.SelectedSliceRectangle,selectedXz)&&
+                            !workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId&&
+                            workspace.Scene3D.Snapshot().Single(x=>
+                                x.Kind==MVI3DSceneKind.Measurement).SourceRef==
+                                "ct3d:plane:"+secondary.Plane.ResultId.ToString("N"),
+                            "MVI跨视图修改ROI必须清除旧预览并恢复已提交Scene专业来源");
+                        bool staleSaveRejected=false;
+                        try{workspace.SavePendingResult();}
+                        catch(InvalidOperationException){staleSaveRejected=true;}
+                        Assert(staleSaveRejected&&
+                            workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId,
+                            "切换ROI后不得保存此前XY专业结果");
+                        var xzPreview=workspace.RecomputeSelectedSliceRoi(.49,.51);
+                        Assert(workspace.HasPendingAnalysis&&xzPreview.Plane.SampleCount>=3&&
+                            xzPreview.Plane.ResultId!=secondary.Plane.ResultId,
+                            "XZ物理ROI必须走同一CT3D原值拟合而不是预览模拟结果");
+                        secondaryView.ClearRectangleRoi();
+                        Assert(secondaryView.SelectedSliceRectangle==null&&
+                            !workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId&&
+                            workspace.Scene3D.Snapshot().Single(x=>
+                                x.Kind==MVI3DSceneKind.Measurement).SourceRef==
+                                "ct3d:plane:"+secondary.Plane.ResultId.ToString("N"),
+                            "直接MVI清除ROI必须失效XZ旧预览、恢复Scene且不污染MEM结果");
                         workspace.SelectCaseByIndex(0);
                         Assert(workspace.CurrentCaseIndex==0&&
                             workspace.CurrentAnalysis.Plane.ResultId==finalizedId&&

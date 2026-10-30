@@ -41,6 +41,8 @@ namespace CxVisual.Studio
         private FVOVolumeData _volume;
         private MVIVolumeViewState _state;
         private CT3DAnalysisCase _current,_pending;
+        // 与待保存结果绑定的MVI选区实例；ROI变更后不可保存过期专业结果。
+        private FVOPhysicalSliceRectangle _pendingRoiSelection;
         private int _caseIndex=-1;
         private CancellationTokenSource _roiCancellation;
         private long _roiEpoch;
@@ -101,9 +103,8 @@ namespace CxVisual.Studio
             _workbench=new MPWVolumeFourViewWorkbenchControl(_xy,_yz,_xz,host,
                 ()=>_scene.ResetCamera(),steps=>_scene.Zoom(steps),
                 (dx,dy)=>_scene.Pan(dx,dy));
+            // MPW事件仅作交互反馈，专业预览失效统一监听MVI的ROI属性通知。
             _workbench.PhysicalRoiSelected+=roi=>{
-                CancelPendingAnalysis();
-                _pending=null;
                 _status.Text=String.Format(CultureInfo.InvariantCulture,
                     "{0} ROI: ({1:0.###},{2:0.###},{3:0.###}) mm → ({4:0.###},{5:0.###},{6:0.###}) mm",
                     roi.Plane,roi.TopLeft.X,roi.TopLeft.Y,roi.TopLeft.Z,
@@ -241,7 +242,7 @@ namespace CxVisual.Studio
                 _scene.BindSceneSelection(_state.Scene3D);
                 _workbench.Bind(_volume,_state);
                 _state.PropertyChanged+=OnVolumeStateChanged;
-                _current=analysis;_pending=null;_caseIndex=index;
+                _current=analysis;_pending=null;_pendingRoiSelection=null;_caseIndex=index;
                 BuildSceneReferences(analysis,false);
                 if(_owners[index].Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
                     a.ProviderId==MVI3DSceneLayoutPersistence.ProviderId))
@@ -411,6 +412,29 @@ namespace CxVisual.Studio
 
         private void OnVolumeStateChanged(object sender,System.ComponentModel.PropertyChangedEventArgs e)
         {
+            if(_disposed||!Object.ReferenceEquals(sender,_state))return;
+            if(!Dispatcher.CheckAccess())
+            {
+                MVIVolumeViewState observed=(MVIVolumeViewState)sender;
+                string property=e.PropertyName;
+                Dispatcher.BeginInvoke(new Action(()=>{
+                    if(Object.ReferenceEquals(observed,_state))
+                        OnVolumeStateChanged(observed,
+                            new System.ComponentModel.PropertyChangedEventArgs(property));
+                }));
+                return;
+            }
+            if(e.PropertyName=="SelectedSliceRectangle")
+            {
+                // 唯一MVI ROI意图入口：鼠标、SDK、清除和跨正交视图均使旧预览失效。
+                CancelPendingAnalysis();
+                if(_pending!=null)
+                    DiscardPendingAnalysis(); // 复用原有Scene实例及已提交专业来源。
+                _status.Text=_state.SelectedSliceRectangle==null
+                    ?"物理ROI已清除，旧待保存分析无效。"
+                    :"物理ROI已改变，旧待保存分析无效，请重新进行原值拟合。";
+                return; // 只更新轮廓，不重切片或重置二维缩放。
+            }
             if(e.PropertyName=="SliceX"||e.PropertyName=="SliceY"||e.PropertyName=="SliceZ")
                 RefreshSlices();
         }
@@ -605,6 +629,7 @@ namespace CxVisual.Studio
         private void PublishPendingResult(CT3DAnalysisCase result)
         {
             _pending=result;
+            _pendingRoiSelection=_state.SelectedSliceRectangle;
             BuildSceneReferences(result,true);
             RefreshProfessionalOverlay();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
@@ -617,6 +642,7 @@ namespace CxVisual.Studio
             if(IsAnalyzing)CancelPendingAnalysis();
             if(_pending==null)return;
             _pending=null;
+            _pendingRoiSelection=null;
             if(_state!=null&&_current!=null)
             {
                 BuildSceneReferences(_current,true);
@@ -631,11 +657,14 @@ namespace CxVisual.Studio
                 throw new InvalidOperationException("后台ROI分析尚未结束，禁止提交旧结果。");
             if(_pending==null||_engineering==null||_owners==null||_caseIndex<0)
                 throw new InvalidOperationException("当前没有待保存的专业编辑结果。");
+            if(_state==null||
+                !Object.ReferenceEquals(_pendingRoiSelection,_state.SelectedSliceRectangle))
+                throw new InvalidOperationException("物理ROI已改变，拒绝保存与当前选区不一致的旧专业结果。");
             var visual=MVI3DSceneLayoutPersistence.CreateAspect(_state.Scene3D,CancellationToken.None);
             CT3DAnalysisPersistence.Commit(_engineering,_owners[_caseIndex],_engineering.Revision,
                 _root,_pending,visual,CancellationToken.None);
             _engineering.SaveAs(_projectPath);
-            _current=_pending;_pending=null;
+            _current=_pending;_pending=null;_pendingRoiSelection=null;
             _status.Text="专业Feature与Scene已在一次MEM事务中保存。";
         }
         private void DisposeCurrent()
@@ -648,7 +677,7 @@ namespace CxVisual.Studio
             }
             _workbench.Bind(null,null);_objects.Bind(null);_scene.Clear();
             if(_volume!=null){_volume.Dispose();_volume=null;}
-            _state=null;_current=null;_pending=null;
+            _state=null;_current=null;_pending=null;_pendingRoiSelection=null;
             if(_engineering!=null){_engineering.Close(true);_engineering=null;}
             _owners=null;_projectPath=null;_root=null;_caseIndex=-1;
         }
