@@ -993,8 +993,17 @@ namespace CxVisual.Studio
                     return;
                 }
                 try {
+                    CxVisionResultItem item=selected.Tag as CxVisionResultItem;
+                    CxVisionResultValidity validity=displayedRun.AssessItemValidity(
+                        item,displayedRun.SourceId,displayedRun.ValidatedSourceHash,
+                        _viewModel.ProjectSession.Revision);
+                    if(validity!=CxVisionResultValidity.Valid &&
+                       validity!=CxVisionResultValidity.Empty)
+                        throw new InvalidOperationException("vision.result."+validity);
                     resultDetail.Text=SelectStudioVisionResult(displayedRun,
-                        displayedOriginal,resultPreview,selected.Tag as CxVisionResultItem);
+                        displayedOriginal,resultPreview,item);
+                    if(validity==CxVisionResultValidity.Empty)
+                        resultDetail.Text+="；本次运行正常完成，但候选集合为空。";
                 }
                 catch(Exception ex){resultDetail.Text="结果显示被拒绝："+ex.Message;}
             };
