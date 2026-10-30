@@ -251,3 +251,24 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - **生产可见行为**：非本机访问 H5 可能加载静态页面，但受保护 API 会收到 403，UI 标记“监控查询权限受限”；Monitor HTTP 绑定疑似外网时明确警告旧 `/programs_status` **尚未认证**。为保证旧调用方兼容，保留该 API 的旧访问合同；**远程安全闭环未完成，不能作为公网部署依据**。
 - **回归及部署门禁**：旧 `/programs_status`、UDP、SQLite、Go Monitor+Daemon、所有 JSON Schema 未更改。新查询安全行为确实可能限制远程旧 H5 使用新的 `/api/v1` 路由，须按 [部署文档](../deploy/README.md) 用回环地址及防火墙或另经审批的认证方案部署，禁止客户端绕过。
 - **证据等级**：当前为已提交源码/测试（S）；本轮环境未取得推送 SHA 的 Go 三平台测试、前端 typecheck/Vitest/build 完成证据，G1 待 CI；隔离网络安全验证、旧系统兼容现场测试仍属于 G2/G3 待完成。S11 正式认证授权/审计与 B 期可靠 Daemon 操作仍是未完成目标。
+
+## 十一、P0 Daemon进程守护与故障恢复实装记录（2026-10-30）
+
+> **状态**：本节说明真实代码增量与对应测试源码，不把“已提交”称为 Go 三平台编译通过、隔离真实进程验收或生产长稳。延续 S02/S08/S11/SR-07 及 V2.0 类架构，不另建进程 Manager、命令中心或状态仓。
+
+| 对象/链路 | 本轮已提交的改动 | 证据/风险 |
+|---|---|---|
+| `internal/daemonc/daemon.go` | `RunProgram` 原签名兼容保留；新增 `RunProgramContext`，包级 `DaemonRun` 改为 `atomic.Bool`；重试 `StartWaitTime` 使用可取消 Timer，退出时发送事件不因无人消费无限阻塞 | 现有 Daemon 主循环使用 Context；已运行子进程仍由原 Daemon PID 控制链终止，**Context 本身不保证等待中的子进程被杀** |
+| `cmd/daemon/main.go` | Daemon 启动/恢复/历史重启调用统一传入 `workerCtx`；系统信号先取消等待与事件发送，首次 `FirstWaitTime` 也可中断；退出通知通道缓冲且使用非阻塞发送；信号订阅释放 | 还需真实 SIGTERM/Windows 服务停止、快速重启/重复 Worker、异步事件确认与断电场景集成验收 |
+| `daemonc.startProc` | 空可执行路径拒绝；子进程 `cmd.Start()` 成功或失败后关闭**父进程**的日志文件描述符；不改变现有子进程标准输出去向 | `daemon_test.go` 使用测试程序自身的隔离子进程验证 stdout/stderr、日志释放与启动失败；仍需长稳句柄/FD 监测 |
+| Daemon 启动/退出事件 | 启动失败先增加 `ErrorCount`/`StartFailCount` 再发送 `EventStart`，失败 PID 清零；保留实际退出 PID 用于事件诊断；Daemon 侧退出耗时统一毫秒→秒，并纠正短时异常退出文案 | `daemon_test.go` 以缺失可执行文件验证两次启动失败→阈值告警、计数/事件次序；`cmd/daemon/main_test.go` 验证正常/异常/时钟回退 |
+| `monitorc.MonC` | `NewMonC(ip,port,...)` 保存 `IP/Port`，首次 UDP Dial 失败后 `CheckChannel` 不再使用空地址/端口零重连 | `internal/monitorc/monc_test.go` 验证初始化失败时原目标保留和相同目标重试；不等于完整断线恢复闭环 |
+| Daemon 初始化诊断 | `GetProgramById` 失败时，Logger 未初始化前使用标准错误输出路径（`fmt.Printf`），避免空指针调用 | 未以真实异常数据库执行端到端启动验证 |
+
+**隔离测试范围**：`go test -count=1 ./internal/daemonc ./internal/monitorc ./cmd/daemon` 作为本轮重点验证命令，完整 Go 与 Web 构建仍按原 `supervision-migration.yml` 的 Ubuntu/Windows/macOS 矩阵。**本环境 GitHub 连接可提交文件，但没有完整本地 checkout，未获得本轮 Actions 的真实作业通过记录；G1 尚待证据**。
+
+**兼容边界**：旧 Program/SQLite、UDP 帧/CRC/事件码、路径、进程 ID、`/programs_status` 与 H5 API 均未修改。Go 最低版本仍为 1.19（支持 `atomic.Bool`）；该内部 Go 包全局停止开关的访问由普通 bool 改为 `Load/Store`，项目现有调用点已同步迁移，属于进程内源码兼容调整。仍无远程认证、操作审计与安全启停 API。
+
+**明确留存的风险**：原 `common/channels/UdpC` 在底层读异常/关闭时的 goroutine 回收与投递阻塞需单独核查；Monitor 端口真正失联后自动重连与状态对账尚未全验；`_runProgramIds` 异步映射和恢复程序重复启动竞争尚未完整关闭；Daemon 退出时只能根据已跟踪 PID 终止现存子进程，没有完整进程树/服务安全终止回执。不得把本轮 Context 修复说成 SX-B 全链路完成。
+
+**下一交付焦点**：先核查上述隔离测试与 GitHub CI 的固定 SHA，再以真实假受管进程测试单次启动归属、退出竞态和 Daemon/Monitor 断线恢复；只有安全审计与回执、验证均成熟后再开远程控制。
