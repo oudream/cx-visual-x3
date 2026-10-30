@@ -50,10 +50,28 @@ func RunProgramContextWithTerminal(ctx context.Context, a0 program.Program, prog
 	RunProgramContextWithStop(ctx, a0, programEvent, fnFindProgram, logger, wd, onTerminal, nil)
 }
 
-// RunProgramContextWithStop preserves the existing guardian loop and event
-// protocol while giving the original Worker responsibility for its child's
-// stop/Wait receipt. The controller is local to one guardian generation.
+// LaunchRecorder is supplied by Daemon, which remains the only persistence
+// Owner. A pre-spawn intent must be durable before startProc is invoked.
+type LaunchRecorder interface {
+	Begin(id int64, executablePath string) error
+	Started(pid int) error
+	Finished() error
+}
+
+// RunProgramContextWithStop retains the existing external signature.
 func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string, onTerminal func(program.Event), controller *StopController) {
+	RunProgramContextWithLaunchEvidence(ctx, a0, programEvent, fnFindProgram, logger, wd, onTerminal, controller, nil, nil)
+}
+
+// RunProgramContextWithLaunchEvidence keeps the original guardian loop and
+// Event wire contract, while journal writes happen BEFORE child Start and
+// after the original Worker Wait. On any journal error this generation stops
+// and the Daemon gate is notified to reject further admissions.
+func RunProgramContextWithLaunchEvidence(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string, onTerminal func(program.Event), controller *StopController, evidence LaunchRecorder, onEvidenceError func(error)) {
+	reportEvidenceError := func(err error) {
+		logger.Printf(_titleDaemon.Error+"CRITICAL: child launch evidence unavailable Program=%d: %v; stop this guardian generation\n", a0.ID, err)
+		if onEvidenceError != nil { onEvidenceError(err) }
+	}
 	var status program.Status
 	a1 := a0
 
@@ -152,10 +170,24 @@ func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programE
 			dir = filepath.Join(wd, dir)
 		}
 
+		// Persist an unresolved intent BEFORE calling OS Start. A Daemon
+		// SIGKILL anywhere after this point leaves restart-time evidence.
+		if evidence != nil {
+			if err := evidence.Begin(a1.ID, a1.Path); err != nil {
+				reportEvidenceError(err)
+				return
+			}
+		}
 		// 启动子进程
 		status.StartCount++
 		cmd, err := startProc(args, envs, dir, logFile)
 		if err != nil {
+			if evidence != nil {
+				if cleanupErr := evidence.Finished(); cleanupErr != nil {
+					reportEvidenceError(cleanupErr)
+					return
+				}
+			}
 			status.IsRun = false
 			status.Pid = 0
 			status.StartFailCount++
@@ -169,6 +201,12 @@ func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programE
 
 		//
 		if cmd == nil {
+			if evidence != nil {
+				if err := evidence.Finished(); err != nil {
+					reportEvidenceError(err)
+					return
+				}
+			}
 			status.IsRun = false
 			status.Pid = 0
 			status.StartFailCount++
@@ -179,6 +217,17 @@ func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programE
 			continue
 		}
 
+		// Record observed PID before EventStart. If that durable write
+		// fails, kill/reap only the process owned by this exec.Cmd. Keep
+		// the unresolved intent for offline review (never silently clear).
+		if evidence != nil {
+			if err := evidence.Started(cmd.Process.Pid); err != nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				reportEvidenceError(err)
+				return
+			}
+		}
 		// Attach only the child created by THIS Worker. A bare PID from
 		// a file or UDP message cannot replace its owned process handle.
 		controller.attach(cmd)
@@ -192,12 +241,21 @@ func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programE
 			_ = cmd.Process.Kill()
 			waitErr := cmd.Wait()
 			controller.finish(cmd, waitErr)
+			if evidence != nil {
+				if err := evidence.Finished(); err != nil { reportEvidenceError(err) }
+			}
 			return
 		}
 
 		// 父进程的守护协程阻塞: 等待子进程退出
 		err = cmd.Wait()
 		stoppedByRequest := controller.finish(cmd, err)
+		if evidence != nil {
+			if err := evidence.Finished(); err != nil {
+				reportEvidenceError(err)
+				return
+			}
+		}
 		// 子进程运行秒数
 		dat := time.Now().Unix() - t
 		// A controlled stop is neither a crash nor a restart-limit
