@@ -3710,14 +3710,16 @@ namespace CxVisual.Studio
                             Math.Abs(displayedHit.Point.Z-46.5)<1e-9,
                             "三维WPF显示射线必须经过原Voxel与Frame，重新命中FGE真实Mesh而非LOD面片。");
                         workspace.ToggleMeshFaceSelection(displayedPick);
-                        Assert(workspace.SelectedMeshFaceCount==1,
-                            "Studio子元素选择应保留专业原Mesh三角面StableId。");
+                        Assert(workspace.SelectedMeshFaceCount==1&&
+                            workspace.VisibleMeshFaceHighlightCount==1,
+                            "Studio选中专业原Mesh面片必须显示真实黄色高亮，不以LOD面索引取代StableId。");
                         var singleFace=AwaitStudioTask(workspace.RecomputeSelectedMeshFacesAsync(
                             CancellationToken.None));
                         Assert(workspace.HasPendingAnalysis&&singleFace.Plane.SampleCount==3,
                             "真正Ctrl+Shift选中的单三角面应走CT3D原值拟合并形成待保存结果。");
                         workspace.ToggleMeshFaceSelection(displayedPick);
-                        Assert(workspace.SelectedMeshFaceCount==0&&!workspace.HasPendingAnalysis&&
+                        Assert(workspace.SelectedMeshFaceCount==0&&
+                            workspace.VisibleMeshFaceHighlightCount==0&&!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
                             "取消单面选择必须撤销过期专业预览并恢复原Scene/Feature身份。");
                         var selectedFaces=new List<CT3DMeshFaceReference>();
@@ -3739,6 +3741,7 @@ namespace CxVisual.Studio
                         workspace.ToggleMeshFaceSelection(faceHit);
                         Assert(!workspace.HasPendingAnalysis&&
                             workspace.SelectedMeshFaceCount==1&&
+                            workspace.VisibleMeshFaceHighlightCount==1&&
                             workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
                             "面片选择修改必须立即撤销旧ROI分析和专业Scene预览。");
                         workspace.ToggleMeshFaceSelection(faceHit);
