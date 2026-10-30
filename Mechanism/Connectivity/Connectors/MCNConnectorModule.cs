@@ -182,6 +182,23 @@ namespace CxVisual.Mechanism.Connectivity
                 Configuration.Protocol.Id, Channel.SessionId.ToString("N"), destination,
                 configuration: Configuration.Protocol, dataAccess: access, transport: transport), ct);
         }
+        /// <summary>复用协议可选连续点读：仅返回值，不在Connector复制点表/MDS。</summary>
+        public Task<IReadOnlyList<object>> ReadContiguousPointsAsync(
+            IReadOnlyList<string> pointNames, FTRSubChannelAddress destination, CancellationToken ct)
+        {
+            IMPAProtocolContiguousPointReader reader = Protocol as IMPAProtocolContiguousPointReader;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
+            if (reader == null || transport == null)
+                throw new NotSupportedException("当前规约/Channel没有连续点批读能力");
+            if (!IsStarted || transport.State != FTRChannelState.Open)
+                throw new InvalidOperationException("Connector 未启动");
+            if (destination == null || destination.ChannelId != Channel.Id)
+                throw new ArgumentException("连续点读目标Channel身份不匹配");
+            return reader.ReadContiguousPointsAsync(pointNames, new MPAProtocolContext(
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N"), destination,
+                configuration: Configuration.Protocol, transport: transport), ct);
+        }
+
         public Task<MPAProtocolOperationResult> WriteDevicePointAsync(
             string pointName, IMPADataTargetAccess access, FTRSubChannelAddress destination, CancellationToken ct)
         {
