@@ -174,6 +174,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .GetAwaiter().GetResult();
                     Check((ushort)recovered == 88 && table.Get<ushort>("Station.Word") == 88,
                         "控制链恢复后须重新从现场读取事实");
+                    // 真实03帧已经送出，但在回包到达前配置被篡改：
+                    // 暂存数据不得污染唯一MDS仓，也不得伪报一个有效采样。
+                    plc.PauseNextRead();
+                    long revisionBeforeDrift = table.Inspect("Station.Word").Revision;
+                    Task<object> inFlight = bridge.ReadAndMapAsync("word", CancellationToken.None);
+                    Check(plc.WaitUntilReadPaused(), "PLC模拟器未进入待读回状态");
+                    livePoint.Address = "holding:101";
+                    try
+                    {
+                        plc.ReleasePausedRead();
+                        Reject<InvalidOperationException>(() => inFlight.GetAwaiter().GetResult());
+                    }
+                    finally
+                    {
+                        livePoint.Address = originalAddress;
+                        plc.ReleasePausedRead();
+                    }
+                    Check(table.Inspect("Station.Word").Revision == revisionBeforeDrift &&
+                        table.Get<ushort>("Station.Word") == 88,
+                        "读回进行中变更点表：不能写入已过期的MDS数据");
+                    Check((ushort)bridge.ReadAndMapAsync("word", CancellationToken.None)
+                        .GetAwaiter().GetResult() == 88,
+                        "点表恢复后必须重新采样，不可复用已拒绝的回包");
+
                     Console.WriteLine("PASS Automation PLC real TCP loopback Modbus 03/06 -> MDS / authorized readback / Unknown");
                 }
                 finally
@@ -196,6 +220,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             private int _writes;
             private volatile bool _ignoreWrite;
             private volatile bool _ignoreRead;
+            private volatile bool _pauseRead;
+            private readonly ManualResetEventSlim _readPaused = new ManualResetEventSlim(false);
+            private readonly ManualResetEventSlim _releaseRead = new ManualResetEventSlim(false);
             private Exception _failure;
             public int Port { get; private set; }
             public ushort ActualRegister { get { return (ushort)Volatile.Read(ref _register); } }
@@ -203,6 +230,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             public int Writes { get { return Volatile.Read(ref _writes); } }
             public bool IgnoreWrite { get { return _ignoreWrite; } set { _ignoreWrite = value; } }
             public bool IgnoreRead { get { return _ignoreRead; } set { _ignoreRead = value; } }
+            public void PauseNextRead()
+            {
+                _readPaused.Reset(); _releaseRead.Reset(); _pauseRead = true;
+            }
+            public bool WaitUntilReadPaused() { return _readPaused.Wait(2500); }
+            public void ReleasePausedRead() { _releaseRead.Set(); }
 
             public TcpPlcLoopback()
             {
@@ -248,6 +281,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                 throw new EndOfStreamException("Modbus请求PDU截断");
                             byte function = pdu[0];
                             if (function == 3 && IgnoreRead) continue;
+                            if (function == 3 && _pauseRead)
+                            {
+                                _pauseRead = false;
+                                _readPaused.Set();
+                                if (!_releaseRead.Wait(5000))
+                                    throw new IOException("PLC测试端被阻断的读取未及时释放");
+                            }
                             byte[] reply;
                             if (function == 3)
                             {
@@ -278,9 +318,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             public void Dispose()
             {
+                _releaseRead.Set();
                 _listener.Stop();
                 if (!_server.Wait(3000))
                     throw new TimeoutException("PLC TCP回环服务器未退出");
+                _readPaused.Dispose(); _releaseRead.Dispose();
                 if (_failure != null && !( _failure is IOException || _failure is SocketException ))
                     throw new InvalidOperationException("PLC TCP模拟端意外失败", _failure);
             }
