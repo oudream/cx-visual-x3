@@ -9,6 +9,7 @@ import (
 
 	"gogo/internal/guardview"
 	"gogo/internal/httpapi"
+	"gogo/internal/stopjournal"
 )
 
 // setupHttpServer retains the legacy endpoint and adds versioned read-only APIs.
@@ -19,6 +20,9 @@ func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	httpapi.RegisterAlertHistory(e, apiAlertHistory)
 	httpapi.RegisterGuardDiagnostics(e, func() guardview.Report {
 		return guardview.Read(*_workDir)
+	})
+	httpapi.RegisterStopHistory(e, func() stopjournal.History {
+		return stopjournal.Read(*_workDir)
 	})
 }
 
