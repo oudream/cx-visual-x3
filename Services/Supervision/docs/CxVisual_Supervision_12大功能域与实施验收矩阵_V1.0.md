@@ -363,3 +363,21 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **验证等级**：已实际以相同 StopController 核心创建独立 Go 1.19 模块，使用 Go 1.23.2/Linux amd64 运行 go test -race -count=15 ./... 返回成功。仅可记为隔离核心算法验证，**不是原主仓库全部依赖、Windows/Linux/macOS GitHub Actions 或工业现场 G1/G2/G3 成功**。提交源码与测试（S）已完成，主仓库编译和正式 CI 仍需检查固定 SHA。
 
 **后续闭环**：原子 OS 进程身份/启动代次、孤儿进程与完整子进程树、服务/设备真正 Ready、终止许可、S11 身份/授权/审计、可靠跨进程操作回执以及工控机长稳必须继续开发。当前本地 StopReceipt 没有对 Monitor/H5 发布，不能用它冒充完整 S11。
+
+
+## 十七、原Worker停止回执竞态修正与关停漏停修复（2026-10-30）
+
+**本轮修复两项已核实的真实边界**：
+
+1. internal/daemonc/stop.go 的 StopController.RequestStop 原先在调用 cmd.Process.Kill 之前标记 child.requested=true。当 OS Kill 失败，而子进程随后自行退出时，finish 仍可能认定这是人为停止，导致真正的短时间异常退出不再累计 ErrorCount。现改为仅当 Kill 返回成功后、在同一互斥区内标记 requested；信号失败记为 signal-failed，不冒称受控退出。
+2. Daemon 主循环旧关闭路径从 _runProgramIds 枚举目标。该表依赖主循环收到 EventStart 才更新；当原 Worker 已完成 exec.Cmd.Start 但主循环尚未处理事件时，PID 表仍是 0，关停可能漏掉已运行的真实子进程。现新增 StopController.ActivePID 及门禁 programWorkerGate.ownedChildren，从现有 Worker 持有的原始子进程句柄取得活跃 PID；关停只对这些候选调用 queueOwnedStop，后者仍必须再次比对对应 Worker 代次与进程句柄，不回退到旧裸 PID Kill。
+
+**新增真实测试源码**：
+
+- internal/daemonc/stop_test.go：测试子进程已经 Wait 完成但 Controller 尚未清理时，后续 Kill 必须 signal-failed，且 finish 不得将此次退出标记为受控；另验证未附着/活跃/Wait 完成的 ActivePID 生命周期。
+- cmd/daemon/workers_test.go：使用真实测试二进制作为隔离子进程，并让原 EventStart 投递到无人接收的无缓冲事件通道；模拟旧 PID 表尚未更新的窗口，验证 ownedChildren 仍能发现实际子进程，取消后由原 Worker 负责 Kill+Wait，释放后不再暴露 PID。
+- .github/workflows/supervision-migration.yml：保留 Linux/Windows/macOS 原三平台构建和常规 Go 测试；Linux 且 CGO_ENABLED=1 时额外对 internal/daemonc 的真实停止测试启用 -race，由 CI 对原仓库实际依赖做竞态回归。
+
+**实际执行与验证等级**：当前 Go 1.23.2/Linux amd64 环境中，将已修改的 StopController 关键算法同步至独立 supervisionstopcheck 最小 Go 模块（不含全仓库依赖），执行 go test -race -count=20 ./... 和 go test -count=20 ./...，两者成功。该验证覆盖 Kill 失败不能伪装受控退出、活动 PID 生命周期、真正的原 Worker Wait 确认/未知结果；**但完整主仓库 Go 模块编译、真实 Daemon 主循环集成、GitHub 三平台 CI 尚未取得固定 SHA 通过证据**。本轮代码与测试已提交（S），G1/G2/G3 未冒称完成。
+
+**保留限制**：基于实际句柄的 ownedChildren 比异步 PID 表更可信，但不能保证进程树、外部子孙进程清理，不能解决 OS 极端重用、Daemon 强制退出、客户进程安全关停策略。unknown 不得向业务宣称停止成功；远程启停和安全解锁仍须 S11 的身份、授权、审计及后续状态核验。
