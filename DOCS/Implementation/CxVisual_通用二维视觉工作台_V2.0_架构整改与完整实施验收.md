@@ -1,0 +1,301 @@
+# CxVisual 通用二维视觉工作台 V2.0——架构整改与完整实施验收 V1.0
+
+> **文件性质**：正式实施统筹/任务执行与验收总控；不替代既有00～08架构规格、01的260项功能契约或测试矩阵。  
+> **首次建立**：2026-10-30；**审查基线**：`cx-visual-x3/master`，读取时HEAD `3cdb62992c98ceb648626dc9c93d797a8931657d`。此SHA只代表本文件编写前审查时点，不是本方案的验收SHA。  
+> **项目现实**：26工程（F8/M7/P6/应用2/智能1/测试2）；Mechanism.Logic/Orchestration现已合并为Mechanism.Decision，Lifecycle不是独立工程。历史28工程描述仅作追溯。  
+> **用户裁决**：保留已经确立的F/M/P架构，按“OOP对象职责清楚、GoF变化扩展受控、AOP跨专业共用治理”整改；以真实功能和验收证据为导向，不推翻合理现有设计。  
+> **核心原则**：各方面都尽能力展现，便捷友好尽支撑各专业达到目标。  
+> **状态声明**：这是指导后续研发的V1.0统筹，新增任务ID、拟拆分对象及通过标准为实施要求，不代表本次已经改动业务代码、执行CI或完成工业验收。
+
+## 0. 如何使用本文件（每轮开发必须遵循）
+
+1. 首先读取仓库`AGENTS.md`、`.agents/skills/cxvisual-engineering/SKILL.md`、`DOCS/00_CxVisual_协同开发入口与七仓复用基线.md`；核对最新master HEAD、相关工程.csproj、真实代码与GitHub Actions。不得以本文件旧SHA推断新HEAD状态。
+2. 按当前任务ID打开本文件第3节“问题—责任—完成定义”、第4节“技术方案”、第5节“执行批次”，然后读取第1节列出的对应原始权威文档；再查看`ReferTo/`、已有单元/集成/STA测试。先复用再增加类型。
+3. 区分五种内容：**已定架构**、**当前已有源码**、**历史固定SHA成功证据**、**尚未实施的目标**、**尚未验证的工业能力**。不得将本统筹中“拟实现”写成现有API；不得把历史CI迁移到最新SHA。
+4. 每项任务按“取证 → 明确Owner与变化点 → 最小完整实现 → 正反例 → Windows/CI → UI/专业验收 → 登记证据”的方式闭环。若发现架构冲突，提交差异分析/ADR并提请Owner裁决，不在单专业内私自改平台宪法。
+5. 本文件只维护实施总控、依赖、验收状态和跨任务决策；具体算法合同仍在01/03～08，UML在02，源码事实在原Implementation台账，测试证据在Testing；避免复制几份会漂移的独立“真源”。
+6. 未经证据证明的问题标为“设计缺口/扩展风险/待验证”，不得误称线上Bug；问题关闭必须说明原有公共API兼容、项目依赖、性能和回归结果。
+
+## 1. 依据文档、代码与事实范围
+
+### 1.1 权威依据及优先次序
+
+| 层次 | 依据 | 用途与注意 |
+|---|---|---|
+| 协同、工程规范 | 根目录`AGENTS.md`、工程Skill、`DOCS/00_CxVisual_协同开发入口与七仓复用基线.md` | 提交/依赖/当前26工程/真实验收纪律 |
+| 平台宪法与Owner | `DOCS/01～04`、最新Architecture/Owner决议及真实.csproj DAG | 解决F/M/P唯一职责和跨工程依赖；Sheet级内容每次按需重新核对，不以本文件替代 |
+| Imaging功能与设计 | `DOCS/Architecture/CxVisual_专业视觉体系#通用二维视觉工作台——00总体架构与设计总纲_V2.0.md`、同前缀01～08 | 6群26类260二级能力、UML、数据/交互/算法/结果/运行/工作台契约 |
+| 源码实施事实 | `DOCS/Implementation/CxVisual_专业视觉体系#通用二维视觉工作台——V2.0实施源码与迁移台账.md` | 已实现文件、历史提交、遗留事项；以真实master修正 |
+| 严格验收 | `DOCS/Testing/CxVisual_专业视觉体系#通用二维视觉工作台——V2.0全类验收与测试矩阵.md` | V2D编号、G0～G6、CASE-01～08、正反例与实测日志 |
+| 复用来源 | `ReferTo/`及七仓参考源码，现有Tests/和CI | 仅作复用候选，未经适配验收不宣称已经集成 |
+
+**冲突处理**：最新用户明确裁决和有效平台Owner/工程事实优先；Imaging专题不得复写平台所有权。旧文档中的28工程、候选类签名、“设计已通过”等字句不得提升为2026-10-30之后的当前实装状态。升级正式公开API须检查DOCS/02～04相关Sheet与版本，并同步相关UML/ADR。
+
+### 1.2 已确认的真实代码锚点（非完整实现清单）
+
+| Owner | 现有源码及职责 |
+|---|---|
+| FIM | `Foundation/Imaging/`：`FIMImageBuffer`、`FIMImageOperations`、`FIMImageAnalyzer`、`FIMRawImageWriter`等；原像素、通用计算、数据导出 |
+| MVI | `Mechanism/Visual/Imaging/`：`MVIImageSession`、`MVIImageViewport`、`MVIImageLinePairGesture`、`Overlays/`；无WPF会话、坐标与临时叠加 |
+| MPW | `Mechanism/Presentation.Wpf/Imaging/MPWImageViewerControl.xaml.cs`；WPF输入、显示、投影和视觉反馈 |
+| PVC | `Professional/Vision/`：`CxVisionDataFlow`、`CxVisionRawCpuRunner`、`CxVisionRoiEngineering`、`CxVisionRunSummary`、`CxVisionRunCsvExporter`、`CxVisionImageInterop`及Provider |
+| 公共机制 | 现有MEM/MRC/MTC、MPM/MPC/MOL、MOC、MRK/MDS/F19、FLD与权限/配置机制；不得在Vision复制 |
+| 实际宿主/测试 | `Applications/Studio/`、`Tests/TestCenter/Manual/Imaging/`、`Tests/ArchitectureSmoke/Integration/Vision/` |
+| CI | `.github/workflows/imaging-foundation-windows.yml`、`module-center-cpu-windows.yml`、`studio-shell-windows.yml`、`unified-runtime-windows.yml`、`testcenter-windows.yml`等；每项必须记录具体run/SHA/Job |
+
+当前已存在真实ROI→FIM/MRK预览、MEM Data/Visual单事务保存重开和版本/Hash拒绝、若干Run结果与CSV、WPF入口及自动测试源码。**但R1同一Studio完整用户路径尚需以固定SHA STA/UIA和实际结果复验，整体260项、设备HIL和工业长稳均不能宣称完成。**
+
+## 2. 架构不变量：OOP、GoF、AOP是工程硬约束
+
+### 2.1 四逻辑平面与单一Owner
+
+| 平面 | 归属 | 写入权/边界 |
+|---|---|---|
+| Definition | MEM/MRC/MTC、MPM/MOL | 工程Page/Content/Group/资源、ROI/流程定义、Revision、Undo/Redo、Save/Open；编辑必须显式事务 |
+| Execution | MOC/MRK/MDS/F19与PVC Provider | 类型检查/解析/编译、发布策略、任务执行、Pending/Commit/Abort与取消；运行中固定版本 |
+| Evidence | PVC结果语义+现有数据/Artifact机制 | 一次Run独立身份、多ResultItem、来源/版本/状态、Trace；成功后只读，旧Run不可覆写 |
+| Presentation | MVI/MPW + Studio/TestCenter | 图像会话、视口、手势、临时Overlay、结果投影；不把Viewer当结果仓或正式工程数据库 |
+
+贯通链：`ResourceRef/DefinitionRevision → SourceRef/FrameId → Invocation/RunId → ResultItemId/ArtifactRef → Review/ReportRef`，并以CorrelationId关联诊断。每一层只拥有本层状态，可通过明确引用和命令协作，禁止靠可变共享对象反向修改其他层。
+
+### 2.2 OOP验收
+
+- 每个新增/修改类必须记录：**责任、唯一Owner、身份、可变性、线程/生命周期、输入/输出、错误语义、测试消费方**；保证单一职责、封装不泄漏可变数组、组合优先。
+- 基础纯数学/无状态图像运算保留静态函数；无需为了“面向对象”对每个FIM函数创建接口或Manager。
+- 拆分MPW时按真实行为边界迁移，不按文件行数机械分拆；旧公共API、AutomationId、WPF绑定、已有测试必须兼容。
+- 设计候选类/接口只有经两处真实调用变化点、Owner、反例和依赖DAG审查后才能批准；新增跨Owner对象须有ADR。
+
+### 2.3 GoF使用裁决
+
+| 模式 | 推荐落点 | 禁止 |
+|---|---|---|
+| State | 复杂ROI/测量/编辑手势的Begin/Update/Commit/Cancel、失捕处理 | 为每个简单按钮生成空State类 |
+| Observer | MVI会话/Overlay变化、结果选择后投影通知 | 后台线程直接修改WPF或监听器异常导致假回滚 |
+| Strategy | 两个及以上真实可替换CPU/SDK/算法/显示策略 | 单一算法先建空策略继承层 |
+| Factory/Registry | 已有Capability/Provider/MPM/MOC目录 | Vision另造第二插件注册中心 |
+| Adapter | FIM↔专业输入/第三方SDK/跨Workbench数据协议 | 基础像素改成SDK句柄或层层空包装 |
+| Command | MEM/MTC正式编辑命令、Undo/Redo | MPW/MVI建立第二持久Undo堆栈 |
+| Composite | MEM Content/Group及MRC视觉对象、多ROI组合 | 在PVC再造持久对象树/私有ROI数据库 |
+| Template Method（思想） | 统一调用校验/执行/结果装配的步骤顺序；优先组合已有服务 | 强迫无关算法继承巨型基类/替换MRK执行器 |
+
+### 2.4 AOP不是另建AOP框架
+
+横切规则统一挂在已有执行、工程事务、发布和数据租约边界：日志FLD、Trace/CorrelationId、权限与发布授权、配置/模型/参数版本、取消、超时、异常码、预算、内存/显存/SDK占用、用户审计。专业只提供业务字段；不能用UI按钮隐藏代替Runtime授权；热像素循环不得反射织入或逐像素记日志。若某项公共能力不存在，先向公共Owner提交最小增量，不在PVC做平行实现。
+
+### 2.5 明确禁止
+
+- 不增第27个项目、不新建Vision专属工程树/GraphExecutor/DataStack/Heap/CommandCenter/UndoStack/通用JobScheduler。
+- 不将Vision候选缺陷直接当Inspection最终合格判定，不把软件Plan发布当设备安全互锁或硬实时。
+- 不把`MDSBoundedByteStream`当完整工业相机流；现有MDS预算不是CPU+GPU+SDK全部峰值的证据。
+- 不因测试小图、已写UML、绿色历史CI而宣称大图性能、全类能力或设备FieldPassed。
+- 不将正式ROI、结果Overlay、屏幕DIP坐标与原图像素/物理坐标混为同一身份。
+
+## 3. 全量问题与任务台账（18项，唯一任务号）
+
+**状态字典**：`Open`需补实装或证据；`InProgress`实施中；`Blocked`有明确依赖；`Accepted-Gx`按第6节达到固定证据级别；`Deferred`经Owner裁决延期。下表初始均为`Open`，不抹掉已有局部实现/历史测试。每一任务完成时在本表或其第7节追踪记录中补具体链接和SHA。
+
+| ID | 优先级 | 问题/当前观察 | 唯一主Owner / 实际触点 | 交付物与“完成定义”（DoD） |
+|---|---|---|---|---|
+| IMG-01 | P0 | MPW显示、输入、控制柄、坐标和状态耦合；2300+行 | MPW；`MPWImageViewerControl.xaml.cs` | WPF事件仅负责输入/Presenter；可迁移的无WPF规则移MVI；现有API/自动化ID/双Pane无回归 |
+| IMG-02 | P0 | 多布尔交互状态可交错，失捕/取消复杂 | MVI交互Owner；`MVIImageLinePairGesture`、MPW事件 | 统一合法状态迁移与清理，Begin/Update/Commit/Cancel；Esc、失捕、切图、非法点零脏提交 |
+| IMG-03 | P0 | `SourceVersion`还混含会话Result修改，不能独自代表原图Revision | MVI会话+宿主请求边界 | 区分原图身份/源代次、ROI编辑代次、参数/发布版本、请求Epoch；晚到结果禁止更新当前视图 |
+| IMG-04 | P0 | Run证据已有局部Item但缺完整状态/来源/生产者/Artifact合同 | PVC结果语义，MDS/FDT数据Owner | 同Run多类型可追溯、Status/Validity分离，已完成不可原地覆写；错源/缺Artifact/取消/失败区别处理 |
+| IMG-05 | P0 | R1 CASE-07真实单Studio闭环未最终验收 | Studio宿主+PVC/MEM/MTC | 打开源图→选ROI→正式Commit→Undo/Redo→Save/Open→重绑同源→运行→列表/叠加→CSV/RAW导出；正反例及STA证据 |
+| IMG-06 | P1 | 运行后短期结果与长期Artifact/复核引用未定型 | 平台MDS/FDT与PVC Evidence协作 | 明确ResultItem引用/保留/过期/清理/重读/审计合同；不新建堆/仓，审计复核不改变原始Run |
+| IMG-07 | P1 | 直接MRK预览、MEM/MOC正式工程、多Provider可能各自演化 | PVC Provider；MOC/MRK底座 | 快速预览与正式编排同一算法与类型/参数/数值语义，正式工程依MOC编译、MRK执行、MDS提交 |
+| IMG-08 | P1 | 专业参数、端口、能力发现和Provider版本未全类一致 | MPM/MPC/MOC公共Owner+PVC注册 | 可发现/可验证/可组合；非法TypeId/格式/单位/端口拒绝且有定位错误，绝不建Vision注册中心 |
+| IMG-09 | P1 | `CxVisionGrayFrame`、RAW Provider等多次安全复制及临时数组峰值 | FIM/FDT/MDS资源Owner，PVC调用方 | 防御复制默认不退化；有实测副本/峰值表，验证后引入显式只读Owner/Lease、容量及释放 |
+| IMG-10 | P1 | FrameId/采集时间/有界背压/掉帧/回收不足以表示真实在线流 | Automation采集与MDS/Transport，PVC帧合同 | 字节+帧数预算、Backpressure/Drop/NoDrop、乱序/取消/失联有确定语义和计数；真实设备另验 |
+| IMG-11 | P1 | CorrelationId、FLD、权限、版本、资源统计跨宿主不完整 | FLD/权限/配置与MOC/MRK公共Owner | Studio/无头/Provider同一Invocation诊断链；失败、取消、拒绝、超预算有Trace+错误码+来源 |
+| IMG-12 | P1 | 多图/Mask/ROI/结果在Source、坐标系和Revision错配时有误投影风险 | MVI+PVC SourceRef与坐标合同 | 图A Mask不得叠到图B；Zoom/Flip/Rotate/Spacing/DPI可逆；未标定不输出mm/mm² |
+| IMG-13 | P1 | Studio正式工作台选择、参数、结果面板和命令未全部通用化 | Studio/MPW与公共命令机制 | 工程/图像/ROI/算法/Run选择上下文一致；CanExecute/取消/失败反馈正确；TCT不是唯一入口 |
+| IMG-14 | P2 | 已有单ROI配方，复杂组合和复用不足 | MEM/MRC/MTC + PVC规则 | 多ROI/Group稳定ID、形状/孔洞/规则可组合，正式事务/Undo/Save/Open，不建私有列表真源 |
+| IMG-15 | P2 | 匹配配准、拟合、专业增强、AI等260项仍有功能覆盖缺口 | FIM基础、PVC专业及相应Provider | 逐V2D ID补真实算法/API/输入输出和正反例；AI无模型/许可时明确Unavailable，不伪装已实现 |
+| IMG-16 | P2 | 大量Overlay、数千顶点、多Pane和DPI性能/体验待真实验证 | MPW Presenter + MVI投影 | 渲染/拾取性能基线，必要时缓存/批绘/局部重绘；125/150% DPI和大图实测无坐标退化 |
+| IMG-17 | P2 | Vision↔Inspection/CT3D/Automation/HMI跨专业合同仍需扩展 | 各专业唯一Owner+平台Invocation | 统一TypedRef/来源/版本/坐标/权限；Vision输出候选事实，Inspection持最终产品判定 |
+| IMG-18 | P0（持续门禁） | 26类260项尚无逐项G0～G6闭合证据 | Tests与每项实际Owner | 260个V2D逐项有实现位置、正反例、宿主/API、SHA/CI、工业适用性；未通过项不勾选 |
+
+**优先级解释**：P0表示先收敛的结构风险/交付门禁，不等于现有程序必然发生故障；IMG-18贯穿所有批次，不是最后一次“补测试”。主Owner为实施定位，不能替代公共Owner对跨项目API的正式裁决。
+
+## 4. 六条整改主线——对象设计与实施步骤
+
+### A. 交互与显示：IMG-01/02/12/16
+
+**设计目标**：MPW作为薄WPF输入/Presenter；MVI负责视口、图元会话和可测试的无WPF手势；FIM/FGE负责纯图像/几何运算。保留已存在的`MVIImageLinePairGesture`，不引入第二Viewer。
+
+**实施步骤**
+1. 从`MPWImageViewerControl.xaml.cs`逐功能列出字段/事件/操作/写入Store与UI动作，按显示/变换/Overlay渲染/命中/手势/选中分组；建立现有事件行为的回归基线。
+2. 对连续多阶段且确有冲突风险的交互先建立无WPF状态合同：Idle、Active、Committed、Cancelled等**语义**，不是预先批准所有CLR状态类。把Begin、Update、Commit、Cancel及换图/失捕转移放到MVI可测试逻辑；事件路由保留在MPW。
+3. Observer变更通知只在状态正确提交后触发。选中/拖动/预览不可误产生正式MEM事务；已有控制柄、图层、锁定、双Pane复用现有Store。
+4. SourceRef匹配和像素中心/边界/视口/物理坐标明确。错误身份不画Mask，不因UI坐标缩放改变原始ROI。Overlay渲染与工具状态判定逐步分离。
+5. 最后依据实测决定缓存和分批绘制，不以“减少文件行数”本身为验收目标。
+
+**必须反证**：Esc、失鼠标捕获、释放在图外、锁定后继续拖、切源、两个Pane、双屏DPI、无效多边形、极大顶点集、结果切换。旧公开API/AutomationId不得破坏。
+
+### B. 结果与证据：IMG-03/04/06
+
+**设计目标**：在现有`CxVisionRunSummary`/`CxVisionResultItem`上扩充**必要**的来源与证据语义，不建立第二ResultStore。原始Run只读，复核结果为派生记录。
+
+**实施步骤**
+1. 审查现有Run/Item字段、MDS CommittedOutputs、MRK FlowId、Studio/TCT消费方，输出实际字段缺口表。梳理RunId与ItemId如何保持稳定、Image/Mask内存快照怎么封装。
+2. 固定最小合同：RunId、Status、SourceRef、Definition/Config/Provider版本、CompletedUtc、ResultItemId、Kind、ProducerNode/OutputPort、CoordinateSpace（适用时）、Unit/CalibrationRef（适用时）、Trace/Error（适用时）。缺失字段明确Unknown或NotApplicable，禁止填伪值。
+3. Status与Item Validity分离：`Completed+Empty`不等于`Failed`，`Cancelled/Rejected/Stale/MissingArtifact`不能误画成有效数据。对直接预览与编排执行的身份映射用Adapter/组合扩展。
+4. Run提交后不得由UI修改原始数值、坐标和证据。人工审核、二次判定/报告复用既有专业/数据Owner，以引用记录原Run，不在Vision做Inspection最终判定。
+5. 优先复用MDS/FDT预算及资产机制，明确长期Artifact归属、只读访问和失效策略；首次验收只要求当前真实产物闭环，不伪造持久文件库。
+
+**必须反证**：空结果/失败/取消/中途改参数/换源/丢失Artifact/反复导出/历史Run重读，所有结果类型和版本不串线。
+
+### C. 专业算法、编排与API：IMG-07/08/13/15
+
+**设计目标**：算法本身只有一个专业实现真源；预览和正式Run共用输入校验、Provider和结果语义，差异只在是否持久化、发布授权、调度策略及保留期限。
+
+**实施步骤**
+1. 梳理`CxVisionDataFlow`（预览MRK）与`CxVisionRawCpuRunner`（MEM/MOC/MRK正式链）、`CxVisionSeparatedProviders`及Studio/TCT调用图，明确同算法重复代码与必须存在的模式差异。
+2. 参数/TypeId/端口优先复用MPM/MPC/MOC现有描述和Resolver；多提供者时用真实Strategy；CPU/SDK适配通过Professional Provider，不把HALCON/AI设备句柄放进FIM。
+3. 用一条Gray16真实处理链证明：FIM/Image → 增强 → Mask → Region → Measurement → TypedOutputs/Trace；预览可不落工程，但正式链必须依MEM/MOL定义、MOC编译、MRK运行、MDS提交。
+4. 工作台以已有Studio和MPW组合“图像/ROI、参数/算法、结果/Trace、工程”上下文；命令需可发现、可禁用、可取消，无头API不依赖WPF Dispatcher。
+5. 后续每项新算法由260项功能编号驱动，先复用FIM/ReferTo成熟代码并做同图真值测试；禁止通过空Provider占位宣称功能完成。
+
+**必须反证**：非法参数/端口/格式、Provider不可用、改变配置版本、取消、异步晚到、源码替换Provider后重跑，预览与正式运行数值一致或报告明确差异原因。
+
+### D. 大图、所有权与FrameStream：IMG-09/10
+
+**设计目标**：默认安全复制不倒退，优先测出真实峰值和复制瓶颈，再由公共Owner提供必要的安全Lease/缓存策略；工业流不等于单个byte[]队列。
+
+**实施步骤**
+1. 列出FIM输入、`CxVisionImageInterop`、`CxVisionGrayFrame`、`CxVisionRawCpuRunner.RawProvider`、Mask、WPF Bitmap及MDS中每次复制/分配/释放，建立每Run实际字节预算和峰值测量方法。
+2. 用4300×4300、6144×3072 Gray16及代表生产图片，记录Load/Decode、Compute、Commit、Display各段P50/P95、WorkingSet/GC、额外副本；先量化再选优化策略，不预设“必然零拷贝”。
+3. 已共享的不可变像素可优先复用引用；引入借用必须有Owner、只读访问、Lease/Dispose、过期与异常释放规则，适配MDS/FDT；资源超限明确拒绝而不是无限排队。
+4. 对真实连续帧补Source/Frame/Sequence/Timestamp/Lease及队列字节预算。PreviewLatest允许丢弃过时显示，但生产NoDrop必须有上游背压或持久化能力；DropOldest/Newest须有政策、计数和Trace。
+5. GPU/SDK阻塞、探测器断线、队列溢出由公共调度与专业设备Owner协作，不伪造强行中断或硬实时保证。
+
+**必须反证**：连续取消、过载、乱序、输入缓冲复用、UI关闭后任务释放、多帧持续长稳、缺GPU/SDK降级或拒绝；现场HIL另登记。
+
+### E. 全平台AOP：IMG-11/17（同时约束01～18）
+
+**设计目标**：沿现有FLD/配置/权限/MOC/MRK/MDS/事务边界贯穿CorrelationId、RunId、版本、资源及授权，而非引入新的通用日志或AOP代理工程。
+
+**实施步骤**
+1. 整理公共Owner已有日志Scope、MRK Trace、运行结果、权限发布、MDS预算、资源诊断接口清单；区分实际源码能力与待补足跨域字段。
+2. Invocation/Run与日志关联；记录开始/完成/取消/错误/权限拒绝/版本冲突/资源超额，包含SourceRef、Node/Port、CorrelationId、RunId、配置及Provider版本。
+3. UI到执行端采用同一个正式授权机制；UI隐藏操作不代表授权。将审计放在MEM Commit、Plan Publish、真正Run和人工Review的相应公共/专业Owner。
+4. 禁止把所有异常都转成“检测NG”；错误代码、业务无缺陷、设备互锁、取消分别表达；日志要脱敏、限频且不泄漏像素数据。
+5. 为跨专业调用制定最小稳定TypedRef/Invocation映射并先在Vision→Inspection或Vision↔CT3D真实场景中验证，不让其它专业直接引用Vision私有UI状态。
+
+**必须反证**：同一请求跨Studio→MOC/MRK→Provider→结果→报告能按关联ID查询；异常/中止/权限失败有明确首错和不可变证据。
+
+### F. 工程复用、多ROI与交付：IMG-05/14/18
+
+**设计目标**：用已有MEM Content/Group/MRC与MTC唯一工程事务承接正式ROI与规则，完成R1，再自然演进多ROI和完整用户工作台。
+
+**实施步骤**
+1. 基于已存在`CxVisionRoiEngineering.Commit/Open/RunSavedAsync`核对现有Data/Visual双Aspect、SHA256/ROI身份/ConfigRevision，补真实Studio一键一链STA回归。
+2. 用一份有意义的工程走完整CASE-07，包括显式保存/重开后重绑同一源图、同Revision重算、导出同Run证据和工程Dirty状态；仅同尺寸不同像素必须拒绝。
+3. 先保留单ROI既有API；通过MEM Content/Group/MRC组合逐步实现多ROI，每个ROI稳定ID及规则/参数/坐标，事务与现有Undo/Redo一致；禁止扩展为Vision私有ROI长期列表。
+4. 将每个能力的数值、UI、工业证据映射`V2D-XX.YY`，落实CASE-01～08；逐项注明已实现、阻塞及未验证，不把按钮存在等同功能交付。
+
+**必须反证**：同一次操作只增一次工程Revision、Undo/Redo/Save/Open一致、重开错源拒绝、取消无Dirty、旧Run保留、新Run独立、不同宿主/项目无交叉污染。
+
+## 5. 实施批次、依赖和交付规则
+
+以能证明架构的**真实使用闭环**为优先，而不是先大规模“类重构”。每个批次可分小提交，完成一个可运行的纵向切片后才扩大范围。
+
+| 批次 | 顺序及任务 | 前置条件 | 本批交付与退出门槛 |
+|---|---|---|---|
+| **R1 核心闭环** | IMG-03 → IMG-04（最小Run合同）→ IMG-05；IMG-18同步 | 当前MEM/ROI/Run与Studio源码审查，固定样本和现有测试 | 同一Studio真实ROI工程Save/Open/重绑/重跑/结果/CSV或RAW，旧结果防污染；固定SHA Windows G4/G5证据 |
+| **R2 对象合理化** | IMG-01 → IMG-02；并行IMG-12，随后IMG-07 → IMG-08 → IMG-13 | R1基线测试稳定；公开API及Owner映射明确 | 交互状态独立可测、双Pane/坐标正确、Provider/端口/工作台一致，不回归已有功能 |
+| **R3 平台治理** | IMG-06、IMG-09、IMG-10、IMG-11 | R1 Evidence字段稳定、R2调用边界稳定；公共Owner共同裁决 | 产物/资源生命周期、复制/峰值与有界流、AOP关联证据；缺设备场景按G4/Blocked实记 |
+| **R4 多场景扩展** | IMG-14、IMG-15、IMG-16、IMG-17 | R1～R3形成稳定接口和数据预算 | 多ROI/专业算法/大图多Pane/跨Workbench典型Case逐项可验收；IMG-18持续 |
+
+**依赖门禁**：
+- R1不要求先完成“未来全部结果/Artifact体系”，只批准支撑当前CASE-07的最小Run合同；IMG-06再深化持久资产，不得阻塞已完成的小闭环。
+- IMG-01/02不能为了重构一次性替换全部已稳定图元行为；每迁移一种手势先取得对应正反测试。
+- IMG-09/10/11跨公共Owner，先确认现有机制与API，再提交最小公共增量；没有独立第二通用库。
+- IMG-15（完整260项）分功能滚动推进；IMG-18在所有批次同时维护，不允许最后统一补虚构测试。
+- R1～R4的阶段完成是**功能与证据验收**，不是按提交数、类数、页面数或文档长度判断。
+
+### 5.1 第一可执行切片：R1-01（开始开发时直接做）
+
+**目标**：对已存在的ROI工程闭环进行完整STA用户验收，先发现缺失的真实交互段再补最小源码，不盲目预设需要重写Run类。
+
+1. 读取当前HEAD的`CxVisionRoiEngineering.cs`、`CxVisionRunSummary.cs`、`StudioShell.ModuleCenter.cs`、`MPWImageViewerControl.xaml.cs`、`RuntimeVisionArtifactsTests.cs`和已有Studio Shell/UI测试；列出当前已由源码覆盖的每一步、尚无调用的步骤。
+2. 固定一张Gray16（含Stride）或已登记真实Gray8+复杂ROI样本，记录SHA-256与原始数值、尺寸、位深、ROI的Guid/几何、MHS Revision及预期缺陷像素面积。
+3. 在**同一个**Studio工程内创建、编辑、正式提交ROI；执行Undo/Redo、SaveAs、关闭重开；显式重绑源图，按保存Revision调用MRK；结果面板选择Run/Item，查看Mask/Region/Area及原图Overlay；导出CSV与RAW。
+4. 用一个完整负面脚本覆盖：同尺寸错像素Hash拒绝、源切换或ROI编辑晚到拒绝、工程Revision冲突、取消、坏参数、空区域、缺Provider/拒绝授权。验证无脏提交、无虚假Passed、不覆盖历史Run。
+5. 在测试/Implementation登记**固定Commit SHA、测试命令、样本Hash、结果数值、STA/UIA日志及截图位置、失败修复提交**。若当前环境不能运行Windows/WPF，准确停在G2或G3，绝不写“已验收”。
+6. 只有R1-01闭环后，才评估是否需要扩充IMG-04公用结果Schema或调整IMG-07调用链；不能为了“未来目标”先建立空结果框架。
+
+**最小DoD**：一个真实工程、一个真实输入、至少一个ROI、一个新Run、Image/Mask/Region/Measurement证据及Trace、两个用户导出动作、保存重开和必需负例都可重复执行，且不依赖TCT演示流程。
+
+## 6. 测试与工业验收协议
+
+### 6.1 七级证据：逐V2D项和本文件任务双重登记
+
+| 等级 | 必须证据 | 不能冒充 |
+|---|---|---|
+| G0 需求 | 对应V2D-XX.YY、用户场景、输入输出和Owner | 不能叫已实现 |
+| G1 设计 | UML/对象职责/模式/边界/风险与反例通过复审 | 不是C#公共API |
+| G2 源码 | 当前master真实源文件、csproj纳入、实际调用入口 | 不是编译通过 |
+| G3 编译 | 固定SHA的Windows VS2022/.NET Framework4.8 Release x64成功 | 不是自动测试 |
+| G4 自动 | 数值/无效输入/取消/版本/内存与回归实际运行通过 | 不是人工真实操作 |
+| G5 UI | 同工程Studio/TestCenter真实WPF STA/UIA与必要人工交互 | 不是设备/工业生产 |
+| G6 工业 | 代表性生产数据、SDK/许可证/设备HIL、性能/长稳及记录 | 合成4×4与UI截图不足 |
+
+每项至少**正例、反例、真实调用入口**；异步/执行项补取消和版本冲突；工程项补Save/Open/Undo；大图/工业项补峰值/恢复/设备适用性。TestCenter用于检验共享能力，不拥有独立业务算法。未具备硬件时如实Blocked或不适用（附理由），不编造G6。
+
+### 6.2 建议保留的既有自动化测试与工作流
+
+- `Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionArtifactsTests.cs`、`RuntimeVisionDataFlowTests.cs`、`RuntimeVisionImageInteropTests.cs`、`RuntimeVisionResultTests.cs`。
+- 现有图窗WPF/TCT STA回归与Studio Shell CPU/模块中心自测；检查实际项目中的Test文件、入口名称及自动化ID。
+- Windows CI：`imaging-foundation-windows.yml`、`module-center-cpu-windows.yml`、`studio-shell-windows.yml`、`unified-runtime-windows.yml`，以及与修改范围相关的`testcenter-windows.yml`和默认架构回归。
+- 既有命令候选：`CxVisual.Tests.ArchitectureSmoke.exe --imaging`、`--vision-results`、`CxVisual.Studio.exe --module-center-cpu-self-test`、`--shell-self-test`、`CxVisual.TestCenter.exe --imaging-viewer-smoke`。**执行前必须从当前Workflow/Program入口再次确认真实参数、工作目录、超时和输出路径。**
+- 涉及工程/DAG/Plan发布时追加工程组织、Decision/Runtime相应Windows门禁；不能为绿色结果跳过原有默认回归。
+- 性能基准从CPU/内存/GC/图像规格/显卡/SDK版本/P50/P95及峰值等真实量出发；阈值需与用户/现场条件确认，不宣称未经测量的FPS/GB/秒。
+
+### 6.3 八个纵向场景与任务映射
+
+| 场景 | 相关问题ID | 必须保持的关键事实 |
+|---|---|---|
+| CASE-01 单图/ROI/导出 | 01/02/03/12/13/18 | Gray16原像素不因LUT、ROI、导出而改变 |
+| CASE-02 算法实验 | 04/06/07/08/13/15/18 | Enhance→Mask→Region→Measure及Trace同源、同版本 |
+| CASE-03 双图配准比较 | 01/12/15/16/18 | 变换可逆、错误坐标/SourceRef拒绝 |
+| CASE-04 批量序列 | 03/09/10/11/18 | Frame顺序、取消、队列预算、乱序/坏帧 |
+| CASE-05 在线视觉 | 07/09/10/11/17/18 | 可用设备帧/背压、失联/恢复、Inspection只接候选事实 |
+| CASE-06 X-Ray/CT投影 | 08/09/12/17/18 | Frame/CalibrationRef/投影几何不混淆 |
+| CASE-07 正式工程 | 03/04/05/06/13/14/18 | 同Studio显式ROI事务、Undo/Save/Open/重跑/导出 |
+| CASE-08 AI预留 | 07/08/11/15/17/18 | 模型缺失/许可证不满足明确拒绝，不伪装成功 |
+
+## 7. 后续迭代记录格式（每次提交填写）
+
+每次完成一项或一个有意义的纵向切片，在本节追加一条记录，并同步更新对应原Implementation和Testing文档。建议追加如下字段，禁止只填“已完成”：
+
+- **日期/任务ID/批次/负责人/裁决**：YYYY-MM-DD、IMG-XX、R1-XX，相关V2D-XX.YY和CASE；
+- **前置代码SHA**：读到的master SHA、Owner/文件定位、ReferTo复用检验；
+- **变更与设计证据**：实际类/接口/职责、OOP/GoF/AOP应用、涉及的UML/ADR/公共API兼容；
+- **实际提交**：中文Git commit SHA/URL、受影响文件、是否变更.csproj/DLL/NuGet；
+- **测试环境**：Windows版本/VS/.NET48/x64/关键SDK、样本Hash/位深/Stride/尺寸；
+- **测试**：命令、返回码、Windows Actions workflow/run/job、日志/截图、数值期待/实测、正反例与取消；
+- **性能/现场**：CPU/GPU/WorkingSet/内存峰值/P50/P95、设备/许可证及HIL证据，若无则写“未执行”；
+- **结果**：G0～G6、Accepted/Blocked/回滚、遗留问题、下个最小切片；
+- **纠错**：旧结论被新证据推翻时新加一条订正，不修改旧SHA历史证据为新运行。
+
+初始状态：`IMG-01～IMG-18 = Open（统筹已建立；既有局部源码和历史CI由原台账保持）`。此状态只表示整改任务未逐项关闭，不否认已有成熟功能。
+
+## 8. 变更控制、回滚和“不得完成”规则
+
+1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
+2. **开发中**：每个提交应可审、作用集中、中文提交说明；首先保护已用API/序列化身份/运行版本语义。涉及公共Owner或依赖方向变化必须审核并更新相应UML/ADR和Tests。
+3. **失败时**：提交失败原因、复现输入及CI日志；在master按仓库规则修复。不得因某批重构撤掉已通过功能、放宽数值断言或永久跳过相关CI。
+4. **版本化结果**：不得复用旧RunId覆盖历史结果；工程变更/算法重跑是新Revision或新Run；取消/失败不得发布Pending数据或把空结果冒充失败。
+5. **交付宣称**：未拿到固定SHA的编译日志不得写G3；仅源码测试存在不得写G4；模拟UI按钮不得写G5；无真实设备不得写G6；本文件无权越过这些证据门禁。
+6. **本统筹自身版本化**：只在工作范围、优先级、依赖或Owner裁决发生变化时升级V1.x；按任务实施进展追加第7节记录，避免每次改动造成“方案重写”。
+
+## 9. 完成目标与持续维护
+
+**短期目标（R1）**：Studio用户可以在同一真实工程完整完成原图/ROI→正式工程→MRK运行→结构化多结果→原图准确显示→导出→关闭重开的可复现闭环，同时面对错源、取消、冲突等不会污染有效状态。
+
+**中期目标（R2/R3）**：任何新增工具或算法不必修改一个巨型WPF状态机；各专业遵守统一的Provider/Result/Frame/资源/Trace/权限边界；大图性能和工业时序可量化，公共能力可复用。
+
+**长期目标（R4与260项）**：6群26类260二级功能按V2D编号实际逐项实现、验证及标记现场适用性，支撑Vision、CT3D、Automation、Inspection、HMI、Simulation协同。功能越多，核心对象和公共机制应越稳定，而不是增加平行体系。
+
+> **落地判断**：以“职责明确、变更隔离、共享治理、用户完整可用、固定证据可复验”五项共同决定是否完成。任何一个方向不满足，不能只凭架构图漂亮或CI一项绿色就关闭任务。
