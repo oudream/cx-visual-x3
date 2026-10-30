@@ -168,6 +168,15 @@ namespace CxVisual.Studio
                             flow.Completion.Result.State==MRKFlowState.Completed&&
                             executions==2,
                             "B5继续执行未到达真实完成状态");
+                        // The real Studio DispatcherTimer uses this exact refresh
+                        // after an MRK transition; no second inspection click required.
+                        var refresh=typeof(MainWindow).GetMethod(
+                            "RefreshRequestedFlowResultInspection",flags);
+                        Assert(refresh!=null,"B5缺少活跃结果自动刷新入口");
+                        refresh.Invoke(window,new object[0]);
+                        Assert(preview.Text.Contains("second = Int32 value=2")&&
+                            preview.Text.Contains("Completed"),
+                            "B5单步后继续执行没有自动刷新已提交结果");
                         command("OnFlowInspectData");
                         Assert(preview.Text.Contains("second = Int32 value=2")&&
                             preview.Text.Contains("Completed"),
