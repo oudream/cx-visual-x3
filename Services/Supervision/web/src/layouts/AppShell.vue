@@ -14,7 +14,8 @@ const stopHistory = useStopHistoryStore()
 const theme = useThemeStore()
 const { error, loading, updatedAt } = storeToRefs(monitor)
 const { loading: guardLoading } = storeToRefs(guard)
-const toolbarLoading = computed(() => loading.value || guardLoading.value)
+const { loading: stopHistoryLoading } = storeToRefs(stopHistory)
+const toolbarLoading = computed(() => loading.value || guardLoading.value || stopHistoryLoading.value)
 
 function refreshCurrent(): void {
   void monitor.refresh()
@@ -35,6 +36,7 @@ onMounted(() => {
     if (document.visibilityState === 'visible') {
       void monitor.refresh()
       if (route.path === '/' || route.path === '/guard' || route.path === '/programs') void guard.refresh()
+      if (route.path === '/stops') void stopHistory.refresh()
     }
   }, 5000)
 })
