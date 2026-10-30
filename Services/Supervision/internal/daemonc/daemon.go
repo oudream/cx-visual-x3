@@ -198,6 +198,9 @@ func ExecProgram(a program.Program, wd string) (*exec.Cmd, error) {
 }
 
 func startProc(args, env []string, dir string, logFile string) (*exec.Cmd, error) {
+	if len(args) == 0 || args[0] == "" {
+		return nil, errors.New("managed program executable path is empty")
+	}
 	cmd := &exec.Cmd{
 		Path:        args[0],
 		Dir:         dir,
