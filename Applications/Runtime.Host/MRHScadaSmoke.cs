@@ -233,6 +233,25 @@ namespace CxVisual.Runtime.Host
                         "; B reads="+plcB.Reads+" cycles="+group.Find(b).CompletedCycles+
                         " fault="+(group.Find(b).Completion.Exception==null?"none":
                             group.Find(b).Completion.Exception.ToString()));
+                    // 正式双设备真实FC03持续采样时并发读取同一项目与各Connector
+                    // Effective；不能把MHS读文件的独占锁竞争误报成版本漂移。
+                    Task[] verifyReaders=Enumerable.Range(0,4).Select(worker=>
+                        Task.Run(()=>
+                        {
+                            for(int turn=0;turn<6;turn++)
+                            {
+                                if(!group.IsDeploymentApproved ||
+                                    !group.Find(a).IsStillApproved ||
+                                    !group.Find(b).IsStillApproved)
+                                    throw new InvalidOperationException(
+                                        "并发MHS版本校验误判漂移 worker="+worker+
+                                        " turn="+turn);
+                            }
+                        })).ToArray();
+                    Task.WhenAll(verifyReaders).GetAwaiter().GetResult();
+                    Check(!group.Find(a).Completion.IsCompleted &&
+                          !group.Find(b).Completion.IsCompleted,
+                        "并发MHS读版本不能使两个健康PLC采集任务提前终止");
                     IMDSVariableSnapshot sampleA=group.Find(a).Device.Inspect("word100");
                     IMDSVariableSnapshot sampleB=group.Find(b).Device.Inspect("word100");
                     Check((ushort)sampleA.CurrentObject==73 &&
