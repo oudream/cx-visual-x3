@@ -53,3 +53,20 @@
 - B6协议门禁：HmiScadaPipeTests / --hmi-pipe使用真正Windows NamedPipe做v1请求/回复、点位类型/版本/品质、代次拒绝。服务端是协议测试夹具，不等于运行真实Runtime.Host。A真实双PLC TCP/Host Pipe测试另取其对应CI证据。
 
 **验收边界**：首版软件G1 #41028059482只属于旧SHA成功。上述新代码在Windows .NET48 x64的构建、HMI Runtime/WPF/Studio/Pipe门禁与现场PLC G2/HIL G3尚不能声明通过。跨账户/远程身份与命令授权、独立客户端正式发布、P&ID/趋势/报警与完整Faceplate仍未完成。
+
+## 2026-10-30 第四批：只读Pipe真实兼容修复、Faceplate双实例、MHS部署可视配置
+
+### 已提交实装
+
+1. **Pipe v1修正**：Professional/HMI/PHMScadaReadOnlyPipeClient.cs 删除 .NET Framework 4.8 NamedPipeClientStream 上无效的ReadTimeout/WriteTimeout设置；连接后对整个IO引入3秒关闭句柄的截止；HasValue=false时RefreshUtc保留未定义（DateTime默认），不将本机时钟当PLC时间。Tests/ArchitectureSmoke/Integration/HmiScadaPipeTests.cs增加真实OS NamedPipe已连接但不回包的截止测试、Host首采样前null字段测试。
+2. **Studio实时选点同步**：StudioShell.Hmi.Remote.cs 在接到Host首帧和后续快照时，经WPF Dispatcher通知现有MPM变量选择器，工程切换/释放时注销回调，不建立可写变量仓。
+3. **工业Faceplate**：Professional/HMI/PHMFaceplateAuthoring.cs 使用真实MEM Symbol + PublicMapping(Online→visible) + MRI实例SetOverride，每个MDS设备持有独立Boolean Binding。外框/灰色失联底灯/绿色运行覆盖和实例名称均为现有MRC/MEM对象，MTC一次事务创建，复用MEM保存、Undo/Redo。Studio资源树Page右键对本机MDS和独立Host点位都可放置Motor/Valve基本Faceplate。
+4. **FailClosed MVI**：Mechanism/Visual/MVISceneProjection.cs 对明确存在PublicMapping的运行态visible实例映射，当外部运行值因Bad/Stale/断线缺失时返回false，不再按普通静态图元的默认visible=true把运行绿灯显示为正常；普通未映射图元与设计态仍保持原行为。ArchitectureSmoke HmiRuntimeTests真实验证一份Symbol/两个设备实例、各自Good/Bad互不串灯、保存重开独立绑定。
+5. **SCADA正式部署编辑**：StudioShell.cs 注册A已有PADScadaDeploymentConfiguration进原MHS Schema配置中心；工程Page的HMI菜单增加直达doc.config。新增选择实际MHS存储根目录的WPF入口，以与独立Runtime.Host启动参数mhsRoot一致；更换目录前必须安全关闭原Config文档，未保存草稿拒绝切换。StudioShellSelfTests.RunHmiOnly增加真实Faceplate右键、SCADA配置Schema UI和配置根保护验收；历史“4卡”固定断言按新实际“5卡”调整。
+6. 未创建新的PLC协议、MDS仓库、命令中心、Canvas或持久项目对象层；工业电机/阀门为MEM已有Symbol组成的初级Faceplate，不宣称P&ID/历史趋势/报警已完成。
+
+### 验收实情与边界
+
+- GitHub上新SHA的HMI Windows G1、工程综合CI、Studio WPF STA工作流查询时仍排队；**不能声明本批已经编译或回归测试通过**。本运行环境无Windows/.NET48 MSBuild与物理PLC，故未执行本机真正编译/设备测试。
+- 正式SCADA工程配置仍遵守MHS Pending/Effective/ACL与唯一Host root；Studio不能自行生效未授权草稿。Pipe只读、同Windows账户，没有命令认证/实机写权限；HMI当前按钮必须保持禁控。
+- 未关闭：远程授权Command Schema/PLC回读/UIA实机G2/HIL G3、完整仪表/Valve动画/P&ID/趋势/报警、生产级可安装独立HMI运行客户端。
