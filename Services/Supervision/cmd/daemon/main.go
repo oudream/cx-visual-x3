@@ -40,31 +40,6 @@ func safeManagedPID(pid int) bool {
 	return pid > 0 && pid != os.Getpid()
 }
 
-func exitPidFiles(programs []program.Program) {
-	for i := 0; i < len(programs); i++ {
-		a := &programs[i]
-		if a.ID == program.DefaultProgramIdDaemon {
-			continue
-		}
-		name := utilities.FileSystemGetFileNameOnly(a.Path)
-		if pid := program.LoadProgramRunPid(*_workDir, name); safeManagedPID(pid) {
-			// The legacy PID file and name substring are not sufficient to
-			// identify a process. A mismatch or inaccessible executable must
-			// be skipped, never terminated.
-			if err := verifyManagedExecutablePID(pid, a.Path); err != nil {
-				_logger.Printf(_title.Error+"Skip stale PID cleanup for %s (%d): %v\n", a.Path, pid, err)
-				continue
-			}
-			err := program.KillProcess(pid)
-			if err != nil {
-				_logger.Printf(_title.Error+"Kill[ %s ] Fail. err= %s", name, err)
-			} else {
-				_logger.Printf(_title.Error+"Kill[ %s ] Success", name)
-			}
-		}
-	}
-}
-
 // FOO=bar bash -c 'SomeCommand SomeArgs | SomeCommand2'
 // https://stackoverflow.com/questions/10856129/setting-an-environment-variable-before-a-command-in-bash-is-not-working-for-the
 func main() {
@@ -133,6 +108,18 @@ func main() {
 	for id, reason := range _programWorkers.terminalSnapshot() {
 		_logger.Printf(_title.Error+"Supervision terminal latch retained: ProgramId=%d, reason=%d; automatic start refused\n", id, reason)
 	}
+	// The preceding Daemon may have been SIGKILLed. Its old PID files
+	// cannot authorize a Kill or establish original Worker ownership.
+	// Quarantine uncertain programs BEFORE any new worker admission.
+	orphans := scanLegacyPIDFiles(*_workDir, getPrograms())
+	if err := _programWorkers.quarantineOrphans(orphans); err != nil {
+		_logger.Printf(_title.Error+"Fatal legacy process quarantine failed: %v\n", err)
+		os.Exit(-7)
+		return
+	}
+	for id, reason := range orphans {
+		_logger.Printf(_title.Error+"ORPHAN QUARANTINE: ProgramId=%d; auto-start disabled; reason=%s\n", id, reason)
+	}
 
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
@@ -165,8 +152,8 @@ func main() {
 		}
 	}()
 
-	// exit pid of file ( in dir pid )
-	exitPidFiles(_programs)
+	// Legacy PID cleanup is read-only. Unverified previous-generation
+	// processes are quarantined above; never Kill by a PID file at startup.
 
 	bSysSetting := false
 	err = checkSysSetting()
@@ -181,6 +168,13 @@ func main() {
 	for i := 0; i < len(_programs); i++ {
 		a := _programs[i]
 		if a.ID == program.DefaultProgramIdDaemon {
+			continue
+		}
+		if reason, blocked := _programWorkers.orphanReason(a.ID); blocked {
+			_logger.Printf(_title.Error+"Program %d not started: ORPHAN QUARANTINE: %s\n", a.ID, reason)
+			continue
+		}
+		if _, blocked := _programWorkers.blocked(a.ID); blocked {
 			continue
 		}
 		// sys setting no good, only run inspector and monitor
@@ -502,6 +496,9 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 		// Terminal limits are latched before the terminal Event is sent.
 		// Recovery must not wait FirstWaitTime or restart a latched Program.
 		if _, blocked := _programWorkers.blocked(a.ID); blocked {
+			continue
+		}
+		if _, quarantined := _programWorkers.orphanReason(a.ID); quarantined {
 			continue
 		}
 		bProgramHasRun := false
