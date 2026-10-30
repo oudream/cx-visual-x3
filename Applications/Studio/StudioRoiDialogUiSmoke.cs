@@ -197,6 +197,7 @@ namespace CxVisual.Studio
                 string wrong=Path.Combine(folder,"wrong-pixel.raw");
                 string project=Path.Combine(folder,"real-roi.cxproj");
                 string csv=Path.Combine(folder,"run-evidence.csv");
+                string rawExport=Path.Combine(folder,"run-mask.raw");
                 byte[] pixels=new byte[40];
                 for(int y=0;y<4;y++)
                 {
@@ -273,11 +274,37 @@ namespace CxVisual.Studio
                     results.Items.Count>=4 && viewer.Overlays.Items.Count>0 &&
                     vm.ProjectSession.Revision==revision,
                     "WPF运行未发布真实MRK结果："+details.Text);
-                string expectedRun=details.Text;
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunCsv",
                     "导出本次视觉Run",csv);
                 Require(File.Exists(csv) && File.ReadAllText(csv).Contains("AcceptedRegionPixelArea"),
                     "系统保存对话框未得到真实Run结构化CSV");
+                // 通过UIA真正选择Mask结果项，而不直接调用专业Helper投影。
+                await Task.Run(()=>{
+                    AutomationElement list=Find(AutomationElement.FromHandle(hwnd),
+                        "Studio.ModuleCenter.ResultItems");
+                    AutomationElementCollection entries=list.FindAll(TreeScope.Children,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty,
+                            ControlType.ListItem));
+                    AutomationElement selected=null;
+                    foreach(AutomationElement entry in entries)
+                        if(entry.Current.Name.StartsWith("Mask",StringComparison.Ordinal))
+                        {selected=entry;break;}
+                    Require(selected!=null,"当前Run没有可选择的Mask UIA结果项");
+                    SelectionItemPattern item=selected.GetCurrentPattern(
+                        SelectionItemPattern.Pattern) as SelectionItemPattern;
+                    Require(item!=null,"Mask结果项不支持实际UIA SelectionItem");
+                    item.Select();
+                });
+                await Until(()=>viewer.Session.Result!=null &&
+                    details.Text.Contains("Mask"),"UIA选择Mask后显示原Run产物");
+                FIMImageBuffer mask=viewer.Session.Result;
+                Require(mask.Width==4 && mask.Height==4,
+                    "选中Mask后WPF图窗没有显示同尺寸的真实像素");
+                await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunRaw",
+                    "导出本Run的无损原始像素",rawExport);
+                Require(File.Exists(rawExport) &&
+                    new FileInfo(rawExport).Length==(long)mask.Stride*mask.Height,
+                    "真实系统保存弹窗未导出被选中的Mask无损RAW");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
                     "重新绑定工程ROI原图",wrong);
                 await Until(()=>status.Text.Contains("ROI原图重绑失败"),
