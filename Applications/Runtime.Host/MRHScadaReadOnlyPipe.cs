@@ -241,6 +241,41 @@ namespace CxVisual.Runtime.Host
             },cancellationToken);
         }
 
+        // 独立Host进程的本地只读探针：与生产HMI使用相同的Pipe v1线协议，
+        // 不复用进程内group/MDS变量，不暴露任何设备写入/命令重放能力。
+        // 由CI用真正的子进程调用，验证跨进程而非仅同进程测试夹具。
+        internal static int Probe(string[] args)
+        {
+            if(args==null||args.Length<3)
+                throw new ArgumentException("scada-pipe-probe <pipeName> discover|snapshot ...");
+            MRHScadaPipeRequest request;
+            if(args.Length==3&&args[2]=="discover")
+                request=new MRHScadaPipeRequest{SchemaVersion=1,Operation="discover"};
+            else if(args.Length==7&&args[2]=="snapshot")
+            {
+                Guid device;
+                if(!Guid.TryParse(args[3],out device)||device==Guid.Empty||
+                    String.IsNullOrWhiteSpace(args[4])||
+                    String.IsNullOrWhiteSpace(args[5])||
+                    String.IsNullOrWhiteSpace(args[6]))
+                    throw new ArgumentException("snapshot必须提供DeviceRef和三个非空Effective/Generation版本");
+                request=new MRHScadaPipeRequest{
+                    SchemaVersion=1,Operation="snapshot",DeviceRef=device.ToString("N"),
+                    ExpectedDeploymentVersion=args[4],ExpectedConfigVersion=args[5],
+                    ExpectedGeneration=args[6]};
+            }
+            else
+                throw new ArgumentException("IPC Probe只允许discover或带明确版本的snapshot");
+            MRHScadaPipeReply reply=ExchangeForSmoke(args[1],request);
+            using(MemoryStream json=new MemoryStream())
+            {
+                new DataContractJsonSerializer(typeof(MRHScadaPipeReply))
+                    .WriteObject(json,reply);
+                Console.Out.WriteLine(System.Text.Encoding.UTF8.GetString(json.ToArray()));
+            }
+            return reply.Status=="Ok"?0:3;
+        }
+
         // 仅用于真实Windows Pipe G1集成测试，生产HMI自行消费公开的v1线协议。
         internal static MRHScadaPipeReply ExchangeForSmoke(string name,MRHScadaPipeRequest req)
         {
