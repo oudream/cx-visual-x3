@@ -157,7 +157,18 @@ namespace CxVisual.Mechanism.Visual
                 {
                     var reference=_refs[path[i]];var definition=_snapshot.Find(reference.TargetId);
                     var mapping=definition.PublicMappings.FirstOrDefault(m=>m.Kind==MRCPublicMappingKind.Property&&m.TargetAddress.ObjectId==node.Id&&m.TargetMemberId==member&&m.TargetAddress.InstancePath.SequenceEqual(path.Skip(i+1)));
-                    if(mapping!=null)return Literal(Parameter(reference,mapping.MemberId),path,new HashSet<string>(StringComparer.Ordinal),target);
+                    if(mapping!=null)
+                    {
+                        MPMValue projected=Literal(Parameter(reference,mapping.MemberId),
+                            path,new HashSet<string>(StringComparer.Ordinal),target);
+                        // 实例公开的visible使用在线变量时，Good失效不能退回“可见=true”。
+                        // 仅针对存在真实PublicMapping的运行帧；设计态与普通未绑定
+                        // 图元仍遵守工程静态IsVisible默认值。
+                        if(projected==null&&_runtimeEnabled&&
+                            member=="visible"&&target==MPMValueKind.Boolean)
+                            return MPMValue.Boolean(false);
+                        return projected;
+                    }
                 }
                 MPMBinding binding;if(node.Visual!=null&&node.Visual.Bindings.TryGetValue(member,out binding))return Literal(binding,path,new HashSet<string>(StringComparer.Ordinal),target);return null;
             }
