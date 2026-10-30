@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Linq;
 using CxVisual.Foundation.Volume;
 using CxVisual.Foundation.Geometry;
@@ -43,6 +44,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(gpu.GetMethod(api, BindingFlags.Public | BindingFlags.Instance) != null,
                     "缺少体绘真实API："+api);
             // 验证毫米坐标→GL标准化对象空间；不依赖GPU或专业算法UI。
+            Vector3 rayOrigin,rayDirection;
+            Check(MPWVolumeOpenGlControl.TryUnprojectNormalizedRay(50,50,101,101,
+                new Vector3(0,0,3),Vector3.Zero,Vector3.One,
+                out rayOrigin,out rayDirection)&&
+                Math.Abs(rayDirection.X)<1e-5&&Math.Abs(rayDirection.Y)<1e-5&&
+                rayDirection.Z<-.9999&&rayOrigin.Z<3&&rayOrigin.Z>2.97,
+                "OpenGL画布中央射线须与System.Numerics透视矩阵一致朝向真实3D中心");
+            Check(MPWVolumeOpenGlControl.TryUnprojectNormalizedRay(75,50,101,101,
+                new Vector3(0,0,3),Vector3.Zero,Vector3.One,
+                out rayOrigin,out rayDirection)&&rayDirection.X>0,
+                "画布右侧像素射线须指向物理右侧而不是反向");
+            Check(!MPWVolumeOpenGlControl.TryUnprojectNormalizedRay(-1,50,101,101,
+                new Vector3(0,0,3),Vector3.Zero,Vector3.One,
+                out rayOrigin,out rayDirection)&&
+                !MPWVolumeOpenGlControl.TryUnprojectNormalizedRay(50,50,101,101,
+                new Vector3(0,0,3),Vector3.Zero,new Vector3(1,0,1),
+                out rayOrigin,out rayDirection),
+                "拾取视口越界和退化模型缩放必须拒绝，不生成伪射线");
             FVOVolumeSpatialFrame frame=new FVOVolumeSpatialFrame(.5,1,2,10,20,30,
                 new double[]{0,-1,0,1,0,0,0,0,1},true);
             var physical=new List<FVOPhysicalPoint3D>
