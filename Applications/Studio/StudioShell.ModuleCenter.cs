@@ -593,6 +593,7 @@ namespace CxVisual.Studio
             rawRow.Children.Add(bindRoiStride);
             System.Threading.CancellationTokenSource activeRun=null;
             System.Threading.CancellationTokenSource savedRoiRun=null;
+            System.Threading.CancellationTokenSource bindingOperation=null;
             var cancelRun=new Button {Content="取消检测",Padding=new Thickness(8,5,8,5),
                 Margin=new Thickness(5,0,0,0),IsEnabled=false};
             System.Windows.Automation.AutomationProperties.SetAutomationId(cancelRun,
@@ -600,6 +601,7 @@ namespace CxVisual.Studio
             cancelRun.Click+=(sender,args)=>{
                 if(activeRun!=null)activeRun.Cancel();
                 if(savedRoiRun!=null)savedRoiRun.Cancel();
+                if(bindingOperation!=null)bindingOperation.Cancel();
             };
             rawRow.Children.Add(cancelRun);
             var rawStatus=new TextBlock {Text="等待用户选择RAW文件；位深来自已读取的MHS Effective。",
@@ -757,12 +759,15 @@ namespace CxVisual.Studio
                 long epoch=previewEpoch;
                 bindingSavedRoi=true;bindRoiButton.IsEnabled=false;
                 runSavedRoiButton.IsEnabled=false;
+                var bindWork=new CancellationTokenSource();
+                bindingOperation=bindWork;cancelRun.IsEnabled=true;
                 try
                 {
                     rawStatus.Text="正在读取RAW并核验MEM保存的原图指纹…";
                     FIMImageBuffer restored=await Task.Run(()=>
                         LoadStudioSavedRoiRaw(session,address,dialog.FileName,
-                            stride,CancellationToken.None));
+                            stride,bindWork.Token),bindWork.Token);
+                    bindWork.Token.ThrowIfCancellationRequested();
                     if(!Object.ReferenceEquals(_viewModel.ProjectSession,session)||
                        !Object.ReferenceEquals(_viewModel.ActivePage,page)||
                        session.Project.Id!=projectId || session.Revision!=revision ||
@@ -784,13 +789,21 @@ namespace CxVisual.Studio
                         +"请点击“运行工程ROI”；参数和几何取自MEM已保存配方。";
                     rawStatus.Text="原图校验通过；未修改工程Revision或建立新检测页。";
                 }
+                catch(OperationCanceledException)
+                {
+                    rawStatus.Text="ROI原图重绑已取消，未发布新图像。";
+                }
                 catch(Exception ex)
                 {
                     rawStatus.Text="ROI原图重绑失败（旧图与结果保持原状）："+ex.Message;
                 }
                 finally
                 {
+                    if(Object.ReferenceEquals(bindingOperation,bindWork))
+                        bindingOperation=null;
+                    bindWork.Dispose();
                     bindingSavedRoi=false;bindRoiButton.IsEnabled=true;
+                    cancelRun.IsEnabled=activeRun!=null||savedRoiRun!=null;
                     runSavedRoiButton.IsEnabled=hasCurrentSource();
                 }
             };
