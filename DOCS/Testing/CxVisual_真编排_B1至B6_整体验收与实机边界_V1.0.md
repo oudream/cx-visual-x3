@@ -48,6 +48,29 @@
 - `a9cca000`：Unified Runtime、Decision Windows CI 成功，覆盖 72 节点有界摘要。
 - `8ffa037c`：固定容量算法与 Studio 完整组合对应的 Studio S1 CI 尚需单独取得成功结果；不同 SHA 的成功证据不能冒充同 SHA 全绿。
 
+### 3.1 B1～B6 八项整体验收跟踪（2026-10-30 增量）
+
+此表是**按能力关闭**的证据索引；历史成功仅覆盖其对应的固定SHA，不推定新master自动全绿。
+
+| ID / 包 | 真正产品条件与源代码入口 | 自动测试与反例 | 固定SHA / Windows证据 | 状态及剩余边界 |
+|---|---|---|---|---|
+| ORCH-01 / B1 | Studio经MEM/MOL维护真实Page/Content/Block/Port和版本，保存关闭重开 | `OrganizationLogicIntegrationTests`、`--orchestration-vertical` | [7e8dda67 / Runtime 40971502958](https://github.com/oudream/cx-visual-x3/actions/runs/40971502958) 成功 | **软件历史专项已验证**；新master及跨专业全部对象往返仍需回归 |
+| ORCH-02 / B2 | `MDCDeclarativePlanCompiler` 静态描述；`MOCManifestRuntimeBinding` 在MRK一侧校验签名和版本 | `MDCDecisionTests`、`--orchestration-vertical`；伪签名/未知能力/过期版本拒绝 | [7e8dda67 / Runtime 40971502958](https://github.com/oudream/cx-visual-x3/actions/runs/40971502958) 成功（既有垂直链） | **部分软件验证**；完整可移植纯Plan Loader、全专业版本封闭仍待验 |
+| ORCH-03 / B3 | Professional Vision CPU真实算法通过唯一MRK执行并写回MDS，SourceMap回指工程 | `G06CpuVisionThroughMOC`、`RuntimeVisionDataFlowTests` | [7e8dda67 / Runtime 40971502958](https://github.com/oudream/cx-visual-x3/actions/runs/40971502958) 成功 | **Vision CPU 软件已验证**；AI、CT、Automation/Inspection真实Provider与HIL未覆盖 |
+| ORCH-04 / B4 | `MRKExecutionEngine` + MDS/FCR实现并发隔离、取消、资源/异常保护 | `--orchestration-industrial`、`--runtime-data-soak 20000`；新增`ResultSummariesSeparateFailedAndSuccessfulProducts`异常隔离反例 | [3cdb6299 / Runtime 40991988104](https://github.com/oudream/cx-visual-x3/actions/runs/40991988104) 成功；新增[`db6ac7b1`](https://github.com/oudream/cx-visual-x3/commit/db6ac7b1a862c259923d72d05c6054c339e6b497)待CI | **历史专项成功；新增反例待验**；长稳、极限并发和现场资源互斥须独立证据 |
+| ORCH-05 / B5 | Studio真实WPF按钮消费`MRKFlowHandle` Trace及有界安全摘要；活跃和完成结果按ProjectId/Revision隔离 | `--shell-self-test`：活跃断点单步取消；新增「B5 活跃运行结果跨工程版本与多Flow隔离真实WPF反例」及跨工程单步拒绝 | [f5cb1084 / Studio 40994344962](https://github.com/oudream/cx-visual-x3/actions/runs/40994344962) 成功；[`28dd3aa5`](https://github.com/oudream/cx-visual-x3/commit/28dd3aa58249eb69f6124f4a6c23e6609c58d6f1)起新增断言待CI | **历史功能已验证；新增保护待验**；完整多窗口、Trace丢失/异常与取消可观察性仍需专项 |
+| ORCH-06 / B4/B6 | 多Flow的MRK身份/数据隔离、终止释放、结果来源可追溯 | `ExecutionControlTests`、`--orchestration-industrial`；失败节点不发布、其它产品结果不串账 | [a9cca000 / Runtime 40994568906](https://github.com/oudream/cx-visual-x3/actions/runs/40994568906) 成功；[`db6ac7b1`](https://github.com/oudream/cx-visual-x3/commit/db6ac7b1a862c259923d72d05c6054c339e6b497)待CI | **历史72节点有界摘要成功，新增混合故障隔离待验** |
+| ORCH-07 / B6 | `Runtime.Host`签名发布、Journal、独立进程恢复及未知外部状态Fail-Closed | Host五次重启、未结案/未知设备状态拒绝、签名防回滚及损坏记录拒绝 | [98294ee3 / Runtime 40993920204](https://github.com/oudream/cx-visual-x3/actions/runs/40993920204) 成功 | **软件历史专项已验证**；断电、PLC状态、操作ACK的现场核实未做 |
+| ORCH-08 / B6 | Windows Release/x64全解决方案、Decision/Engineering/Runtime/Studio门禁与现场HIL | `studio-shell-windows.yml`、`unified-runtime-windows.yml`；异常、取消、并发及实机矩阵 | [40994344962](https://github.com/oudream/cx-visual-x3/actions/runs/40994344962)、[40994568906](https://github.com/oudream/cx-visual-x3/actions/runs/40994568906) 各自成功 | **对应历史SHA软件门禁成功；最新SHA全量交叉CI未证明，设备HIL未验证** |
+
+### 3.2 本轮新增B5/B4真实回归与安全边界
+
+- Studio `OnFlowInspectData` 对**正在运行**的Flow与已完成摘要使用相同的MEM ProjectId/Revision门禁。跨工程或在运行中编辑Revision后必须拒绝查看旧数据；结束异步回调不能再把旧结果发布到当前工程。
+- 调试暂停/继续/单步拒绝操纵当前工程Revision之外的活跃Flow；**取消**仍允许安全终止原会话，不能为了防串账阻止危险流程的停止。
+- 两条真实MRK Flow在同一WPF视图间切换时，结果只显示所选FlowId及对应提交节点；一个产品的异常节点不能暴露为已提交结果，也不能污染正常产品摘要。
+- 新回归源码与CI强制检查已经提交；其**最新固定SHA自动化成功证据未确认前，ORCH-04/05/06不能按新保护关闭**。若Windows出现编译/STA/Runtime失败，必须先在master修复、重新运行并登记。
+- 结果投影只包含节点ID、受控类型/数值/长度、最多32项的Studio摘要；不把大图像、体数据、敏感原文或MRK Flow句柄存入历史UI缓存。
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
