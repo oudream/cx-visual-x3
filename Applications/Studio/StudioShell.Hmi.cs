@@ -87,5 +87,108 @@ namespace CxVisual.Studio
                 ReleaseStudioViewerDocument(key);
             }
         }
+        /// <summary>原资源树Page右键菜单的专业贡献；不注册第二棵HMI工程树。</summary>
+        private void AppendStudioHmiAuthoringMenu(ContextMenu menu,
+            MEMEngineeringSession origin, Guid pageId)
+        {
+            MEMPage page=origin.Find(pageId) as MEMPage;
+            if(page==null)return;
+            MenuItem hmi=new MenuItem { Header="HMI：添加工业组件" };
+            MDSVariableTable scope=_studioVariableScope;
+            if(scope==null)
+                hmi.Items.Add(new MenuItem {
+                    Header="未连接MDS：变量组件需从受信Scope选择",IsEnabled=false});
+            else
+            {
+                MDSVariableDefinition[] points=scope.Definitions()
+                    .OrderBy(x=>x.Name,StringComparer.Ordinal).Take(100).ToArray();
+                foreach(MDSVariableDefinition point in points)
+                {
+                    string pointName=point.Name;
+                    bool boolean=point.ValueType==typeof(bool);
+                    bool numeric=point.ValueType==typeof(short)||point.ValueType==typeof(ushort)||
+                        point.ValueType==typeof(byte)||point.ValueType==typeof(sbyte)||
+                        point.ValueType==typeof(int)||point.ValueType==typeof(uint)||
+                        point.ValueType==typeof(long)||point.ValueType==typeof(ulong)||
+                        point.ValueType==typeof(float)||point.ValueType==typeof(double)||
+                        point.ValueType==typeof(decimal);
+                    if(!boolean&&!numeric)continue;
+                    MenuItem binding=new MenuItem {
+                        Header=pointName+" · "+point.ValueType.Name+
+                            (string.IsNullOrEmpty(point.Unit)?"":" · "+point.Unit) };
+                    if(numeric)
+                    {
+                        binding.Items.Add(CreateStudioHmiInsertItem(
+                            "添加数值显示",origin,pageId,scope,pointName,
+                            (x,y)=>PHMHmiScreenAuthoring.AddNumeric(origin,pageId,pointName,
+                                pointName,x,y)));
+                        binding.Items.Add(CreateStudioHmiInsertItem(
+                            "添加进度条（0～100）",origin,pageId,scope,pointName,
+                            (x,y)=>PHMHmiScreenAuthoring.AddProgress(origin,pageId,pointName,
+                                pointName,x,y,0,100)));
+                    }
+                    if(boolean)
+                        binding.Items.Add(CreateStudioHmiInsertItem(
+                            "添加状态灯",origin,pageId,scope,pointName,
+                            (x,y)=>PHMHmiScreenAuthoring.AddStatusLamp(origin,pageId,pointName,
+                                pointName,x,y)));
+                    hmi.Items.Add(binding);
+                }
+                if(scope.Definitions().Length>100)
+                    hmi.Items.Add(new MenuItem {
+                        Header="仅显示前100项，请按需缩小工程点位范围",IsEnabled=false});
+            }
+            hmi.Items.Add(new Separator());
+            var button=new MenuItem {
+                Header="添加控制按钮（未分配命令，在线禁止操作）" };
+            button.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                MEMPage target=origin.Find(pageId) as MEMPage;
+                double x,y;NextStudioHmiPosition(target,out x,out y);
+                OpenStudioResourceEditor(pageId,"mem.visual");
+                Guid id=PHMHmiScreenAuthoring.AddButton(origin,pageId,"待配置操作",x,y);
+                _viewModel.Select(id);
+            });
+            hmi.Items.Add(button);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(hmi);
+        }
+
+        private MenuItem CreateStudioHmiInsertItem(string caption,
+            MEMEngineeringSession origin,Guid pageId,MDSVariableTable expectedScope,
+            string pointName,Func<double,double,Guid> creator)
+        {
+            var item=new MenuItem { Header=caption };
+            item.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,expectedScope,pointName);
+                MEMPage page=origin.Find(pageId) as MEMPage;
+                double x,y;NextStudioHmiPosition(page,out x,out y);
+                OpenStudioResourceEditor(pageId,"mem.visual");
+                Guid id=creator(x,y);
+                _viewModel.Select(id);
+            });
+            return item;
+        }
+
+        private void RequireStudioHmiTarget(MEMEngineeringSession expected,
+            Guid pageId,MDSVariableTable scope,string pointName)
+        {
+            if(_viewModel==null||!ReferenceEquals(_viewModel.ProjectSession,expected)||
+                !(expected.Find(pageId) is MEMPage))
+                throw new InvalidOperationException("HMI页面已切换或删除，拒绝旧菜单操作");
+            if(scope!=null&&(!ReferenceEquals(scope,_studioVariableScope)||
+                !scope.Contains(pointName)))
+                throw new InvalidOperationException("HMI原MDS Scope/Point已改变，重新选择");
+        }
+        private static void NextStudioHmiPosition(MEMPage page,out double x,out double y)
+        {
+            // 唯一MEM已有图元数量决定初始放置点，实际最终位置仍通过原画布编辑。
+            int count=page.RootContent.Children.Count;
+            x=32+(count%3)*220;
+            y=40+((count/3)%60)*65;
+        }
+
     }
 }
