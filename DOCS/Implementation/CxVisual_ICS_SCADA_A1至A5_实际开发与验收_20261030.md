@@ -167,3 +167,11 @@
 - **正式独立Runtime.Host A1～A5本机软件G1 PASS**：SHA `e8095c7e8555a0b51837ab27af6f9abf9f026bcc`，Actions Run `41055614332`，Restore、Windows x64 Build和真实`scada-g1-smoke`均成功。Windows日志明确输出“PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift and MRK signed-in-process A4 PLC FC06/FC03”。测试包含正式MEM工程、正式MHS Effective、真实本机Modbus TCP、MDS Good/Revision、读端Pipe、单设备隔离恢复、受信Host MRK注入的单设备FC06+FC03回读、无授权拒绝、版本不符、旧Generation拒绝、ACK后回读不符Unknown、同OperationId去重、Stop后禁写。
 - **与此前失败的区分**：Run `41054939828`的Host构建虽成功，原G1新A4测试失败。根因在测试夹具仅允许FC03 count=2而正式写回读使用count=1；SHA `e8095c7e`已修复测试PLC按请求寄存器数返回标准MBAP，不放宽生产Modbus库或正常只读双PLC夹具验证。新版G1已通过，不再将该历史失败描述为当前阻断。
 - **仍未闭合**：OS验证的可信Operator身份接入SCADA Host生产命令端点、认证后的HMI跨进程MRK访问、模式/设备Ready/现场SafetyPLC联锁、受信Plan装载与SCADA设备绑定、命令持久Journal以及Windows SCM服务正式安装、断电恢复、PLC设备HIL G2/G3和长稳。G1只证明本机软件/寄存器闭环，不得扩大到物理执行器已动作或危险能量控制安全达标。
+
+
+## 21. A4现有MRK认证Pipe正式Host显式组合与动态控制守卫（2026-10-30）
+- 新增`Applications/Runtime.Host/MRHScadaTrustedCommandPipe.cs`：只由可信宿主注入已经批准的`MRHScadaRuntime`、可审查的Windows Peer授权`Func<string,bool>`、受理阶段MRK命令授权`Func<MRKCommandContext,bool>`以及命令执行瞬间`Func<bool> currentControlGuard`；缺一即拒绝。类型只组合现有`MRKCommandCenter`/`MRKCommandPipeServer`及`PADScadaDeviceSession.RegisterWriteCommands`，没有SCADA新命令总线、另一个资源租约、写客户端字段认证或新PLC协议栈。
+- 先验证公共MRK Pipe配置，再注册设备写入能力；只在设备`IsRunning`且工程/Connector Effective批准、控制守卫为真时才能启动本机Windows命名管道。MRK OS身份来自实际连接的Windows Peer；旧Generation及失效Connector版本由PAD当前Session再次检查，`OperationId`查询与超时Unknown由现有MRK账本/IPC持有。可动态撤销的控制模式/联锁`currentControlGuard`在MRK受理时检查，也在PAD真正FC06以前再检查，避免旧审批跨队列/租约等待继续生效。
+- `Applications/Runtime.Host/MRHScadaSmoke.cs`在真实本机Modbus TCP+正式MEM/MHS项目装配下使用`MRKCommandPipeClient(".", pipe)`走Windows OS Pipe，验证真正的`UInt16` FC06/FC03、服务端忽略外部伪造`Caller`、同Windows Peer查询同OperationId、旧Generation禁写、MRK模式撤权、Pipe Peer撤权、Stop后零FC06；默认只读CLI仍完全不开放MRK Pipe。
+- 关联源码提交：`a0aa314a`（Host组合器）、`c5687ad5`（正式.csproj）、`7aeb1253`（真实Pipe G1）、`cd874515`（先验证Pipe）、`e7910128`/`252d0878`/`6efcb34a`/`4c7b25be`（动态执行守卫及测试）。**本增量的Windows验收证据必须是对应固定SHA的最新SCADA G1成功记录**，不能由此前A4 `41055614332`成功自动推断。
+- 本轮尚没有生产可信角色/物理联锁服务、正式持久Journal与SCADA合体、跨进程实际HMI窗口同次联验、SCM守护和PLC HIL证据；同用户OS ACL不等于设备控制许可，MRK回读不等于执行机构PhysicalDone。聊天B仍负责HMI专业调用与UX。
