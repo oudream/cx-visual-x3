@@ -9,6 +9,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using CxVisual.Mechanism.Data.Variables;
 
 namespace CxVisual.Runtime.Host
@@ -33,6 +34,7 @@ namespace CxVisual.Runtime.Host
         [DataMember] public bool HasValue {get;set;}
         [DataMember] public string Quality {get;set;}
         [DataMember] public string RefreshUtc {get;set;}
+        [DataMember] public string ChangeUtc {get;set;}
         [DataMember] public string SourceId {get;set;}
         [DataMember] public long Revision {get;set;}
     }
@@ -158,7 +160,10 @@ namespace CxVisual.Runtime.Host
                     Value=sample.HasValue?
                         Convert.ToString(sample.CurrentObject,CultureInfo.InvariantCulture):null,
                     Quality=sample.Quality.ToString(),Revision=sample.Revision,
-                    RefreshUtc=sample.RefreshUtc.ToUniversalTime().ToString("O",CultureInfo.InvariantCulture),
+                    RefreshUtc=sample.HasValue?
+                        sample.RefreshUtc.ToUniversalTime().ToString("O",CultureInfo.InvariantCulture):null,
+                    ChangeUtc=sample.HasValue?
+                        sample.ChangeUtc.ToUniversalTime().ToString("O",CultureInfo.InvariantCulture):null,
                     SourceId=sample.Source};
             }).ToArray();
             // 快照取得后仍须再次核验，禁止把失效会话返回为Good。
@@ -213,7 +218,8 @@ namespace CxVisual.Runtime.Host
                         }
                         catch(IOException){if(cancellationToken.IsCancellationRequested)break;}
                         catch(ObjectDisposedException){if(cancellationToken.IsCancellationRequested)break;}
-                        catch(SerializationException){} // 不合法输入不执行任何动作
+                        catch(SerializationException){} // 不合法JSON断开单一会话
+                        catch(XmlException){} // DataContractJsonSerializer底层XML格式拒绝
                         catch(InvalidDataException){} // 有界帧拒绝
                     }
                 }
