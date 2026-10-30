@@ -315,6 +315,16 @@
 - **状态**：G2已提交，Windows固定SHA G3/G4待CI；后续保留真实用户文件对话框/UIA及工业HIL验收为G5/G6待完成。上述不是完整RunRecord状态机或持久Artifact/Review模型，IMG-04仍为`InProgress`，不能提前关闭。
 - **后续切片**：先确认相关Windows`imaging-foundation-windows`、`studio-shell-windows`、`module-center-cpu-windows`及`unified-runtime-windows`的固定SHA结果；再补Run Status/Validity分离的最小已批准合同以及Studio原Run失效提示。
 
+### 7.5 IMG-04 状态与结果有效性 + 跨体系CI阻塞修复（2026-10-30）
+
+- **CI回溯**：本次核对上一轮IMG-03/04的固定SHA成果：[Module Center CPU #40998235432](https://github.com/oudream/cx-visual-x3/actions/runs/40998235432)、[Studio S1 #40998235407](https://github.com/oudream/cx-visual-x3/actions/runs/40998235407)、[FIM MVI Imaging #40998229101](https://github.com/oudream/cx-visual-x3/actions/runs/40998229101) 已显示成功。这些run分别属于固定SHA，不能当作整个新HEAD的证据。
+- **全量编译阻塞**：后续并行CT3D提交令TestCenter `TCTVolumeViewerSmoke.cs(1236)` 引用`Run()`局部的`roiEditCommand`，真实Windows全工程编译报CS0103，复现于[Imaging #40999568629](https://github.com/oudream/cx-visual-x3/actions/runs/40999568629)。[`96c20942`](https://github.com/oudream/cx-visual-x3/commit/96c2094223dda15cccf07db0bb74b73122b1f740)在`VerifyProfessionalPersistence`内部使用`frame.Commands.Any(...)`重新检索现有工作区命令，保留相同CanExecute验收，不跳过测试。
+- **默认Smoke阻塞与Owner**：该编译修正后，[Imaging #41003691514](https://github.com/oudream/cx-visual-x3/actions/runs/41003691514)构建成功，但默认架构Smoke报`PROTOCOL_IO_MISMATCH`，堆栈指向`AutomationPlcPointTests.Run`。Automation Owner已在[`5552a931`](https://github.com/oudream/cx-visual-x3/commit/5552a931ff9a)提交独立协议/真实TCP回环修复；此项不能归咎Imaging结果合同。
+- **Run状态Owner**：[`be335c67`](https://github.com/oudream/cx-visual-x3/commit/be335c67626fcc2538b0e6529d855d8974548332)沿用`MRKFlowState`作为原执行真源：`CxVisionRunSummary.ExecutionState`只表示已发布Completed Run，MRK失败/取消/拒绝仍从既有MRK结果与Trace取得，不制造虚假的成功产物。新增`CxVisionResultValidity`（Valid/Empty/Stale/MissingArtifact/Invalid）和只读`AssessItemValidity`，根据Item所属Run、源ID、可选SHA、MEM Revision和当前值判断可投影性；Empty表示正常完成但候选数为零，Stale不修改历史证据。
+- **测试与Studio接入**：[`2e870e4e`](https://github.com/oudream/cx-visual-x3/commit/2e870e4ee0f39b9707a8a463543e6fd76b80dda4)检查Completed+Empty、跨Run Invalid、错来源 Stale及失败MRK不发布；[`6f940672`](https://github.com/oudream/cx-visual-x3/commit/6f940672d7b329cb7c4cb371cf60f20153b81c78)检查正式ROI哈希/Revision失效；[`adbe2740`](https://github.com/oudream/cx-visual-x3/commit/adbe2740213cfc2019e44c813f54f01e48f270a9)在Studio结果项选择时执行统一有效性判定，区分空结果与旧图错源，原项目/页面/Revision/原图引用门禁仍保留。
+- **实际Windows证据**：[`Module Center CPU #41003894207`](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)（SHA `adbe2740`）成功，包含Release/x64统一解决方案编译和双CPU STA闭环，可登记该SHA G3和对应CPU路径G4；新增`RuntimeVisionResultTests`及`RuntimeVisionArtifactsTests`的完整Imaging/Runtime G4必须依对应Workflow结果另行核验，不以CPU Job替代。
+- **仍未完成**：完整失败/拒绝Run的独立审计持久合同、缺失Artifact的真实磁盘场景、真正Studio文件弹框UIA/截图及G6工业设备/大图长稳。IMG-04继续InProgress；本增量属于最小OOP/已有MRK状态真源组合而非第二状态机。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
