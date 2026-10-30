@@ -156,3 +156,15 @@ G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写
 - **自动测试**：`TCTPlcReadOnlyUiSmoke` 使用已生效的真实MHS配置，原生Windows TCP对端 + WPF UIA 选页/按钮，检查一个FC03双点回包90/99和UTC、非法反序点表不发报文、无效结果清空、显式停止。TestCenter原Compute/Simulation/Service/Connector四条真实UIA继续保留。
 
 **新批次验证**：`.github/workflows/testcenter-module-g1-windows.yml` 扩展为五项正式UIA，并构建 `CxVisual.TestCenter.csproj` .NET Framework 4.8 x64。以本批CI运行日志为准，未见成功之前不能标为G1 PASS；真实PLC G2/G3从未因此通过。
+
+## 十四、PLC周期采样会话：复用FCR调度与故障传播（2026-10-30）
+
+本批复用现有 `Foundation.Infrastructure.Concurrency.FCRPeriodicJob`，而不是重新引入私有Timer/Thread/任务引擎。正式 `Professional/Automation/Plc/PADPlcPollingSession.cs` 只组织一个Host拥有的PLC读点会话；真实数据依旧由唯一MDS `Current/Quality/RefreshUtc` 保存。
+
+- **生命周期**：构造时接受1～64个唯一StableId、20ms～1h间隔及是否使用已有连续FC03；只能显式 `Start` 一次，`StopAsync` 取消定时并等待在途扫描完成，停止后不能重启同一会话。创建/未启动时不接触网络。
+- **机制复用**：周期任务采用现有FCR“不重入、每轮结束后间隔、异常通过Completion传播”的合同；单轮采样调用已经验收的 `PADPlcPointBridge.ScanAsync` 或 `ScanContiguousAsync`，沿MCN/MPA/F17传输并由PAD ProviderHost更新MDS。只有轮次总数、成功轮次、部分轮次是运行摘要，不复制点值。
+- **异常语义**：顺序扫描局部Timeout产出Partial/对应点Stale，后续周期真实重读可恢复Good；连接代次变化、非法配置、连续帧不可信等整体故障由 `Completion` 传播并停止周期任务，**不能后台偷偷重连或将失败吞为成功**。运行点表漂移在`Resolve`首帧预检就标Stale、零网络发送，修复配置后也必须重新装配会话和真实采样。
+- **真实G1用例**：OS TCP模拟端累计FC03/FC06包计数：周期顺序扫描不少于两轮；连续单帧FC03不少于两轮；单点丢报文触发Partial、MDS Stale，下一轮重新从设备读回Good；Stop后即使超过间隔也不能再发FC03；重复启动、非法间隔/重复点及未Start生命周期拒绝；周期期间配置非法立即Faulted且不发包。
+- **系统边界**：本轮是宿主显式装配的周期Session，不涉及新的MRK Plan编排持久化、硬实时保证、跨设备精确同步、跨宿主资源锁、自动现场恢复或工业PLC G2/HIL。任何PLC写入仍须经现有MRK及PAD双授权；周期任务不发送FC06。
+
+**状态**：以上已经写入正式源码与ArchitectureSmoke；具体Windows G1验收需查对应GitHub Actions commit和运行记录后才能填写PASS。与长期驻留Channel、服务守护平台衔接时应保留MHS配置生效边界与Host停止顺序，不以本会话替换正式Runtime生命周期Owner。
