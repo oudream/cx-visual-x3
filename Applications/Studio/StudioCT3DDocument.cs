@@ -220,6 +220,7 @@ namespace CxVisual.Studio
                 _volume=volume;volume=null;
                 _state=MVIVolumeViewState.CreateCentered(_volume);
                 _scene.BindCamera(_state.Camera);
+                _scene.BindSceneSelection(_state.Scene3D);
                 _workbench.Bind(_volume,_state);
                 _state.PropertyChanged+=OnVolumeStateChanged;
                 _current=analysis;_pending=null;_caseIndex=index;
