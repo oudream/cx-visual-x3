@@ -8,47 +8,111 @@ import (
 	"gogo/internal/program"
 )
 
-// programWorkerGate owns only the lifetime of a Daemon goroutine per Program
-// ID. PID and process state remain in the existing Daemon event loop.
-// A worker with PID=0 can still be starting, waiting to restart, or stopping;
-// these are not reasons to launch another worker for the same Program.
+// programWorkerGate owns only per-Program guardian goroutine lifetime,
+// an in-process terminal-limit latch, and an explicit enabled-start intent.
+// PID/OS process state and Program configuration remain with their old Owners.
 type programWorkerGate struct {
-	mu     sync.Mutex
-	active map[int64]struct{}
+	mu       sync.Mutex
+	active   map[int64]struct{}
+	pending  map[int64]func()
+	terminal map[int64]int
 }
 
 func newProgramWorkerGate() *programWorkerGate {
-	return &programWorkerGate{active: make(map[int64]struct{})}
+	return &programWorkerGate{
+		active:   make(map[int64]struct{}),
+		pending:  make(map[int64]func()),
+		terminal: make(map[int64]int),
+	}
 }
 
-// start reserves the ID before launching the goroutine. The reservation is
-// released only when the worker function actually returns, not when a child
-// sends EventExit or the Daemon temporarily sees PID=0.
+// start reserves an ID before launching its worker. Recovery must never
+// implicitly queue another guardian while an existing one is still alive.
 func (g *programWorkerGate) start(ctx context.Context, id int64, run func()) bool {
+	started, _ := g.admit(ctx, id, run, false)
+	return started
+}
+
+// request is for explicit enabled-start intent from a real configuration
+// change. If the previous worker is still finishing, the new worker starts
+// immediately AFTER its return (never concurrently). It cannot bypass a
+// MaxError/MaxCount latch.
+func (g *programWorkerGate) request(ctx context.Context, id int64, run func()) (started, queued bool) {
+	return g.admit(ctx, id, run, true)
+}
+
+func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), allowQueue bool) (bool, bool) {
 	if id <= 0 || ctx.Err() != nil || run == nil {
-		return false
+		return false, false
 	}
 	g.mu.Lock()
 	if ctx.Err() != nil {
 		g.mu.Unlock()
-		return false
+		return false, false
+	}
+	if _, blocked := g.terminal[id]; blocked {
+		g.mu.Unlock()
+		return false, false
 	}
 	if _, exists := g.active[id]; exists {
+		if allowQueue {
+			g.pending[id] = run
+		}
 		g.mu.Unlock()
-		return false
+		return false, allowQueue
 	}
 	g.active[id] = struct{}{}
 	g.mu.Unlock()
+	go g.run(ctx, id, run)
+	return true, false
+}
 
-	go func() {
-		defer func() {
-			g.mu.Lock()
-			delete(g.active, id)
-			g.mu.Unlock()
-		}()
-		run()
-	}()
-	return true
+func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
+	run()
+	g.mu.Lock()
+	next := g.pending[id]
+	delete(g.pending, id)
+	if ctx.Err() != nil || next == nil {
+		delete(g.active, id)
+		g.mu.Unlock()
+		return
+	}
+	if _, blocked := g.terminal[id]; blocked {
+		delete(g.active, id)
+		g.mu.Unlock()
+		return
+	}
+	// Keep the reservation continuously owned across the handoff.
+	g.mu.Unlock()
+	go g.run(ctx, id, next)
+}
+
+// markTerminal must run in the guardian BEFORE its terminal event is sent.
+// Recovery can then never race the event-consumer loop and relaunch a worker.
+// The latch lives until Daemon process restart or a future separately
+// authenticated administrative reset; legacy UDP does not clear it.
+func (g *programWorkerGate) markTerminal(event program.Event) {
+	if event.Status.Id <= 0 ||
+		(event.Event != program.EventMaxError && event.Event != program.EventMaxCount) {
+		return
+	}
+	g.mu.Lock()
+	g.terminal[event.Status.Id] = event.Event
+	delete(g.pending, event.Status.Id)
+	g.mu.Unlock()
+}
+
+func (g *programWorkerGate) blocked(id int64) (int, bool) {
+	g.mu.Lock()
+	reason, exists := g.terminal[id]
+	g.mu.Unlock()
+	return reason, exists
+}
+
+func (g *programWorkerGate) clearPending(id int64) {
+	g.mu.Lock()
+	delete(g.pending, id)
+	g.mu.Unlock()
 }
 
 func (g *programWorkerGate) has(id int64) bool {
@@ -60,10 +124,14 @@ func (g *programWorkerGate) has(id int64) bool {
 
 var _programWorkers = newProgramWorkerGate()
 
-// launchProgramWorker retains the old program lookup, event, and process
-// owners. It merely deduplicates concurrent starts while a worker is alive.
 func launchProgramWorker(ctx context.Context, a program.Program, events chan program.Event) bool {
 	return _programWorkers.start(ctx, a.ID, func() {
-		daemonc.RunProgramContext(ctx, a, events, findProgramById, _logger, *_workDir)
+		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, _programWorkers.markTerminal)
+	})
+}
+
+func requestProgramWorker(ctx context.Context, a program.Program, events chan program.Event) (bool, bool) {
+	return _programWorkers.request(ctx, a.ID, func() {
+		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, _programWorkers.markTerminal)
 	})
 }
