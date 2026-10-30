@@ -3996,6 +3996,23 @@ namespace CxVisual.Studio
                     Assert(session.FindReference(contentUse).TargetId==contentId &&
                         session.FindReference(symbolUse).TargetId==symbolId &&
                         contentId!=symbolId, "Page没有创建独立的Content/Symbol引用实例");
+                    window.SetStudioSharedInstanceOverride(contentUse,"Exposure","25");
+                    window.SetStudioSharedInstanceOverride(symbolUse,"Caption","工位A");
+                    Assert(session.ResolveParameter(session.FindReference(contentUse),"Exposure")
+                        .Value.AsNumber()==25 &&
+                        session.ResolveParameter(session.FindReference(symbolUse),"Caption")
+                        .Value.AsString()=="工位A" &&
+                        content.Properties.Single().Binding.Value.AsNumber()==15 &&
+                        symbol.Properties.Single().Binding.Value.AsString()=="测试组件",
+                        "实例覆盖写坏共享定义或没有保持两个独立参数");
+                    AssertThrows(()=>window.SetStudioSharedInstanceOverride(symbolUse,
+                        "Exposure","7"));
+                    AssertThrows(()=>window.SetStudioSharedInstanceOverride(contentUse,
+                        "Exposure","Infinity"));
+                    window.ClearStudioSharedInstanceOverride(contentUse,"Exposure");
+                    Assert(session.ResolveParameter(session.FindReference(contentUse),"Exposure")
+                        .Value.AsNumber()==15 && session.FindReference(contentUse).Overrides.Count==0,
+                        "清除覆盖未恢复共享Content的默认公开值");
                     int beforeCenterRefresh=session.Revision;
                     window.OpenStudioSharedResourceCenter(false);
                     Assert(window.GetStudioContentIds().Count(x=>x=="doc.content-center")==1 &&
