@@ -83,35 +83,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 recomputedByFaces.FaceRoiRecipe.Faces.Count==8&&
                 recomputedByFaces.ParameterSignature!=analysis.ParameterSignature,
                 "专业面片选择参数签名包含有序原Mesh面片配方，不复用旧参数合同。");
-            string faceProject=Path.Combine(folder,"faces.cxproj");
-            MRIObjectAddress faceAddress;
-            using(var engineering=MEMEngineering.Create("三维面片ROI工程"))
-            {
-                var owner=engineering.AddPage("面片局部测量").RootContent;
-                faceAddress=CT3DAnalysisPersistence.Commit(engineering,owner,
-                    engineering.Revision,folder,recomputedByFaces,CancellationToken.None);
-                engineering.SaveAs(faceProject);
-            }
-            using(var engineering=MEMEngineering.Open(faceProject))
-            {
-                CT3DAnalysisCase reopened=CT3DAnalysisPersistence.Open(engineering,
-                    faceAddress,folder,CancellationToken.None);
-                Check(reopened.FaceRoiRecipe!=null&&
-                    reopened.FaceRoiRecipe.Faces.Count==8&&
-                    reopened.FaceRoiRecipe.Signature==recomputedByFaces.FaceRoiRecipe.Signature&&
-                    reopened.ParameterSignature==recomputedByFaces.ParameterSignature&&
-                    reopened.Plane.ResultId==recomputedByFaces.Plane.ResultId,
-                    "V5面片ROI配方经唯一MEM与内容寻址Artifact关闭重开后身份及计算参数不变。");
-                var reanalyzed=reopened.RecomputeWithSavedMeshFaces(folder,CancellationToken.None);
-                Check(reanalyzed.FaceRoiRecipe.Signature==reopened.FaceRoiRecipe.Signature&&
-                    reanalyzed.Plane.ResultId!=reopened.Plane.ResultId&&
-                    reanalyzed.RoiSignature==reopened.RoiSignature&&
-                    reanalyzed.ParameterSignature==reopened.ParameterSignature,
-                    "V5重开无需WPF对象即可重新解析原Mesh面片并生成新专业结果。");
-                Reject<InvalidOperationException>(()=>reopened.FaceRoiRecipe.Resolve(
-                    CT3DAssetReference.Capture(folder,"source.raw",info,frame,8,CancellationToken.None),
-                    reopened.Mesh,CancellationToken.None));
-            }
             Reject<InvalidOperationException>(()=>analysis.RecomputeWithSavedMeshFaces(
                 folder,CancellationToken.None));
             Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.Reference(analysis,-1));
@@ -437,6 +408,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FVOVolumeSpatialFrame.UncalibratedAxisAligned(1,1,1),1,CancellationToken.None);
             Reject<InvalidOperationException>(()=>CT3DAnalysisCase.Analyze(folder,uncalibrated,1000,100,
                 CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None));
+            string faceProject=Path.Combine(folder,"faces.cxproj");
+            MRIObjectAddress faceAddress;
+            using(var engineering=MEMEngineering.Create("三维面片ROI工程"))
+            {
+                var owner=engineering.AddPage("面片局部测量").RootContent;
+                faceAddress=CT3DAnalysisPersistence.Commit(engineering,owner,
+                    engineering.Revision,folder,recomputedByFaces,CancellationToken.None);
+                engineering.SaveAs(faceProject);
+            }
+            using(var engineering=MEMEngineering.Open(faceProject))
+            {
+                CT3DAnalysisCase reopened=CT3DAnalysisPersistence.Open(engineering,
+                    faceAddress,folder,CancellationToken.None);
+                Check(reopened.FaceRoiRecipe!=null&&
+                    reopened.FaceRoiRecipe.Faces.Count==8&&
+                    reopened.FaceRoiRecipe.Signature==recomputedByFaces.FaceRoiRecipe.Signature&&
+                    reopened.ParameterSignature==recomputedByFaces.ParameterSignature&&
+                    reopened.Plane.ResultId==recomputedByFaces.Plane.ResultId,
+                    "V5面片ROI配方经唯一MEM与内容寻址Artifact关闭重开后身份及计算参数不变。");
+                var reanalyzed=reopened.RecomputeWithSavedMeshFaces(folder,CancellationToken.None);
+                Check(reanalyzed.FaceRoiRecipe.Signature==reopened.FaceRoiRecipe.Signature&&
+                    reanalyzed.Plane.ResultId!=reopened.Plane.ResultId&&
+                    reanalyzed.RoiSignature==reopened.RoiSignature&&
+                    reanalyzed.ParameterSignature==reopened.ParameterSignature,
+                    "V5重开无需WPF对象即可重新解析原Mesh面片并生成新专业结果。");
+                Reject<InvalidOperationException>(()=>reopened.FaceRoiRecipe.Resolve(
+                    CT3DAssetReference.Capture(folder,"source.raw",info,frame,8,CancellationToken.None),
+                    reopened.Mesh,CancellationToken.None));
+            }
             Check(!Directory.GetFiles(folder,"*.tmp",SearchOption.AllDirectories).Any(),"失败不遗留临时制品");
         }
         private static void Check(bool value,string message){if(!value)throw new InvalidOperationException(message);}
