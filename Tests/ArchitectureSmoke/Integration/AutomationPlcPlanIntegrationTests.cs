@@ -219,8 +219,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ignoreWrite(true);
                 try
                 {
+                    // An ignored write of the CURRENT value cannot be
+                    // distinguished from a successful readback. Demand a
+                    // different register value to test a real mismatch.
+                    var mismatchedInputs=compiled.InputDefaults.ToDictionary(
+                        x=>x.Key,x=>x.Value);
+                    mismatchedInputs[plcStep+".Value"]=(ushort)92;
                     MRKFlowHandle uncertain=engine.StartFlow(compiled.Plan,
-                        compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                        mismatchedInputs);
                     Check(uncertain.Completion.Wait(TimeSpan.FromSeconds(12)),
                         "unknown physical outcome did not settle");
                     MRKFlowResult failed=uncertain.Completion.GetAwaiter().GetResult();
@@ -256,7 +262,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     MRKFlowHandle challenged=engine.StartFlow(retryPlan,
                         new Dictionary<string,object>{
-                            {"StableId","word"},{"Value",(ushort)91}
+                            {"StableId","word"},{"Value",(ushort)93}
                         });
                     Check(challenged.Completion.Wait(TimeSpan.FromSeconds(12)),
                         "nonidempotent retry safety gate timed out");
