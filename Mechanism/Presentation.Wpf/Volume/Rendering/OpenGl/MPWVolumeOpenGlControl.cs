@@ -152,8 +152,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         }
         private void UploadScenePointCloud(CachedSceneMesh item)
         {
-            UploadSceneMesh(item);
-            ScenePointCloudUploadCount++;
+            UploadSceneMesh(item,true);
         }
 
         private MVI3DSceneState _sceneMeshState;
@@ -276,7 +275,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         {
             foreach(Guid id in new List<Guid>(_sceneMeshes.Keys))RemoveSceneMesh(id);
         }
-        private void UploadSceneMesh(CachedSceneMesh item)
+        private void UploadSceneMesh(CachedSceneMesh item,bool pointCloud=false)
         {
             if(_gl==null)return;
             if(item.VertexArray==0)_gl.GenVertexArrays(1,out item.VertexArray);
@@ -284,7 +283,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _gl.BindVertexArray(item.VertexArray);
             _gl.BindBuffer(0x8892,item.Buffer);
             UploadFloats(item.Vertices);
-            SceneMeshUploadCount++;
+            if(pointCloud)ScenePointCloudUploadCount++;
+            else SceneMeshUploadCount++;
             _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
             _gl.EnableVertexAttribArray(0);
         }
