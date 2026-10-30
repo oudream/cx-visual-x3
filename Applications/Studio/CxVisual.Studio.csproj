@@ -25,6 +25,7 @@
     <Compile Include="StudioShell.cs"/>
     <Compile Include="StudioCT3DDocument.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
+    <Compile Include="StudioShell.SharedResourceCenters.cs"/>
     <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
     <Compile Include="StudioShell.Variables.cs"/><Compile Include="StudioShell.Hmi.cs"/><Compile Include="StudioShell.Hmi.Remote.cs"/>
