@@ -126,6 +126,9 @@ func main() {
 		os.Exit(-6)
 		return
 	}
+	for id, reason := range _programWorkers.terminalSnapshot() {
+		_logger.Printf(_title.Error+"Supervision terminal latch retained: ProgramId=%d, reason=%d; automatic start refused\n", id, reason)
+	}
 
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
