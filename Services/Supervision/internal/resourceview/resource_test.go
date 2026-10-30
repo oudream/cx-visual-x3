@@ -73,3 +73,10 @@ func TestMissingDiskDirectoryShowsUnknownNotZero(t *testing.T) {
 		t.Fatalf("nonexistent target filesystem must not be reported as zero usage: %+v",report.Disk)
 	}
 }
+
+func TestEmptyWorkDirectoryNotMistakenForCurrentDirectory(t *testing.T) {
+	report := Collect("")
+	if report.Disk.Available || report.Disk.Error != "work directory is not configured" {
+		t.Fatalf("empty workDir must not silently report Monitor CWD: %+v", report.Disk)
+	}
+}
