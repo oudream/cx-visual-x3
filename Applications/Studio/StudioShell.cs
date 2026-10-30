@@ -303,6 +303,15 @@ namespace CxVisual.Studio
                     if(current!=null)current.Dispose();
                     _studioViews.Remove("doc.ct3d");
                 };
+                if(id=="doc.ct3d") doc.Closing+=(sender,args)=>{
+                    var current=doc.Content as StudioCT3DDocument;
+                    if(current!=null&&current.HasPendingAnalysis&&!_studioConfigForceDiscard)
+                    {
+                        args.Cancel=true;
+                        _viewModel.ReportStudioShellWarning(
+                            "三维ROI专业分析尚未保存，先保存结果或明确选择放弃修改。");
+                    }
+                };
                 if(id=="doc.config")
                     doc.Closing+=(sender,args)=>{
                         if(!_studioConfigForceDiscard && HasStudioUnsavedConfiguration())
