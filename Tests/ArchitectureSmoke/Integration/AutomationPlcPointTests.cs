@@ -338,6 +338,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             plc.Writes == writesBeforeMrk + 2 && plc.ActualRegister == 91,
                             "MRK Handler可以结算，但未知现场结果不得伪报寄存器确认或自动重试");
                         plc.IgnoreWrite = false;
+                        // One MEM/Decision/MRK Plan actually chains real Vision CPU
+                        // and this authorized PLC command center over OS TCP.
+                        AutomationPlcPlanIntegrationTests.Run(commandHost,bridge,table,
+                            ()=>plc.Writes,()=>plc.ActualRegister,
+                            enabled=>plc.IgnoreWrite=enabled);
                     }
 
                     // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
