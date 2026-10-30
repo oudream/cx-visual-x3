@@ -53,6 +53,8 @@ namespace CxVisual.TestCenter.UI
                     WorkspaceAction("ct3d.case.open","重开专业案例",OpenProfessionalCaseDialog),
                     WorkspaceAction("ct3d.case.save","保存专业案例",SaveProfessionalCaseDialog,
                         ()=>CanSaveProfessionalCase),
+                    WorkspaceAction("ct3d.case.roi.commit","提交已保存ROI修改",
+                        StartPersistedSliceRoiEditFromUi,()=>CanEditSavedSliceRoi),
                     WorkspaceAction("ct3d.load.cancel","取消后台加载",CancelPendingVolumeLoads,
                         ()=>HasPendingVolumeLoads),
                     WorkspaceAction("ct3d.demo","演示体",LoadDemo),
