@@ -371,9 +371,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
             if (maxEntries < 1 || maxEntries > 512)
                 throw new ArgumentOutOfRangeException("maxEntries");
             var summary = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            foreach (KeyValuePair<string, object> item in
-                _results.OrderBy(x => x.Key, StringComparer.Ordinal).Take(maxEntries))
+            // Keep only the lexicographically earliest maxEntries keys:
+            // bounded memory even for long loops with many dynamic StepResults.
+            foreach (KeyValuePair<string, object> item in _results)
             {
+                if (summary.Count == maxEntries)
+                {
+                    string largest = summary.Keys.Last();
+                    if (StringComparer.Ordinal.Compare(item.Key, largest) >= 0)
+                        continue;
+                    summary.Remove(largest);
+                }
                 object value = item.Value is NullResult ? null : item.Value;
                 if (value == null) summary.Add(item.Key, "null");
                 else if (value is Array)
