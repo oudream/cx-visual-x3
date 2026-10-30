@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"gogo/internal/daemonc"
 	"gogo/internal/program"
 	"time"
 )
@@ -312,5 +313,47 @@ func TestRecoveryProgramsSkipsDisabledAndTerminalLatch(t *testing.T) {
 	}
 	if _programWorkers.has(810) || _programWorkers.has(811) {
 		t.Fatal("recovery started a disabled or terminally locked guardian")
+	}
+}
+
+
+func TestProgramWorkerGateStopControllerHandoff(t *testing.T) {
+	gate := newProgramWorkerGate()
+	const id int64 = 902
+	oldController := daemonc.NewStopController(id)
+	newController := daemonc.NewStopController(id)
+	oldRelease := make(chan struct{})
+	newRelease := make(chan struct{})
+	newEntered := make(chan struct{})
+	if !gate.startWithStop(context.Background(), id, func() {
+		<-oldRelease
+	}, oldController) {
+		t.Fatal("old guardian not admitted")
+	}
+	if gate.stopController(id) != oldController {
+		t.Fatal("original worker controller was not registered")
+	}
+	if started, queued := gate.requestWithStop(context.Background(), id, func() {
+		close(newEntered)
+		<-newRelease
+	}, newController); started || !queued {
+		t.Fatal("new guardian must queue behind old generation")
+	}
+	if gate.stopController(id) != oldController {
+		t.Fatal("queued worker prematurely replaced original process owner")
+	}
+	close(oldRelease)
+	select {
+	case <-newEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("new generation was not admitted after the previous return")
+	}
+	if gate.stopController(id) != newController {
+		t.Fatal("stop control did not hand off to the new worker generation")
+	}
+	close(newRelease)
+	waitWorkerReleased(t, gate, id)
+	if gate.stopController(id) != nil {
+		t.Fatal("finished worker retained stop authority")
 	}
 }
