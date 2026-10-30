@@ -266,6 +266,8 @@ namespace CxVisual.Studio
                 _state.PropertyChanged+=OnVolumeStateChanged;
                 _current=analysis;_pending=null;_pendingRoiSelection=null;_caseIndex=index;
                 _selectedMeshFaces.Clear();_faceSelectionRevision++;
+                if(analysis.FaceRoiRecipe!=null)
+                    _selectedMeshFaces.AddRange(analysis.FaceRoiRecipe.Faces);
                 BuildSceneReferences(analysis,false);
                 if(_owners[index].Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
                     a.ProviderId==MVI3DSceneLayoutPersistence.ProviderId))
@@ -281,6 +283,9 @@ namespace CxVisual.Studio
                 _minimum.Text="0.49";_maximum.Text="0.51";
                 _status.Text="已验证原值和专业工程："+
                     analysis.Kind+" · "+analysis.GetFeatureMeasurements().Count+"项量值。";
+                if(analysis.FaceRoiRecipe!=null)
+                    _status.Text+=" 已恢复"+analysis.FaceRoiRecipe.Faces.Count+
+                        "个真实原Mesh面片，可直接原值重算。";
                 if(analysis.SliceRoiRecipe!=null)
                 {
                     if(TryRestoreSavedSliceRoi())
@@ -826,6 +831,11 @@ namespace CxVisual.Studio
                 _root,_pending,visual,CancellationToken.None);
             _engineering.SaveAs(_projectPath);
             _current=_pending;_pending=null;_pendingRoiSelection=null;
+            _selectedMeshFaces.Clear();
+            if(_current.FaceRoiRecipe!=null)
+                _selectedMeshFaces.AddRange(_current.FaceRoiRecipe.Faces);
+            _faceSelectionRevision++;
+            RefreshSelectedMeshFaceHighlight();
             _status.Text="专业Feature与Scene已在一次MEM事务中保存。";
         }
         private void DisposeCurrent()
