@@ -21,7 +21,7 @@ const { overview, programs } = storeToRefs(monitor)
     <div class="metric-card"><div class="metric-label">程序总数</div><div class="metric-value">{{ overview?.total ?? '—' }}</div><div class="metric-note">Monitor 当前快照</div></div>
     <div class="metric-card"><div class="metric-label">运行中</div><div class="metric-value success">{{ overview?.running ?? '—' }}</div><div class="metric-note">进程运行，不代表业务就绪</div></div>
     <div class="metric-card"><div class="metric-label">未运行</div><div class="metric-value">{{ overview?.stopped ?? '—' }}</div><div class="metric-note">需要结合守护策略判断</div></div>
-    <div class="metric-card"><div class="metric-label">监控进程 RSS</div><div class="metric-value smaller">{{ overview ? formatBytes(overview.memoryRssBytes) : '—' }}</div><div class="metric-note">程序内存统计合计</div></div>
+    <div class="metric-card"><div class="metric-label">受管程序 RSS 合计</div><div class="metric-value smaller">{{ overview ? formatBytes(overview.memoryRssBytes) : '—' }}</div><div class="metric-note">仅受管程序当前RSS合计，非整机使用量</div></div>
   </div>
   <div class="dashboard-guard-strip">
     <RouterLink to="/guard" class="dashboard-guard-item">
@@ -70,6 +70,7 @@ const { overview, programs } = storeToRefs(monitor)
   </div>
   <div class="dashboard-actions">
     <RouterLink to="/guard" class="subtle-link">检查守护闭锁与遗留进程 →</RouterLink>
+    <RouterLink to="/resources" class="subtle-link">查看真实主机资源与程序资源 →</RouterLink>
     <RouterLink to="/events" class="subtle-link">查看原始事件记录 →</RouterLink>
   </div>
 </template>
