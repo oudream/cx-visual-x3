@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"gogo/internal/journalfile"
 )
 
 const MaxBytes int64 = 4 * 1024 * 1024
@@ -25,21 +27,21 @@ const MaxHistory = 200
 var writeMu sync.Mutex
 
 type Entry struct {
-	OperationID string `json:"operationId"`
-	ProgramID string `json:"programId"`
-	PID int `json:"pid"`
-	Action string `json:"action"`
-	State string `json:"state"`
-	WaitCompleted bool `json:"waitCompleted"`
-	SignalError string `json:"signalError,omitempty"`
-	WaitError string `json:"waitError,omitempty"`
-	RecordedAt string `json:"recordedAt"`
+	OperationID   string `json:"operationId"`
+	ProgramID     string `json:"programId"`
+	PID           int    `json:"pid"`
+	Action        string `json:"action"`
+	State         string `json:"state"`
+	WaitCompleted bool   `json:"waitCompleted"`
+	SignalError   string `json:"signalError,omitempty"`
+	WaitError     string `json:"waitError,omitempty"`
+	RecordedAt    string `json:"recordedAt"`
 }
 
 type History struct {
-	Available bool `json:"available"`
-	Error string `json:"error,omitempty"`
-	Items []Entry `json:"items"`
+	Available bool    `json:"available"`
+	Error     string  `json:"error,omitempty"`
+	Items     []Entry `json:"items"`
 }
 
 // NewRequest creates an operation identity independent of PID reuse.
@@ -54,7 +56,7 @@ func NewRequest(id int64, pid int, action string) (Entry, error) {
 	}
 	return Entry{
 		OperationID: hex.EncodeToString(token[:]),
-		ProgramID: strconv.FormatInt(id, 10), PID: pid,
+		ProgramID:   strconv.FormatInt(id, 10), PID: pid,
 		Action: action, State: "requested",
 		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
@@ -81,15 +83,21 @@ func Append(workDir string, entry Entry) error {
 	writeMu.Lock()
 	defer writeMu.Unlock()
 	dir := filepath.Dir(Path(workDir))
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := journalfile.EnsureDir(dir); err != nil {
 		return err
 	}
+	release, err := journalfile.Lock(dir, ".stop.lock")
+	if err != nil {
+		return err
+	}
+	defer release()
 	dirInfo, err := os.Lstat(dir)
 	if err != nil || !dirInfo.IsDir() {
 		return errors.New("unsafe stop journal directory")
 	}
 	target := Path(workDir)
 	previous, statErr := os.Lstat(target)
+	var prior History
 	if statErr == nil {
 		if !previous.Mode().IsRegular() {
 			return errors.New("stop journal is not a regular file")
@@ -97,11 +105,43 @@ func Append(workDir string, entry Entry) error {
 		// Do not authorize a new Stop when the existing history is
 		// truncated, invalid or internally contradictory. Otherwise
 		// future receipts would appear recorded in an unreadable log.
-		if prior := Read(workDir); !prior.Available {
+		prior = readUnlocked(workDir, 0)
+		if !prior.Available {
 			return fmt.Errorf("existing stop journal unsafe: %s", prior.Error)
 		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
+	}
+	// Reject a contradictory receipt BEFORE changing durable history. Search
+	// all operations, including those beyond the UI's 200-result window.
+	found := false
+	reserved := int64(0)
+	for _, old := range prior.Items {
+		current := old
+		if old.OperationID == entry.OperationID {
+			found = true
+			if old.ProgramID != entry.ProgramID || old.PID != entry.PID || old.Action != entry.Action {
+				return errors.New("stop operation identity changed")
+			}
+			if entry.State == "requested" {
+				return errors.New("duplicate stop request")
+			}
+			if rank(entry.State) >= rank(old.State) {
+				current = entry
+			}
+		}
+		if current.State == "requested" {
+			reserved += 2 * 4097
+		}
+		if current.State == "unknown" {
+			reserved += 4097
+		}
+	}
+	if !found {
+		if entry.State != "requested" {
+			return errors.New("stop receipt has no durable request")
+		}
+		reserved += 2 * 4097
 	}
 	flags := os.O_WRONLY | os.O_APPEND
 	if errors.Is(statErr, os.ErrNotExist) {
@@ -124,10 +164,24 @@ func Append(workDir string, entry Entry) error {
 	if info.Size()+int64(len(data))+1 > MaxBytes {
 		return errors.New("stop journal full: archive offline before further stops")
 	}
+	if entry.State == "requested" && info.Size()+int64(len(data))+1+reserved > MaxBytes {
+		return errors.New("stop journal capacity reserved for unresolved receipts; archive offline")
+	}
 	if _, err := file.Write(append(data, '\n')); err != nil {
 		return err
 	}
-	return file.Sync()
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	current, err := os.Lstat(target)
+	if err != nil || !os.SameFile(info, current) {
+		return errors.New("stop journal replaced during append")
+	}
+	currentDir, err := os.Lstat(dir)
+	if err != nil || !os.SameFile(dirInfo, currentDir) {
+		return errors.New("stop journal directory replaced during append")
+	}
+	return journalfile.CheckDir(dir)
 }
 
 func validate(entry Entry) error {
@@ -161,10 +215,14 @@ func validate(entry Entry) error {
 
 func rank(state string) int {
 	switch state {
-	case "wait-confirmed": return 3
-	case "refused", "signal-failed": return 2
-	case "unknown": return 1
-	default: return 0
+	case "wait-confirmed":
+		return 3
+	case "refused", "signal-failed":
+		return 2
+	case "unknown":
+		return 1
+	default:
+		return 0
 	}
 }
 
@@ -172,6 +230,23 @@ func rank(state string) int {
 // overwrite an earlier late Wait confirmation for that SAME operation.
 // Unreadable/corrupt/full logs are UNAVAILABLE, not an empty healthy list.
 func Read(workDir string) History {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	dir := filepath.Dir(Path(workDir))
+	if err := journalfile.CheckDir(dir); err != nil {
+		return History{Error: err.Error(), Items: []Entry{}}
+	}
+	release, err := journalfile.Lock(dir, ".stop.lock")
+	if err != nil {
+		return History{Error: err.Error(), Items: []Entry{}}
+	}
+	defer release()
+	return readUnlocked(workDir, MaxHistory)
+}
+
+// readUnlocked is called under the cross-process lock. limit=0 retains the
+// complete bounded identity index for write validation, never just UI rows.
+func readUnlocked(workDir string, limit int) History {
 	history := History{Items: []Entry{}}
 	path := Path(workDir)
 	before, err := os.Lstat(path)
@@ -194,13 +269,21 @@ func Read(workDir string) History {
 		history.Error = "stop journal changed during open"
 		return history
 	}
-	reader := bufio.NewReader(io.LimitReader(file, MaxBytes+1))
+	// Snapshot the open descriptor's size. Growth can never silently turn a
+	// MaxBytes-limited prefix into a valid complete journal.
+	if after.Size() < 1 || after.Size() > MaxBytes {
+		history.Error = "unsafe or oversized opened stop journal"
+		return history
+	}
+	reader := bufio.NewReader(io.NewSectionReader(file, 0, after.Size()))
 	ops := map[string]Entry{}
 	order := map[string]int{}
 	idx := 0
 	for {
 		line, err := reader.ReadBytes('\n')
-		if err == io.EOF && len(line) == 0 { break }
+		if err == io.EOF && len(line) == 0 {
+			break
+		}
 		if err != nil && err != io.EOF {
 			history.Error = err.Error()
 			return history
@@ -224,13 +307,22 @@ func Read(workDir string) History {
 				ops[row.OperationID] = row
 			}
 		} else {
+			if row.State != "requested" {
+				history.Error = "stop receipt has no durable request"
+				return history
+			}
 			ops[row.OperationID] = row
 		}
 		order[row.OperationID] = idx
 		idx++
-		if err == io.EOF { break }
+		if err == io.EOF {
+			break
+		}
 	}
-	type indexed struct { row Entry; order int }
+	type indexed struct {
+		row   Entry
+		order int
+	}
 	sorted := make([]indexed, 0, len(ops))
 	for key, value := range ops {
 		sorted = append(sorted, indexed{value, order[key]})
@@ -238,7 +330,9 @@ func Read(workDir string) History {
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].order > sorted[j].order })
 	for _, item := range sorted {
 		history.Items = append(history.Items, item.row)
-		if len(history.Items) >= MaxHistory { break }
+		if limit > 0 && len(history.Items) >= limit {
+			break
+		}
 	}
 	history.Available = true
 	return history

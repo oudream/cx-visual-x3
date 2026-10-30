@@ -116,8 +116,9 @@ func main() {
 	timer := time.NewTimer(1 * time.Second)
 
 	// exit signal
-	csg := make(chan os.Signal)
+	csg := make(chan os.Signal, 1)
 	signal.Notify(csg, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer signal.Stop(csg)
 
 	// thread receive exit signal
 	go func() {
@@ -148,6 +149,7 @@ func main() {
 	// run loop select chan in main thread
 	var dtCheck int64
 	var dtHeartbeat int64
+	var dtStatusRequest int64
 	bRun := true
 	for bRun {
 		select {
@@ -165,9 +167,10 @@ func main() {
 				monS.CheckChannel()
 				dtCheck = dtNow
 			}
-			if dtNow-_programStatusRespTime > 30*60*1000 {
+			if shouldRequestDaemonStatus(dtNow, _programStatusRespTime, dtStatusRequest) {
 				// programStatus request
 				daemonStatusesReq()
+				dtStatusRequest = dtNow
 				logger.Println(_title.Info + "monS programStatusReq2Daemon()")
 			}
 			// Send ProgramHeartbeat

@@ -15,28 +15,32 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"gogo/internal/journalfile"
 )
 
 const Version = 1
 const MaxBytes = 8192
 
 type Record struct {
-	Version int    `json:"version"`
-	ProgramID string `json:"programId"`
-	AttemptID string `json:"attemptId"`
-	Stage string `json:"stage"`
-	PID int `json:"pid"`
-	ProcessStartMs int64 `json:"processStartMs,omitempty"`
-	Path string `json:"path"`
-	IntendedAt string `json:"intendedAt"`
-	ObservedAt string `json:"observedAt,omitempty"`
+	Version        int    `json:"version"`
+	ProgramID      string `json:"programId"`
+	AttemptID      string `json:"attemptId"`
+	Stage          string `json:"stage"`
+	PID            int    `json:"pid"`
+	ProcessStartMs int64  `json:"processStartMs,omitempty"`
+	Path           string `json:"path"`
+	IntendedAt     string `json:"intendedAt"`
+	ObservedAt     string `json:"observedAt,omitempty"`
 }
 
 type Journal struct {
+	mu      sync.Mutex
 	workDir string
-	id int64
-	active *Record
+	id      int64
+	active  *Record
 }
 
 // New creates a private recorder for a SINGLE guardian Worker generation.
@@ -56,7 +60,12 @@ func recordPath(workDir string, id int64) string {
 // Begin MUST succeed and synchronize its intent file before the Worker may
 // invoke exec.Cmd.Start. An existing artifact is never overwritten silently.
 func (j *Journal) Begin(id int64, path string) error {
-	if j == nil || id <= 0 || id != j.id || path == "" || j.active != nil {
+	if j == nil {
+		return errors.New("nil launch journal")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if id <= 0 || id != j.id || path == "" || j.active != nil {
 		return errors.New("invalid or overlapping launch intent")
 	}
 	var nonce [16]byte
@@ -73,9 +82,14 @@ func (j *Journal) Begin(id int64, path string) error {
 		return errors.New("cannot serialize bounded launch intent")
 	}
 	directory := recordDir(j.workDir)
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := journalfile.EnsureDir(directory); err != nil {
 		return err
 	}
+	release, err := journalfile.Lock(directory, ".launch.lock")
+	if err != nil {
+		return err
+	}
+	defer release()
 	info, err := os.Lstat(directory)
 	if err != nil || !info.IsDir() {
 		return errors.New("unsafe launch evidence directory")
@@ -107,18 +121,26 @@ func (j *Journal) Begin(id int64, path string) error {
 // Started records the PID from the ORIGINAL exec.Cmd after Start succeeded.
 // It is an observation, not yet a verified OS process creation generation.
 func (j *Journal) Started(pid int) error {
-	if j == nil || j.active == nil || j.active.Stage != "intent" || pid <= 0 {
+	if j == nil {
+		return errors.New("nil launch journal")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.active == nil || j.active.Stage != "intent" || pid <= 0 {
 		return errors.New("launch Started without valid durable intent")
 	}
+	release, err := journalfile.Lock(recordDir(j.workDir), ".launch.lock")
+	if err != nil {
+		return err
+	}
+	defer release()
 	// Never replace the proof of a different Worker attempt (or a
 	// corrupted/deleted intent) while observing a successfully started PID.
 	existing, err := readRecord(recordPath(j.workDir, j.id))
 	if err != nil {
 		return err
 	}
-	if existing.AttemptID != j.active.AttemptID ||
-		existing.ProgramID != j.active.ProgramID ||
-		existing.Stage != "intent" {
+	if existing != *j.active {
 		return errors.New("launch intent was replaced or already advanced")
 	}
 	rec := *j.active
@@ -135,18 +157,25 @@ func (j *Journal) Started(pid int) error {
 // Finished is called only when Start failed (no child) or the original
 // Worker reaped the child with cmd.Wait. Failure keeps recovery conservative.
 func (j *Journal) Finished() error {
-	if j == nil || j.active == nil {
+	if j == nil {
+		return errors.New("nil launch journal")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.active == nil {
 		return errors.New("launch Finished without active evidence")
 	}
+	release, err := journalfile.Lock(recordDir(j.workDir), ".launch.lock")
+	if err != nil {
+		return err
+	}
+	defer release()
 	path := recordPath(j.workDir, j.id)
 	onDisk, err := readRecord(path)
 	if err != nil {
 		return err
 	}
-	if onDisk.AttemptID != j.active.AttemptID ||
-		onDisk.ProgramID != j.active.ProgramID ||
-		onDisk.Stage != j.active.Stage ||
-		onDisk.PID != j.active.PID {
+	if onDisk != *j.active {
 		return errors.New("launch evidence changed between Start and Wait")
 	}
 	if err := os.Remove(path); err != nil {
@@ -158,10 +187,16 @@ func (j *Journal) Finished() error {
 
 func writeRecord(path string, rec *Record) error {
 	data, err := json.Marshal(rec)
-	if err != nil { return err }
-	if len(data) > MaxBytes { return errors.New("launch evidence exceeds limit") }
+	if err != nil {
+		return err
+	}
+	if len(data) > MaxBytes {
+		return errors.New("launch evidence exceeds limit")
+	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil { return err }
+	if err := journalfile.EnsureDir(dir); err != nil {
+		return err
+	}
 	// A redirected evidence directory could place safety records outside
 	// the intended Daemon work directory. Reject symlinks/other file types.
 	info, err := os.Lstat(dir)
@@ -169,92 +204,134 @@ func writeRecord(path string, rec *Record) error {
 		return errors.New("unsafe launch evidence directory")
 	}
 	temp, err := os.CreateTemp(dir, ".launch-intent-*")
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer os.Remove(temp.Name())
-	if err = temp.Chmod(0600); err != nil { temp.Close(); return err }
-	if _,err = temp.Write(data); err != nil { temp.Close(); return err }
-	if err = temp.Sync(); err != nil { temp.Close(); return err }
-	if err = temp.Close(); err != nil { return err }
-	return os.Rename(temp.Name(),path)
+	if err = temp.Chmod(0600); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err = temp.Write(data); err != nil {
+		temp.Close()
+		return err
+	}
+	if err = temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err = temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temp.Name(), path)
 }
 
-func readRecord(path string) (Record,error) {
+func readRecord(path string) (Record, error) {
 	var rec Record
-	info,err:=os.Lstat(path)
-	if err != nil { return rec,err }
-	if !info.Mode().IsRegular() || info.Size()<1 || info.Size()>MaxBytes {
-		return rec,errors.New("unsafe launch evidence file")
+	if err := journalfile.CheckDir(filepath.Dir(path)); err != nil {
+		return rec, err
 	}
-	f,err:=os.Open(path)
-	if err!=nil{return rec,err}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return rec, err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > MaxBytes {
+		return rec, errors.New("unsafe launch evidence file")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return rec, err
+	}
 	defer f.Close()
-	opened,err:=f.Stat()
-	if err!=nil || !opened.Mode().IsRegular() || !os.SameFile(info,opened) {
-		return rec,errors.New("launch evidence changed while opening")
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return rec, errors.New("launch evidence changed while opening")
 	}
-	data,err:=io.ReadAll(io.LimitReader(f,MaxBytes+1))
-	if err!=nil || len(data)==0 || len(data)>MaxBytes {
-		return rec,errors.New("invalid launch evidence read")
+	data, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
+	if err != nil || len(data) == 0 || len(data) > MaxBytes {
+		return rec, errors.New("invalid launch evidence read")
 	}
-	dec:=json.NewDecoder(bytes.NewReader(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err=dec.Decode(&rec);err!=nil{return rec,err}
-	if err=dec.Decode(new(interface{}));err!=io.EOF {
-		return rec,errors.New("extra launch evidence JSON")
+	if err = dec.Decode(&rec); err != nil {
+		return rec, err
 	}
-	id,err:=strconv.ParseInt(rec.ProgramID,10,64)
-	if err!=nil || id<=0 || strconv.FormatInt(id,10)!=rec.ProgramID ||
-		rec.Version!=Version || len(rec.AttemptID)!=32 || strings.Trim(rec.AttemptID,"0123456789abcdef")!="" ||
-		rec.Path=="" || (rec.Stage!="intent" && rec.Stage!="started") ||
-		(rec.Stage=="intent" && (rec.PID!=0 || rec.ProcessStartMs!=0)) ||
-		(rec.Stage=="started" && rec.PID<=0) || rec.ProcessStartMs<0 {
-		return rec,errors.New("invalid launch evidence schema")
+	if err = dec.Decode(new(interface{})); err != io.EOF {
+		return rec, errors.New("extra launch evidence JSON")
 	}
-	if _,err=time.Parse(time.RFC3339Nano,rec.IntendedAt);err!=nil {
-		return rec,errors.New("invalid intent time")
+	id, err := strconv.ParseInt(rec.ProgramID, 10, 64)
+	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != rec.ProgramID ||
+		rec.Version != Version || len(rec.AttemptID) != 32 || strings.Trim(rec.AttemptID, "0123456789abcdef") != "" ||
+		rec.Path == "" || (rec.Stage != "intent" && rec.Stage != "started") ||
+		(rec.Stage == "intent" && (rec.PID != 0 || rec.ProcessStartMs != 0 || rec.ObservedAt != "")) ||
+		(rec.Stage == "started" && rec.PID <= 0) || rec.ProcessStartMs < 0 {
+		return rec, errors.New("invalid launch evidence schema")
 	}
-	if rec.Stage=="started" {
-		if _,err=time.Parse(time.RFC3339Nano,rec.ObservedAt);err!=nil {
-			return rec,errors.New("invalid PID observation time")
+	if _, err = time.Parse(time.RFC3339Nano, rec.IntendedAt); err != nil {
+		return rec, errors.New("invalid intent time")
+	}
+	if rec.Stage == "started" {
+		if _, err = time.Parse(time.RFC3339Nano, rec.ObservedAt); err != nil {
+			return rec, errors.New("invalid PID observation time")
 		}
 	}
-	return rec,nil
+	return rec, nil
 }
 
 // Scan does not issue signals or infer ownership from old PIDs. Any
 // uncompleted intent, including PID=0, blocks automatic start for its ID.
 // Unknown filenames/corrupt directories are fatal: they cannot be safely
 // attributed to a particular Program.
-func Scan(workDir string) (map[int64]string,error) {
-	out:=make(map[int64]string)
-	dir:=recordDir(workDir)
-	info,err:=os.Lstat(dir)
-	if errors.Is(err,os.ErrNotExist) {return out,nil}
-	if err!=nil{return nil,err}
-	if !info.IsDir(){return nil,errors.New("unsafe launch evidence directory")}
-	entries,err:=os.ReadDir(dir)
-	if err!=nil{return nil,err}
-	for _,entry:=range entries {
-		name:=entry.Name()
-		// Atomic writes create temp files BEFORE any child is launched.
-		if strings.HasPrefix(name,".launch-intent-") {continue}
-		if !strings.HasSuffix(name,".json") {return nil,fmt.Errorf("unrecognized launch evidence file: %q",name)}
-		key:=strings.TrimSuffix(name,".json")
-		id,err:=strconv.ParseInt(key,10,64)
-		if err!=nil || id<=0 || strconv.FormatInt(id,10)!=key {
-			return nil,fmt.Errorf("invalid launch evidence ProgramId filename: %q",name)
-		}
-		rec,err:=readRecord(filepath.Join(dir,name))
-		if err!=nil {
-			out[id]="unreadable/corrupt prior child launch evidence: "+err.Error()
-			continue
-		}
-		if rec.ProgramID!=key {
-			out[id]="launch evidence ProgramId mismatch"
-			continue
-		}
-		out[id]=fmt.Sprintf("unreconciled launch attempt=%s stage=%s pid=%d osBirthMs=%d identity=%s intent=%s; original Worker Wait not confirmed",
-			rec.AttemptID,rec.Stage,rec.PID,rec.ProcessStartMs,DescribeCurrentPID(rec),rec.IntendedAt)
+func Scan(workDir string) (map[int64]string, error) {
+	out := make(map[int64]string)
+	dir := recordDir(workDir)
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return out, nil
 	}
-	return out,nil
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("unsafe launch evidence directory")
+	}
+	release, err := journalfile.Lock(dir, ".launch.lock")
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".launch.lock" {
+			continue
+		}
+		// Atomic writes create temp files BEFORE any child is launched.
+		if strings.HasPrefix(name, ".launch-intent-") {
+			continue
+		}
+		if !strings.HasSuffix(name, ".json") {
+			return nil, fmt.Errorf("unrecognized launch evidence file: %q", name)
+		}
+		key := strings.TrimSuffix(name, ".json")
+		id, err := strconv.ParseInt(key, 10, 64)
+		if err != nil || id <= 0 || strconv.FormatInt(id, 10) != key {
+			return nil, fmt.Errorf("invalid launch evidence ProgramId filename: %q", name)
+		}
+		rec, err := readRecord(filepath.Join(dir, name))
+		if err != nil {
+			out[id] = "unreadable/corrupt prior child launch evidence: " + err.Error()
+			continue
+		}
+		if rec.ProgramID != key {
+			out[id] = "launch evidence ProgramId mismatch"
+			continue
+		}
+		out[id] = fmt.Sprintf("unreconciled launch attempt=%s stage=%s pid=%d osBirthMs=%d identity=%s intent=%s; original Worker Wait not confirmed",
+			rec.AttemptID, rec.Stage, rec.PID, rec.ProcessStartMs, DescribeCurrentPID(rec), rec.IntendedAt)
+	}
+	return out, nil
 }

@@ -10,8 +10,12 @@ import (
 func writeDiagnostic(t *testing.T, dir, name, value string) {
 	t.Helper()
 	target := filepath.Join(dir, "supervision")
-	if err := os.MkdirAll(target, 0700); err != nil { t.Fatal(err) }
-	if err := os.WriteFile(filepath.Join(target, name), []byte(value), 0600); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, name), []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestGuardReportMissingIsUnknownNotHealthy(t *testing.T) {
@@ -86,7 +90,6 @@ func TestGuardReportRequiresOrphanObservationTime(t *testing.T) {
 	}
 }
 
-
 func TestGuardReportRejectsSymlinkBeforeReading(t *testing.T) {
 	dir := t.TempDir()
 	fileDir := filepath.Join(dir, "supervision")
@@ -94,7 +97,7 @@ func TestGuardReportRejectsSymlinkBeforeReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	realFile := filepath.Join(dir, "other.json")
-	if err := os.WriteFile(realFile, []byte(\`{"version":1,"terminal":{}}\`), 0600); err != nil {
+	if err := os.WriteFile(realFile, []byte(`{"version":1,"terminal":{}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(fileDir, "daemon-terminal-latches.json")

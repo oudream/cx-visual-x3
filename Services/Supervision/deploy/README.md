@@ -4,7 +4,7 @@
 
 ~~~bash
 cd Services/Supervision/web
-npm install
+npm ci
 npm run dev
 ~~~
 
@@ -91,3 +91,11 @@ Daemon 启动会合并扫描旧 PID 文件和未清算意图，即使无旧 PID 
 **必须区分**：`requested` 只表示操作意图已落盘，不保证 OS Kill 已发出；`unknown` 代表本次等待尚未获得原 Worker Wait；`wait-confirmed` 只表示原主子进程已回收，不证明子孙进程树或业务 Ready；`refused`、`signal-failed` 代表未成功发送或执行请求失败。Daemon SIGKILL/设备掉电可能只留下 requested/unknown，人工运维应跨进程/凭证/业务日志核对，不能仅凭历史 PID 发 Kill。此日志不是身份认证、不可篡改合规审计或远程操作许可。
 
 **部署安全与容量**：工作目录必须受 ACL 保护与备份；文件在本地追加、Sync，单条最大 4KiB，总量 4MiB，只读视图最新最多 200 个 Operation ID。日志损坏、空白、截断或达到容量上限时拒绝新的受管软件停止，避免产生无法追踪的操作。现场必须依据真实设备的独立硬件急停/安全回路优先确保安全，**切勿把依赖日志写入的 Daemon 软停止视为唯一应急措施**。停机确认后由授权人员备份、审查、离线归档，保留证据与事件链后再由受控部署流程恢复容量；不可在运行中随意删除或截断。若 Monitor 与 Daemon 工作目录不同，H5 应报告来源不可用，不应显示“零操作”。
+
+## 并发锁与版本升级（2026-10-30）
+
+新版本使用 `supervision/.stop.lock` 和 `supervision/launch-attempts/.launch.lock` 协调证据文件。锁文件长期保留，异常退出由 OS 自动释放锁；**不可在进程运行时删除、改名或替换锁文件/父目录**，否则合作进程会锁定不同文件。Monitor 读取停止历史也需要打开协调锁文件的权限，不会追加操作记录；请为同一受控账户配置必要 ACL。旧版本不遵守此锁协议，Monitor/Daemon 应配套升级，升级和离线归档先停止两者。
+
+目录及祖先链接被拒绝；不要把 supervision 或 launch-attempts 重定向至符号链接/目录联接。新停止请求为已有 requested/unknown 预留后续回执空间，可能在达到4MiB前拒绝新请求；应提前观察容量并按上述离线流程归档。持久化证据不是防恶意篡改的审计库；相同文件权限的外部程序与突然断电仍属独立验收边界。
+
+本机编译、并发、SQLite和六页面实证见[修复与真实验收](../docs/CxVisual_Supervision_修复与真实验收_20261030.md)。

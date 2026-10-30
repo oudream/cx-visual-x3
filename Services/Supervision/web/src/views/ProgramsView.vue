@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
@@ -23,6 +23,9 @@ const detail = ref<Program | null>(null)
 const detailError = ref('')
 const detailLoading = ref(false)
 const detailGeneratedAt = ref('')
+let detailRequest = 0
+watch(detailOpen, open => { if (!open) { detailRequest++; detailLoading.value = false } })
+onBeforeUnmount(() => { detailRequest++ })
 const filtered = computed(() => programs.value.filter(p => {
   if (activeOnly.value && !p.running) return false
   if (guardedOnly.value && !['terminal', 'orphan', 'both'].includes(guardVerdict(guardReport.value, p.id))) return false
@@ -31,6 +34,7 @@ const filtered = computed(() => programs.value.filter(p => {
 }))
 
 async function openDetail(row: Program): Promise<void> {
+  const request = ++detailRequest
   detail.value = row
   detailOpen.value = true
   detailError.value = ''
@@ -38,12 +42,14 @@ async function openDetail(row: Program): Promise<void> {
   detailLoading.value = true
   try {
     const snapshot = await fetchProgram(row.id)
+    if (request !== detailRequest) return
     detail.value = snapshot.data
     detailGeneratedAt.value = snapshot.generatedAt
   } catch (err) {
+    if (request !== detailRequest) return
     detailError.value = err instanceof Error ? err.message : '详情读取失败'
   } finally {
-    detailLoading.value = false
+    if (request === detailRequest) detailLoading.value = false
   }
 }
 </script>

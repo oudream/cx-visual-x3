@@ -2,8 +2,8 @@ package channels
 
 import (
 	"bufio"
-	"fmt"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -18,7 +18,7 @@ func NewUdpC(ip string, port int, rc chan CRecData) (*UdpC, error) {
 		IP:   ip,
 		Port: port,
 	}
-	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", udpC.IP, udpC.Port))
+	conn, err := net.Dial("udp", net.JoinHostPort(udpC.IP, strconv.Itoa(udpC.Port)))
 	if err != nil {
 		//fmt.Printf("Some error %v", err)
 		return nil, err

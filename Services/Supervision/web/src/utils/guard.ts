@@ -42,7 +42,7 @@ export function observationTime(value?: string): string {
 /** Displays only the evidence explicitly written by Daemon's startup scan.
  * Neither a matching timestamp nor an executable match grants ownership. */
 export function identityEvidenceLabel(reason: string): string {
-  const code = /(?:^|\s)identity=([a-z0-9=-]+)/.exec(reason)?.[1]
+  const code = /(?:^|\s)identity=([A-Za-z0-9=-]+)/.exec(reason)?.[1]
   switch (code) {
     case 'pid-creation-mismatch': return 'PID 创建时间不匹配'
     case 'same-creation-time-executable-mismatch': return '创建时间一致，但可执行文件不同'

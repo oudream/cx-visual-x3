@@ -1,5 +1,7 @@
 # Supervision — 原 Go Monitor / Daemon 保真迁移
 
+> 最新修复与验收：[2026-10-30 真实编译、并发及六页面验收](docs/CxVisual_Supervision_修复与真实验收_20261030.md)。停止/启动凭证现使用 OS 文件锁；部署及离线归档前请阅读锁文件和权限约束。
+
 > **开发规范**：[《CxVisual Supervision Go 编码与工程规范 V1.0》](docs/CxVisual_Supervision_Go编码与工程规范_V1.0.md)。新增或实质修改 Go 源码时必须遵守；已迁移旧代码按兼容性和测试证据渐进治理。
 
 此目录是可独立构建的 **Go 模块**，不是 `CxVisual.Mechanism.Lifecycle` 的重命名，也不包含第二套 C# Host。
@@ -55,7 +57,7 @@ Go 模块含 `github.com/mattn/go-sqlite3`，请在目标系统提供可用的 C
 
 ```bash
 cd Services/Supervision/web
-npm install
+npm ci
 npm run test
 npm run build
 npm run dev

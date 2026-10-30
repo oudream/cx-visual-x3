@@ -1158,3 +1158,9 @@ sequenceDiagram
 回归源码：`internal/stopjournal/journal_test.go` 覆盖重启恢复、迟到确认乱序、64位ID、损坏/身份篡改、并发追加、无法持久时拒绝操作；`internal/httpapi/stop_history_test.go` 验证远端/转发拒绝、本机查询、不可写路由；`web/src/api/client.test.ts` 验证本机只读合同及403。CI 在原 Windows/Linux/macOS Go 全量构建测试、Vue Typecheck/Vitest/build 基础上追加 Linux Race 定向覆盖。但此阶段仅确认源码和测试已提交（S），**固定SHA本仓库全量CI、Win/Linux/macOS及工控现场G1/G2/G3仍待真实验证**。
 
 **不能扩大结论**：本地日志具备持续性，不代表不可篡改审计、防断电保证、S11身份认证、审批、在线解锁或硬件急停。日志满时软件守护的停止请求会拒绝发出，应依现场设备已有独立安全停机机制处置，授权人员离线归档后重新验证。避免直接在运行中删除日志。详见 [验收矩阵第23章](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
+
+## 29. 并发、文件竞争修复与本机实证（2026-10-30）
+
+实施和证据详见[修复与真实验收](CxVisual_Supervision_修复与真实验收_20261030.md)。保留原进程 Owner，新增的 `journalfile` 仅负责本地证据文件协调，不承担进程管理。启动凭证的同实例方法和跨进程访问均序列化；停止流水在追加前验证完整历史中的 OperationID 身份，并为已受理操作预留回执空间。新旧日志字段、UDP、SQLite 不变；新增持久锁文件不能在线删除。
+
+本机 Windows/CGO 真实 build/test/vet、全包 race、关键重复测试、SQLite 和真实 Monitor 六页面验收已有通过输出，历史 CI 失败根因已修复。三平台 CI 必须核对新提交 SHA；远程 S11、真实专业 Ready、设备长稳、断电和完整进程树仍未验收。受控目录 ACL 是文件协调前提，OS 文件锁不证明硬件安全。
