@@ -168,3 +168,21 @@ NamedPipe固定后台线程、同步底层、跨进程体数据、逐Peer隔离�
 **长期使用合同**：Channel对象可由Host在内存中持有，正常Close/Open产生新SessionId，外部订阅令牌可以跨Session存在且不会Dispose/Close Channel；`FTRByteStreamAdapter`仍是一代连接的视图，重开应重新创建Adapter。对外同步Send在调用期借用源数组；异步Send独立快照并受原FTR预算控制；对端执行结果未知时不得自动重发业务命令。高性能BufferReceived借用回调期有效，跨线程须Retain且Dispose。
 
 源码增量：`FTRChannelConvenience`（无额外收发线程、队列或业务Owner）、消息Received和PeerRemoved观察者隔离、HTTP Client统一一次POST同步/异步物理路径、`FTRFailureInfo.Address`、TestCenter子ID展示。真实回归分别为`FTRChannelConvenienceTests`、`FTRPersistentChannelTests`（真实TCP多轮重开）、`FTRMultiClientBudgetTests.HttpClientSegmentedPost`、WS超额地址断言；**仍按固定SHA Windows日志区分已验证与待运行，不能宣称工业级全面完成**。
+
+
+## 2026-10-30 F17最新源码审计追加：HTTP消息型低复制与Serial有界收发
+
+本节是对V1.0早期审计快照的实际源码增量更正；旧表记载的“HTTP Server / WebSocket Server / SharedMemory无实现”等属于早期基线，不代表2026-10-30 master：最新源码分别有`FTRHttpServerChannel`、`FTRWebSocketServerChannel`、`FTRSharedMemoryChannel`及既有可执行测试，相关能力仍有性能/取消/硬件缺口。
+
+| 对应用户14方面 | 本轮新完成的源码增量 | 仍未得到的证据 |
+|---|---|---|
+| 23 通道类型／Serial | 原FTRSerialChannel接收与同步写入已实装，无新增类型/项目 | 实际RS-232/485双向物理通信和USB串口异常恢复 |
+| 25 生命周期 | Serial Open/Close/Dispose复用原基类、StopTimeoutMs及同一缓冲结算路径 | Windows新SHA全回归、设备拔插/关闭中断与长时验证 |
+| 27 数据收发 | Serial独立读取Thread、同步Send按段写入，同一个OnSendSynchronous供异步入口复用；HTTP消息边界不被段大小拆分 | 实际串口连线/电气方向；HTTP真正流式上层低复制 |
+| 28/30 缓冲与并发 | Serial借用现有FTRReceiveBuffer池及交付FIFO，慢消费者背压；FTRChannelBase的消息型接收无Legacy订阅时不额外复制/预留全报文 | Serial硬件接收线程/RS485方向、极端多客户端公平性和24h内存 |
+| 29 超时取消 | HTTP覆盖发送排队、响应头、慢Body完整截止；Serial发送门排队和写入统一Deadline，Close bounded join与ReceiveIdleTimeoutMs | 挂死驱动、跨PC网络/实际串口截止精准误差 |
+| 32 诊断 | 无Legacy订阅仍保留真实Rx/Tx计数；HTTP 4MiB有/无订阅独立输出峰值、当前缓冲/预算 | 硬件吞吐、CPU/GC/线程数持续SLA |
+| 34 配置扩展 | HTTP Client新建配置默认12MiB匹配4MiB响应，显式FCM旧预算不自动扩张；Serial原FCM多参数真正参与读/写及停止 | 所有通道FCM字段逐一覆盖 |
+| 35 高性能 | HTTP小响应渐进容量、无订阅零Legacy克隆、4MiB真OS回环；Serial接收统一池化免每块数组新建 | CT/X-Ray至专业DataHandle、连续双向2GiB新SHA、24h与零复制全链 |
+
+**测试身份**：源码`e89be960`、`50926a25`、`e1b11deb`、`820208af`、`e597280a`，专项Windows由`--channel-uml-core`及`--channel-transport`运行，`F17.HTTP_LARGE_PASS`/`F17.SERIAL_P0_PASS`为门禁字符串；只有对应最新SHA Actions成功和实际日志才允许从“已实装/待验”升级为软件G1通过。无实际Serial和工业网络设备，P0实物G2/HIL仍为未完成。
