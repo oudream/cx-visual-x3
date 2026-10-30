@@ -157,3 +157,9 @@ A侧Runtime.Host的v1 Pipe discover/snapshot中，Devices[]增加仅附加的lon
 - Devices的DeviceRef固定于MEM工程、ScopeId对应MDS，ConnectorModuleId/ConnectorEffectiveVersion来自MHS，ChannelId来自F17正式配置；ScanIntervalMs和Contiguous来自保存的项目部署Effective。Points[]列出StablePointId、VariableAddress、ValueType、Unit、WritableDefinition；不得据WritableDefinition让HMI直接对PLC写寄存器。
 - HMI-B需要在Studio保存并生效MHS后调用此CLI预检时，应显示它仅是**工程配置有效/设备未验证**。实时是否连通和数据质量，仍通过已存在的Runtime.Host Pipe的Discover/Snapshot（含SessionGeneration、MDS Quality及FCR循环计数）读取，而不是反向从工程预检推断“设备在线”。
 - 失败时CLI返回非零及stderr错误说明，不输出成功JSON。Go Supervision可由其自己的进程管理Owner选择接入，此文仅交付合同，不代表已修改Daemon/Monitor或完成受信服务装配。
+
+
+## 13. Host只读Pipe独立进程探针及A/B联合验收边界（2026-10-30）
+- A提供只读CLI：`CxVisual.Runtime.Host.exe scada-pipe-probe <pipeName> discover`和`CxVisual.Runtime.Host.exe scada-pipe-probe <pipeName> snapshot <DeviceRef> <DeploymentEffective> <ConnectorEffective> <Generation>`。调用时必须是当前Host允许的同Windows用户，不依赖Studio，仍使用既有v1 Pipe/授权ACL，返回JSON和退出码（Ok=0、Rejected=3），不提供控制或FC06。
+- 实际G1在运行PLC双工站的Host测试进程之外另外启动一个**真实Windows子进程**，通过Pipe验证MDS Good/Revision、真实原值、Generation FailClosed；不共享进程内的MDS/Connector实例。此Probe是A的诊断工具，不替代B专业的`PHMScadaReadOnlyPipeClient`。B仍由自己的Owner调用现有v1 discover/snapshot，并保持原先的登录、版本及显示语义。
+- 本测试证明Host IPC服务与独立本机进程互通，尚未证明真实WPF应用直接连接实际PLC Host、远程跨账户用户授权或可信MRK控制；需后续双Owner联合Windows端到端门禁。
