@@ -156,6 +156,12 @@ namespace CxVisual.Studio
                         Assert(preview.Text.Contains("first = Int32 value=1")&&
                             !preview.Text.Contains("second ="),
                             "B5单步后结果展示了未执行的第二节点或遗失已提交结果");
+                        ownerField.SetValue(window,Guid.NewGuid());
+                        command("OnFlowDebugStep");
+                        Assert(status.Text.Contains("无可控制的MRK调试会话")&&
+                            executions==1&&debug.WaitingCount==1,
+                            "B5跨工程仍允许单步释放其它工程的等待节点");
+                        ownerField.SetValue(window,activeProject.Project.Id);
                         command("OnFlowDebugResume");
                         Assert(status.Text.Contains("已恢复MRK执行")&&
                             flow.Completion.Wait(TimeSpan.FromSeconds(6))&&
