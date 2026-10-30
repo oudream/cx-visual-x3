@@ -662,3 +662,13 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R2-02-05 MVI外部隐藏 | `9944b63b`新增隐藏ROI图层时旧Gesture不能向Store写入、恢复显示可重新Begin的反例；固定SHA [Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)结果待验 |
 | 跨工程默认Smoke | `8d94fa04`的Imaging #41010129867为failure，但失败堆栈是严格`MOCManifestRuntimeBinding`缺专业TypeId映射；`10e9b1f3`只补Host显式映射，未允许Unknown通行；新CI待验 |
 | 尚未验收 | Esc/鼠标失捕真用户手势、多Pane抢占、实际大图、工业设备HIL、当前最新master同SHA一揽子G4/G5/G6 |
+
+
+### IMG-02 隐藏图元及全量默认Smoke独立验收（2026-10-30）
+
+| 证据 | 判据与真实状态 |
+|---|---|
+| IMG-02 HiddenLayer | `MVIImageOverlayTests.VerifyEditableOverlayGesture` 新增两种反例：中途隐藏层使TryUpdate停止且不写原始Store；已隐藏图层拒绝Begin。源码`9944b63b`、`9431d358`，最新[Imaging #41011126920](https://github.com/oudream/cx-visual-x3/actions/runs/41011126920)尚待G4结果 |
+| 跨专业失败事实 | `9944b63b`的[Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)和[Runtime #41010672735](https://github.com/oudream/cx-visual-x3/actions/runs/41010672735)均failure，日志`AUT-PLC-G1`要求点表漂移时“不写过期MDS”；不是Imaging类编译失败 |
+| 质量契约修复 | `AutomationPlcPointTests` `d4710675`将“整个Revision不变”更正为质量Revision递增同时Stale、原样本/采样时间不变；无需放宽旧回包禁入、不能伪装Good |
+| 验收限制 | 全量G4须等`9431d358`相关实际Actions成功；受控WPF Esc Step成功不等于真实人工操作G5 |
