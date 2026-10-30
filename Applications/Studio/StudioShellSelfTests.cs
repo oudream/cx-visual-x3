@@ -4631,6 +4631,99 @@ namespace CxVisual.Studio
                     }
         }
 
+
+        /// <summary>
+        /// HMI专项真实Studio STA：原资源菜单→MDS点选择→MEM图元→WPF Viewer→保存重开。
+        /// 测试Scope显式标为软件G1，不代表实际PLC或已授权Runtime.Host。
+        /// </summary>
+        public static bool RunHmiOnly(MainWindow window,string report)
+        {
+            try
+            {
+                StudioViewModel vm=window.DataContext as StudioViewModel;
+                Assert(vm!=null,"HMI Studio缺少正式ViewModel");
+                MEMEngineeringSession engineering=vm.ProjectSession;
+                MEMPage page=engineering.AddPage("HMI-G1工站");
+                var table=new CxVisual.Mechanism.Data.Variables.MDSVariableTable("hmi-g1");
+                table.Define(new CxVisual.Mechanism.Data.Variables.MDSVariableDefinition(
+                    "word100",typeof(ushort),"rpm",true));
+                table.Define(new CxVisual.Mechanism.Data.Variables.MDSVariableDefinition(
+                    "ready",typeof(bool),null,true));
+                table.Update<ushort>("word100",73);
+                table.Update<bool>("ready",true);
+                window.AttachStudioVariableScope(table);
+                ContextMenu menu=window.CreateStudioResourceEditorMenu(page);
+                MenuItem hmi=menu.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="HMI：添加工业组件");
+                MenuItem numeric=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header).StartsWith("word100",StringComparison.Ordinal));
+                MenuItem add=numeric.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="添加数值显示");
+                int before=engineering.Revision;
+                add.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert(engineering.Revision==before+1,
+                    "Studio资源菜单未通过一次MEM事务创建数字显示");
+                MRCTextElement value=page.RootContent.DescendantsAndSelf()
+                    .OfType<MRCTextElement>().Single(x=>x.Name=="word100");
+                Assert(value.GetBinding("text")!=null&&
+                    value.GetBinding("text").SourceId=="word100",
+                    "Studio真实点位选择没有保存变量绑定");
+                // 状态灯在同一次事务添加图元与标签。
+                menu=window.CreateStudioResourceEditorMenu(page);
+                hmi=menu.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="HMI：添加工业组件");
+                MenuItem status=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header).StartsWith("ready",StringComparison.Ordinal));
+                before=engineering.Revision;
+                status.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="添加状态灯")
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert(engineering.Revision==before+1 &&
+                    page.RootContent.DescendantsAndSelf().OfType<MRCRectangle>()
+                        .Any(x=>x.Name=="ready状态"),
+                    "Studio状态灯没有正式落入MEM或没有原子事务");
+                string key=window.OpenStudioHmiPage(page.Id);
+                Assert(key.Contains("hmi.scada.live") &&
+                    window.GetStudioResourceDocumentIdentity(key)!=null,
+                    "Studio没有打开当前MEM Page的HMI专业Viewer");
+                LayoutDocument live=window.StudioDock.Layout.Descendents()
+                    .OfType<LayoutDocument>().Single(x=>x.ContentId==key);
+                Assert(live.Content is MPWLiveSceneControl,
+                    "Studio HMI未使用共用SceneView运行承载控件");
+                string save=Path.Combine(Path.GetTempPath(),
+                    "cxvisual-hmi-studio-"+Guid.NewGuid().ToString("N")+".cxproj");
+                try
+                {
+                    engineering.SaveAs(save);
+                    using(MEMEngineeringSession restored=MEMEngineering.Open(save))
+                    {
+                        MRCTextElement reloaded=restored.Find(value.Id) as MRCTextElement;
+                        Assert(reloaded!=null&&reloaded.GetBinding("text")!=null&&
+                            reloaded.GetBinding("text").SourceId=="word100",
+                            "Studio真正保存重开丢失Page变量绑定");
+                        restored.Close(true);
+                    }
+                }
+                finally
+                {
+                    if(File.Exists(save))File.Delete(save);
+                    if(File.Exists(save+".cx-lock"))File.Delete(save+".cx-lock");
+                }
+                window.AttachStudioVariableScope(new CxVisual.Mechanism.Data.Variables
+                    .MDSVariableTable("hmi-g1-next"));
+                Assert(window.GetStudioResourceDocumentIdentity(key)==null,
+                    "切换Host MDS Scope后旧HMI Viewer/订阅没有释放");
+                File.WriteAllText(report,"PASS HMI Studio WPF STA real ResourceMenu / "+
+                    "MEM transaction / MDS binding / live viewer / save-open / scope disposal");
+                return true;
+            }
+            catch(Exception error)
+            {
+                File.WriteAllText(report,"FAIL HMI Studio WPF STA: "+error);
+                return false;
+            }
+        }
+
         private static T AwaitStudioTask<T>(Task<T> task)
         {
             if(task==null)throw new ArgumentNullException("task");
