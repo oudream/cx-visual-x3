@@ -34,6 +34,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTSimulationStepPanel _simulationPanel;
         private readonly TCTServiceRequestPanel _servicePanel;
         private readonly TCTConnectorLoopPanel _connectorPanel;
+        private readonly TCTPlcReadOnlyPanel _plcPanel;
         private readonly TCTDriverReadinessPanel _driverPanel;
         private ContentControl _editorHost {get{return _center.EditorHost;}}
         private TabControl _pages {get{return _center.Pages;}}
@@ -127,6 +128,16 @@ namespace CxVisual.TestCenter.UI
                         "TCT.Module.Page.connector-echo");
                     _pages.Items.Add(tab);
                 }
+                if(kind==MFMModuleKind.Connector)
+                {
+                    var page=new MPWModuleCenterPage("connector-plc",
+                        "Modbus TCP PLC只读点表",new string[0]);
+                    var tab=new TabItem {Header=page.Label,Tag=page};
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,"MPWDocumentTabStyle");
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                        "TCT.Module.Page.connector-plc");
+                    _pages.Items.Add(tab);
+                }
                 _pages.SelectedIndex=0;
                 _center.SetSelectedKind(kind);
             }
@@ -164,7 +175,8 @@ namespace CxVisual.TestCenter.UI
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
         public bool IsBusy { get { return _opening || _busy || (_cpuPanel != null && _cpuPanel.IsRunning) || (_simulationPanel!=null&&_simulationPanel.IsBusy) || (_servicePanel!=null&&(_servicePanel.IsBusy||
                 _servicePanel.State==MLCServiceModuleState.Running)) ||
-                (_connectorPanel!=null&&(_connectorPanel.IsBusy||_connectorPanel.IsStarted)); } }
+                (_connectorPanel!=null&&(_connectorPanel.IsBusy||_connectorPanel.IsStarted)) ||
+                (_plcPanel!=null&&(_plcPanel.IsBusy||_plcPanel.IsStarted)); } }
         public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
         // 只读当前正式MHS编辑草稿克隆，用于统一测试平台验证真实值与保存重开。
         public MCNConnectorConfiguration ConnectorDraftSnapshot()
@@ -180,6 +192,7 @@ namespace CxVisual.TestCenter.UI
         public TCTSimulationStepPanel SimulationTestPanel {get{return _simulationPanel;}}
         public TCTServiceRequestPanel ServiceTestPanel {get{return _servicePanel;}}
         public TCTConnectorLoopPanel ConnectorTestPanel {get{return _connectorPanel;}}
+        public TCTPlcReadOnlyPanel PlcReadOnlyPanel {get{return _plcPanel;}}
         public TCTDriverReadinessPanel DriverTestPanel {get{return _driverPanel;}}
         public void SelectModuleKind(MFMModuleKind kind)
         {
@@ -226,6 +239,7 @@ namespace CxVisual.TestCenter.UI
             _simulationPanel=new TCTSimulationStepPanel(_service,()=>HasUnsavedDraft);
             _servicePanel=new TCTServiceRequestPanel(_service,()=>HasUnsavedDraft);
             _connectorPanel=new TCTConnectorLoopPanel(_service,()=>HasUnsavedDraft);
+            _plcPanel=new TCTPlcReadOnlyPanel(_service,()=>HasUnsavedDraft);
             _driverPanel=new TCTDriverReadinessPanel(_service,()=>HasUnsavedDraft);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
@@ -420,6 +434,8 @@ namespace CxVisual.TestCenter.UI
                     _editorHost.Content=_servicePanel;
                 else if(kind==MFMModuleKind.Connector&&SelectedModulePage=="connector-echo")
                     _editorHost.Content=_connectorPanel;
+                else if(kind==MFMModuleKind.Connector&&SelectedModulePage=="connector-plc")
+                    _editorHost.Content=_plcPanel;
                 else if(kind==MFMModuleKind.Driver&&SelectedModulePage=="driver-probe")
                     _editorHost.Content=_driverPanel;
                 else {
@@ -449,6 +465,7 @@ namespace CxVisual.TestCenter.UI
             _simulationPanel.Bind(kind==MFMModuleKind.Simulation?id:null);
             _servicePanel.Bind(kind==MFMModuleKind.Service?id:null);
             _connectorPanel.Bind(kind==MFMModuleKind.Connector?id:null);
+            _plcPanel.Bind(kind==MFMModuleKind.Connector?id:null);
             _driverPanel.Bind(kind==MFMModuleKind.Driver?id:null);
             _refreshDeclaredCapabilities=() => {
                 // A declaration projection is not an MOC Provider, Ready or authorization fact.
