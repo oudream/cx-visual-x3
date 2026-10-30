@@ -1339,6 +1339,10 @@ namespace CxVisual.Mechanism.Core
                     case "bool":case "System.Boolean":
                         bool b;if(!bool.TryParse(entry.Value,out b))
                             throw new InvalidOperationException("wiring.parameter_type");break;
+                    case "ushort":case "System.UInt16":
+                        ushort uv;if(!ushort.TryParse(entry.Value,NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,out uv))
+                            throw new InvalidOperationException("wiring.parameter_type");break;
                     case "int":case "System.Int32":
                         int iv;if(!int.TryParse(entry.Value,NumberStyles.Integer,
                             CultureInfo.InvariantCulture,out iv))
