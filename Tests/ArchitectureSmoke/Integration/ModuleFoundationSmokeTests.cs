@@ -1479,11 +1479,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             MFMModuleDescriptor serviceDescriptor = new MFMModuleDescriptor("svc", "Svc", MFMModuleKind.Service);
             SimpleService service = new SimpleService(serviceDescriptor);
+            MLCServiceModuleObservation before = service.Observe();
+            Check(before.ModuleId == "svc" && before.Version == 1 &&
+                before.State == MLCServiceModuleState.Stopped &&
+                before.VerifiedReady.HasValue && !before.VerifiedReady.Value &&
+                !before.LifecycleRunning && before.ObservedAtUtc.Kind == DateTimeKind.Utc,
+                "Service before-start observation must be real Stopped");
             service.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
             Check(service.IsReady && service.Starts == 1, "Service start");
+            MLCServiceModuleObservation running = service.Observe();
+            Check(running.LifecycleRunning && running.State == MLCServiceModuleState.Running &&
+                !running.VerifiedReady.HasValue && running.ModuleId == "svc",
+                "Service Running without provider readiness evidence must remain Unknown");
             service.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             Check(!service.IsReady && service.Stops == 1 && service.State == MLCServiceModuleState.Stopped,
                 "Service stop");
+            MLCServiceModuleObservation stopped = service.Observe();
+            Check(stopped.VerifiedReady.HasValue && !stopped.VerifiedReady.Value &&
+                stopped.State == MLCServiceModuleState.Stopped &&
+                running.State == MLCServiceModuleState.Running,
+                "Service stop observation must not retroactively modify prior snapshot");
             Console.WriteLine("FM.FOUNDATION: driver/module/channel/protocol/point/variable/compute/sim/service PASS");
         }
     }
