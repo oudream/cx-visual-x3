@@ -54,9 +54,13 @@ namespace CxVisual.Studio
         private TreeViewItem CreateResourceCategory(string key, string title, string description, bool expanded)
         {
             bool prior;
+            string role=key=="pages"?"group":key=="contents"?"resource":
+                key=="symbols"?"3d":key=="flows"?"run":
+                key=="modules"?"connector":key=="data"?"catalog":
+                key=="configuration"?"settings":key=="cases"?"test":"resource";
             return new TreeViewItem
             {
-                Header = MPWWorkspaceVisuals.TreeHeader(title, "group", false, false),
+                Header = MPWWorkspaceVisuals.TreeHeader(title, role, false, false),
                 Tag = key, ToolTip = description, ContextMenu = CreateResourceCategoryMenu(key),
                 IsExpanded = _studioTreeExpanded.TryGetValue(key, out prior) ? prior : expanded
             };
