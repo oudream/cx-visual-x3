@@ -252,6 +252,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
         }
 
+        private void CaptureGestureMouse(UIElement host)
+        {
+            // CaptureMouse可能因视口失去可见性、焦点或其他控件抢占而失败。
+            // 失败立即撤销草稿，不能保留一个永远收不到MouseUp的编辑状态。
+            if(host.CaptureMouse())return;
+            CancelTransientGesture();
+            PixelStatus.Text="鼠标捕获失败，当前未完成编辑已取消。";
+        }
+
         private bool ApplyOverlayEdit(MVIImageOverlayItem updated)
         {
             if(_overlayEdit.TryUpdate(updated))return true;
@@ -2132,7 +2141,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_toolMode==MVIImageToolMode.RotateOverlay)
             {
                 if(BeginRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
-                    SecondaryViewportRoot.CaptureMouse();
+                    CaptureGestureMouse(SecondaryViewportRoot);
                 e.Handled=true;return;
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
@@ -2143,17 +2152,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 {e.Handled=true;return;}
                 if (BeginPolygonVertexEdit(polygonPointer,
                     _secondaryViewport,true))
-                    SecondaryViewportRoot.CaptureMouse();
+                    CaptureGestureMouse(SecondaryViewportRoot);
                 e.Handled=true;return;
             }
             if (_toolMode == MVIImageToolMode.ResizeOverlay &&
                 BeginResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
             {
-                SecondaryViewportRoot.CaptureMouse(); e.Handled=true; return;
+                CaptureGestureMouse(SecondaryViewportRoot); e.Handled=true; return;
             }
             _secondaryDragging = true;
             _secondaryDragStart = e.GetPosition(SecondaryViewportRoot);
-            SecondaryViewportRoot.CaptureMouse();
+            CaptureGestureMouse(SecondaryViewportRoot);
             e.Handled = true;
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
@@ -2242,7 +2251,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_toolMode==MVIImageToolMode.RotateOverlay)
             {
                 if(BeginRotation(pointer,_viewport,false))
-                {ViewportRoot.CaptureMouse();e.Handled=true;}
+                {CaptureGestureMouse(ViewportRoot);e.Handled=true;}
                 return;
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
@@ -2251,13 +2260,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if(TryPolygonTopologyGesture(pointer,_viewport))
                 {e.Handled=true;return;}
                 if(BeginPolygonVertexEdit(pointer,_viewport,false))
-                { ViewportRoot.CaptureMouse();e.Handled=true; }
+                { CaptureGestureMouse(ViewportRoot);e.Handled=true; }
                 return;
             }
             if (_toolMode == MVIImageToolMode.ResizeOverlay)
             {
                 if (BeginResize(pointer,_viewport,false))
-                { ViewportRoot.CaptureMouse(); e.Handled=true; }
+                { CaptureGestureMouse(ViewportRoot); e.Handled=true; }
                 return;
             }
             if(_toolMode==MVIImageToolMode.LinePair)
@@ -2315,7 +2324,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     _moveAnchor = CanvasToSource(pointer);
                     _region = null;
                     DrawSelection();
-                    ViewportRoot.CaptureMouse();
+                    CaptureGestureMouse(ViewportRoot);
                 }
                 RaiseSelectionChanged();
                 e.Handled = true;
@@ -2336,7 +2345,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _dragging = true;
                 _startPointer = pointer;
             }
-            ViewportRoot.CaptureMouse();
+            CaptureGestureMouse(ViewportRoot);
             e.Handled = true;
         }
 
