@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：149 项（S/R 源码存在或复用 72 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 149 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：152 项（S/R 源码存在或复用 75 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 152 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -156,8 +156,10 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go internal/httpapi | Register [函数] | GET health/overview/programs 路由 | 不注册控制接口 |
 | S | Go internal/httpapi | RegisterAlertHistory [函数] | 注册异常历史查询路由 | 本机只读 |
 | S | Go internal/guardview | Item / Source / Report / Read | 有界解码、独立来源状态、精确 Program ID 投影 | 不读取实时 Daemon 内存或执行控制 |
+| S | Go internal/resourceview | CPU / Storage / Report / Collect | 真实主机 CPU、物理内存、工作目录文件系统采样 | 失败为 Unknown；非运行时或设备真源 |
 | S | Go internal/httpapi | GuardProvider / RegisterGuardDiagnostics | 只读 GET /api/v1/guard | security.LocalOnly；无写路由 |
 | S | Go internal/httpapi | RegisterStopHistory | 本机GET停止操作历史 | security.LocalOnly，不提供POST/DELETE |
+| S | Go internal/httpapi | RegisterResources | GET /api/v1/resources | security.LocalOnly，不注册写接口 |
 | S | Go internal/security | LocalOnly [函数] | 本地访问限制中间件 | 不是身份/RBAC |
 
 ### E3 现有跨体系 C# Owner（复用，不迁入 Go）
@@ -193,6 +195,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | web/src/views | DashboardView/ProgramsView [Vue] | 运行总览与程序详情 | 已有真实接口 |
 | S | web/src/views | GuardView [Vue] | 双来源守护诊断、筛选、时间及原因 | 只读，S11 安全操作未开放 |
 | S | web/src/views/stores | StopHistoryView / useStopHistoryStore | 停止请求/最终Wait及未结清操作可视对账 | 仅读取旧Daemon工作目录，不是跨机运维 |
+| S | web/src/views/stores | ResourcesView / useResourceStore | 资源性能页：主机与程序资源分开、错误过期提示 | 不伪造GPU/网络/性能趋势 |
 | S | web/src/stores,utils | useGuardStore / guardVerdict | 缓存旧证据标记过期、推导保护状态 | 仅双来源可用才显示无记录 |
 | S | web/src/views | EventsView/AlertsView [Vue] | 事件记录与异常历史 | 已有真实接口 |
 | S | web/src/components | CpuChart [Vue] | CPU 数据图组件 | 不得伪造趋势数据 |
@@ -1164,3 +1167,29 @@ sequenceDiagram
 实施和证据详见[修复与真实验收](CxVisual_Supervision_修复与真实验收_20261030.md)。保留原进程 Owner，新增的 `journalfile` 仅负责本地证据文件协调，不承担进程管理。启动凭证的同实例方法和跨进程访问均序列化；停止流水在追加前验证完整历史中的 OperationID 身份，并为已受理操作预留回执空间。新旧日志字段、UDP、SQLite 不变；新增持久锁文件不能在线删除。
 
 本机 Windows/CGO 真实 build/test/vet、全包 race、关键重复测试、SQLite 和真实 Monitor 六页面验收已有通过输出，历史 CI 失败根因已修复。三平台 CI 必须核对新提交 SHA；远程 S11、真实专业 Ready、设备长稳、断电和完整进程树仍未验收。受控目录 ACL 是文件协调前提，OS 文件锁不证明硬件安全。
+
+
+## 30. S05 真实主机资源与程序资源分层展示（2026-10-30）
+
+### 30.1 实际架构及 Owner
+
+新增 Go 内部 `resourceview.Collect`，通过已有 gopsutil/v3 读取**整机 CPU、整机物理内存及 Monitor 工作目录所在文件系统的磁盘用量**。保留原 `supervision.Program` CPU/RSS 进程快照及 Monitor 现有 `Summarize`，不把进程 RSS 合计当作主机内存，不把单进程 CPU 当作整机 CPU。新 `httpapi.RegisterResources` 复用 Gin、`security.LocalOnly` 和只读响应头，注册 `GET /api/v1/resources`；无后台采样任务、时序数据库、进程三方控制或新增 Daemon 逻辑。
+
+~~~mermaid
+flowchart LR
+ OS[Windows/Linux/macOS OS资源] --> RV[resourceview.Collect]
+ RV --> API[GET /api/v1/resources 仅回环]
+ MON[既有Program进程快照] --> UI[H5资源性能]
+ API --> UI
+ UI --> DETAIL[按Program ID跳转程序详情]
+~~~
+
+CPU 使用约 200ms 真实采样区间，内存用实际 Used/Total/Available；磁盘采样仅指向工作目录所在文件系统，**不是整机所有磁盘容量**。三个来源各自 `available / sampledAt / error`，无法采集或路径无效时显示未知，不补零。后端不返回原 OS 错误细节以免泄露敏感目录。资源数据不推出 L1 ServiceReady、L3 DeviceReady 或设备安全许可。
+
+### 30.2 页面、测试及风险
+
+`web/src/views/ResourcesView.vue` 新增“资源性能”页面，以真实主机 CPU、物理内存、工作目录磁盘为卡片，下方展示来自既有 Monitor 的受管程序 CPU/RSS，可搜索 Program ID/路径、跳转程序详情。复用现有主题、路由、Pinia 和响应式卡片；总览明确更名“受管程序 RSS 合计”并增加资源下钻。`useResourceStore` 失败后保留旧证据，但明示来源不完整或快照过期，**没有历史库，不绘制虚假的连续趋势**。
+
+Go 测试位于 `internal/resourceview/resource_test.go` 和 `internal/httpapi/resources_test.go`，覆盖 NaN/负数/超界 CPU、空/不存在工作目录、独立来源失败、时间戳及 LocalOnly 403/非GET；前端 `client.test.ts`、`resources.test.ts` 覆盖 API 正反和旧快照保留。Go Windows/Linux/macOS 及 Vue 已有工作流能够覆盖新增源码，但**此阶段新 SHA 尚未取得完整 CI 通过记录；G1 待本次确认，G2/G3 仍需现场采集验证**。
+
+下一步 S05 真实历史趋势、GPU/网络/磁盘IO/容量阈值不能由当前采样推断，应经真实性能数据与明确容量/保留策略再实现。详细验收见 [12大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第二十五章。
