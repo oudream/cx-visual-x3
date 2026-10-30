@@ -120,7 +120,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           "Batch-A/Frame-02")==CxVisionResultValidity.Empty,
                     "成功无缺陷必须是Completed Run + Empty Item，不能冒充执行失败");
                 Check(noRegions.AssessItemValidity(noRegions.Items.Single(i=>
-                          i.Kind==CxVisionResultKind.Statistic),
+                          i.Name=="阈值命中像素数"),
                           "Batch-A/Frame-02")==CxVisionResultValidity.Valid &&
                       noRegions.AssessItemValidity(noRegions.Items.Single(i=>
                           i.Kind==CxVisionResultKind.DetectionSummary),
