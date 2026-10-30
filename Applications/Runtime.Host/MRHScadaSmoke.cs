@@ -824,6 +824,11 @@ namespace CxVisual.Runtime.Host
                         project,configs,Guid.NewGuid(),moduleId,"plc",90,true));
                     Reject<InvalidOperationException>(()=>MRHScadaRuntime.Open(
                         project,configs,deviceGuid,moduleId,"other",90,true));
+                    // A4绝不能因装配方传入一个伪造允许写入委托而绕过
+                    // MEM项目级正式Deployment批准。
+                    Reject<UnauthorizedAccessException>(()=>MRHScadaRuntime.Open(
+                        project,configs,deviceGuid,moduleId,"plc",90,true,
+                        authorizeWrite:(caller,point)=>true));
                     using(MRHScadaRuntime scada=MRHScadaRuntime.Open(
                         project,configs,deviceGuid,moduleId,"plc",90,true))
                     {
@@ -831,9 +836,16 @@ namespace CxVisual.Runtime.Host
                             scada.Device.PointDefinitions.Length==2 &&
                             scada.Device.PointDefinitions.All(x=>!x.Writable),
                             "未由MEM/MHS正式资源导出稳定身份或只读点表");
-                        using(MRKCommandCenter commands=new MRKCommandCenter())
+                        using(MRKCommandCenter commands=new MRKCommandCenter(
+                            authorize:ctx=>true))
+                        {
                             Reject<UnauthorizedAccessException>(()=>
                                 scada.Device.RegisterWriteCommands(commands,3001));
+                            Reject<UnauthorizedAccessException>(()=>
+                                scada.RegisterTrustedWriteCommands(commands,3001));
+                            Check(commands.Registry.Discover().Count==0 && plc.Writes==0,
+                                "默认SCADA Host禁止任何MRK写命令注册或FC06");
+                        }
                         int observed=0;
                         Reject<System.Collections.Generic.KeyNotFoundException>(()=>
                             scada.Device.Subscribe(changes=>{},new[]{"foreign-point"}));
