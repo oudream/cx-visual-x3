@@ -274,6 +274,21 @@ namespace CxVisual.Studio
                     viewer.Session.Original.Stride==10 &&
                     vm.ProjectSession.Revision==revision,
                     "真实文件弹框重绑原像素/Stride失败或更改了工程Revision："+status.Text);
+                // 使用真实UIAutomation按钮切换MPW工具，不再依赖测试调用ToolMode属性。
+                await Click(hwnd,"Studio.ModuleCenter.DrawRectangleRoi");
+                Require(viewer.ToolMode==MVIImageToolMode.RectangleRoi &&
+                    viewer.Session.ActiveSlot==MVIImageSlot.Original,
+                    "真实Studio未能进入MPW矩形ROI绘制模式");
+                await Click(hwnd,"Studio.ModuleCenter.DrawPolygonRoi");
+                Require(viewer.ToolMode==MVIImageToolMode.PolygonRoi,
+                    "真实Studio未能进入MPW多边形ROI模式");
+                await Click(hwnd,"Studio.ModuleCenter.SelectRoi");
+                Require(viewer.ToolMode==MVIImageToolMode.MoveOverlay,
+                    "真实Studio未能进入MPW选择/移动ROI模式");
+                await Click(hwnd,"Studio.ModuleCenter.NavigateRoi");
+                Require(viewer.ToolMode==MVIImageToolMode.Navigate &&
+                    vm.ProjectSession.Revision==revision,
+                    "真实Studio ROI工具切换应恢复导航且不写入MEM");
                 await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
                 await Until(()=>details.Text.Contains("工程ROI复算完成")||
                     details.Text.Contains("失败"),"点击运行工程ROI");
