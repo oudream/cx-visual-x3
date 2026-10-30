@@ -82,7 +82,7 @@ namespace CxVisual.Studio
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
         {
             AutomationElementCollection controls=dialog.FindAll(TreeScope.Descendants,
-                Condition.TrueCondition);
+                System.Windows.Automation.Condition.TrueCondition);
             // Windows通用文件对话框的文件名框AutomationId通常为1148；
             // 优先使用该稳定身份，其次使用其内部Edit（1001）。
             foreach(string id in new[]{"1148","1001"})
