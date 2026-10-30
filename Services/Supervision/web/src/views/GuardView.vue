@@ -139,6 +139,7 @@ onMounted(() => { void guard.refresh() })
       </el-table>
       <div class="guard-foot">
         <RouterLink to="/programs" class="subtle-link">核对程序状态</RouterLink>
+        <RouterLink to="/stops" class="subtle-link">核对停止操作历史</RouterLink>
         <span class="muted">解除闭锁或隔离需现场授权、离线核验与完整审计；这里没有操作按钮。</span>
       </div>
     </section>
