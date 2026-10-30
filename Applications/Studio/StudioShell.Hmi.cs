@@ -188,6 +188,14 @@ namespace CxVisual.Studio
                 OpenStudioDocument("doc.config");
             });
             hmi.Items.Add(scadaConfig);
+            var preflight=new MenuItem {
+                Header="工程/设备点表预检（正式Runtime.Host，只读）" };
+            preflight.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                OpenStudioScadaPreflightDialog(origin);
+            });
+            hmi.Items.Add(preflight);
             var button=new MenuItem {
                 Header="添加控制按钮（未分配命令，在线禁止操作）" };
             button.Click+=(sender,args)=>SafeStudioAction(()=>

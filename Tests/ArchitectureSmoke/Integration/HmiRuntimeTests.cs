@@ -348,6 +348,52 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(faceplateFile+".cx-lock"))
                     System.IO.File.Delete(faceplateFile+".cx-lock");
             }
+            // A5 Host正式工程预检只返回已生效配置，不代表PLC设备在线或授权写。
+            PHMScadaEngineeringInspection report=new PHMScadaEngineeringInspection {
+                SchemaVersion=1,Status="EngineeringValidated",DeploymentVersion="DEP-1",
+                DeviceCommunicationValidated=false,
+                Devices=new[]{new PHMScadaEngineeringDevice {
+                    DeviceRef=Guid.NewGuid().ToString("N"),ScopeId="plc/station",
+                    ConnectorModuleId="connector-1",ConnectorEffectiveVersion="CFG-1",
+                    ChannelId="channel-1",ScanIntervalMs=500,Contiguous=true,
+                    Points=new[]{new PHMScadaEngineeringPoint {
+                        StablePointId="word100",VariableAddress="Holding/100",
+                        ValueType="UInt16",Unit="rpm",WritableDefinition=true
+                    }}
+                }}
+            };
+            Func<string> encode=()=>
+            {
+                using(System.IO.MemoryStream buffer=new System.IO.MemoryStream())
+                {
+                    new System.Runtime.Serialization.Json.DataContractJsonSerializer(
+                        typeof(PHMScadaEngineeringInspection)).WriteObject(buffer,report);
+                    return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+                }
+            };
+            PHMScadaEngineeringInspection decoded=
+                PHMScadaEngineeringInspection.Parse(encode());
+            Check(decoded.Devices.Length==1&&decoded.Devices[0].Points.Length==1&&
+                decoded.Devices[0].Points[0].WritableDefinition&&
+                !decoded.DeviceCommunicationValidated,
+                "正式Host只可声明设备定义可写，不能认为已连接或已授权");
+            bool preflightRejected=false;
+            report.DeviceCommunicationValidated=true;
+            try{PHMScadaEngineeringInspection.Parse(encode());}
+            catch(System.IO.InvalidDataException){preflightRejected=true;}
+            Check(preflightRejected,"工程预检不允许伪装已验证PLC通信");
+            report.DeviceCommunicationValidated=false;report.SchemaVersion=2;
+            preflightRejected=false;
+            try{PHMScadaEngineeringInspection.Parse(encode());}
+            catch(System.IO.InvalidDataException){preflightRejected=true;}
+            Check(preflightRejected,"未知工程预检Schema必须拒绝");
+            report.SchemaVersion=1;
+            report.Devices[0].Points=new[]{
+                report.Devices[0].Points[0],report.Devices[0].Points[0]};
+            preflightRejected=false;
+            try{PHMScadaEngineeringInspection.Parse(encode());}
+            catch(System.IO.InvalidDataException){preflightRejected=true;}
+            Check(preflightRejected,"工程预检不允许重复StablePointId");
             Console.WriteLine("PASS HMI-G1 UInt16/Int16, Quality, Stale and safe mode gates");
         }
     }

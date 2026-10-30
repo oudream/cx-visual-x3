@@ -103,3 +103,10 @@
 - `PHMScadaRemoteReadSession.Poll` 在Host拒绝旧Generation或返回异常时先清除最新只读帧、通知所有仍存活的WPF观察者，然后才执行`Discover`；新Generation被确认后再次通知但**不提前恢复Good**，必须等待下一轮新Snapshot。
 - `HmiScadaPipeTests` 故意将新Generation的Discover响应延迟650ms；G1必须先观察旧GEN1的Good被撤回，再观察GEN2身份及新采样恢复。防止慢网络/故障恢复期间出现错误的“仍正常”画面。
 - 全程仍无远程控制或命令自动重放，且不修改A的Runtime.Host及共享协议。
+
+## 2026-10-30 第十批：Studio正式Runtime.Host工程预检与设备点表
+
+- `Professional/HMI/PHMScadaEngineeringInspection.cs`：只反序列化A5已提交的`scada-project-check` JSON，验证SchemaVersion=1、EngineeringValidated、DeploymentVersion、唯一MEM DeviceRef/Scope/Module、点表字段与预算。拒绝伪称DeviceCommunicationValidated=true；WritableDefinition只代表点表定义，绝非操作授权。
+- `Applications/Studio/StudioShell.Hmi.Preflight.cs`：在已有Studio、当前MEM保存路径及已设置MHS根上，调用用户明确选定的`CxVisual.Runtime.Host.exe scada-project-check`（无Shell、无PLC控制、15秒超时、ExitCode=0与解析双门禁）。项目Dirty、未保存、Root与Host不一致、工程Revision或工程身份切换时拒绝；预检结果表显示正式Scope、DeviceRef、PointId、变量地址、类型与可写定义。
+- `StudioShell.Hmi.cs`：原Page HMI右键菜单增加“工程/设备点表预检”入口，配置编辑仍由原MHS配置中心完成，预检不建立第二套工程模型/设备配置。
+- `HmiRuntimeTests`：正式A5协议JSON成功、冒充通信已验证、版本错误、重复点位反例；`StudioShellSelfTests.RunHmiOnly`检查真Page菜单存在正式预检入口。上述仅为软件协议与UI集成测试，真正Host运行、SCADA生效配置和Windows STA需固定SHA CI核实，实机G2/HIL G3不据此宣告。

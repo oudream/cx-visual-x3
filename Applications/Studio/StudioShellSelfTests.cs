@@ -4921,6 +4921,9 @@ namespace CxVisual.Studio
                 ContextMenu menu=window.CreateStudioResourceEditorMenu(page);
                 MenuItem hmi=menu.Items.OfType<MenuItem>().Single(x=>
                     Convert.ToString(x.Header)=="HMI：添加工业组件");
+                Assert(hmi.Items.OfType<MenuItem>().Any(x=>
+                    Convert.ToString(x.Header)=="工程/设备点表预检（正式Runtime.Host，只读）"),
+                    "HMI实际资源菜单没有提供正式Host工程预检入口");
                 MenuItem numeric=hmi.Items.OfType<MenuItem>().Single(x=>
                     Convert.ToString(x.Header).StartsWith("word100",StringComparison.Ordinal));
                 MenuItem add=numeric.Items.OfType<MenuItem>().Single(x=>
