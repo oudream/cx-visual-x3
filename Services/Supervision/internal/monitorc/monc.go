@@ -21,6 +21,8 @@ func NewMonC(ip string, port int, deal DealMonFrame) (*MonC, error) {
 	udpC, err := channels.NewUdpC(ip, port, c)
 	//
 	r := &MonC{
+		IP:   ip,
+		Port: port,
 		udpC: udpC,
 		C:    c,
 	}
