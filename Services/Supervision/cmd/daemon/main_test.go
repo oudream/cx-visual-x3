@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -82,5 +83,16 @@ func TestWaitForFirstStartHonorsCancel(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("startup delay did not cancel promptly")
+	}
+}
+
+func TestSafeManagedPID(t *testing.T) {
+	for _, pid := range []int{0, -1, -99, os.Getpid()} {
+		if safeManagedPID(pid) {
+			t.Fatalf("must not signal invalid or own Daemon PID %d", pid)
+		}
+	}
+	if !safeManagedPID(os.Getpid() + 1) {
+		t.Fatal("a positive non-self PID remains a candidate for existing guarded kill")
 	}
 }
