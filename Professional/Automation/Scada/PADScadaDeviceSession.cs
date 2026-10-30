@@ -163,6 +163,13 @@ namespace CxVisual.Professional.Automation.Scada
                 await _connector.StartAsync(cancellationToken).ConfigureAwait(false);
                 _providerHost.Start();
                 _polling.Start(true,cancellationToken);
+                _polling.Completion.ContinueWith(task =>
+                {
+                    // 配置漂移、连接/会话失效均必须令旧样本Stale。
+                    // 仅质量变更，不伪造新采样/RefreshUtc。
+                    if(task.IsFaulted) _bridge.InvalidateSamples();
+                },CancellationToken.None,TaskContinuationOptions.ExecuteSynchronously,
+                  TaskScheduler.Default);
                 lock(_gate)_running=true;
             }
             catch
@@ -176,14 +183,20 @@ namespace CxVisual.Professional.Automation.Scada
         public async Task StopAsync()
         {
             lock(_gate)_running=false;
-            try {await _polling.StopAsync().ConfigureAwait(false);}
+            try { await _polling.StopAsync().ConfigureAwait(false); }
             finally
             {
-                try {_providerHost.Stop();}
-                finally
+                // Channel Stop时Provider仍活跃，桥接才可将旧MDS样本标Stale；
+                // 不允许先Stop Provider丢弃故障质量事件。
+                try
                 {
                     if(_connector.IsStarted)
                         await _connector.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _bridge.InvalidateSamples();
+                    _providerHost.Stop();
                 }
             }
         }
