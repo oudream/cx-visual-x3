@@ -35,6 +35,8 @@ namespace CxVisual.Studio
         private readonly ComboBox _cases=new ComboBox {MinWidth=170,Margin=new Thickness(4)};
         private readonly TextBox _minimum=new TextBox {Text="0.49",Width=70,Margin=new Thickness(3)};
         private readonly TextBox _maximum=new TextBox {Text="0.51",Width=70,Margin=new Thickness(3)};
+        private readonly TextBox _faceAngle=new TextBox {Text="5",Width=45,Margin=new Thickness(3)};
+        private readonly TextBox _faceDeviation=new TextBox {Text="0.01",Width=55,Margin=new Thickness(3)};
         private readonly TextBlock _status=new TextBlock {TextWrapping=TextWrapping.Wrap,
             Margin=new Thickness(6)};
         private MEMEngineeringSession _engineering;
@@ -100,6 +102,24 @@ namespace CxVisual.Studio
                 catch(Exception error){_status.Text="面片ROI计算失败："+error.Message;}
             };
             toolbar.Children.Add(faces);
+            toolbar.Children.Add(new TextBlock {Text="面片角度(°)/偏差(mm)",VerticalAlignment=VerticalAlignment.Center});
+            AutomationProperties.SetAutomationId(_faceAngle,"Studio.CT3D.FaceRegionAngle");
+            AutomationProperties.SetAutomationId(_faceDeviation,"Studio.CT3D.FaceRegionDeviation");
+            toolbar.Children.Add(_faceAngle);toolbar.Children.Add(_faceDeviation);
+            var expand=Button("扩展共面区域","Studio.CT3D.ExpandFaces");
+            expand.Click+=async(sender,e)=>{
+                try
+                {
+                    double angle,deviation;
+                    if(!double.TryParse(_faceAngle.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out angle)||
+                        !double.TryParse(_faceDeviation.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out deviation))
+                        throw new ArgumentException("请输入有效的面片角度与毫米偏差。");
+                    await ExpandSelectedMeshFaceRegionAsync(angle,deviation,CancellationToken.None);
+                }
+                catch(OperationCanceledException){_status.Text="面片区域扩展已取消，选择未改变。";}
+                catch(Exception error){_status.Text="面片区域扩展失败："+error.Message;}
+            };
+            toolbar.Children.Add(expand);
             var cancel=Button("取消分析","Studio.CT3D.CancelRoi");
             cancel.Click+=(s,e)=>CancelPendingAnalysis();
             toolbar.Children.Add(cancel);
@@ -690,6 +710,62 @@ namespace CxVisual.Studio
             RefreshSelectedMeshFaceHighlight();
             _status.Text="选中原Mesh面片："+_selectedMeshFaces.Count+
                 "（Ctrl+Shift增删面片，点击「选中面片重算」）。";
+        }
+
+        /// <summary>Studio SDK/按钮共用：从最后选择的原Mesh面片按共享边扩展近似共面区域。
+        /// 异步生产计算完成并确认当前Case与选区代次后一次发布，不产生半选区。</summary>
+        public async Task<int> ExpandSelectedMeshFaceRegionAsync(
+            double maximumAngleDegrees,double maximumDeviationMm,CancellationToken cancellation)
+        {
+            if(_disposed||_engineering==null||_current==null||_state==null||
+                _current.Kind!=CT3DAnalysisKind.MeshPlane||_selectedMeshFaces.Count==0)
+                throw new InvalidOperationException("请先Ctrl+Shift选择一个原Mesh面片。");
+            if(_roiCancellation!=null)
+                throw new InvalidOperationException("当前专业分析尚未结束，不能同时扩展选区。");
+            CT3DAnalysisCase original=_current;
+            MVIVolumeViewState state=_state;
+            FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
+            CT3DMeshFaceReference seed=_selectedMeshFaces[_selectedMeshFaces.Count-1];
+            CT3DMeshFaceReference[] before=_selectedMeshFaces.ToArray();
+            long revision=_faceSelectionRevision,epoch=++_roiEpoch;
+            int index=_caseIndex;
+            var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _roiCancellation=linked;
+            try
+            {
+                IReadOnlyList<CT3DMeshFaceReference> region=await Task.Run(()=>
+                    CT3DMeshFaceSelection.ExpandConnectedCoplanar(original,seed,
+                        maximumAngleDegrees,maximumDeviationMm,30000,linked.Token),linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                if(_disposed||epoch!=_roiEpoch||revision!=_faceSelectionRevision||
+                    !Object.ReferenceEquals(original,_current)||!Object.ReferenceEquals(state,_state)||
+                    !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle)||index!=_caseIndex)
+                    throw new OperationCanceledException("工程Case或面片选择已变化，拒绝发布旧区域。");
+                var combined=new List<CT3DMeshFaceReference>(before);
+                var ids=new HashSet<string>(before.Select(face=>face.StableId));
+                foreach(CT3DMeshFaceReference face in region)
+                    if(ids.Add(face.StableId))combined.Add(face);
+                if(combined.Count>30000)
+                    throw new InvalidOperationException("合并后的面片选择超过30000预算，未修改原选区。");
+                // 先验证所有顶点和来源；失败不撤销旧选择或专业预览。
+                CT3DMeshFaceSelection.ResolveVertices(original.Source,original.Mesh,
+                    combined,linked.Token);
+                if(combined.Count==before.Length)return combined.Count;
+                _roiCancellation=null;
+                DiscardPendingAnalysis();
+                _selectedMeshFaces.Clear();
+                _selectedMeshFaces.AddRange(combined);
+                _faceSelectionRevision++;
+                RefreshSelectedMeshFaceHighlight();
+                _status.Text="原Mesh共面连通区域已扩展为"+combined.Count+
+                    "个面片，可通过「选中面片重算」生成专业结果（高亮最多512片）。";
+                return combined.Count;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_roiCancellation,linked))_roiCancellation=null;
+                linked.Dispose();
+            }
         }
 
         /// <summary>原值FGE面片投影为有限WPF黄色高亮，仅做显示不回写专业数据。</summary>

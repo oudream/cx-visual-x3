@@ -421,3 +421,12 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **问题与源码修复**：Ctrl+Shift面片组合选择原先按照用户点击顺序写入 `CT3DMeshFaceRoiRecipe` 的指纹。同一组面片正序/逆序对应相同原值顶点集合，却得到不同配方及 `ParameterSignature`；新增配方在 `Capture` 时按真实 `TriangleIndex` 规范化排序，不改变原Mesh、FGE求交或MEM提交职责。
 - **兼容性**：历史V5制品的 `Read` 保留原文件面片排列，沿用当时的参数签名和内容Hash，不将已存工程悄悄升级为新顺序；后续用户正式编辑时才产生新规范配方。旧V1～V4读取路径不变。
 - **回归**：`CT3DAnalysisPersistenceTests` 使用真实UInt16体数据和8个原Mesh顶面三角面，正逆顺序独立原值拟合，校验ROI/参数签名一致且Feature ResultId不同；原有V5保存、MEM重开、Undo/Redo及复算继续作为回归门禁。该记录为源码和测试新增说明，Windows CT3D G1～G3须以具体提交SHA的Actions结果判定，不以未运行测试冒称通过；真实GPU G4、工业精度G5仍未完成。
+
+
+### 10.37 B包：原Mesh邻接共面区域一键扩展（2026-10-30）
+
+- **完整业务入口**：在现有Studio CT3D四视图的三维Mesh上Ctrl+Shift选取真实三角面，输入共面角度（度）和到种子平面的最大顶点偏差（mm），点击“扩展共面区域”，共享边连通区域的专业面片StableId进入原选择集并显示黄色高亮；点击现有“选中面片重算”生成平面Feature与Measurement，最后使用原“保存专业结果”经MEM Data+Visual同事务持久化。专业V5面片配方、重开、编辑、旧Revision/Undo/Redo仍复用原流程。
+- **CT3D唯一专业算法**：`CT3DMeshFaceSelection.ExpandConnectedCoplanar`校验源资产/Frame/Revision/提取参数、非退化原Mesh种子、法向朝向夹角、所有顶点的双精度毫米平面偏差和**共享边**连通（不按空间近邻或仅共享点扩张）；返回稳定有序面片引用，不从WPF LOD反推任何工业坐标。正反面不混合，不能穿越直角侧壁。候选暂存上限和面片/顶点上限在专业层拒绝，取消不产生部分结果。
+- **异步发布与失效**：Studio先在后台计算只读区域；完成后核对工程Case、MVI选区、交互代次和取消epoch，再合并当前已选面片，验证顶点预算通过后一次更换临时选择集，旧pending立即失效。取消/参数错误/预算错误不会更改原选择、已提交MEM结果或专业Scene。黄色高亮512片仅是渲染预算，不截断原专业ROI。
+- **真实测试**：现有12³ UInt16 RAW/原Mesh顶面8三角面，用一片扩展为8片、解析9个顶点，核验与手工8面相同参数签名、同一原值平面；验证90°/负偏差、面片预算、预取消及过时阈值拒绝。Studio已有双Case真实MEM工程加入一片→扩展8片→9点拟合→撤销选区及回归；原V5提交/重开/Undo保留。
+- **验收边界**：本条源码提交与测试是否通过应以固定SHA Windows CT3D B G1～G3、Studio S1的实际Run为准；并非曲面区域生长、任意自由体积ROI、CAD拓扑选择、G4真实GPU性能或G5工业计量精度全部通过。

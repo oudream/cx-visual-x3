@@ -3778,6 +3778,25 @@ namespace CxVisual.Studio
                                 Math.Abs(face.PointB.Z-46.5)<1e-9&&
                                 Math.Abs(face.PointC.Z-46.5)<1e-9)selectedFaces.Add(face);
                         }
+                        // 用户只需Ctrl+Shift命中一片，即可在正式Studio按钮对应的SDK中扩展同一实体表面。
+                        workspace.ToggleMeshFaceSelection(displayedPick);
+                        int expanded=AwaitStudioTask(workspace.ExpandSelectedMeshFaceRegionAsync(
+                            3,0.01,CancellationToken.None));
+                        Assert(expanded==8&&workspace.SelectedMeshFaceCount==8&&
+                            workspace.VisibleMeshFaceHighlightCount==8&&!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
+                            "共面扩展须从一片选择8片原Mesh且即时高亮，不提前改写MEM结果。");
+                        var grownPreview=AwaitStudioTask(workspace.RecomputeSelectedMeshFacesAsync(
+                            CancellationToken.None));
+                        Assert(grownPreview.Plane.SampleCount==9&&workspace.HasPendingAnalysis&&
+                            grownPreview.FaceRoiRecipe.Faces.Count==8,
+                            "共面区域必须接入现有正式原值拟合与待保存Scene。");
+                        foreach(CT3DMeshFaceReference topFace in selectedFaces)
+                            workspace.ToggleMeshFaceSelection(topFace);
+                        Assert(workspace.SelectedMeshFaceCount==0&&
+                            workspace.VisibleMeshFaceHighlightCount==0&&!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
+                            "扩展后修改选区必须立即撤销旧专业分析，不影响已提交Case。");
                         // 模拟外部SDK调用后立即修改自己的List，后台必须只消费调用快照。
                         var callerFaces=new List<CT3DMeshFaceReference>(selectedFaces);
                         Task<CT3DAnalysisCase> faceTask=workspace.RecomputeMeshFaceRoiAsync(

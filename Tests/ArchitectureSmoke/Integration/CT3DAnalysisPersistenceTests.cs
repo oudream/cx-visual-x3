@@ -97,6 +97,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 recomputedInReverse.FaceRoiRecipe.Faces[0].TriangleIndex==
                     topFaces.Min(face=>face.TriangleIndex),
                 "同源面片集合的选择顺序不得改变ROI/参数身份或原值拟合合同。");
+            // 从真实FGE面片沿共享边展开同一原值平面；不应穿越立体侧壁或邻近非连续面。
+            var grown=CT3DMeshFaceSelection.ExpandConnectedCoplanar(analysis,topFaces[0],
+                3,0.01,30000,CancellationToken.None);
+            Check(grown.Count==8&&
+                grown.Select(face=>face.StableId).SequenceEqual(
+                    topFaces.OrderBy(face=>face.TriangleIndex).Select(face=>face.StableId))&&
+                CT3DMeshFaceSelection.ResolveVertices(source,analysis.Mesh,grown).Count==9,
+                "原Mesh共享边共面扩展应精确选择8个顶面与9个唯一毫米顶点，不能跨越侧壁。");
+            var grownResult=analysis.RecomputeWithMeshFaces(folder,grown,CancellationToken.None);
+            Check(grownResult.RoiSignature==recomputedByFaces.RoiSignature&&
+                grownResult.ParameterSignature==recomputedByFaces.ParameterSignature&&
+                grownResult.Plane.SampleCount==9,
+                "扩展区域须直接复用正式面片配方/原值拟合，签名应与手工8面相同。");
+            Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.ExpandConnectedCoplanar(
+                analysis,topFaces[0],90,0.01,30000,CancellationToken.None));
+            Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.ExpandConnectedCoplanar(
+                analysis,topFaces[0],3,-0.1,30000,CancellationToken.None));
+            Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ExpandConnectedCoplanar(
+                analysis,topFaces[0],3,0.01,1,CancellationToken.None));
+            Reject<OperationCanceledException>(()=>CT3DMeshFaceSelection.ExpandConnectedCoplanar(
+                analysis,topFaces[0],3,0.01,30000,new CancellationToken(true)));
             Reject<InvalidOperationException>(()=>analysis.RecomputeWithSavedMeshFaces(
                 folder,CancellationToken.None));
             Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.Reference(analysis,-1));
@@ -112,6 +133,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 revisionChanged,analysis.Mesh,topFaces,CancellationToken.None));
             var differentThreshold=CT3DAnalysisCase.Analyze(folder,source,900,100,
                 CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None);
+            Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ExpandConnectedCoplanar(
+                differentThreshold,topFaces[0],3,0.01,30000,CancellationToken.None));
             Reject<InvalidOperationException>(()=>CT3DMeshFaceSelection.ResolveVertices(
                 source,differentThreshold.Mesh,topFaces,CancellationToken.None));
             var planeQuality=analysis.GetQualityEvidence();

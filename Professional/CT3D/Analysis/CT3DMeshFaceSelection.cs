@@ -95,6 +95,130 @@ namespace CxVisual.Professional.CT3D
             reference=Reference(analysis,hit.TriangleIndex);
             return true;
         }
+        /// <summary>从一个真实原Mesh面片沿共享边扩展连续近似共面区域。
+        /// 所有判定在FGE双精度毫米顶点上进行，绝不使用WPF显示LOD或屏幕坐标。
+        /// 仅返回选择引用；不修改专业Case、MVI会话或MEM工程。</summary>
+        public static IReadOnlyList<CT3DMeshFaceReference> ExpandConnectedCoplanar(
+            CT3DAnalysisCase analysis,CT3DMeshFaceReference seed,
+            double maximumAngleDegrees,double maximumDeviationMm,
+            int maximumFaces,CancellationToken cancellation=default(CancellationToken))
+        {
+            if(analysis==null)throw new ArgumentNullException("analysis");
+            if(seed==null)throw new ArgumentNullException("seed");
+            if(analysis.Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("共面扩展只能用于具有原值Mesh的案例。");
+            if(double.IsNaN(maximumAngleDegrees)||double.IsInfinity(maximumAngleDegrees)||
+                maximumAngleDegrees<0||maximumAngleDegrees>=90)
+                throw new ArgumentOutOfRangeException("maximumAngleDegrees");
+            if(double.IsNaN(maximumDeviationMm)||double.IsInfinity(maximumDeviationMm)||
+                maximumDeviationMm<0)
+                throw new ArgumentOutOfRangeException("maximumDeviationMm");
+            if(maximumFaces<1||maximumFaces>30000)
+                throw new ArgumentOutOfRangeException("maximumFaces");
+            cancellation.ThrowIfCancellationRequested();
+            var mesh=analysis.Mesh.Mesh;
+            seed.RequireCurrent(analysis.Source,analysis.Mesh);
+            FGEPoint3D origin=seed.PointA;
+            double sx=seed.PointB.X-origin.X,sy=seed.PointB.Y-origin.Y,sz=seed.PointB.Z-origin.Z;
+            double tx=seed.PointC.X-origin.X,ty=seed.PointC.Y-origin.Y,tz=seed.PointC.Z-origin.Z;
+            double nx=sy*tz-sz*ty,ny=sz*tx-sx*tz,nz=sx*ty-sy*tx;
+            double seedLength=Math.Sqrt(nx*nx+ny*ny+nz*nz);
+            if(seedLength<=0||double.IsNaN(seedLength)||double.IsInfinity(seedLength))
+                throw new InvalidOperationException("原Mesh种子面片退化，不能扩展ROI。");
+            nx/=seedLength;ny/=seedLength;nz/=seedLength;
+            double minimumDot=Math.Cos(maximumAngleDegrees*Math.PI/180.0);
+            int triangleCount=mesh.TriangleCount;
+            // 只为候选共面三角形创建边索引；防止过宽角度/毫米参数形成无界中间缓存。
+            int candidateBudget=Math.Min(triangleCount,Math.Max(4096,maximumFaces*8));
+            var edgeOwners=new Dictionary<ulong,List<int>>();
+            var eligible=new bool[triangleCount];
+            int accepted=0;
+            for(int i=0;i<triangleCount;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                int offset=i*3;
+                int a=mesh.TriangleIndices[offset],b=mesh.TriangleIndices[offset+1],
+                    c=mesh.TriangleIndices[offset+2];
+                FGEPoint3D pa=mesh.Vertices[a],pb=mesh.Vertices[b],pc=mesh.Vertices[c];
+                double abx=pb.X-pa.X,aby=pb.Y-pa.Y,abz=pb.Z-pa.Z;
+                double acx=pc.X-pa.X,acy=pc.Y-pa.Y,acz=pc.Z-pa.Z;
+                double fx=aby*acz-abz*acy,fy=abz*acx-abx*acz,
+                    fz=abx*acy-aby*acx;
+                double length=Math.Sqrt(fx*fx+fy*fy+fz*fz);
+                if(!(length>0)||double.IsNaN(length)||double.IsInfinity(length)||
+                    (fx*nx+fy*ny+fz*nz)/length<minimumDot)continue;
+                if(Math.Abs((pa.X-origin.X)*nx+(pa.Y-origin.Y)*ny+
+                    (pa.Z-origin.Z)*nz)>maximumDeviationMm||
+                    Math.Abs((pb.X-origin.X)*nx+(pb.Y-origin.Y)*ny+
+                    (pb.Z-origin.Z)*nz)>maximumDeviationMm||
+                    Math.Abs((pc.X-origin.X)*nx+(pc.Y-origin.Y)*ny+
+                    (pc.Z-origin.Z)*nz)>maximumDeviationMm)continue;
+                if(++accepted>candidateBudget)
+                    throw new InvalidOperationException(
+                        "候选共面网格超过区域扩展内存预算，请缩小角度/毫米范围或分区处理。");
+                eligible[i]=true;
+                AddEdgeOwner(edgeOwners,a,b,i);
+                AddEdgeOwner(edgeOwners,b,c,i);
+                AddEdgeOwner(edgeOwners,c,a,i);
+            }
+            if(!eligible[seed.TriangleIndex])
+                throw new InvalidOperationException("种子面片没有满足当前原值质量条件。");
+            var visited=new HashSet<int>();
+            var queue=new Queue<int>();
+            var result=new List<int>();
+            queue.Enqueue(seed.TriangleIndex);
+            visited.Add(seed.TriangleIndex);
+            while(queue.Count>0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int face=queue.Dequeue();
+                if(result.Count>=maximumFaces)
+                    throw new InvalidOperationException("连通面片ROI超过选择预算，不允许截断。");
+                result.Add(face);
+                int offset=face*3;
+                int a=mesh.TriangleIndices[offset],b=mesh.TriangleIndices[offset+1],
+                    c=mesh.TriangleIndices[offset+2];
+                QueueEdgeNeighbors(edgeOwners,EdgeKey(a,b),visited,queue);
+                QueueEdgeNeighbors(edgeOwners,EdgeKey(b,c),visited,queue);
+                QueueEdgeNeighbors(edgeOwners,EdgeKey(c,a),visited,queue);
+            }
+            cancellation.ThrowIfCancellationRequested();
+            result.Sort();
+            var references=new List<CT3DMeshFaceReference>(result.Count);
+            foreach(int index in result)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                references.Add(new CT3DMeshFaceReference(analysis.Source,analysis.Mesh,index));
+            }
+            // 同样执行已有顶点上限，禁止产生不能进行专业原值分析的选区。
+            ResolveVertices(analysis.Source,analysis.Mesh,references,cancellation);
+            return references.AsReadOnly();
+        }
+        private static ulong EdgeKey(int a,int b)
+        {
+            uint first=(uint)Math.Min(a,b),second=(uint)Math.Max(a,b);
+            return ((ulong)first<<32)|second;
+        }
+        private static void AddEdgeOwner(Dictionary<ulong,List<int>> owners,
+            int a,int b,int triangle)
+        {
+            ulong key=EdgeKey(a,b);
+            List<int> faces;
+            if(!owners.TryGetValue(key,out faces))
+            {
+                faces=new List<int>(2);
+                owners.Add(key,faces);
+            }
+            faces.Add(triangle);
+        }
+        private static void QueueEdgeNeighbors(Dictionary<ulong,List<int>> owners,
+            ulong edge,HashSet<int> visited,Queue<int> queue)
+        {
+            List<int> faces;
+            if(!owners.TryGetValue(edge,out faces))return;
+            foreach(int face in faces)
+                if(visited.Add(face))queue.Enqueue(face);
+        }
         public static IReadOnlyList<int> ResolveVertices(CT3DAssetReference source,
             CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces,
             CancellationToken cancellation=default(CancellationToken))
