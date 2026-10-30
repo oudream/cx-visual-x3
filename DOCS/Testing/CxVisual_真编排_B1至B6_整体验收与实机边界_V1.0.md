@@ -46,7 +46,7 @@
 - `0511c75c`：Studio S1 Windows CI 成功，已覆盖运行时结果摘要查看。
 - `f5cb1084`：Studio S1 Windows CI 成功，已覆盖 Flow 完成后摘要保留及跨工程拒绝。
 - `a9cca000`：Unified Runtime、Decision Windows CI 成功，覆盖 72 节点有界摘要。
-- `8ffa037c`：固定容量算法与 Studio 完整组合对应的 Studio S1 CI 尚需单独取得成功结果；不同 SHA 的成功证据不能冒充同 SHA 全绿。
+- `8ffa037c`：该历史单独SHA未取得Studio绿灯，不得冒称旧运行成功；其固定容量功能已被之后包含相同正式源码的`e76856ed`完整Studio S1覆盖（见3.7）。
 
 ### 3.1 B1～B6 八项整体验收跟踪（2026-10-30 增量）
 
@@ -118,6 +118,13 @@
 - **同SHA跨工作流软件成功证据**：固定[`655eaa29`](https://github.com/oudream/cx-visual-x3/commit/655eaa293a51e6ddced1d9c6b99335d0812a03ea)下，[PLC G1 #41016052614](https://github.com/oudream/cx-visual-x3/actions/runs/41016052614)、[Engineering #41016052600](https://github.com/oudream/cx-visual-x3/actions/runs/41016052600)、[Decision #41016052693](https://github.com/oudream/cx-visual-x3/actions/runs/41016052693)、[Runtime #41016052624](https://github.com/oudream/cx-visual-x3/actions/runs/41016052624)均为**整条Job Success**，覆盖B3真实CPU与PLC命令整合、B1/B2合同、B4/B6软件专项。不是同SHA Studio S1，也不是实机G2/G3。
 - **追加B4共享资源反例**：[`374390b9`](https://github.com/oudream/cx-visual-x3/commit/374390b9861901078298e98e44f60f339cca73e9)使同一MOC Flow内的MRK执行引擎与设备命令中心使用同一个`MRKResourceLeaseCoordinator`：维护任务持有PLC资源时不发FC06，释放后完成实际TCP读写；[Runtime #41016447194](https://github.com/oudream/cx-visual-x3/actions/runs/41016447194)在固定`374390b9` **整条Job Success**，涵盖Debug/Release真实默认架构回归及B4、B6软件专项；[独立PLC G1 #41016447172](https://github.com/oudream/cx-visual-x3/actions/runs/41016447172)需另核对完成状态。
 - **环境边界**：RAW图像来自确定性测试输入而非X-Ray探测器；PLC使用真实TCP/Modbus报文但对端为本机仿真服务器，验证的是G1软件协议与资源授权，不是PLC实机、设备运动到位、出束安全联锁或MES现场G2/G3。
+
+### 3.7 同SHA四大主线闭环证据（2026-10-30）
+
+- 固定`e76856ed86`：[Studio S1 #41011717095](https://github.com/oudream/cx-visual-x3/actions/runs/41011717095)、[Decision #41011717084](https://github.com/oudream/cx-visual-x3/actions/runs/41011717084)、[Engineering #41011717147](https://github.com/oudream/cx-visual-x3/actions/runs/41011717147)、[Runtime #41011717077](https://github.com/oudream/cx-visual-x3/actions/runs/41011717077) **四条Windows Job全部Success**，证据覆盖既有B1/B2/B4/B5/B6软件链路。
+- 固定`655eaa293a`：[Automation PLC G1 #41016052614](https://github.com/oudream/cx-visual-x3/actions/runs/41016052614)、[Decision #41016052693](https://github.com/oudream/cx-visual-x3/actions/runs/41016052693)、[Engineering #41016052600](https://github.com/oudream/cx-visual-x3/actions/runs/41016052600)、[Runtime #41016052624](https://github.com/oudream/cx-visual-x3/actions/runs/41016052624) **四条Windows Job全部Success**，新增Vision CPU→PLC Modbus真实软件跨专业Plan及严格UInt16合同。
+- 固定`374390b986`：[Runtime #41016447194](https://github.com/oudream/cx-visual-x3/actions/runs/41016447194) **整条Job Success**，新增共享MRK设备租约下维护占用阻断写入、释放后恢复执行；其独立G1 #41016447172的结论需另查。
+- 不将不同SHA的“所有Success”拼装为某个未验证最新SHA的全绿；站点/G2/G3硬件证据仍应独立留档。
 
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
