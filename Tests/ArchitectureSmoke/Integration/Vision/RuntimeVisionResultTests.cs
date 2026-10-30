@@ -67,6 +67,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                       summary.ConfigRevision == 68 && summary.Width == 5 && summary.Height == 3 &&
                       summary.SourceId == "Camera-A/frame-01" && !summary.HasNoRegions,
                     "FlowId/SourceId/Revision/尺寸丢失");
+                Check(summary.DefinitionRoiId==null &&
+                      summary.DefinitionRevision==null &&
+                      summary.ValidatedSourceHash==null,
+                    "普通MRK预览不能伪造正式MEM ROI来源与Revision");
                 Check(summary.Items.Count == 5 &&
                       summary.Items.Select(i => i.ItemId).Distinct().Count() == 5 &&
                       summary.Items.All(i => i.SourceId == summary.SourceId &&
