@@ -114,6 +114,16 @@ func main() {
 		_logger.Printf(_title.Info+"Read Program Complete, %s\n", utilities.JsonLogString(prog))
 	}
 
+	// Restore terminal limits before starting ANY managed program. A corrupt
+	// or unwritable local journal must not silently turn a latched program
+	// back on after Daemon restart. This is local state, not the Program DB.
+	latchPath := filepath.Join(*_workDir, "supervision", "daemon-terminal-latches.json")
+	if err := _programWorkers.enablePersistence(latchPath); err != nil {
+		_logger.Printf(_title.Error+"Fatal: terminal latch journal %s unavailable: %v; refusing to start managed programs\n", latchPath, err)
+		os.Exit(-6)
+		return
+	}
+
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
 	ticker := time.NewTicker(1000 * time.Millisecond)
@@ -428,6 +438,11 @@ func waitForFirstStart(ctx context.Context, delay time.Duration) bool {
 }
 
 func recoveryPrograms(ctx context.Context, cae chan program.Event) {
+	// A disk failure while latching a terminal event disables all automatic
+	// admissions until the journal is repaired; never wait FirstWaitTime.
+	if _programWorkers.persistenceError() != nil {
+		return
+	}
 	ps := getPrograms()
 	for i := 0; i < len(ps); i++ {
 		a := ps[i]
