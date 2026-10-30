@@ -3911,6 +3911,18 @@ namespace CxVisual.Studio
                             Object.ReferenceEquals(viewer.Session.Result,mask.Image) &&
                             mask.Image.GetGrayValue(3,3)==0,
                             "Studio同一MPW图窗未正确显示MRK Mask或投影了错误来源");
+                        // Studio绑定来源不能只使用FIMBuffer引用：同一实例重设原图
+                        // 会更新MVI Generation，旧Run必须失效，避免结果/RAW错挂。
+                        long boundGeneration=viewer.Session.OriginalGeneration;
+                        Assert(MainWindow.IsStudioVisionSourceCurrent(viewer,loaded,boundGeneration),
+                            "原图绑定后的Studio Run来源应为有效");
+                        viewer.SelectOriginal();
+                        Assert(MainWindow.IsStudioVisionSourceCurrent(viewer,loaded,boundGeneration),
+                            "仅切换原图/结果槽不应错误失效原图绑定");
+                        viewer.Session.SetOriginal(loaded);
+                        Assert(viewer.Session.OriginalGeneration>boundGeneration &&
+                            !MainWindow.IsStudioVisionSourceCurrent(viewer,loaded,boundGeneration),
+                            "同实例SetOriginal后Studio不得继续把历史Run视为当前");
 
                         CxVisionRunCsvExporter.SaveFile(csvPath,run);
                         FIMRawImageWriter.SaveFile(exportRaw,loaded,preserveStride:true);
