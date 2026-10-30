@@ -13,11 +13,11 @@ import (
 // an in-process terminal-limit latch, and an explicit enabled-start intent.
 // PID/OS process state and Program configuration remain with their old Owners.
 type programWorkerGate struct {
-	mu       sync.Mutex
-	active   map[int64]struct{}
-	pending  map[int64]func()
-	terminal map[int64]int
-	persistPath string
+	mu           sync.Mutex
+	active       map[int64]struct{}
+	pending      map[int64]func()
+	terminal     map[int64]int
+	persistPath  string
 	storageFault error
 }
 
