@@ -159,6 +159,8 @@ namespace CxVisual.TestCenter.UI
         public TCTServiceEchoResponse LastResponse {get;private set;}
         public MLCServiceModuleState State {get{return _runningService==null?
             MLCServiceModuleState.Stopped:_runningService.State;}}
+        public MLCServiceModuleObservation CurrentObservation
+        {get{return _runningService==null?null:_runningService.Observe();}}
         public int ObservationCount {get{return _observations.Count;}}
         public TCTServiceRequestPanel(MHSConfigService service,Func<bool> hasDraft)
         {
@@ -303,7 +305,11 @@ namespace CxVisual.TestCenter.UI
             {
                 if(_runningService==null)throw new InvalidOperationException("尚未装配Service");
                 await _runningService.StopAsync(CancellationToken.None);
-                _status.Text="Service真实生命周期Stopped；新请求必须拒绝。";
+                MLCServiceModuleObservation observed=_runningService.Observe();
+                _status.Text="Service生命周期="+observed.State+
+                    "，Ready="+(observed.VerifiedReady.HasValue&&observed.VerifiedReady.Value?
+                        "已核验":"不可用")+
+                    "；新请求必须拒绝。";
             }
             catch(Exception ex){_status.Text="Service停止失败："+ex.Message;}
             finally{_busy=false;}
