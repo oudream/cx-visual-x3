@@ -59,3 +59,11 @@
 `MRHScadaSmoke.RunTwoDevices` 从一个真实保存的MEM工程加载两个持久工站资源，在MHS持久存两份Connector/MPA点表，连两个独立OS TCP端点分别读取值73和45。两个MDS Scope拥有各自Revision、Quality与Generation；停止PLC-A后Quality变Stale，PLC-B继续取得Good，完成组Stop以后两个端点不再收到采样报文；没有任何FC06。负例包括重复资源、Scope、Module、ChannelId。测试实际通过与否以新SHA的Windows工作流为准：<https://github.com/oudream/cx-visual-x3/actions/runs/41028585366>。
 
 **当前交付边界**：`MRHScadaRuntimeGroup` 是Host内的可编译装配与生命周期API，而不是Studio生成的正式部署编目/SCM服务；设备→ConnectorRef与采集组在MEM工程内的持久发布绑定尚待Owner进一步收敛。两设备各自拥有MDS Provider/Registry（按Scope隔离），不满足同一进程跨设备共享值一致性/同步快照或跨进程控制事务。不能以本机TCP夹具冒称现场PLC G2/G3。
+
+## 7. A1 工程Project级SCADA部署正式FCM段与多设备独立Host（2026-10-30增量）
+
+- **配置真源**：`Professional/Automation/Scada/PADScadaDeploymentConfiguration.cs`，SectionId `CxVisual.Automation.ScadaDeployment`、ScopeKind `project`、ScopeId `MEMProject.Id.ToString("N")`；其中仅保存每个设备的 `DeviceNodeGuid / ConnectorModuleId / ScopeId / IntervalMs / Contiguous / Enabled`。通过MHS的 `UpdateAsync`、`ApplyPendingAtTaskBoundary`、`CaptureForTask` 生成、保存、生效和冻结，不创建旁路JSON/站点树。MPA仍唯一保存FC03地址/单位/站号等，MDS仍唯一保存Current。
+- **运行装载**：`MRHScadaRuntimeGroup.OpenFromEngineering(projectPath,configRoot)` 从磁盘MEM工程取得ProjectId，再打开MHS已保存Effective SCADA部署，枚举已启用设备并按各自MHS Connector Effective调用正式 `MRHScadaRuntime.Open`。项目部署及每个Connector生效版本都在每次实际采集前重新核验；任一漂移拒绝继续采样并降级Stale。检验设备GUID、MDS Scope、ModuleId、F17 ChannelId在一组内唯一。
+- **正式CLI**：`CxVisual.Runtime.Host.exe scada-group-serve <saved.cxproj> <mhsRoot>`，无需Studio/HMI进程或手工传每个PLC寄存器地址。多设备共用同一独立Host进程，各自持有不同的MCN Channel、PAD桥接和MDS Scope，组Stop遍历全部设备。不另建Timer/数据缓存/命令总线；首批组进程默认只读，某个采集出现不可恢复错误时FailClosed、外部Supervision后续联调。
+- **真实测试**：`MRHScadaSmoke.RunTwoDevices` 保存MEM双Station资源及项目级MHS SCADA Deployment，两套Connector Effective向独立本机TCP夹具发送真实FC03，分别读73与45；A单独Stop后B继续读Good。拒绝重复DeviceRef、Scope、Module和ChannelId，验证修改项目级部署版本时两个旧采样会话进入Faulted并将原Quality置Stale，整个测试不发送FC06。
+- **交付状态**：上述源码与测试已提交到master；新运行批次 <https://github.com/oudream/cx-visual-x3/actions/runs/41029431596> 的实际Windows成功是最终G1验收门禁，不可把较早单设备成功冒充新双设备/FCM Schema通过。现场PLC身份、生产部署SCM、跨进程认证IPC、分布式租约和真实机台安全仍未验收。
