@@ -48,6 +48,10 @@ namespace CxVisual.Studio
         private static extern int GetDlgCtrlID(IntPtr hwnd);
         [DllImport("user32.dll")]
         private static extern IntPtr GetParent(IntPtr hwnd);
+        [DllImport("user32.dll",SetLastError=true)]
+        private static extern bool PostMessage(IntPtr hwnd,uint message,
+            IntPtr wParam,IntPtr lParam);
+        private const uint WindowClose=0x0010;
         private static uint _studioUiThreadId;
         private static string _activeReport;
         private static readonly object _reportGate=new object();
@@ -195,6 +199,30 @@ namespace CxVisual.Studio
             return null;
         }
 
+        private static AutomationElement FindNativeActionButton(
+            AutomationElement dialog,string automationId)
+        {
+            AutomationElement direct=dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty,
+                    automationId));
+            if(direct!=null)return direct;
+            int nativeId;
+            if(!Int32.TryParse(automationId,out nativeId))return null;
+            IntPtr parent=new IntPtr(dialog.Current.NativeWindowHandle);
+            var buttons=new System.Collections.Generic.List<IntPtr>();
+            EnumChildWindows(parent,(hwnd,state)=>{
+                var name=new StringBuilder(64);
+                GetClassName(hwnd,name,name.Capacity);
+                if(GetDlgCtrlID(hwnd)==nativeId&&
+                   String.Equals(name.ToString(),"Button",StringComparison.OrdinalIgnoreCase))
+                    buttons.Add(hwnd);
+                return true;
+            },IntPtr.Zero);
+            if(buttons.Count!=1)return null;
+            try{return AutomationElement.FromHandle(buttons[0]);}
+            catch(ElementNotAvailableException){return null;}
+        }
+
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
         {
             AutomationElementCollection controls=dialog.FindAll(TreeScope.Descendants,
@@ -267,7 +295,8 @@ namespace CxVisual.Studio
                 ((ValuePattern)editor.GetCurrentPattern(ValuePattern.Pattern))
                     .SetValue(file);
                 Mark("已通过真实ValuePattern设置文件路径；查找系统确认按钮");
-                AutomationElement button=Find(dialog,"1");
+                AutomationElement button=FindNativeActionButton(dialog,"1");
+                Require(button!=null,"无法从实际系统文件框找到唯一确认按钮(IDC=1)");
                 InvokePattern invoke=button.GetCurrentPattern(InvokePattern.Pattern)
                     as InvokePattern;
                 Require(invoke!=null && button.Current.IsEnabled,
@@ -280,19 +309,34 @@ namespace CxVisual.Studio
             {
                 // 失败时尝试关闭模态窗口，使本轮独立验收可退出并留下FAIL报告。
                 if(dialog!=null)
+                {
+                    bool cancelled=false;
                     try
                     {
-                        AutomationElement cancel=dialog.FindFirst(TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.AutomationIdProperty,"2"));
+                        AutomationElement cancel=FindNativeActionButton(dialog,"2");
                         if(cancel!=null)
                         {
                             InvokePattern action=cancel.GetCurrentPattern(InvokePattern.Pattern)
                                 as InvokePattern;
-                            if(action!=null)action.Invoke();
+                            if(action!=null)
+                            {
+                                action.Invoke();
+                                cancelled=true;
+                            }
                         }
                     }
                     catch(InvalidOperationException){}
-                    catch(System.Windows.Automation.ElementNotAvailableException){}
+                    catch(ElementNotAvailableException){}
+                    if(!cancelled)
+                    {
+                        // 只在测试失败后Post WM_CLOSE：这是真正的取消流程，
+                        // 不会替代用户选择文件，也绝不允许测试获得PASS。
+                        IntPtr hwnd=new IntPtr(dialog.Current.NativeWindowHandle);
+                        if(hwnd!=IntPtr.Zero)PostMessage(hwnd,WindowClose,
+                            IntPtr.Zero,IntPtr.Zero);
+                        Mark("UIA文件框识别失败，向实际模态HWND发出异步关闭请求");
+                    }
+                }
                 throw;
             }
         }
