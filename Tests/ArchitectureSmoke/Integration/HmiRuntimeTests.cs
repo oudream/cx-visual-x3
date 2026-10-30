@@ -156,6 +156,98 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (System.IO.File.Exists(archive + ".cx-lock"))
                     System.IO.File.Delete(archive + ".cx-lock");
             }
+            // 正式HMI图元原子工程编辑：真实Page/MPM/MTC/MVI/磁盘复用，非单独HMI JSON。
+            table.Define(new MDSVariableDefinition("ready", typeof(bool), null, true));
+            table.Update<bool>("ready", true);
+            string screenFile=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cxvisual-hmi-page-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                using (MEMEngineeringSession screen=MEMEngineering.Create("HMI控件工程"))
+                {
+                    MEMPage page=screen.AddPage("Station");
+                    int before=screen.Revision;
+                    Guid number=PHMHmiScreenAuthoring.AddNumeric(screen,page.Id,
+                        "word100","转速",20,20);
+                    Check(screen.Revision==before+1, "数值图元必须一次MEM事务");
+                    before=screen.Revision;
+                    Guid lamp=PHMHmiScreenAuthoring.AddStatusLamp(screen,page.Id,
+                        "ready","设备运行",20,70);
+                    Check(screen.Revision==before+1, "状态灯/标题必须一个Undo事务");
+                    Guid progress=PHMHmiScreenAuthoring.AddProgress(screen,page.Id,
+                        "word100","生产进度",20,120,0,100);
+                    Guid button=PHMHmiScreenAuthoring.AddButton(screen,page.Id,
+                        "启动设备",20,170);
+                    Check(MRCVisualAppearance.BehaviorOf(
+                        screen.Find(button) as MRCVisualItem).EventActions.Count==0,
+                        "新按钮不得内置硬编码PLC命令");
+                    PHMHmiScreenAuthoring.AssignSavedAction(screen,button,"plc.write");
+                    Check(CxVisual.Mechanism.Visual.MVIVisualEventRouter.Resolve(
+                        screen,screen.GetAddress(screen.Find(button)),
+                        "Click","91").Count==1,
+                        "正式Button的Click必须路由到已保存ActionId");
+                    screen.Undo().RequireValue();
+                    Check(CxVisual.Mechanism.Visual.MVIVisualEventRouter.Resolve(
+                        screen,screen.GetAddress(screen.Find(button)),
+                        "Click","91").Count==0,
+                        "Undo必须解除按钮动作");
+                    screen.Redo().RequireValue();
+                    Check(CxVisual.Mechanism.Visual.MVIVisualEventRouter.Resolve(
+                        screen,screen.GetAddress(screen.Find(button)),
+                        "Click","91")[0].ActionId=="plc.write",
+                        "Redo必须恢复原动作");
+                    using (PHMHmiRuntimeSession runtime=new PHMHmiRuntimeSession(
+                        screen.Project.Id,screen.Revision,table,PHMHmiMode.DesignPreview,
+                        TimeSpan.FromMinutes(1)))
+                    {
+                        var scene=CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(screen,page.Id,runtime);
+                        Check(scene.Any(x=>x.Address.ObjectId==number&&x.Text=="99"),
+                            "数值控件不是来自真实MDS实时文本");
+                        Check(scene.Any(x=>x.Address.ObjectId==progress&&
+                            x.RuntimeValue!=null&&x.RuntimeValue.AsNumber()==99d),
+                            "进度条没有复用既有Widget运行值");
+                        Check(scene.Any(x=>x.Address.ObjectId==lamp&&
+                            x.Style.Fill.Color.Equals(MRCColor.Parse("#FF21AC68"))),
+                            "布尔Good未驱动真正状态灯颜色");
+                        table.Resolve<bool>("ready").Update(true,
+                            new MDSVariableUpdateOptions("device",MDSVariableQuality.Bad));
+                        scene=CxVisual.Mechanism.Visual.MVISceneProjection
+                            .ProjectResource(screen,page.Id,runtime);
+                        Check(scene.Any(x=>x.Address.ObjectId==lamp&&
+                            x.Style.Fill.Color.Equals(MRCColor.Parse("#FF7C8796"))),
+                            "Bad质量仍然显示正常绿灯");
+                    }
+                    screen.SaveAs(screenFile);
+                    using (MEMEngineeringSession restored=MEMEngineering.Open(screenFile))
+                    {
+                        Check((restored.Find(number) as MRCTextElement).GetBinding("text")
+                            .SourceId=="word100" &&
+                            (restored.Find(progress) as MRCVisualItem).GetBinding("value")
+                            .SourceId=="word100" &&
+                            CxVisual.Mechanism.Visual.MVIVisualEventRouter.Resolve(
+                                restored,restored.GetAddress(restored.Find(button)),
+                                "Click",null).Count==1,
+                            "MEM真实保存重开未能恢复HMI绑定/行为");
+                        restored.Close(true);
+                    }
+                    // 负向: 非Page、零宽范围、非法CommandId不得写工程Revision。
+                    int unchanged=screen.Revision;
+                    bool denied=false;
+                    try{PHMHmiScreenAuthoring.AddProgress(screen,page.Id,
+                        "word100","非法",0,0,20,20);}
+                    catch(ArgumentOutOfRangeException){denied=true;}
+                    Check(denied&&screen.Revision==unchanged,
+                        "非法量程不得污染工程历史");
+                    screen.Close(true);
+                }
+            }
+            finally
+            {
+                if(System.IO.File.Exists(screenFile))System.IO.File.Delete(screenFile);
+                if(System.IO.File.Exists(screenFile+".cx-lock"))
+                    System.IO.File.Delete(screenFile+".cx-lock");
+            }
             Console.WriteLine("PASS HMI-G1 UInt16/Int16, Quality, Stale and safe mode gates");
         }
     }
