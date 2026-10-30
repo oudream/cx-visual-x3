@@ -93,6 +93,9 @@ func main() {
 		}
 	}
 	httpAddr := fmt.Sprintf("%s:%d", config.Monitor.Http.Host, config.Monitor.Http.Port)
+	if httpListenMayBeRemote(config.Monitor.Http.Host) {
+		logger.Printf(_title.Error+"SECURITY WARNING: Monitor HTTP listener %s may be reachable remotely; legacy /programs_status has no authentication. Restrict it with bind/firewall ACLs or an approved authenticated gateway. New /api/v1 process snapshots are loopback-only.\n", httpAddr)
+	}
 	httpServer := channels.NewHttpServer(logger, config.Monitor.Http.Port, assetsPath, "/assets/comm/index.html", false)
 	setupHttpServer(httpServer.Engine, httpServer.Server)
 	// start http server
