@@ -15,6 +15,7 @@ namespace CxVisual.Professional.CT3D
     public static class CT3DAnalysisPersistence
     {
         public const string ProviderId="ct3d.analysis.case";
+        private const string SceneProviderId="mvi.scene3d.layout";
         private const int Magic=0x33444358;
         private const int Schema=1;
 
@@ -39,6 +40,7 @@ namespace CxVisual.Professional.CT3D
             if(owner==null || engineering.Find(owner.Id)!=owner)
                 throw new ArgumentException("结果必须登记到当前工程的MEMContent。","owner");
             if(analysis==null)throw new ArgumentNullException("analysis");
+            ValidateVisualUpdate(owner,visualAspect);
             if(engineering.Revision!=expectedRevision)throw new InvalidOperationException("org.version.conflict");
             using(var source=analysis.Source.OpenVerified(root,cancellation))
             {
@@ -102,11 +104,22 @@ namespace CxVisual.Professional.CT3D
             IReadOnlyList<MEMContent> owners,int expectedRevision,string root,
             IReadOnlyList<CT3DAnalysisCase> analyses,CancellationToken cancellation)
         {
+            return CommitAll(engineering,owners,expectedRevision,root,analyses,null,cancellation);
+        }
+
+        /// <summary>可选逐Case Visual Aspect，与全部专业Data在一次工程Revision内提交。</summary>
+        public static IReadOnlyList<MRIObjectAddress> CommitAll(MEMEngineeringSession engineering,
+            IReadOnlyList<MEMContent> owners,int expectedRevision,string root,
+            IReadOnlyList<CT3DAnalysisCase> analyses,IReadOnlyList<MPMAspect> visualAspects,
+            CancellationToken cancellation)
+        {
             if(engineering==null)throw new ArgumentNullException("engineering");
             if(owners==null)throw new ArgumentNullException("owners");
             if(analyses==null)throw new ArgumentNullException("analyses");
             if(owners.Count==0||owners.Count>128||owners.Count!=analyses.Count)
                 throw new ArgumentException("批量三维Case须有1~128个对应的MEMContent。","owners");
+            if(visualAspects!=null&&visualAspects.Count!=owners.Count)
+                throw new ArgumentException("专业Case与Visual Aspect数量不一致。","visualAspects");
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
             var ids=new HashSet<Guid>();
@@ -115,6 +128,7 @@ namespace CxVisual.Professional.CT3D
                 if(owners[i]==null||engineering.Find(owners[i].Id)!=owners[i]||!ids.Add(owners[i].Id))
                     throw new ArgumentException("MEMContent归属无效或重复。","owners");
                 if(analyses[i]==null)throw new ArgumentException("专业Case不能为空。","analyses");
+                ValidateVisualUpdate(owners[i],visualAspects==null?null:visualAspects[i]);
             }
             cancellation.ThrowIfCancellationRequested();
             var locks=new List<FileStream>();
@@ -152,7 +166,12 @@ namespace CxVisual.Professional.CT3D
                 cancellation.ThrowIfCancellationRequested();
                 engineering.Edit("批量登记三维专业结果",expectedRevision,edit=>
                 {
-                    for(int i=0;i<owners.Count;i++)edit.SetAspect(owners[i],aspects[i]);
+                    for(int i=0;i<owners.Count;i++)
+                    {
+                        edit.SetAspect(owners[i],aspects[i]);
+                        if(visualAspects!=null&&visualAspects[i]!=null)
+                            edit.SetAspect(owners[i],visualAspects[i]);
+                    }
                     return true;
                 }).RequireValue();
                 var addresses=new List<MRIObjectAddress>(owners.Count);
@@ -171,6 +190,15 @@ namespace CxVisual.Professional.CT3D
             MEMEngineeringSession engineering,IReadOnlyList<MEMContent> owners,
             int expectedRevision,string root,CancellationToken cancellation)
         {
+            return RecomputeAllAndCommit(engineering,owners,expectedRevision,root,null,cancellation);
+        }
+
+        public static IReadOnlyList<MRIObjectAddress> RecomputeAllAndCommit(
+            MEMEngineeringSession engineering,IReadOnlyList<MEMContent> owners,
+            int expectedRevision,string root,
+            Func<CT3DAnalysisCase,CT3DAnalysisCase,MPMAspect> rebindVisual,
+            CancellationToken cancellation)
+        {
             if(engineering==null)throw new ArgumentNullException("engineering");
             if(owners==null)throw new ArgumentNullException("owners");
             if(owners.Count==0||owners.Count>128)
@@ -178,6 +206,7 @@ namespace CxVisual.Professional.CT3D
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
             var analyses=new List<CT3DAnalysisCase>(owners.Count);
+            var visualAspects=rebindVisual==null?null:new List<MPMAspect>(owners.Count);
             var ids=new HashSet<Guid>();
             foreach(MEMContent owner in owners)
             {
@@ -185,16 +214,26 @@ namespace CxVisual.Professional.CT3D
                 if(owner==null||engineering.Find(owner.Id)!=owner||!ids.Add(owner.Id))
                     throw new ArgumentException("批量复算目标无效或重复。","owners");
                 CT3DAnalysisCase old=Open(engineering,engineering.GetAddress(owner),root,cancellation);
-                analyses.Add(old.Recompute(root,cancellation));
+                CT3DAnalysisCase next=old.Recompute(root,cancellation);
+                analyses.Add(next);
+                if(visualAspects!=null)visualAspects.Add(rebindVisual(old,next));
             }
             cancellation.ThrowIfCancellationRequested();
-            return CommitAll(engineering,owners,expectedRevision,root,analyses,cancellation);
+            return CommitAll(engineering,owners,expectedRevision,root,analyses,visualAspects,cancellation);
         }
 
         /// <summary>校验旧结果及工程修订后原值复算，使用既有MEM事务替换同一Content的结果。
         /// 同一工程提交前旧Revision冲突会拒绝，不创建平行Undo或制品仓库。</summary>
         public static MRIObjectAddress RecomputeAndCommit(MEMEngineeringSession engineering,
             MEMContent owner,int expectedRevision,string root,CancellationToken cancellation)
+        {
+            return RecomputeAndCommit(engineering,owner,expectedRevision,root,null,cancellation);
+        }
+
+        public static MRIObjectAddress RecomputeAndCommit(MEMEngineeringSession engineering,
+            MEMContent owner,int expectedRevision,string root,
+            Func<CT3DAnalysisCase,CT3DAnalysisCase,MPMAspect> rebindVisual,
+            CancellationToken cancellation)
         {
             if(engineering==null)throw new ArgumentNullException("engineering");
             if(owner==null||engineering.Find(owner.Id)!=owner)
@@ -205,7 +244,8 @@ namespace CxVisual.Professional.CT3D
             var existing=Open(engineering,engineering.GetAddress(owner),root,cancellation);
             var recomputed=existing.Recompute(root,cancellation);
             cancellation.ThrowIfCancellationRequested();
-            return Commit(engineering,owner,expectedRevision,root,recomputed,cancellation);
+            MPMAspect visual=rebindVisual==null?null:rebindVisual(existing,recomputed);
+            return Commit(engineering,owner,expectedRevision,root,recomputed,visual,cancellation);
         }
 
         /// <summary>将重开案例的物理切片ROI修改作为同一MEM事务提交。
@@ -235,9 +275,8 @@ namespace CxVisual.Professional.CT3D
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
             cancellation.ThrowIfCancellationRequested();
-            const string sceneProvider="mvi.scene3d.layout";
             bool hasScene=owner.Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
-                a.ProviderId==sceneProvider);
+                a.ProviderId==SceneProviderId);
             if(hasScene&&rebindVisual==null)
                 throw new InvalidOperationException(
                     "专业ROI重算需要同时重绑定当前Scene的Mesh/Measurement ResultId。");
@@ -247,7 +286,7 @@ namespace CxVisual.Professional.CT3D
             cancellation.ThrowIfCancellationRequested();
             MPMAspect visual=rebindVisual==null?null:rebindVisual(original,edited);
             if(hasScene&&(visual==null||visual.Kind!=MPMAspectKind.Visual||
-                visual.ProviderId!=sceneProvider))
+                visual.ProviderId!=SceneProviderId))
                 throw new InvalidOperationException("Scene重绑定未返回同一MVI Visual Aspect。");
             cancellation.ThrowIfCancellationRequested();
             return Commit(engineering,owner,expectedRevision,root,edited,visual,cancellation);
@@ -271,6 +310,17 @@ namespace CxVisual.Professional.CT3D
                 }
             }
             return result.AsReadOnly();
+        }
+
+        private static void ValidateVisualUpdate(MEMContent owner,MPMAspect visual)
+        {
+            if(visual!=null&&visual.Kind!=MPMAspectKind.Visual)
+                throw new ArgumentException("更新专业结果的附加Aspect必须为Visual。","visual");
+            if(owner.Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
+                a.ProviderId==SceneProviderId)&&
+                (visual==null||visual.ProviderId!=SceneProviderId))
+                throw new InvalidOperationException(
+                    "当前MEM包含三维Scene，更新专业ResultId必须同步提交重绑定的Visual Aspect。");
         }
 
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
