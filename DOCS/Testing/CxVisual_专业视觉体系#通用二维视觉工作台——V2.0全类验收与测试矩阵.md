@@ -747,3 +747,12 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-23 | 文件名框优先识别UIAutomation 1148/1001，兼容多层ComboBox+Edit及中英文Edit Name、ValuePattern可写性；有多个未知候选则拒绝并输出UIA控件树，不误填地址/搜索框 | `987d1a81` G2；[UIA #41053041715](https://github.com/oudream/cx-visual-x3/actions/runs/41053041715) 等待Windows复测 |
 | R1-UIA-24 | Windows模态等待期间禁止从后台同步调用`GetWindowText`或高频`RootElement.FindAll`；30秒记录Invoke/Dialog状态，120秒进程退出门禁必须打印已写STEP并上传报告，绝不算PASS | `9dc78fa6`、`5fa6220b`、`8a9f8ac8`、`d60e9a12` G2，最新Windows结果待验 |
 
+
+### IMG-05 Win32子HWND原生Edit/确认按钮真实回归（2026-10-30）
+
+| 验收点 | 固定Windows真值 | 本轮修复与门禁 |
+|---|---|---|
+| R1-UIA-25：原生文件名控件的实际结构 | [UIA #41053770932](https://github.com/oudream/cx-visual-x3/actions/runs/41053770932)真实日志有`ComboBoxEx32(1148) → ComboBox(1148) → Edit(1148, ParentId=1148)`；UIA根子树无Edit，旧候选算法因三层同ID而拒绝 | `a1004028`优先唯一内层Edit并核验可写`ValuePattern`；[新UIA #41054217425](https://github.com/oudream/cx-visual-x3/actions/runs/41054217425)等待执行，未获得PASS |
+| R1-UIA-26：系统确认/取消原生按钮 | 同一真实Windows日志确认`Button(1)`和`Button(2)`确在原生Dialog中 | `de30df40`补实际Win32子HWND的UIA InvokePattern；仅在失败后异步WM_CLOSE取消，不能代替确认或算成功 |
+| R1-UIA-27：禁止伪造通过 | 打开文件框、写入实际路径、点系统确认、RAW来源指纹和MRK后续必须逐项成功；在HWND控件无ValuePattern时记录精确诊断并失败 | 以上均仅G2与固定Windows局部证据，IMG-05 G5保持InProgress |
+
