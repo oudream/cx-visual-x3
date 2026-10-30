@@ -584,3 +584,10 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - 固定源码 `1d90c6838e2d44517f0787c31bb31f306d327bed` 的 [Module Center CPU Windows #40995860566](https://github.com/oudream/cx-visual-x3/actions/runs/40995860566) `raw-cpu-closure` **success**：.NET Framework4.8 Release/x64正式统一工程构建以及Studio WPF STA CPU路径与R1-01工程ROI RAW重绑两条测试均成功。此证据支持对应测试的G3/G4，测试中含真实MEM保存重开、Gray16 Stride、同源Mask/Measurement/导出。
 - 未取得手动文件弹窗、完整UIA/截图及工业HIL/大图实测，仍不可标R1产品级CASE-07全部G5/G6。代码工作与持续任务状态见最新实施统筹7.1～7.2。
 
+
+### IMG-03/04 原图代次与Run正式来源证据（2026-10-30，G2）
+
+- `MVIImageSession.OriginalGeneration`：原图加载开始/接受、SetOriginal、Clear递增；Result提交/显示/清理不递增。历史`SourceVersion`保留原有CAS与Observer语义；Studio正式ROI/Contour晚到防护改用原图代次，并继续检查工程Page/Revision/Run身份。对应源码提交`f12bf974`、`fde5cac8`、`5dcb2caf`。
+- 专业Run投影`CxVisionRunSummary`增加**可选**`ValidatedSourceHash`、`DefinitionRoiId`、`DefinitionRevision`。仅`CxVisionRoiEngineering.RunSavedAsync`在真实ROI SourceHash和MEM Revision通过校验后以只读派生方式提供，普通MRK预览保持null；`WithThresholdMaskContours`保留来源，不改写旧Run。对应`e3182a1e`、`1518cadf`。
+- 正反测试已提交`2640a9e8`、`71b0550f`、`e2778676`：正式双Run/Contour源Hash和MEM版本、普通预览不伪造正式ROI证据、Studio重绑真实Run标识一致。**固定SHA Windows CI尚待完成，不能据源码声明G3/G4。**
+- Owner归属仍为MVI与PVC，MRK/MDS数据所有权不变。仍未交付长期Artifact/Review、失败Run完整状态机及真实UIA/HIL。
