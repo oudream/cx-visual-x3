@@ -36,6 +36,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         // 独立于三刀/任意切Mesh，防止换层时清除专业可视点。
         private readonly ModelVisual3D _surfaceOverlay = new ModelVisual3D();
         private readonly ModelVisual3D _meshOverlay = new ModelVisual3D();
+        // 显示级高亮不承接原Mesh顶点索引、原值计量或MEM。
+        private readonly ModelVisual3D _selectedFaceOverlay=new ModelVisual3D();
+        private MPWVolumeDisplayMesh _selectedFacePreview;
+        public int SelectedFaceHighlightTriangleCount {get;private set;}
         private readonly Dictionary<Guid,ModelVisual3D> _additionalMeshes=
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalMeshTriangles=
@@ -165,7 +169,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             {
                 var mesh=result as RayMeshGeometry3DHitTestResult;
                 if(mesh==null)return HitTestResultBehavior.Continue;
-                if(Object.ReferenceEquals(mesh.ModelHit,_meshOverlay.Content))
+                if(Object.ReferenceEquals(mesh.ModelHit,_meshOverlay.Content)||
+                    Object.ReferenceEquals(mesh.ModelHit,_selectedFaceOverlay.Content))
                 {matched=true;contact=mesh.PointHit;}
                 return HitTestResultBehavior.Stop;
             },new PointHitTestParameters(point));
@@ -383,6 +388,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _viewport.Children.Add(scene);
             _viewport.Children.Add(_surfaceOverlay);
             _viewport.Children.Add(_meshOverlay);
+            _viewport.Children.Add(_selectedFaceOverlay);
             _viewport.Camera = _camera;
             Children.Add(_viewport);
             Border label = new Border
@@ -481,6 +487,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         /// <summary>清空空间切片贴图；窗口关闭时释放GPU纹理的WPF引用。</summary>
         public void Clear()
         {
+            ClearSelectedMeshFaces();
             _rawWidth=0;_rawHeight=0;_rawDepth=0;
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
@@ -501,6 +508,63 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 throw new ArgumentOutOfRangeException("preview","全部WPF三角面总量超过50000预算。");
             _meshOverlay.Content=BuildMeshModel(preview,1);
             SurfaceMeshTriangleCount=preview.TriangleCount;
+            RefreshSelectedFaceHighlight();
+        }
+
+        /// <summary>显示级专业面片高亮；最多512三角面，其余已选面仍保留专业计算身份。</summary>
+        public void SetSelectedMeshFaces(MPWVolumeDisplayMesh preview)
+        {
+            Dispatcher.VerifyAccess();
+            if(preview==null)throw new ArgumentNullException("preview");
+            if(preview.TriangleCount<1||preview.TriangleCount>512)
+                throw new ArgumentOutOfRangeException("preview");
+            _selectedFacePreview=preview;
+            SelectedFaceHighlightTriangleCount=preview.TriangleCount;
+            RefreshSelectedFaceHighlight();
+        }
+
+        public void ClearSelectedMeshFaces()
+        {
+            Dispatcher.VerifyAccess();
+            _selectedFacePreview=null;
+            SelectedFaceHighlightTriangleCount=0;
+            _selectedFaceOverlay.Content=null;
+        }
+
+        /// <summary>可视面相对原Mesh向相机方向微偏移避免共面闪烁，不改变专业几何。</summary>
+        private void RefreshSelectedFaceHighlight()
+        {
+            if(_selectedFacePreview==null||_meshOverlay.Content==null)
+            {_selectedFaceOverlay.Content=null;return;}
+            var positions=new Point3DCollection();
+            var triangles=new Int32Collection();
+            for(int i=0;i<_selectedFacePreview.TriangleIndices.Count;i+=3)
+            {
+                Vector3 a=_selectedFacePreview.Vertices[_selectedFacePreview.TriangleIndices[i]];
+                Vector3 b=_selectedFacePreview.Vertices[_selectedFacePreview.TriangleIndices[i+1]];
+                Vector3 c=_selectedFacePreview.Vertices[_selectedFacePreview.TriangleIndices[i+2]];
+                Point3D p=new Point3D(a.X*_displaySx,-a.Y*_displaySy,a.Z*_displaySz);
+                Point3D q=new Point3D(b.X*_displaySx,-b.Y*_displaySy,b.Z*_displaySz);
+                Point3D r=new Point3D(c.X*_displaySx,-c.Y*_displaySy,c.Z*_displaySz);
+                Vector3D normal=Vector3D.CrossProduct(q-p,r-p);
+                if(normal.LengthSquared<1e-20)continue;
+                normal.Normalize();
+                Point3D middle=new Point3D((p.X+q.X+r.X)/3,
+                    (p.Y+q.Y+r.Y)/3,(p.Z+q.Z+r.Z)/3);
+                if(Vector3D.DotProduct(normal,_camera.Position-middle)<0)normal=-normal;
+                Vector3D offset=normal*0.001;
+                int start=positions.Count;
+                positions.Add(p+offset);positions.Add(q+offset);positions.Add(r+offset);
+                triangles.Add(start);triangles.Add(start+2);triangles.Add(start+1);
+            }
+            if(triangles.Count==0){_selectedFaceOverlay.Content=null;return;}
+            var geometry=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
+            var brush=new SolidColorBrush(Color.FromRgb(255,209,56)) {Opacity=0.87};
+            var material=new MaterialGroup();
+            material.Children.Add(new DiffuseMaterial(brush));
+            material.Children.Add(new EmissiveMaterial(brush));
+            _selectedFaceOverlay.Content=new GeometryModel3D(geometry,material)
+                {BackMaterial=material};
         }
 
         private GeometryModel3D BuildMeshModel(MPWVolumeDisplayMesh preview,double opacity)
@@ -572,6 +636,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         public void ClearSurfaceMesh()
         {
             Dispatcher.VerifyAccess();
+            ClearSelectedMeshFaces();
             _meshOverlay.Content=null;
             SurfaceMeshTriangleCount=0;
         }
@@ -718,6 +783,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             sx /= divisor; sy /= divisor; sz /= divisor;
             _displaySx=sx;_displaySy=sy;_displaySz=sz;
             _rawWidth=width;_rawHeight=height;_rawDepth=depth;
+            RefreshSelectedFaceHighlight();
             double x = sx * (Clamp(positionX, width) - 0.5);
             double y = sy * (0.5 - Clamp(positionY, height));
             double z = sz * (Clamp(positionZ, depth) - 0.5);
@@ -832,6 +898,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _camera.FieldOfView = _cameraState==null ? 42 : 45;
             _camera.NearPlaneDistance = 0.01;
             _camera.FarPlaneDistance = 30;
+            RefreshSelectedFaceHighlight();
             UpdateOrientation(pos);
         }
 
