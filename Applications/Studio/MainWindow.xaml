@@ -50,7 +50,9 @@
         <Border DockPanel.Dock="Top" Background="{DynamicResource StudioPanelBrush}" Padding="5,0" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource StudioBorderBrush}">
             <StackPanel x:Name="StudioStaticMenus" Orientation="Horizontal">
                 <Button Content="文件" Tag="文件" Click="OnStudioMenuClick" Style="{StaticResource StudioMenuTabStyle}"/>
-                <Button Content="编辑" Tag="编辑" Click="OnStudioMenuClick" Style="{StaticResource StudioMenuTabStyle}"/>
+                <Button Content="编辑" Tag="编辑" Click="OnStudioMenuClick"
+                        AutomationProperties.AutomationId="Studio.Ribbon.Tab.Edit"
+                        Style="{StaticResource StudioMenuTabStyle}"/>
                 <Button Content="视图" Tag="视图" Click="OnStudioMenuClick" Style="{StaticResource StudioMenuTabStyle}"/>
                 <Button Content="工程" Tag="工程" Click="OnStudioMenuClick" Style="{StaticResource StudioMenuTabStyle}"/>
                 <Button Content="调试" Tag="调试" Click="OnStudioMenuClick" Style="{StaticResource StudioMenuTabStyle}"/>
