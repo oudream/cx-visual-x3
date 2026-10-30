@@ -538,7 +538,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 pfd.Flags = 0x00000004 | 0x00000020 | 0x00000001; // draw to window/OpenGL/double buffer
                 pfd.PixelType = 0; pfd.ColorBits = 32; pfd.DepthBits = 24;
                 int format = ChoosePixelFormat(_dc, ref pfd);
-                if (format == 0 || !SetPixelFormat(_dc, format, ref pfd))
+                if(format==0)throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "没有符合要求的WGL像素格式。");
+                PixelFormatDescriptor actual=new PixelFormatDescriptor();
+                actual.Size=(ushort)Marshal.SizeOf(typeof(PixelFormatDescriptor));
+                actual.Version=1;
+                if(DescribePixelFormat(_dc,format,(uint)Marshal.SizeOf(typeof(PixelFormatDescriptor)),
+                        ref actual)==0||actual.DepthBits<24)
+                    throw new NotSupportedException(
+                        "当前WGL驱动未提供实际24位深度缓冲，拒绝宣称Mesh深度正确。");
+                if(!SetPixelFormat(_dc, format, ref pfd))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "WGL像素格式设置失败。");
                 IntPtr bootstrap = wglCreateContext(_dc);
                 if (bootstrap == IntPtr.Zero || !wglMakeCurrent(_dc, bootstrap))
@@ -1194,6 +1203,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("user32.dll")] private static extern IntPtr SetCapture(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("gdi32.dll")] private static extern int ChoosePixelFormat(IntPtr dc,ref PixelFormatDescriptor fmt);
+        [DllImport("gdi32.dll",SetLastError=true)] private static extern int DescribePixelFormat(IntPtr dc,int index,uint count,ref PixelFormatDescriptor descriptor);
         [DllImport("gdi32.dll")] private static extern bool SetPixelFormat(IntPtr dc,int fmt,ref PixelFormatDescriptor pfd);
         [DllImport("gdi32.dll")] private static extern bool SwapBuffers(IntPtr dc);
         [DllImport("opengl32.dll")] private static extern IntPtr wglCreateContext(IntPtr dc);
