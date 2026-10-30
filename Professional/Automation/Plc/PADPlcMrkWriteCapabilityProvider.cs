@@ -60,9 +60,14 @@ namespace CxVisual.Professional.Automation.Plc
                 });
         }
 
-        public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+        /// <summary>
+        /// Safe offline authoring contract. Does not instantiate a command
+        /// center, authorize a PLC or claim runtime availability.
+        /// Studio and the real Host share this one professional definition.
+        /// </summary>
+        public static MOCCapabilityDescriptor DescribeOfflineContract()
         {
-            return new[] { new MOCCapabilityDescriptor(CapabilityId,
+            return new MOCCapabilityDescriptor(CapabilityId,
                 "已授权PLC UInt16写入及寄存器回读", "Automation/PLC",
                 new[] {
                     new MPCPortDescriptor("StableId", MPCPortDirection.Input,
@@ -71,8 +76,11 @@ namespace CxVisual.Professional.Automation.Plc
                         "ushort", MPCPortKind.Data, required:true),
                     new MPCPortDescriptor("RegisterReadbackMatched",
                         MPCPortDirection.Output,"bool",MPCPortKind.Data)
-                }) };
+                });
         }
+
+        public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+        { return new[] { DescribeOfflineContract() }; }
 
         public bool TryResolve(string id, out MRKResolvedCapability result)
         {
