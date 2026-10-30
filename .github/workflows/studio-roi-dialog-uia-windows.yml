@@ -1,0 +1,52 @@
+name: CxVisual Studio ROI Native File Dialog UIA Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Applications/Studio/StudioRoiDialogUiSmoke.cs'
+      - 'Applications/Studio/App.xaml.cs'
+      - 'Applications/Studio/CxVisual.Studio.csproj'
+      - '.github/workflows/studio-roi-dialog-uia-windows.yml'
+jobs:
+  roi-native-dialog-uia:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build existing .NET Framework 4.8 solution
+        shell: pwsh
+        run: |
+          & msbuild.exe .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'IMG05 Studio unified build failed' }
+      - name: Operate actual Studio WPF and Windows native file dialogs
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path .\Output\Release\x64\CxVisual.Studio.exe).Path
+          $report = Join-Path (Split-Path $exe) 'StudioRoiDialogUiReport.txt'
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--studio-roi-dialog-ui-self-test' -PassThru
+          try {
+            if (-not $p.WaitForExit(120000)) {
+              try { $p.Kill() } catch {}
+              throw 'IMG05 real Windows file dialog UIA timed out'
+            }
+            $p.Refresh()
+            if (Test-Path $report) { Get-Content $report }
+            if ($p.ExitCode -ne 0) { throw "IMG05 Studio native-dialog process failed: $($p.ExitCode)" }
+            if (-not (Test-Path $report)) { throw 'IMG05 UIA report missing' }
+            $passed = @(Select-String -Path $report -Pattern '^PASS: IMG05 Studio真实WPF按钮/Windows Open Save')
+            $failed = @(Select-String -Path $report -Pattern '^FAIL:')
+            if ($passed.Count -ne 1 -or $failed.Count -ne 0) {
+              throw 'IMG05 genuine native dialog and ROI result assertion missing'
+            }
+          }
+          finally { $p.Dispose() }
+      - name: Preserve real Studio native file dialog evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-roi-native-dialog-uia
+          path: Output/Release/x64/StudioRoiDialogUiReport.txt
+          if-no-files-found: warn
