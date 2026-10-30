@@ -62,7 +62,7 @@ namespace CxVisual.Studio
             RowDefinitions.Add(new RowDefinition {Height=new GridLength(1,GridUnitType.Star)});
             ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(1,GridUnitType.Star)});
             ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(245)});
-            var toolbar=new StackPanel {Orientation=Orientation.Horizontal};
+            var toolbar=new WrapPanel {Orientation=Orientation.Horizontal};
             var open=Button("打开CT3D工程","Studio.CT3D.Open");
             open.Click+=(s,e)=>OpenWithDialog();
             toolbar.Children.Add(open);
