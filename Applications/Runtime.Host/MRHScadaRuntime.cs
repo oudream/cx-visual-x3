@@ -126,7 +126,8 @@ namespace CxVisual.Runtime.Host
         }
 
         internal static int Serve(string projectPath,string configRoot,
-            string guid,string moduleId,string scopeId,string intervalText,bool contiguous)
+            string guid,string moduleId,string scopeId,string intervalText,bool contiguous,
+            bool serviceMode = false)
         {
             Guid deviceId; int intervalMs;
             if(!Guid.TryParse(guid,out deviceId)||
@@ -140,6 +141,39 @@ namespace CxVisual.Runtime.Host
                 Console.WriteLine("SCADA running DeviceRef="+host.DeviceRef+
                     " Scope="+host.ScopeId+" Effective="+host.ConfigVersion+
                     " Generation="+host.Generation+" (read-only)");
+                if(serviceMode)
+                {
+                    Console.WriteLine("SCADA service mode: no stdin dependency; Ctrl+C to stop.");
+                    using(CancellationTokenSource signal=new CancellationTokenSource())
+                    {
+                        ConsoleCancelEventHandler onCancel=(sender,e)=>
+                        {
+                            e.Cancel=true;
+                            signal.Cancel();
+                        };
+                        Console.CancelKeyPress+=onCancel;
+                        try
+                        {
+                            Task shutdown=Task.Delay(Timeout.Infinite,signal.Token);
+                            Task winner=Task.WhenAny(host.Completion,shutdown)
+                                .GetAwaiter().GetResult();
+                            if(winner==host.Completion)
+                            {
+                                try{host.Completion.GetAwaiter().GetResult();}
+                                catch(Exception error)
+                                {
+                                    Console.Error.WriteLine("SCADA collection fault: "+error.Message);
+                                    return 3;
+                                }
+                                return 0;
+                            }
+                            host.StopAsync().GetAwaiter().GetResult();
+                            Console.WriteLine("SCADA service stopped");
+                            return 0;
+                        }
+                        finally { Console.CancelKeyPress-=onCancel; }
+                    }
+                }
                 Console.WriteLine("Commands: status | point <stablePointId> | stop");
                 // Headless进程拥有TCP/MDS/采集，不依赖Studio窗口/进程。
                 // 同时监听采样故障；不能因等待Console输入而无声继续报告Ready。
