@@ -31,8 +31,10 @@ namespace CxVisual.Studio
                     string report=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                         "StudioRoiDialogUiReport.txt");
                     bool success=await StudioRoiDialogUiSmoke.RunAsync(window,report);
-                    window.Close();
-                    Shutdown(success?0:1);
+                    // 独立GUI验收是有明确PASS/FAIL报告的一次性Windows进程。
+                    // 模态UIA、外部MHS/Host服务或WPF布局退出回调不能让
+                    // 已落盘的真实FAIL被120秒进程超时覆盖；正式Studio不受影响。
+                    Environment.Exit(success?0:1);
                 }),DispatcherPriority.ApplicationIdle);
                 return;
             }
