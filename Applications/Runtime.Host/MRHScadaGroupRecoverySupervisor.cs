@@ -62,8 +62,6 @@ namespace CxVisual.Runtime.Host
                 throw new InvalidOperationException("SCADA组部署Effective已失效，拒绝恢复");
             Dictionary<string,string> connectors=group.SnapshotDevices()
                 .ToDictionary(x=>x.DeviceRef,x=>x.ConfigVersion,StringComparer.Ordinal);
-            Dictionary<string,string> generations=group.SnapshotDevices()
-                .ToDictionary(x=>x.DeviceRef,x=>x.Generation,StringComparer.Ordinal);
             lock(_identityGate)
             {
                 if(_pinnedConnectors==null)
@@ -80,11 +78,25 @@ namespace CxVisual.Runtime.Host
                         _pinnedConnectors[pair.Key]!=pair.Value))
                     throw new InvalidOperationException(
                         "SCADA组恢复检测到MEM/MHS部署或Connector Effective漂移，禁止自动批准");
+            }
+        }
+
+        // F17在Channel.Open时重新生成SessionId，必须在StartAsync结束后取真实世代。
+        // 构造阶段的初始Guid不是已经打开的PLC连接身份证据。
+        private void RecordActiveGenerations(MRHScadaRuntimeGroup group)
+        {
+            if(!group.IsDeploymentApproved ||
+                group.SnapshotDevices().Any(x=>!x.IsRunning || !x.IsStillApproved))
+                throw new InvalidOperationException("SCADA组世代尚未真实启动或已失效");
+            Dictionary<string,string> generations=group.SnapshotDevices()
+                .ToDictionary(x=>x.DeviceRef,x=>x.Generation,StringComparer.Ordinal);
+            lock(_identityGate)
+            {
                 if(_lastGenerations!=null &&
                     generations.Any(pair=>_lastGenerations.ContainsKey(pair.Key) &&
                         _lastGenerations[pair.Key]==pair.Value))
                     throw new InvalidOperationException(
-                        "SCADA组恢复复用了旧设备SessionGeneration");
+                        "SCADA组恢复复用了已打开的旧设备SessionGeneration");
                 _lastGenerations=generations;
             }
         }
@@ -115,6 +127,7 @@ namespace CxVisual.Runtime.Host
                         try
                         {
                             await group.StartAsync(generationStop.Token).ConfigureAwait(false);
+                            RecordActiveGenerations(group);
                             if(_readPipeName!=null)
                                 pipeTask=MRHScadaReadOnlyPipe.RunAsync(
                                     group,_readPipeName,generationStop.Token);
