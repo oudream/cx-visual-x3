@@ -194,6 +194,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "unknown PLC outcome published success or retried device operation");
                 }
                 finally {ignoreWrite(false);}
+
+                // Adversarial Plan: outer MRK policy was incorrectly declared
+                // idempotent and requests two attempts. The professional PLC
+                // adapter must still prevent a second FC06 after Unknown.
+                MRKResolvedCapability plcBinding;
+                Check(automation.TryResolve(
+                    PADPlcMrkWriteCapabilityProvider.CapabilityId,out plcBinding),
+                    "PLC MOC capability resolver disappeared");
+                var retryPlan=new MRKExecutionPlan("plc-nonidempotent-retry-guard",
+                    new[]{new MRKExecutionStep("plc-write",
+                        new string[0],plcBinding.ExecuteAsync,
+                        policy:new MRKExecutionPolicy(maxAttempts:2,idempotent:true),
+                        inputs:new[]{
+                            new MRKExecutionInput("StableId",MRKInputSource.FlowInput,
+                                "StableId",typeof(string)),
+                            new MRKExecutionInput("Value",MRKInputSource.FlowInput,
+                                "Value",typeof(ushort))
+                        },output:plcBinding.Output,
+                        dataOutputs:plcBinding.DataOutputs)});
+                int beforeUnsafeRetry=writes();
+                ignoreWrite(true);
+                try
+                {
+                    MRKFlowHandle challenged=engine.StartFlow(retryPlan,
+                        new Dictionary<string,object>{
+                            {"StableId","word"},{"Value",(ushort)91}
+                        });
+                    Check(challenged.Completion.Wait(TimeSpan.FromSeconds(12)),
+                        "nonidempotent retry safety gate timed out");
+                    MRKFlowResult deniedRetry=challenged.Completion.GetAwaiter().GetResult();
+                    Check(deniedRetry.State==MRKFlowState.Failed&&
+                        !deniedRetry.Results.ContainsKey("plc-write")&&
+                        writes()==beforeUnsafeRetry+1,
+                        "incorrect outer MRK retry policy duplicated uncertain PLC device write");
+                }
+                finally {ignoreWrite(false);}
                 Check((ushort)bridge.ReadAndMapAsync("word",CancellationToken.None)
                     .GetAwaiter().GetResult()==91,
                     "unknown PLC operation requires fresh readback for recovery");
