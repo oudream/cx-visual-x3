@@ -59,3 +59,26 @@ export interface AlertHistoryEnvelope {
   historyWindowBytes: number
   generatedAt: string
 }
+
+/** Daemon 的本地持久文件快照，不等于实时进程 / 服务就绪状态。 */
+export interface GuardIssue {
+  programId: string
+  reason: string
+}
+
+export interface GuardSource {
+  available: boolean
+  observedAt?: string
+  error?: string
+  items: GuardIssue[]
+}
+
+export interface GuardReport {
+  terminal: GuardSource
+  orphans: GuardSource
+}
+
+export interface GuardEnvelope extends Envelope<GuardReport> {
+  scope: 'local-only'
+  kind: 'local-daemon-artifact-observation'
+}
