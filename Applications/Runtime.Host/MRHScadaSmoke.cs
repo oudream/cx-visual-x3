@@ -33,10 +33,16 @@ namespace CxVisual.Runtime.Host
             private volatile bool _stop;
             private TcpClient _active;
             private int _reads;
+            private int _dropReplies;
             private int _writes;
             public int Port {get;private set;}
             public int Reads {get{return Volatile.Read(ref _reads);}}
             public int Writes {get{return Volatile.Read(ref _writes);}}
+            public void DropNextReplies(int count)
+            {
+                if(count<1||count>8)throw new ArgumentOutOfRangeException("count");
+                Interlocked.Exchange(ref _dropReplies,count);
+            }
             public TcpPlcFixture()
             {
                 _listener=new TcpListener(IPAddress.Loopback,0);
@@ -90,6 +96,11 @@ namespace CxVisual.Runtime.Host
                                 response[9]=0;response[10]=73;
                                 response[11]=0;response[12]=99;
                                 Interlocked.Increment(ref _reads);
+                                if(Volatile.Read(ref _dropReplies)>0)
+                                {
+                                    Interlocked.Decrement(ref _dropReplies);
+                                    continue; // TCP请求已真实到达，但模拟现场设备未响应。
+                                }
                                 stream.Write(response,0,response.Length);
                             }
                         }
