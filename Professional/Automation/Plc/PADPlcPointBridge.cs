@@ -391,7 +391,12 @@ namespace CxVisual.Professional.Automation.Plc
             string approved;
             if (!_approvedSignatures.TryGetValue(stableId, out approved) ||
                 !string.Equals(approved, Signature(live, mappings), StringComparison.Ordinal))
+            {
+                // 首轮扫描预检也应传播质量告警，而不是留下上次Good供控制读取。
+                // 不产生新的物理采样、不覆盖MDS Current或RefreshUtc。
+                MarkStale(stableId);
                 throw new InvalidOperationException("PLC运行点表已变化，须停止会话并重新审批装配: " + point);
+            }
             return point;
         }
 
