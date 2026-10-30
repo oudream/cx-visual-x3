@@ -100,3 +100,11 @@
 - SHA 62af7a35：组装配开始前逐设备复核真实Connector Effective及MEM工程版本。
 - SHA d0ed2799：SCADA G1 workflow启用同master分支并发取消，排队/取消的旧SHA不算成功。最新版本CI仍必须实际执行Windows Restore、Build与OS TCP scada-g1-smoke。
 - 当前真实设备身份、安全互锁、跨账户远程命令、SCM与G2/G3均不在上述本机软件测试证明范围。
+
+## 12. 双PLC首采G1根因证据与并发MHS读取修复（2026-10-30）
+
+- 真实失败日志：GitHub Actions SCADA G1 Run 41041464828（SHA b03653df），Windows x64 Host编译成功、运行SCADA G1失败：A reads=1 cycles=1 fault=none；B reads=0 cycles=0，Completion抛 InvalidOperationException: SCADA生效工程配置已变更，停止轮询并要求重新装配。
+- 源码级原因：Mechanism/Data/Configuration/MHSConfigStorage.Initialize() 调用 AcquireWriteLease()，FileShare.None。MRHScadaRuntimeGroup.OpenFromEngineering的两个FCR采集线程原先对同一项目Deployment执行独立OpenExisting，即使只有读取亦并发争用独占文件锁，IOException被审批闭包统一处理为false，故旧代码可能把锁竞争误报为有效版本漂移。
+- 实际修复：SHA 2870d9de 串行化同一项目级 Deployment Effective 的OpenExisting；SHA 5a4d0d32 在每个设备的同一Connector Effective读取闭包增加本地互斥，避免采集、Pipe、诊断对同一Connector的竞态。两者仍每次读取正式MHS持久版本，未缓存旧Effective替代检测，仍不放宽真实版本变化的FailClosed。
+- 回归：SHA d470b037 在两个真实本机Modbus TCP工站FC03持续采集时，四个并发任务重复查验项目级和各Connector Effective并断言PLC会话未因误报漂移退出；既有后续正式Deployment漂移负例保持有效。该新增用例是已提交测试源码，需对应固定SHA的Windows运行完成并通过后才能标记G1验收成功。
+- 边界：若其他进程正在持有MHS独占写锁，当前Host仍可能暂时读失败而FailClosed；跨进程读写协调和非阻塞只读版本查询应交由MHS Owner收敛，SCADA不在本层绕过存储审计/签名/文件锁。
