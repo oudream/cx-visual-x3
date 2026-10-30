@@ -39,7 +39,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private long _overlayOriginalGeneration;
         private BitmapSource _bitmap;
         private FIMImageBuffer _shownImage;
-        private bool _dragging, _selecting, _moving, _pendingFit = true;
+        private bool _dragging, _selecting, _pendingFit = true;
         private MVIImageOverlayItem _movingOverlay;
         private FGEPoint2D _moveAnchor;
         private Guid? _selectedOverlayId;
@@ -216,7 +216,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             _overlayEdit.Cancel();
             if(_selecting)_region=null;
-            _dragging=_selecting=_moving=false;
+            _dragging=_selecting=false;
             _secondaryDragging=false;
             _movingOverlay=_resizeStart=_vertexEditStart=_rotationStart=null;
             _linePairGesture.Reset();
@@ -230,7 +230,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private bool HasTransientGesture()
         {
-            return _overlayEdit.IsActive || _dragging || _selecting || _moving ||
+            return _overlayEdit.IsActive || _dragging || _selecting ||
                 _secondaryDragging || _polygonDraft.Count>0;
         }
 
@@ -238,7 +238,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             // 点选多边形/两线的草稿可以跨多次MouseDown存在，不属于捕获中的拖动。
             // 仅捕获操作异常丢失时才回滚；Esc仍由HasTransientGesture取消所有草稿。
-            return _overlayEdit.IsActive || _dragging || _selecting || _moving ||
+            return _overlayEdit.IsActive || _dragging || _selecting ||
                 _secondaryDragging;
         }
 
@@ -2118,7 +2118,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void UpdateMovedOverlay(Point pointer)
         {
-            if (!_moving || _movingOverlay == null || ActiveImage == null) return;
+            if (!IsOverlayEdit(MVIImageOverlayEditKind.Move) ||
+                _movingOverlay == null || ActiveImage == null)return;
             FGEPoint2D current = CanvasToSource(pointer);
             double dx = current.X - _moveAnchor.X,dy = current.Y - _moveAnchor.Y;
             // 移动鼠标不能把图中标注悄悄移入无限画布；保持当前Bounds在图像内。
@@ -2349,7 +2350,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 {
                     if(!_overlayEdit.Begin(hit,MVIImageOverlayEditKind.Move))
                     {PixelStatus.Text="对象状态已变化，移动未启动。";return;}
-                    _moving = true;
                     _movingOverlay = hit;
                     _moveAnchor = CanvasToSource(pointer);
                     _region = null;
@@ -2381,7 +2381,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
-            bool completeEdit=_moving ||
+            bool completeEdit=_overlayEdit.IsEditing(
+                MVIImageOverlayEditKind.Move,MVIImageGesturePane.Primary) ||
                 (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary)) ||
                 (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Primary)) ||
                 (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary));
@@ -2407,8 +2408,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 UpdateDraftSelection(pointer);
                 CompleteDraw();
             }
-            if (_moving) UpdateMovedOverlay(e.GetPosition(ViewportRoot));
-            _dragging = _selecting = _moving = false;
+            if (IsOverlayEdit(MVIImageOverlayEditKind.Move))
+                UpdateMovedOverlay(e.GetPosition(ViewportRoot));
+            _dragging = _selecting = false;
             _movingOverlay = null;
             if(completeEdit)_overlayEdit.CompleteFrom(MVIImageGesturePane.Primary);
             if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
@@ -2442,7 +2444,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             else if (_selecting && e.LeftButton == MouseButtonState.Pressed)
                 UpdateDraftSelection(pointer);
-            else if (_moving && e.LeftButton == MouseButtonState.Pressed)
+            else if (IsOverlayEdit(MVIImageOverlayEditKind.Move) &&
+                     e.LeftButton == MouseButtonState.Pressed)
                 UpdateMovedOverlay(pointer);
             else if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary) && e.LeftButton == MouseButtonState.Pressed)
                 UpdateResize(pointer,_viewport);
@@ -2479,7 +2482,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseLeave(object sender, MouseEventArgs e)
         {
-            if (!_dragging && !_selecting && !_moving && !_overlayEdit.IsActive &&
+            if (!_dragging && !_selecting && !_overlayEdit.IsActive &&
                 ActiveImage != null)
                 PixelStatus.Text = ActiveImage.Width + "×" + ActiveImage.Height +
                     " · " + ActiveImage.PixelFormat + " · " + _viewport.Scale.ToString("0.##") + "×";
