@@ -5,6 +5,7 @@ import EventsView from '../views/EventsView.vue'
 import AlertsView from '../views/AlertsView.vue'
 import GuardView from '../views/GuardView.vue'
 import StopHistoryView from '../views/StopHistoryView.vue'
+import ResourcesView from '../views/ResourcesView.vue'
 
 export const router = createRouter({
   // Hash routing works with the legacy Gin static-file hosting arrangement.
@@ -16,6 +17,7 @@ export const router = createRouter({
     { path: '/alerts', name: 'alerts', component: AlertsView },
     { path: '/guard', name: 'guard', component: GuardView },
     { path: '/stops', name: 'stops', component: StopHistoryView },
+    { path: '/resources', name: 'resources', component: ResourcesView },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
