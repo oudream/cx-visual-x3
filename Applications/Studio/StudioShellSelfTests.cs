@@ -3731,9 +3731,15 @@ namespace CxVisual.Studio
                                 Math.Abs(face.PointB.Z-46.5)<1e-9&&
                                 Math.Abs(face.PointC.Z-46.5)<1e-9)selectedFaces.Add(face);
                         }
-                        var selectedFaceResult=AwaitStudioTask(workspace.RecomputeMeshFaceRoiAsync(
-                            selectedFaces,CancellationToken.None));
+                        // 模拟外部SDK调用后立即修改自己的List，后台必须只消费调用快照。
+                        var callerFaces=new List<CT3DMeshFaceReference>(selectedFaces);
+                        Task<CT3DAnalysisCase> faceTask=workspace.RecomputeMeshFaceRoiAsync(
+                            callerFaces,CancellationToken.None);
+                        callerFaces.Clear();
+                        var selectedFaceResult=AwaitStudioTask(faceTask);
                         Assert(workspace.HasPendingAnalysis&&selectedFaces.Count==8&&
+                            callerFaces.Count==0&&selectedFaceResult.FaceRoiRecipe!=null&&
+                            selectedFaceResult.FaceRoiRecipe.Faces.Count==8&&
                             selectedFaceResult.Plane.SampleCount==9&&
                             selectedFaceResult.RoiSignature==beforeFace.RoiSignature&&
                             selectedFaceResult.Plane.ResultId!=beforeFace.Plane.ResultId,
