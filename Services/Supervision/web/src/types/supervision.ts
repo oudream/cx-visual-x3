@@ -119,7 +119,7 @@ export interface HostStorage {
   available: boolean
   totalBytes: number
   usedBytes: number
-  freeBytes: number
+  availableBytes: number
   usedPercent: number
   sampledAt: string
   error?: string
