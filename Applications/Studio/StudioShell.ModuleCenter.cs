@@ -101,6 +101,26 @@ namespace CxVisual.Studio
         /// 单一MOC目录只组装已有专业Provider，所有参数来自同一MHS Effective。
         /// 对自定义数据端口仍由专业运行时实施具体类型验证。
         /// </summary>
+        /// <summary>
+        /// 显式重绑已保存ROI的RAW原图。只借用FIM读入器和PVC指纹验证，
+        /// 不创建工程页、Run、结果或MHS配置；原图文件步长由用户明确指定。
+        /// </summary>
+        internal static FIMImageBuffer LoadStudioSavedRoiRaw(
+            MEMEngineeringSession session,MRIObjectAddress address,
+            string path,int stride,CancellationToken cancellation)
+        {
+            if(session==null)throw new ArgumentNullException("session");
+            cancellation.ThrowIfCancellationRequested();
+            int expectedRevision=session.Revision;
+            CxVisionRoiRecipe recipe=CxVisionRoiEngineering.Open(session,address);
+            FIMImageBuffer source=FIMRawImageReader.LoadFile(path,recipe.Width,
+                recipe.Height,recipe.PixelFormat,stride,false);
+            CxVisionRoiEngineering.VerifySource(recipe,source,cancellation);
+            if(session.Revision!=expectedRevision)
+                throw new InvalidOperationException("vision.roi.definition_changed_during_bind");
+            return source;
+        }
+
         private sealed class StudioVisionCapabilitySet
         {
             public IMOCCapabilityProvider[] Providers;
@@ -554,12 +574,33 @@ namespace CxVisual.Studio
             System.Windows.Automation.AutomationProperties.SetAutomationId(runSeparated,
                 "Studio.ModuleCenter.RunSeparatedRaw");
             rawRow.Children.Add(runSeparated);
+            var bindRoiButton=new Button {
+                Content="重绑工程ROI原图",Padding=new Thickness(10,5,10,5),
+                Margin=new Thickness(4,0,0,0),
+                ToolTip="选当前MEM页保存的ROI配方；从本地RAW文件读取原始位深与尺寸并验证SHA-256，不创建新Run或工程页"
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(bindRoiButton,
+                "Studio.ModuleCenter.BindSavedRoiRaw");
+            rawRow.Children.Add(bindRoiButton);
+            rawRow.Children.Add(new TextBlock {
+                Text="行步长(0=紧排)",VerticalAlignment=VerticalAlignment.Center,
+                Margin=new Thickness(7,0,0,0)
+            });
+            var bindRoiStride=new TextBox {Text="0",Width=60,Margin=new Thickness(4,0,4,0),
+                ToolTip="单行实际RAW字节数；0表示根据已存像素格式计算紧排行步长"};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(bindRoiStride,
+                "Studio.ModuleCenter.BindSavedRoiStride");
+            rawRow.Children.Add(bindRoiStride);
             System.Threading.CancellationTokenSource activeRun=null;
+            System.Threading.CancellationTokenSource savedRoiRun=null;
             var cancelRun=new Button {Content="取消检测",Padding=new Thickness(8,5,8,5),
                 Margin=new Thickness(5,0,0,0),IsEnabled=false};
             System.Windows.Automation.AutomationProperties.SetAutomationId(cancelRun,
                 "Studio.ModuleCenter.CancelRaw");
-            cancelRun.Click+=(sender,args)=>{if(activeRun!=null)activeRun.Cancel();};
+            cancelRun.Click+=(sender,args)=>{
+                if(activeRun!=null)activeRun.Cancel();
+                if(savedRoiRun!=null)savedRoiRun.Cancel();
+            };
             rawRow.Children.Add(cancelRun);
             var rawStatus=new TextBlock {Text="等待用户选择RAW文件；位深来自已读取的MHS Effective。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,3,4,5)};
@@ -649,7 +690,10 @@ namespace CxVisual.Studio
             FIMImageBuffer displayedOriginal=null;
             Guid displayedProject=Guid.Empty;
             CancellationTokenSource contourOperation=null;
+            long previewEpoch=0;
+            bool bindingSavedRoi=false;
             invalidatePreview=()=>{
+                ++previewEpoch;
                 if(contourOperation!=null)contourOperation.Cancel();
                 displayedRun=null;displayedOriginal=null;
                 displayedProject=Guid.Empty;
@@ -661,14 +705,79 @@ namespace CxVisual.Studio
                 resultExpander.Visibility=Visibility.Collapsed;
                 resultDetail.Text="旧Run已经失效；不会保留之前的图像和轮廓投影。";
             };
-            Func<bool> hasCurrentSource=()=>displayedRun!=null &&
-                displayedOriginal!=null &&
+            Func<bool> hasCurrentSource=()=>displayedOriginal!=null &&
                 displayedProject==_viewModel.ProjectSession.Project.Id &&
                 Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original);
+            // 正式工程重开后不需要先运行一条新的CPU流程；
+            // 只绑定用户指定的RAW原像素，原工程Revision和Run证据保持不变。
+            bindRoiButton.Click+=async (sender,args)=>{
+                if(bindingSavedRoi || _logicRunning || savedRoiRun!=null || activeRun!=null)
+                {
+                    rawStatus.Text="已有图像绑定或流程运行，请先完成/取消。";
+                    return;
+                }
+                var session=_viewModel.ProjectSession;
+                var page=_viewModel.ActivePage;
+                if(session==null||page==null)
+                {rawStatus.Text="请先打开保存有二维ROI的正式工程页。";return;}
+                var address=session.GetAddress(page.RootContent);
+                try{CxVisionRoiEngineering.Open(session,address);}
+                catch(Exception ex){rawStatus.Text="当前页没有可恢复的正式ROI："+ex.Message;return;}
+                int stride;
+                if(!Int32.TryParse(bindRoiStride.Text,out stride)||stride<0)
+                {rawStatus.Text="RAW行步长必须是非负整数。";return;}
+                var dialog=new Microsoft.Win32.OpenFileDialog {
+                    Title="重新绑定工程ROI原图（必须与保存的像素SHA-256一致）",
+                    Filter="RAW images (*.raw)|*.raw|全部文件 (*.*)|*.*",
+                    CheckFileExists=true
+                };
+                if(dialog.ShowDialog(this)!=true)return;
+                Guid projectId=session.Project.Id;
+                int revision=session.Revision;
+                long epoch=previewEpoch;
+                bindingSavedRoi=true;bindRoiButton.IsEnabled=false;
+                runSavedRoiButton.IsEnabled=false;
+                try
+                {
+                    rawStatus.Text="正在读取RAW并核验MEM保存的原图指纹…";
+                    FIMImageBuffer restored=await Task.Run(()=>
+                        LoadStudioSavedRoiRaw(session,address,dialog.FileName,
+                            stride,CancellationToken.None));
+                    if(!Object.ReferenceEquals(_viewModel.ProjectSession,session)||
+                       !Object.ReferenceEquals(_viewModel.ActivePage,page)||
+                       session.Project.Id!=projectId || session.Revision!=revision ||
+                       epoch!=previewEpoch)
+                    {
+                        rawStatus.Text="工程、页面或显示会话已变化，拒绝发布旧原图。";
+                        return;
+                    }
+                    invalidatePreview();
+                    resultPreview.ShowOriginal(restored);
+                    displayedOriginal=restored;
+                    displayedProject=projectId;
+                    resultPreview.Visibility=Visibility.Visible;
+                    resultExpander.Visibility=Visibility.Visible;
+                    resultExpander.IsExpanded=true;
+                    runSavedRoiButton.IsEnabled=true;
+                    resultDetail.Text="已重绑并验证正式ROI原图（尚未生成新Run）。"
+                        +"请点击“运行工程ROI”；参数和几何取自MEM已保存配方。";
+                    rawStatus.Text="原图校验通过；未修改工程Revision或建立新检测页。";
+                }
+                catch(Exception ex)
+                {
+                    rawStatus.Text="ROI原图重绑失败（旧图与结果保持原状）："+ex.Message;
+                }
+                finally
+                {
+                    bindingSavedRoi=false;bindRoiButton.IsEnabled=true;
+                    runSavedRoiButton.IsEnabled=hasCurrentSource();
+                }
+            };
             // 只有用户明确确认才从MVI临时ROI提升为MEM正式定义。
             // 不在Viewer OverlayStore创建新的工程历史；MEM自身负责Undo/Redo。
             saveRoiButton.Click+=(sender,args)=>{
-                if(!hasCurrentSource()||!effectiveLoaded||selectedProvider==null ||
+                if(!hasCurrentSource()||displayedRun==null ||
+                   !effectiveLoaded||selectedProvider==null ||
                    loadedProjectId!=_viewModel.ProjectSession.Project.Id ||
                    loadedScopeKey!=CurrentStudioVisionScopeKey())
                 {
@@ -699,6 +808,7 @@ namespace CxVisual.Studio
                 catch(Exception ex){resultDetail.Text="正式ROI提交失败："+ex.Message;}
             };
             runSavedRoiButton.Click+=async (sender,args)=>{
+                if(bindingSavedRoi||savedRoiRun!=null||activeRun!=null)return;
                 if(!hasCurrentSource()) {resultDetail.Text="原图来源失效，无法恢复ROI。";return;}
                 var project=_viewModel.ProjectSession;
                 var page=_viewModel.ActivePage;
@@ -713,12 +823,15 @@ namespace CxVisual.Studio
                 catch(Exception ex){resultDetail.Text="无法读取工程ROI："+ex.Message;return;}
                 runSavedRoiButton.IsEnabled=false;
                 var work=new CancellationTokenSource();
+                savedRoiRun=work;cancelRun.IsEnabled=true;
                 try
                 {
                     resultDetail.Text="正在验证ROI原图SHA-256并按工程定义重新运行MRK…";
                     var completed=await CxVisionRoiEngineering.RunSavedAsync(
                         project,address,original,work.Token);
                     if(project.Project.Id!=projectId ||
+                       !Object.ReferenceEquals(_viewModel.ProjectSession,project) ||
+                       !Object.ReferenceEquals(_viewModel.ActivePage,page) ||
                        project.Revision!=expectedRevision ||
                        !Object.ReferenceEquals(displayedOriginal,original) ||
                        sourceVersion!=resultPreview.Session.SourceVersion)
@@ -730,6 +843,15 @@ namespace CxVisual.Studio
                         FlowId=completed.RunId,Evidence=completed,SourceImage=original
                     };
                     PopulateStudioVisionResults(report,resultPreview,resultList);
+                    resultExpander.Visibility=Visibility.Visible;
+                    resultExpander.IsExpanded=true;
+                    resultList.Visibility=Visibility.Visible;
+                    resultPreview.Visibility=Visibility.Visible;
+                    sourceButton.IsEnabled=true;
+                    runExportButton.IsEnabled=true;
+                    contourButton.IsEnabled=completed.Items.Any(x=>
+                        x.Kind==CxVisionResultKind.Mask &&
+                        x.OutputPort=="ThresholdMask");
                     // 工程几何只投影到当前MVI图窗，绝不从临时Overlay反写MEM。
                     resultPreview.AddOverlay(recipe.Roi);
                     displayedRun=completed;
@@ -738,9 +860,13 @@ namespace CxVisual.Studio
                     resultDetail.Text="工程ROI复算完成：Run="+completed.RunId.ToString("N")+
                         "，ROI="+recipe.RoiId+"；结果已连接原MPW图窗。";
                 }
+                catch(OperationCanceledException)
+                {resultDetail.Text="工程ROI复算已取消，未发布新Run。";}
                 catch(Exception ex){resultDetail.Text="工程ROI复算失败："+ex.Message;}
                 finally
                 {
+                    if(Object.ReferenceEquals(savedRoiRun,work))savedRoiRun=null;
+                    cancelRun.IsEnabled=activeRun!=null;
                     work.Dispose();
                     runSavedRoiButton.IsEnabled=hasCurrentSource();
                 }
@@ -836,7 +962,8 @@ namespace CxVisual.Studio
                 }
             };
             Func<bool,Task> runSelectedRaw=async separated=>{
-                if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
+                if(_logicRunning||activeRun!=null||bindingSavedRoi||savedRoiRun!=null)
+                {rawStatus.Text="已有流程或原图绑定正在执行，禁止并行检测";return;}
                 if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
                 if(loadedProjectId!=_viewModel.ProjectSession.Project.Id||
                     loadedScopeKey!=CurrentStudioVisionScopeKey())
