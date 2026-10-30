@@ -127,6 +127,8 @@ namespace CxVisual.Professional.CT3D
         public CT3DSphereFitResult Sphere {get;private set;}
         public CT3DCylinderFitResult Cylinder {get;private set;}
         public ReadOnlyCollection<int> SelectedVertexIndices {get;private set;}
+        /// <summary>原体素物理切片配方；旧案例没有配方时保持null。</summary>
+        public CT3DSliceRoiRecipe SliceRoiRecipe {get;private set;}
         /// <summary>同来源与几何ROI复算不变的稳定身份指纹；不同源或ROI变化即失效。</summary>
         public string RoiSignature
         {
@@ -198,6 +200,7 @@ namespace CxVisual.Professional.CT3D
                             w.Write(Mesh.Threshold);w.Write(MaximumTriangles);
                             w.Write(MaxPlanarityRatio);w.Write(MaxInPlaneCondition);
                             w.Write(RoiSignature);
+                            if(SliceRoiRecipe!=null)w.Write(SliceRoiRecipe.Signature);
                         }
                         else
                         {
@@ -391,39 +394,39 @@ namespace CxVisual.Professional.CT3D
         {
             if(Kind!=CT3DAnalysisKind.MeshPlane)
                 throw new InvalidOperationException("只有MeshPlane案例可从切片ROI重新拟合。");
-            if(rectangle==null)throw new ArgumentNullException("rectangle");
-            if(!Source.MatchesSpatialFrame(rectangle.SpatialFrame))
-                throw new InvalidOperationException("切片ROI不是当前资产的物理Frame，拒绝跨源编辑。");
-            cancellation.ThrowIfCancellationRequested();
-            using(var volume=Source.LoadVolume(root,cancellation))
-            {
-                var index=volume.SpatialFrame.PhysicalToVoxel(
-                    rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z);
-                int x=checked((int)Math.Round(index.X));
-                int y=checked((int)Math.Round(index.Y));
-                int z=checked((int)Math.Round(index.Z));
-                if(Math.Abs(index.X-x)>1e-6||Math.Abs(index.Y-y)>1e-6||
-                    Math.Abs(index.Z-z)>1e-6)
-                    throw new InvalidOperationException("ROI四角没有对应有效的原始体素中心。");
-                var current=FVOSliceImageBuilder.RectangleToPhysical(volume,x,y,z,
-                    rectangle.Plane,rectangle.Left,rectangle.Top,rectangle.Right,rectangle.Bottom);
-                if(!SamePhysicalCorner(current.TopLeft,rectangle.TopLeft)||
-                    !SamePhysicalCorner(current.TopRight,rectangle.TopRight)||
-                    !SamePhysicalCorner(current.BottomRight,rectangle.BottomRight)||
-                    !SamePhysicalCorner(current.BottomLeft,rectangle.BottomLeft))
-                    throw new InvalidOperationException(
-                        "切片ROI的物理四角与保存的原Voxel像素范围不一致，拒绝编辑。");
-                return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
-                    mesh=>CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,current,
-                        minimumOffsetMm,maximumOffsetMm,cancellation),
-                    cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
-            }
+            var recipe=CT3DSliceRoiRecipe.Capture(Source,rectangle,minimumOffsetMm,maximumOffsetMm);
+            return RecomputeWithSliceRoiRecipe(root,recipe,cancellation);
         }
 
-        private static bool SamePhysicalCorner(FVOPhysicalPoint3D a,FVOPhysicalPoint3D b)
+        /// <summary>使用工程中保存的原体素四角重算；不反推旧预览像素。</summary>
+        public CT3DAnalysisCase RecomputeWithSavedSliceRoi(string root,CancellationToken cancellation)
         {
-            return Math.Abs(a.X-b.X)<=1e-8&&Math.Abs(a.Y-b.Y)<=1e-8&&
-                Math.Abs(a.Z-b.Z)<=1e-8;
+            if(SliceRoiRecipe==null)
+                throw new InvalidOperationException("历史案例没有已保存的切片ROI编辑配方。");
+            return RecomputeWithSliceRoiRecipe(root,SliceRoiRecipe,cancellation);
+        }
+
+        public CT3DAnalysisCase RecomputeWithSliceRoiRecipe(string root,
+            CT3DSliceRoiRecipe recipe,CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("只有MeshPlane结果可编辑切片ROI。");
+            if(recipe==null)throw new ArgumentNullException("recipe");
+            recipe.RequireSource(Source);
+            cancellation.ThrowIfCancellationRequested();
+            var next=Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
+                mesh=>recipe.SelectVertices(mesh,Source,cancellation),
+                cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
+            return next.WithSliceRoiRecipe(recipe);
+        }
+
+        internal CT3DAnalysisCase WithSliceRoiRecipe(CT3DSliceRoiRecipe recipe)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)throw new InvalidOperationException("只有MeshPlane支持切片配方。");
+            if(recipe==null)throw new ArgumentNullException("recipe");
+            recipe.RequireSource(Source);
+            SliceRoiRecipe=recipe;
+            return this;
         }
 
         /// <summary>替换物理Mesh ROI并生成新Case；来源资产与算法质量约束保持一致。
@@ -470,6 +473,7 @@ namespace CxVisual.Professional.CT3D
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
                 return AnalyzeSphere(root,Source,Surface.Threshold,Surface.SampleStep,
                     Surface.MaximumPoints,cancellation,Sphere.MaximumConditionNumber);
+            if(SliceRoiRecipe!=null)return RecomputeWithSavedSliceRoi(root,cancellation);
             return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
                 mesh=>SelectedVertexIndices,cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
         }

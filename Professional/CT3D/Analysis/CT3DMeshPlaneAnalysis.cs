@@ -100,23 +100,35 @@ namespace CxVisual.Professional.CT3D
             if(source==null)throw new ArgumentNullException("source");
             if(rectangle==null)throw new ArgumentNullException("rectangle");
             if(!Object.ReferenceEquals(source.SpatialFrame,rectangle.SpatialFrame))
-                throw new InvalidOperationException("ROI与Mesh不属于同一来源Frame，请重新选区。");
-            if(!source.HasCalibratedClosedGeometry)
-                throw new InvalidOperationException("切片ROI拟合要求已标定、非截断的单连通闭合Mesh。");
-            if(double.IsNaN(minimumOffsetMm)||double.IsInfinity(minimumOffsetMm)||
-                double.IsNaN(maximumOffsetMm)||double.IsInfinity(maximumOffsetMm)||minimumOffsetMm>maximumOffsetMm)
-                throw new ArgumentOutOfRangeException("minimumOffsetMm","毫米范围必须有限且下限不大于上限。");
+                throw new InvalidOperationException("ROI与Mesh不属于同一来源Frame。");
             if(rectangle.Left==rectangle.Right||rectangle.Top==rectangle.Bottom)
                 throw new ArgumentException("请选择具有面积的矩形ROI。","rectangle");
+            return SelectPhysicalSlicePrismVertices(source,rectangle.Plane,rectangle.TopLeft,
+                rectangle.BottomRight,minimumOffsetMm,maximumOffsetMm,cancellation);
+        }
+
+        /// <summary>经资产验证的原Voxel角点所对应物理区间；无需重新创建旧预览图片。</summary>
+        internal static IReadOnlyList<int> SelectPhysicalSlicePrismVertices(
+            CT3DVoxelBoundaryMeshResult source,FVOSlicePlane plane,
+            FVOPhysicalPoint3D topLeft,FVOPhysicalPoint3D bottomRight,
+            double minimumOffsetMm,double maximumOffsetMm,CancellationToken cancellation)
+        {
+            if(source==null)throw new ArgumentNullException("source");
+            if(!source.HasCalibratedClosedGeometry)
+                throw new InvalidOperationException("ROI拟合要求已标定、非截断的单连通闭合Mesh。");
+            if(double.IsNaN(minimumOffsetMm)||double.IsInfinity(minimumOffsetMm)||
+                double.IsNaN(maximumOffsetMm)||double.IsInfinity(maximumOffsetMm)||
+                minimumOffsetMm>maximumOffsetMm)
+                throw new ArgumentOutOfRangeException("minimumOffsetMm","毫米范围必须有限且有序。");
             cancellation.ThrowIfCancellationRequested();
             var frame=source.SpatialFrame;
-            var a=frame.PhysicalToVoxel(rectangle.TopLeft.X,rectangle.TopLeft.Y,rectangle.TopLeft.Z);
-            var b=frame.PhysicalToVoxel(rectangle.BottomRight.X,rectangle.BottomRight.Y,rectangle.BottomRight.Z);
+            var a=frame.PhysicalToVoxel(topLeft.X,topLeft.Y,topLeft.Z);
+            var b=frame.PhysicalToVoxel(bottomRight.X,bottomRight.Y,bottomRight.Z);
             double au,av,aw,bu,bv,bw;
-            SliceCoordinates(rectangle.Plane,a,out au,out av,out aw);
-            SliceCoordinates(rectangle.Plane,b,out bu,out bv,out bw);
-            double spacing=rectangle.Plane==FVOSlicePlane.XY?frame.SpacingZ:
-                rectangle.Plane==FVOSlicePlane.XZ?frame.SpacingY:frame.SpacingX;
+            SliceCoordinates(plane,a,out au,out av,out aw);
+            SliceCoordinates(plane,b,out bu,out bv,out bw);
+            double spacing=plane==FVOSlicePlane.XY?frame.SpacingZ:
+                plane==FVOSlicePlane.XZ?frame.SpacingY:frame.SpacingX;
             double minimumNormal=aw+minimumOffsetMm/spacing,maximumNormal=aw+maximumOffsetMm/spacing;
             if(double.IsNaN(minimumNormal)||double.IsInfinity(minimumNormal)||
                 double.IsNaN(maximumNormal)||double.IsInfinity(maximumNormal))
@@ -129,7 +141,7 @@ namespace CxVisual.Professional.CT3D
                 if((i&255)==0)cancellation.ThrowIfCancellationRequested();
                 var p=source.Mesh.Vertices[i];
                 var voxel=frame.PhysicalToVoxel(p.X,p.Y,p.Z);
-                double u,v,w;SliceCoordinates(rectangle.Plane,voxel,out u,out v,out w);
+                double u,v,w;SliceCoordinates(plane,voxel,out u,out v,out w);
                 // 容差在原始体素坐标下比较，不能用固定毫米容差吞掉微小Spacing的整个物体。
                 const double epsilon=1e-7;
                 if(u<left-epsilon||u>right+epsilon||v<top-epsilon||v>bottom+epsilon||

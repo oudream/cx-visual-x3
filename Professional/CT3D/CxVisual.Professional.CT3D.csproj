@@ -29,6 +29,7 @@
     <Compile Include="Analysis\CT3DMeshPlaneAnalysis.cs"/>
     <Compile Include="Persistence\CT3DAssetReference.cs"/>
     <Compile Include="Persistence\CT3DAnalysisCase.cs"/>
+    <Compile Include="Persistence\CT3DSliceRoiRecipe.cs"/>
     <Compile Include="Persistence\CT3DAnalysisPersistence.cs"/>
     <Compile Include="CxCtReconstructionOptions.cs"/></ItemGroup>
   <ItemGroup>

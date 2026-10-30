@@ -179,9 +179,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(continued.Plane.ResultId!=restored.Plane.ResultId&&
                     continued.Source.Signature==restored.Source.Signature&&
                     continued.RoiSignature==restored.RoiSignature&&
-                    continued.ParameterSignature==restored.ParameterSignature&&
-                    continued.Plane.SampleCount==9,
-                    "跨MEM工程Frame对象重开后仍能从原物理切片ROI继续拟合并保留原值参数");
+                    continued.ParameterSignature!=restored.ParameterSignature&&
+                    continued.SliceRoiRecipe!=null&&continued.Plane.SampleCount==9,
+                    "跨MEM工程从原体素角点继续拟合，编辑配方变更应使参数签名更新");
+                Reject<InvalidOperationException>(()=>restored.RecomputeWithSavedSliceRoi(
+                    folder,CancellationToken.None));
                 var wrongFrame=new FVOVolumeSpatialFrame(1,1,1,21,30,40,
                     new double[]{1,0,0,0,1,0,0,0,1},true);
                 using(var wrongVolume=source.LoadVolume(folder,CancellationToken.None))
@@ -247,6 +249,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     revisedLayout.SnapshotLayer("inspection")[0].Id==visualMesh&&
                     Math.Abs(revisedLayout.SnapshotLayer("inspection")[0].Opacity-.4)<1e-12,
                     "ROI重算原子更新Visual来源并保持Scene实例Id、选择、分组及透明度");
+                Check(persistedEdited.SliceRoiRecipe!=null&&
+                    persistedEdited.SliceRoiRecipe.Signature==continued.SliceRoiRecipe.Signature&&
+                    persistedEdited.ParameterSignature==continued.ParameterSignature,
+                    "V4制品通过MEM保存重开后必须恢复原体素四角和毫米配方");
+                var savedReplay=persistedEdited.RecomputeWithSavedSliceRoi(folder,CancellationToken.None);
+                Check(savedReplay.Plane.ResultId!=persistedEdited.Plane.ResultId&&
+                    savedReplay.RoiSignature==persistedEdited.RoiSignature&&
+                    savedReplay.ParameterSignature==persistedEdited.ParameterSignature&&
+                    savedReplay.SliceRoiRecipe.Signature==persistedEdited.SliceRoiRecipe.Signature&&
+                    Math.Abs(savedReplay.Plane.PointMm.Z-persistedEdited.Plane.PointMm.Z)<1e-10,
+                    "没有旧显示像素仍能原值重选ROI/毫米平面，ResultId更新但配方稳定");
                 Check(engineering.Revision==editRevision+1&&
                     persistedEdited.Plane.ResultId!=restored.Plane.ResultId&&
                     persistedEdited.RoiSignature==restored.RoiSignature&&

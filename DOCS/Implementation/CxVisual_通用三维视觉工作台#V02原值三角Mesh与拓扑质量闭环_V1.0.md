@@ -300,3 +300,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 **通知收敛固定CI**：`8b5db7286c270342fb9625de7eac3df6aea023df`的[CT3D B 40926224521](https://github.com/oudream/cx-visual-x3/actions/runs/40926224521)及[Imaging 40926224525](https://github.com/oudream/cx-visual-x3/actions/runs/40926224525)已SUCCESS，job `123632330935`/`123632330990`确认完成；Studio `40926224628`、Graphics `40926224572`、Engineering `40926224627`、Command `40926224632`和Config公共底座 `40926224567`亦成功。查询时TestCenter `40926224619`与Config L1 `40926224529`仍运行，不将7成功写成全部9项通过。
 
 下一包保存交互配方必须保留原始Voxel/物理边界和Frame/来源版本，不能只序列化当前显示像素矩形。当前`CT3DAssetReference.LoadVolume`以64轴预览加载，`FVOSliceImageBuilder.GetImageWidthHeight`又考虑各向异性物理纵横比；工程重开后的显示像素网格可能不同。需以不同预览尺寸和标定方向验证同源有效顶点ROI/量值复算一致，显示投影不能回写并降低专业几何精度；旧Schema无配方时不得伪造可编辑原矩形。
+
+
+### 10.20 B包：原始体素四角ROI编辑配方持久化（2026-10-30）
+
+- **源代码**：CT3DSliceRoiRecipe只记录来源/Frame、原Voxel四角和法向毫米区间，Case与复算共用CT3DMeshPlaneAnalysis原值选点核心；不会将旧预览像素坐标作为工程几何。ParameterSignature包含配方签名，顶点集合未变化但配方不同仍使旧参数失效。
+- **版本**：MEM Aspect Schema仍为1；有配方的MeshPlane结果制品写V4，既有V1～V3照旧读，旧Case不伪造配方，RecomputeWithSavedSliceRoi明确拒绝缺配方。
+- **验收**：ArchitectureSmoke增加MEM持久化原Voxel四角、配方稳定原值重算与旧Case拒绝；提交后以固定SHA Windows CT3D B G1～G3及交叉CI审定，不以源码存在代替运行、GPU或工业精度证据。
