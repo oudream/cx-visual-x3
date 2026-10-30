@@ -5,6 +5,7 @@ package resourceview
 import (
 	"math"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -61,8 +62,14 @@ func Collect(workDir string) Report {
 		out.Memory.Error = sampleError(memErr, "invalid physical memory sample")
 	}
 
-	path, pathErr := filepath.Abs(workDir)
+	// Empty workDir must never silently mean the Monitor's process CWD.
+	// That would report a different disk than the actual Daemon journal.
 	out.Disk.SampledAt = now()
+	if strings.TrimSpace(workDir) == "" {
+		out.Disk.Error = "work directory is not configured"
+		return out
+	}
+	path, pathErr := filepath.Abs(workDir)
 	if pathErr == nil && path != "" {
 		diskUsage, diskErr := disk.Usage(path)
 		if diskErr == nil && diskUsage != nil {
