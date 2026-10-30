@@ -120,6 +120,11 @@ func main() {
 	for id, reason := range orphans {
 		_logger.Printf(_title.Error+"ORPHAN QUARANTINE: ProgramId=%d; auto-start disabled; reason=%s\n", id, reason)
 	}
+	// Read-only diagnostic snapshot for the local Monitor UI. A failed
+	// projection write does not lift the active in-memory quarantine.
+	if err := writeOrphanObservation(*_workDir, orphans); err != nil {
+		_logger.Printf(_title.Error+"ORPHAN diagnostic snapshot unavailable: %v\n", err)
+	}
 
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
