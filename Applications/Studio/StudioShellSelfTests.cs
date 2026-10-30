@@ -3238,6 +3238,11 @@ namespace CxVisual.Studio
                         Assert(physical.Unit=="mm"&&
                             Math.Abs(physical.TopLeft.Z-46)<1e-9,
                             "Studio四视图未使用同一标定Frame的二维物理ROI");
+                        Guid hiddenMeasurement=workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Measurement).Id;
+                        workspace.Scene3D.SetVisibility(hiddenMeasurement,false);
+                        Assert(workspace.Scene3D.SelectedId==null,
+                            "隐藏专业测量后必须清除旧场景选择，禁止继续选中不可见对象");
                         using(var cancelled=new CancellationTokenSource())
                         {
                             cancelled.Cancel();
@@ -3262,6 +3267,12 @@ namespace CxVisual.Studio
                         Assert(!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==baseline.Plane.ResultId,
                             "放弃未提交的Studio分析没有恢复原Feature和Scene");
+                        var hiddenAfterDiscard=workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Measurement);
+                        Assert(!hiddenAfterDiscard.Visible&&workspace.Scene3D.SelectedId==null,
+                            "Studio后台ROI复算/放弃不能重新选择被隐藏的Measurement");
+                        workspace.Scene3D.SetVisibility(hiddenAfterDiscard.Id,true);
+                        workspace.Scene3D.Select(hiddenAfterDiscard.Id);
                         CT3DAnalysisCase edited=workspace.RecomputeSelectedSliceRoi(.49,.51);
                         Assert(workspace.HasPendingAnalysis&&edited.Plane.SampleCount==9&&
                             edited.Plane.ResultId!=baseline.Plane.ResultId,
