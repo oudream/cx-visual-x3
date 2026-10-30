@@ -175,3 +175,9 @@ channel.Dispose();
 - 真实慢流回归`723c10c4`/`d7ec8b6d`：OS HttpListener返回200和首块后保持Body未结束，运行中850ms总截止必须超时、未交付半包、在途额度归零；先核实服务端首块已经Flush，避免测试退化为“仅连接超时”。`6ae8fd4b`确保Timer上的Dispose异常不逃逸导致Host崩溃。
 - F17工作流`43f048ad`配置同master分支并发合并取消旧运行，仅最新源码SHA能充当完整Windows回归证据；不能以取消的run为成功，也不能以本机源码提交替代.NET48构建。
 - 后续还需HTTP请求/响应端到端业务追踪、跨PC慢端、TLS认证环境与24小时内存峰值/CPU/GC实测；本阶段不新增TLS/证书/身份认证。
+
+### F17大响应默认配置与HTTP 4MiB真实回环（2026-10-30）
+
+- `88e4f1f99`：FTRHttpClientChannelConfiguration在创建新HTTP Client配置时，将默认ReceiveByteBudget明确设为12MiB以覆盖其默认MaxResponseBytes=4MiB时的scratch、MemoryStream扩容期间新旧数组、Received独立副本的峰值。若FCM已有显式持久的ReceiveByteBudget，则按真实旧值执行，不自动扩大已设置的工业内存上限；超预算明确拒绝。用户可按更大Detector图像尺寸逐项增大MaxResponseBytes和ReceiveByteBudget并作真实峰值验证，不宣称自动零复制。
+- `b89a1ba17`：原FTRMultiClientBudgetTests.Run增加真实HTTP 4MiB响应，有效长度及逐4093位置字节校验、FCM配置往返、预算Peak/current、收发诊断、连接清理；同时保留已提交的HTTP小报文/预算拒绝/嵌套同步Send/慢Body超时回归。`6195861e`使两套Windows F17入口都必须包含`F17.HTTP_LARGE_PASS bytes=4194304`日志，不满足即失败。
+- 本项是HTTP Client聚合/legacy Received的工业大数据软件基线增量，不代替TCP及NamedPipe双向各2GiB的持续流门禁，也不等同于真正Detector/CT传输到专业DataHandle的24h/零复制性能验收。新增测试仍以最新固定SHA实际Windows结果为准。
