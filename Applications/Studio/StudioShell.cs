@@ -95,7 +95,7 @@ namespace CxVisual.Studio
             new List<StudioRibbonVisualGroup>();
         private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
-            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables", "doc.runtime-data", "doc.modules", "doc.ct3d", "doc.content-center", "doc.symbol-center" };
+            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables", "doc.runtime-data", "doc.modules", "doc.ct3d", "doc.content-center", "doc.symbol-center", "doc.messages", "doc.commands" };
         private static readonly string[] KnownTools =
             { "tool.resources", "tool.toolbox", "tool.graphics", "tool.properties", "tool.output" };
 
@@ -215,7 +215,7 @@ namespace CxVisual.Studio
             if (id == "doc.visual") return "绘图";
             if (id == "doc.flow") return "节点";
             if (id == "doc.config") return "配置";
-            if (id == "doc.modules" || id == "doc.content-center" || id == "doc.symbol-center") return "资源";
+            if (id == "doc.modules" || id == "doc.content-center" || id == "doc.symbol-center" || id == "doc.messages" || id == "doc.commands") return "资源";
             return "主页";
         }
 
@@ -285,7 +285,7 @@ namespace CxVisual.Studio
                 if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
                 object view;
                 // MHS WPF控件在Unloaded时释放草稿/订阅，重新打开不能复用已释放的View。
-                if (id=="doc.config" || id=="doc.variables" || id=="doc.runtime-data" || id=="doc.modules" || id=="doc.ct3d" || id=="doc.content-center" || id=="doc.symbol-center" || !_studioViews.TryGetValue(id, out view))
+                if (id=="doc.config" || id=="doc.variables" || id=="doc.runtime-data" || id=="doc.modules" || id=="doc.ct3d" || id=="doc.content-center" || id=="doc.symbol-center" || id=="doc.messages" || id=="doc.commands" || !_studioViews.TryGetValue(id, out view))
                 {
                     view = id=="doc.ct3d" ? (object)new StudioCT3DDocument() :
                         id=="doc.variables" ? CreateStudioVariableDocument() :
@@ -293,6 +293,8 @@ namespace CxVisual.Studio
                         id=="doc.modules" ? CreateStudioModuleCenterDocument() :
                         id=="doc.content-center" ? CreateStudioSharedResourceCenterDocument(false) :
                         id=="doc.symbol-center" ? CreateStudioSharedResourceCenterDocument(true) :
+                        id=="doc.messages" ? CreateStudioMessageCenterDocument() :
+                        id=="doc.commands" ? CreateStudioCommandCenterDocument() :
                         CreateConfigurationDocument();
                     _studioViews[id] = view;
                 }
@@ -303,6 +305,11 @@ namespace CxVisual.Studio
                 if(id=="doc.runtime-data")
                     doc.Closed+=(sender,args)=>ReleaseStudioRuntimeDataDocument();
                 if(id=="doc.modules") doc.Closed+=(sender,args)=>_studioViews.Remove("doc.modules");
+                if(id=="doc.messages" || id=="doc.commands")
+                {
+                    string interactionId=id;
+                    doc.Closed+=(sender,args)=>ReleaseStudioInteractionDocument(interactionId);
+                }
                 if(id=="doc.content-center" || id=="doc.symbol-center")
                 {
                     string centerId=id;
@@ -366,6 +373,7 @@ namespace CxVisual.Studio
             }
             if(id=="doc.variables") ReleaseStudioVariableDocument();
             if(id=="doc.runtime-data") ReleaseStudioRuntimeDataDocument();
+            if(id=="doc.messages"||id=="doc.commands") ReleaseStudioInteractionDocument(id);
             if(_activeStudioDocumentId==id)
             {
                 LayoutDocument next=StudioDock.Layout.ActiveContent as LayoutDocument;
@@ -393,6 +401,8 @@ namespace CxVisual.Studio
                 case "doc.modules": return "功能模块中心";
                 case "doc.content-center": return "Content 管理中心";
                 case "doc.symbol-center": return "Symbol 管理中心";
+                case "doc.messages": return "消息中心 · MNM";
+                case "doc.commands": return "命令中心 · MRK";
                 case "doc.ct3d": return "CT3D · 通用三维视觉工作台";
                 default: return id;
             }
@@ -1172,6 +1182,8 @@ namespace CxVisual.Studio
                 AddRibbonButton("功能模块中心",null,(s,e)=>OpenStudioDocument("doc.modules"));
                 AddRibbonButton("Content 管理中心",null,(s,e)=>OpenStudioSharedResourceCenter(false));
                 AddRibbonButton("Symbol 管理中心",null,(s,e)=>OpenStudioSharedResourceCenter(true));
+                AddRibbonButton("消息中心",null,(s,e)=>OpenStudioDocument("doc.messages"));
+                AddRibbonButton("命令中心",null,(s,e)=>OpenStudioDocument("doc.commands"));
                 AddRibbonButton("三维视觉工作台",null,(s,e)=>OpenStudioDocument("doc.ct3d"));
                 AddRibbonButton("运行数据生命周期",null,(s,e)=>OpenStudioDocument("doc.runtime-data"));
                 AddRibbonButton("资源树", null, (s,e)=>ShowStudioTool("tool.resources"));
@@ -1493,7 +1505,9 @@ namespace CxVisual.Studio
                     else
                         view = args.Model.ContentId == "doc.config" ? CreateConfigurationDocument() :
                             args.Model.ContentId == "doc.content-center" ? CreateStudioSharedResourceCenterDocument(false) :
-                            args.Model.ContentId == "doc.symbol-center" ? CreateStudioSharedResourceCenterDocument(true) : null;
+                            args.Model.ContentId == "doc.symbol-center" ? CreateStudioSharedResourceCenterDocument(true) :
+                            args.Model.ContentId == "doc.messages" ? CreateStudioMessageCenterDocument() :
+                            args.Model.ContentId == "doc.commands" ? CreateStudioCommandCenterDocument() : null;
                 }
                 if (view == null) { args.Cancel = true; return; }
                 _studioViews[args.Model.ContentId] = view;
@@ -1506,6 +1520,11 @@ namespace CxVisual.Studio
                 {
                     string centerKey=pageModel.ContentId;
                     pageModel.Closed+=(s,e)=>ReleaseStudioSharedResourceCenter(centerKey);
+                }
+                if(pageModel!=null&&(pageModel.ContentId=="doc.messages" || pageModel.ContentId=="doc.commands"))
+                {
+                    string id=pageModel.ContentId;
+                    pageModel.Closed+=(s,e)=>ReleaseStudioInteractionDocument(id);
                 }
                 if(pageModel!=null&&IsStudioCustomEditorDocument(pageModel.ContentId))
                 {
