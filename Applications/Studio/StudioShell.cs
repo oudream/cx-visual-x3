@@ -605,6 +605,21 @@ namespace CxVisual.Studio
         }
         private readonly List<StudioConfigurationScopeChoice> _studioExtraScopes =
             new List<StudioConfigurationScopeChoice>();
+        private string _studioConfigurationStorageRoot;
+        /// <summary>Studio直接编辑MHS现有配置根；与Host启动参数mhsRoot保持一致。
+        /// 禁止在已有Config草稿打开时切换，防止草稿跨仓混写。</summary>
+        public void SetStudioConfigurationRoot(string root)
+        {
+            if(string.IsNullOrWhiteSpace(root))
+                throw new ArgumentException("必须提供实际MHS配置目录","root");
+            if(FindStudioContent("doc.config") is LayoutDocument)
+                throw new InvalidOperationException(
+                    "请先保存并关闭原MHS配置文档，不能中途更换配置根");
+            string normalized=Path.GetFullPath(root);
+            if(!Directory.Exists(normalized))
+                throw new DirectoryNotFoundException("MHS配置目录不存在："+normalized);
+            _studioConfigurationStorageRoot=normalized;
+        }
         private string _studioConfigurationScopeKind="project";
         private string _studioConfigurationScopeId;
         private bool _studioScopeSwitching;
@@ -750,7 +765,8 @@ namespace CxVisual.Studio
             StudioConfigurationScopeChoice selected=choices.FirstOrDefault(x=>
                 x.Kind==_studioConfigurationScopeKind&&
                 x.Id==_studioConfigurationScopeId)??choices[0];
-            string root=Path.Combine(GetDemoDataRoot(),"Configs","V24","Projects");
+            string root=_studioConfigurationStorageRoot??
+                Path.Combine(GetDemoDataRoot(),"Configs","V24","Projects");
             MHSConfigService configs=new MHSConfigService(root);
             MHSConfigAuthorizedSession authorized=_studioConfigPrincipal==null?null:
                 configs.Authorize(_studioConfigPrincipal,_studioConfigAccessPolicy);
@@ -772,6 +788,44 @@ namespace CxVisual.Studio
             foreach(StudioConfigurationScopeChoice item in choices)scopeBox.Items.Add(item);
             scopeBox.SelectedItem=selected;
             header.Children.Add(scopeBox);
+            var configRoot=new TextBox {
+                Name="StudioActualMhsRoot",Text=root,MinWidth=300,MaxWidth=920,
+                Margin=new Thickness(4,4,4,3),
+                ToolTip="与独立Runtime.Host的mhsRoot参数保持完全相同；不自动创建测试目录" };
+            header.Children.Add(new TextBlock {
+                Text="MHS配置目录（必须与独立Runtime.Host启动参数mhsRoot一致）",
+                Margin=new Thickness(4,9,4,1),FontWeight=FontWeights.SemiBold });
+            header.Children.Add(configRoot);
+            var applyRoot=new Button {
+                Content="使用此目录重新打开配置（先安全关闭当前草稿）",
+                HorizontalAlignment=HorizontalAlignment.Left,
+                Margin=new Thickness(4,2,4,6),Padding=new Thickness(10,5,10,5)};
+            applyRoot.Click+=(sender,args)=>
+            {
+                string requested;
+                try
+                {
+                    requested=Path.GetFullPath(configRoot.Text.Trim());
+                    if(!Directory.Exists(requested))
+                        throw new DirectoryNotFoundException("配置目录不存在："+requested);
+                }
+                catch(Exception error)
+                {
+                    MessageBox.Show(this,error.Message,"MHS配置目录不可用",
+                        MessageBoxButton.OK,MessageBoxImage.Warning);
+                    return;
+                }
+                if(!TryCloseStudioDocument("doc.config"))
+                {
+                    MessageBox.Show(this,
+                        "原配置仍有未保存草稿。请先提交或主动放弃修改。",
+                        "MHS配置仍未安全关闭",MessageBoxButton.OK,MessageBoxImage.Warning);
+                    return;
+                }
+                SetStudioConfigurationRoot(requested);
+                OpenStudioDocument("doc.config");
+            };
+            header.Children.Add(applyRoot);
             Button closeConfig=new Button {Content="关闭配置页",Margin=new Thickness(4,3,4,3),
                 HorizontalAlignment=HorizontalAlignment.Left,Padding=new Thickness(10,5,10,5)};
             closeConfig.Click+=(sender,args)=>{
