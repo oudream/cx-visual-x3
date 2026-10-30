@@ -3537,6 +3537,14 @@ namespace CxVisual.Studio
                         catch(InvalidDataException){badStride=true;}
                         Assert(badStride,"未显式提供原Stride时不应猜测/截断RAW");
 
+                        // Padding不属于有效像素；改变它不应伪造图像内容差异。
+                        byte[] changedPadding=(byte[])bytes.Clone();
+                        changedPadding[39]=89;
+                        File.WriteAllBytes(wrongPath,changedPadding);
+                        var samePixels=MainWindow.LoadStudioSavedRoiRaw(reopened,
+                            address,wrongPath,10,CancellationToken.None);
+                        Assert(samePixels.GetGrayValue(3,3)==210,
+                            "仅修改RAW Padding时不应误报原像素Hash不同");
                         byte[] changed=(byte[])bytes.Clone();
                         changed[30]=209; // 更改第四行首像素低字节，必须拒绝错源。
                         File.WriteAllBytes(wrongPath,changed);
