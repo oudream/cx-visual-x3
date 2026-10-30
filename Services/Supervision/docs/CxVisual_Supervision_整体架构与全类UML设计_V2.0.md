@@ -610,3 +610,16 @@ API 返回错误必须有稳定的 Code、Operation/Trace、来源/时间/授权
 3. 运营告警与 Automation 专业工艺报警的 Owner 细分：Supervision 负责“监督域运维报警”的独有生命周期，专业 AlarmSource/History 由原 Owner 持有，仅聚合投影。
 4. 资源历史与审计存储选型及保留周期：不能未经评估迁动旧 Program SQLite，也不能让 H5 前端缓存成为唯一真源。
 5. 实机/现场安全与工业网络隔离：Supervision 是运维软件，不宣称具备 PLC/DCS/SIS/E-Stop 的安全功能。
+
+
+## 14. 2026-10-30 开发闭环与全类设计实际收敛
+
+本节是后续真实开发记录，原文开头“本轮只修改架构文档”属于 V2.0 初次定稿范围；**不表示本轮始终没有源码变更**。当前 S01/S02/S08 已有 P0 增量，不提前创建本文件列出的候选类簇：
+
+1. **S08 事件归一化**：原 `cmd/monitor/app_event.go` 复用既有 `program.Event`/Monitor 日志 Owner，抽取 `formatProgramDaemonEvent` 纯函数，修正正常退出与短时异常退出的错误说明；`app_event_test.go` 增加 Go 正反测试及历史 NDJSON 序列化读取链。**无需新建 AlertEvaluator 或事件数据库**。
+2. **SR-03 澄清**：现有 `dealProgramDaemonEvent` 会先写入中文“启动失败”标记，Daemon 的英文原始系统错误不会直接进入 `alerts.Classify`。旧风险“标准路径因英文漏报”未获证实；代码变更解决的是真实退出描述反向问题。对历史非标准记录仍维持明确分类，不假推断活动告警。
+3. **S01/S02 心跳年龄**：`web/src/utils/format.ts` 的 `formatHeartbeatAgeAtSnapshot` 使用 Monitor `generatedAt` 观察时间，不使用浏览器本机时钟；`ProgramsView.vue` 显示时间间隔及“非健康判断”，`format.test.ts` 补上时钟偏差/无心跳/非法时间测试。**不引入固定 TTL 或第二健康状态仓**。
+4. **验收边界**：源码已提交；GitHub Actions `supervision-migration.yml` 包含 Go 三平台 build/test 与 Web typecheck/Vitest/build，但本次连接只取得空的状态列表，尚无本轮固定 SHA 的 CI 作业通过证据。G1/G2/G3 均须独立核对，不因新增测试源码宣称已通过。
+5. **下一个源码重点**：SR-04 原 Gin、pprof 与监控安全边界；然后按已有 Go 守护策略做不触碰真实被管理程序的隔离故障注入。S03～S07 和 S09～S12 在有权威 Provider 时才实现。
+
+**详细逐项完成度与证据继续以[12 大功能域与实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引，本节只记录对象设计如何映射回真实代码。**
