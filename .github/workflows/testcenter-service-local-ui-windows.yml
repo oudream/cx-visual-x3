@@ -9,6 +9,7 @@ on:
       - 'Tests/TestCenter/Verification/TCTServiceRequestUiSmoke.cs'
       - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
       - 'Tests/TestCenter/App.xaml.cs'
+      - 'Mechanism/Core/Modules/Service/**'
       - 'Mechanism/Lifecycle/Modules/**'
       - '.github/workflows/testcenter-service-local-ui-windows.yml'
 jobs:
