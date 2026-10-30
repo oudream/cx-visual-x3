@@ -133,3 +133,14 @@ G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写
 - **实测G1用例**：两个寄存器 `input101`（只读）与 `word100`（可写）经真实TCP分别读回，验证输入顺序/数值/Good；重复/空/未知点及取消必须在发包前拒绝；设备模拟端只丢弃一次 `input101` 的FC03应答，验证该点Stale且未伪刷新采样时间、后续 `word100` 仍为Good，真实恢复后输入再次Good。
 
 **验收等级**：本批代码已提交至master并由 `.github/workflows/automation-plc-g1-windows.yml` 正式Windows专项验收；结果只可依据该具体变更SHA的真实CI日志。现场真实PLC G2、硬件安全/高负荷G3、单报文连续寄存器合并优化、周期调度和Studio/TestCenter交互仍未完成。
+
+## 十二、WP02/PI-013：连续Holding寄存器单FC03合并批读（2026-10-30）
+
+本批遵循现有F/M/P Owner在正式源码中完成以下实装，而非新增协议栈、设备采样仓或调度系统：
+
+- **Mechanism.Connectivity**：`IMPAProtocolContiguousPointReader.ReadContiguousPointsAsync` 是可选规约能力；`MPAModbusTcpProtocol` 限定相同Unit、地址严格连续、1～125个Holding Int16/UInt16点，使用现有 `RequestAsync` MBAP事务、FC03数量与协议响应校验；返回按点顺序解码的局部对象数组，**不越权提交MDS**。MCN Connector仅以现有Channel/Session验证暴露方法。
+- **Professional.Automation**：`PADPlcPointBridge.ScanContiguousAsync` 以1～64个稳定点作为专业输入，复用运行配置快照校验及已有互斥；拿到完整、可信的本地回包后检查Session代次、映射签名和值类型，才通过已绑定 `PADDeviceVariableProvider` 将各点逐一提交唯一MDS。通信/解码/配置失败不发布半批Good，并保留旧值且质量变Stale。
+- **真实Windows G1新增测试**：本机PLC TCP端按FC03请求的数量生成单个相应PDU；检查 `holding:100/101` 两点在一次MBAP事务内读取、原先的顺序两帧扫描保持可用、非法反向点序/重复/空集合不应发包；异常回包数据数量不符拒绝整批、两点MDS值和RefreshUtc不变且质量Stale，只有新的真实FC03可恢复Good。
+- **能力边界**：FC03单请求不等于跨多点MDS原子提交。一个FC03成功后的每点MDS写回仍经现有ProviderHost逐点发生；真实时间一致性、间隔周期调度、回包迟到/设备重连、安全PLC、硬实时性能及G2/G3现场还没有验收。Modbus 125寄存器上限在MPA；当前专业桥接主动限定64点，需调整时须与配置/性能基线共同评审。
+
+新增测试编号 `AUT-PI-013` 软件G1，必须引用本轮准确SHA的Actions日志确认结果，未执行G2/G3前不得填写硬件通过。
