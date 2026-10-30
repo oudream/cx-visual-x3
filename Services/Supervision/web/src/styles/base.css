@@ -164,3 +164,31 @@ h1 { margin: 4px 0 0; color: var(--cx-title); font-weight: 650; font-size: 22px;
   .metric-value { font-size: 25px; }
   .panel { padding: 12px; }
 }
+
+/* Supervision guard diagnostics: same design tokens in light/dark themes. */
+.guard-page { display: grid; gap: 16px; }
+.guard-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.guard-alert-number { color: var(--cx-danger-text) !important; }
+.guard-notice { margin-bottom: 14px; }
+.guard-sources { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.guard-source-time { font-size: 13px; margin-bottom: 10px; color: var(--cx-title); }
+.guard-error { overflow-wrap: anywhere; line-height: 1.6; }
+.guard-foot { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.dashboard-guard-strip { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-bottom: 16px; }
+.dashboard-guard-item {
+  display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap;
+  padding: 15px 20px; border: 1px solid var(--cx-border);
+  background: var(--cx-surface); border-radius: 9px; min-width: 0;
+}
+.dashboard-guard-item strong { color: var(--cx-title); font-size: 20px; }
+.dashboard-guard-item .muted { margin-left: auto; }
+a.dashboard-guard-item:hover { border-color: var(--cx-blue); background: var(--cx-hover); }
+@media (max-width: 1100px) {
+  .guard-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .dashboard-guard-strip { grid-template-columns: 1fr; }
+}
+@media (max-width: 710px) {
+  .guard-summary, .guard-sources { grid-template-columns: 1fr; }
+  .dashboard-guard-item { padding: 12px; }
+  .guard-foot { align-items: flex-start; flex-direction: column; }
+}
