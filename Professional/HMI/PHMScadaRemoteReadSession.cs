@@ -51,6 +51,24 @@ namespace CxVisual.Professional.HMI
         /// <summary>只读恢复后的有效Generation，版本不同则绝不自动切换。</summary>
         public PHMScadaDeviceIdentity Identity{get{lock(_gate)return _identity;}}
         public string LastError{get{lock(_gate)return _error;}}
+        /// <summary>
+        /// A侧FCR真实采集周期诊断；计数只属于本次Generation，断线撤销旧Snapshot。
+        /// 初始/故障无当前采样时不展示旧代次的成功计数。
+        /// </summary>
+        public string CycleDiagnostics()
+        {
+            lock(_gate)
+            {
+                if(_disposed)throw new ObjectDisposedException("PHMScadaRemoteReadSession");
+                if(_latest==null)return "当前无有效采集帧 · Generation="+_identity.Generation+
+                    " · "+(_error??"等待采集");
+                return "Generation="+_latest.Identity.Generation+
+                    " · FC03完成="+_latest.CompletedCycles+
+                    " · 成功="+_latest.SuccessfulCycles+
+                    " · 部分失败="+_latest.PartialCycles+
+                    "（当前会话采集轮次，不代表执行机构动作）";
+            }
+        }
         private void ReDiscoverReadOnly(PHMScadaDeviceIdentity previous)
         {
             // 只有Host已明确拒绝旧Generation/设备恢复空档才发现。

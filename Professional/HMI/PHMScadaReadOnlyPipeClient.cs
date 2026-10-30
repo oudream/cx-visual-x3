@@ -40,6 +40,10 @@ namespace CxVisual.Professional.HMI
         [DataMember] public string ConfigVersion {get;set;}
         [DataMember] public string Generation {get;set;}
         [DataMember] public bool Running {get;set;}
+        // A侧v1后向兼容附加字段：只表示当前SessionGeneration的FC03采集轮次。
+        [DataMember] public long CompletedCycles {get;set;}
+        [DataMember] public long SuccessfulCycles {get;set;}
+        [DataMember] public long PartialCycles {get;set;}
         [DataMember] public PHMScadaPipePoint[] Points {get;set;}
     }
     [DataContract] internal sealed class PHMScadaPipeReply
@@ -166,7 +170,11 @@ namespace CxVisual.Professional.HMI
                 device.ScopeId!=identity.ScopeId||
                 device.ConfigVersion!=identity.ConfigVersion||
                 device.Generation!=identity.Generation||device.Points==null||
-                device.Points.Length>64)
+                device.Points.Length>64||device.CompletedCycles<0||
+                device.SuccessfulCycles<0||device.PartialCycles<0||
+                device.SuccessfulCycles>device.CompletedCycles||
+                device.PartialCycles>device.CompletedCycles||
+                device.SuccessfulCycles>device.CompletedCycles-device.PartialCycles)
                 throw new InvalidDataException("hmi.pipe.snapshot_identity_mismatch");
             var points=new List<PHMScadaPointObservation>();
             var names=new HashSet<string>(StringComparer.Ordinal);
@@ -178,8 +186,15 @@ namespace CxVisual.Professional.HMI
                 points.Add(sample);
             }
             Identity=identity;Points=points.AsReadOnly();
+            CompletedCycles=device.CompletedCycles;
+            SuccessfulCycles=device.SuccessfulCycles;
+            PartialCycles=device.PartialCycles;
         }
         public PHMScadaDeviceIdentity Identity {get;private set;}
+        /// <summary>当前Generation采集周期，绝不跨重连累加或用作机械执行证据。</summary>
+        public long CompletedCycles {get;private set;}
+        public long SuccessfulCycles {get;private set;}
+        public long PartialCycles {get;private set;}
         public IReadOnlyList<PHMScadaPointObservation> Points {get;private set;}
     }
 

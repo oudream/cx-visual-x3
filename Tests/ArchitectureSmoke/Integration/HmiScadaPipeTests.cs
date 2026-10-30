@@ -40,7 +40,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             string snapshot="{\"SchemaVersion\":1,\"Status\":\"Ok\",\"ErrorCode\":null,"+
                 "\"DeploymentVersion\":\"DEP1\",\"Devices\":[{\"DeviceRef\":\""+device+
                 "\",\"ScopeId\":\"plc/test\",\"ConfigVersion\":\"CFG1\","+
-                "\"Generation\":\"GEN1\",\"Running\":true,\"Points\":[{"+
+                "\"Generation\":\"GEN1\",\"Running\":true,"+
+                "\"CompletedCycles\":3,\"SuccessfulCycles\":2,\"PartialCycles\":1,\"Points\":[{"+
                 "\"StablePointId\":\"word100\",\"VariableId\":\"plc/test/word100\","+
                 "\"Type\":\"UInt16\",\"Unit\":\"rpm\",\"Value\":\"91\","+
                 "\"HasValue\":true,\"Quality\":\"Good\",\"RefreshUtc\":\""+utc+
@@ -80,7 +81,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(sample.Points.Count==1&&sample.Points[0].StablePointId=="word100"&&
                 sample.Points[0].Value is ushort &&
                 (ushort)sample.Points[0].Value==91 &&
-                sample.Points[0].Revision==4&&sample.Points[0].Source=="real-mds",
+                sample.Points[0].Revision==4&&sample.Points[0].Source=="real-mds"&&
+                sample.CompletedCycles==3&&sample.SuccessfulCycles==2&&
+                sample.PartialCycles==1,
                 "Snapshot没有保真MDS UInt16/Revision/Source");
             Check(sample.Points[0].HostQuality==
                 CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good &&
@@ -134,8 +137,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 DateTime.UtcNow.ToString("O",CultureInfo.InvariantCulture)+
                 "\",\"SourceId\":\"plc-recovered\",\"Revision\":1}";
             string sampled1=discovered1.Replace("\"Points\":[]",
+                "\"CompletedCycles\":5,\"SuccessfulCycles\":4,\"PartialCycles\":1,"+
                 "\"Points\":["+secondPoint.Replace("\"92\"","\"91\"")+"]");
             string sampled2=discovered2.Replace("\"Points\":[]",
+                "\"CompletedCycles\":1,\"SuccessfulCycles\":1,\"PartialCycles\":0,"+
                 "\"Points\":["+secondPoint+"]");
             string[] recoveredReplies={discovered1,sampled1,rejected,discovered2,sampled2};
             Task recoveryHost=Task.Run(()=>
@@ -188,15 +193,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }))
             {
                 recovering.Start(250);
-                Check(observed.Wait(TimeSpan.FromSeconds(5)),
-                    "恢复前真实Pipe的旧Generation没有采到数据");
+                Check(observed.Wait(TimeSpan.FromSeconds(5))&&
+                    recovering.CycleDiagnostics().Contains("FC03完成=5"),
+                    "恢复前真实Pipe采集轮次或旧Generation统计不匹配");
                 Check(revokedBeforeDiscovery.Wait(TimeSpan.FromSeconds(5)),
                     "Discover阻塞前旧Good仍未被撤销");
                 Check(cleared.Wait(TimeSpan.FromSeconds(5)),
                     "旧Generation拒绝时没有先撤销旧Good帧");
                 Check(restored.Wait(TimeSpan.FromSeconds(5))&&
-                    recovering.Identity.Generation=="GEN2",
-                    "同Effective新Generation恢复未成功或混用了旧身份");
+                    recovering.Identity.Generation=="GEN2"&&
+                    recovering.CycleDiagnostics().Contains("Generation=GEN2")&&
+                    recovering.CycleDiagnostics().Contains("FC03完成=1"),
+                    "新Generation恢复未成功或错误累计了上一代采集轮次");
             }
             Check(recoveryHost.Wait(TimeSpan.FromSeconds(10)),
                 "真实Pipe单设备换代测试服务端未收敛");

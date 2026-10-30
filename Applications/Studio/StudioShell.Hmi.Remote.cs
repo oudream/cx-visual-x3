@@ -84,7 +84,7 @@ namespace CxVisual.Studio
                 !(engineering.Find(remote.Identity.DeviceRef) is IMEMResource))
                 throw new InvalidOperationException(
                     "Host DeviceRef/当前工程身份不一致，禁止使用旧远程帧");
-            return new MPWLiveSceneControl(engineering,pageId,remote,
+            MPWLiveSceneControl live=new MPWLiveSceneControl(engineering,pageId,remote,
                 ()=>remote.Points().Select(point=>new MPWLivePoint {
                     Name=point.StablePointId,
                     Value=point.Text+(point.Unit.Length>0?" "+point.Unit:""),
@@ -96,6 +96,8 @@ namespace CxVisual.Studio
                 }).ToArray(),
                 refresh=>remote.Subscribe(refresh),
                 null);
+            live.DiagnosticsProvider=remote.CycleDiagnostics;
+            return live;
         }
 
         private void OpenStudioScadaReadOnlyDialog(MEMEngineeringSession origin,Guid pageId)

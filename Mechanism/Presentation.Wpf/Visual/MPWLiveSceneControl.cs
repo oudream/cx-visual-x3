@@ -139,6 +139,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             catch { Dispose(); throw; }
         }
+        /// <summary>可选的专业只读诊断描述，不参与控件操作权限、工程Revision或MDS真值。</summary>
+        public Func<string> DiagnosticsProvider { get; set; }
         public bool CanRequestAction
         { get { return !_closed && _trustedAction != null && !_outcomeRequiresReconciliation; } }
         public MPWLiveActionFeedback LastActionFeedback { get { return _lastActionFeedback; } }
@@ -255,7 +257,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         (_outcomeRequiresReconciliation ?
                             "操作结果待核实，已禁止后续操作" :
                             "操作须经受信宿主逐次授权")) +
-                    (string.IsNullOrEmpty(_actionMessage) ? "" : " · " + _actionMessage);
+                    (string.IsNullOrEmpty(_actionMessage) ? "" : " · " + _actionMessage)+
+                    (DiagnosticsProvider==null ? "" : " · "+DiagnosticsProvider());
             }
             catch (Exception error)
             {
@@ -263,7 +266,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _pointList.ItemsSource = null;
                 _scene.Opacity = 0.57;
                 _status.Text = "运行数据不可用：" + error.Message+
-                    "（现场控制仍禁止）";
+                    "（现场控制仍禁止）" +
+                    (DiagnosticsProvider==null ? "" : " · "+DiagnosticsProvider());
             }
         }
         public void Dispose()
