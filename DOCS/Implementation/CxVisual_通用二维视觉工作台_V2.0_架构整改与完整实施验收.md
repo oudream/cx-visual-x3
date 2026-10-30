@@ -292,6 +292,13 @@
 - **验收待办**：核对最终对应SHA Windows编译、`--module-center-cpu-self-test`双PASS、Studio `--shell-self-test`、Imaging/默认回归；补真实Windows STA完整弹框操作/截图与多次保存重开；实测6144×3072大图性能、设备输入/许可证HIL。Headless/STA自动调用真实MPW控件不等于用户实际弹窗与设备G5/G6。当前RAW重绑仅支持明确指定Little-Endian Gray8/16与Stride，未实现通用设备/网络源绑定。
 - **下一实施切片**：在固定SHA CI确认后，补齐真实Studio鼠标/文件对话框UIA端到端和重新运行后Contour/ROI显示的交互回归；逐项升级IMG-03/04/05的Run结果合同，保留原公共API。
 
+### 7.2 R1-01 固定SHA Windows执行证据补录（2026-10-30）
+
+- **证据SHA**：[`1d90c6838e2d44517f0787c31bb31f306d327bed`](https://github.com/oudream/cx-visual-x3/commit/1d90c6838e2d44517f0787c31bb31f306d327bed)。**Windows CI**：[`CxVisual Module Center CPU RAW End-to-End Windows Acceptance #40995860566`](https://github.com/oudream/cx-visual-x3/actions/runs/40995860566)；Job `raw-cpu-closure`完成状态`success`；其中“Build actual .NET Framework 4.8 solution”及“Execute actual RAW MHS MEM MOC MRK Vision closed loop in Studio WPF STA”均为`success`。
+- **可升格范围**：此SHA具备Release/x64实际编译（G3）及受控Studio WPF STA两条真实自动测试（G4）：历史CPU链与新增正式ROI重绑的Gray16/Stride10、MEM保存重开、错误源拒绝、MRK复算、MPW产物展示及CSV/RAW导出测试。CI在源码里强制**恰好两项PASS且零FAIL**。
+- **仍不关闭**：IMG-03/05/12/18继续`InProgress`；这是固定SHA的自动验证，不等于在真实Studio产品界面人工点击文件对话框或UIA全路径（G5），也不能替代设备HIL及大图/长稳（G6）。同SHA的Studio S1/Imaging专项尚无成功结论时继续列为待验收。
+- **下轮要求**：补可复验UIA或人工完整工程操作记录；在确认跨工程最新HEAD与CI后收敛IMG-04最小Run合同，不因本次单样本G4把26类260项标记完成。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
