@@ -27,6 +27,10 @@ namespace CxVisual.Studio
         private readonly StudioViewModel _viewModel;
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
+        // Active MRK observation is bound to the exact MEM project/revision that launched it.
+        // These are presentation identities, not a second engineering or runtime owner.
+        private Guid _activeFlowProjectId;
+        private int _activeFlowEngineeringRevision = -1;
         // B5: retain only the bounded safe text after Runtime disposes a Flow.
         // Never retain the completed MRK handle or its large professional payload.
         private string _lastRunResultSummary;
@@ -1913,11 +1917,27 @@ namespace CxVisual.Studio
                 (rows.Length==0?"暂无已提交StepResult":
                     string.Join(Environment.NewLine,rows));
         }
+        private bool IsCurrentResultScope(Guid projectId,int engineeringRevision)
+        {
+            return projectId!=Guid.Empty&&engineeringRevision>=0&&
+                projectId==_viewModel.ProjectSession.Project.Id&&
+                engineeringRevision==_viewModel.ProjectSession.Revision;
+        }
         private void CaptureCompletedFlowPreview(MRKFlowHandle flow,
             Guid projectId,int engineeringRevision)
         {
             if(flow==null||projectId==Guid.Empty||engineeringRevision<0)
                 throw new ArgumentException("studio.flow_result.invalid_identity");
+            // A user may edit or replace the MEM project while the MRK Flow awaits IO.
+            // Never publish a now-stale completion into the current Studio results panel.
+            if(!IsCurrentResultScope(projectId,engineeringRevision))
+            {
+                _lastRunResultSummary=null;
+                _lastRunProjectId=Guid.Empty;
+                _lastRunEngineeringRevision=-1;
+                FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
+                return;
+            }
             _lastRunResultSummary=FormatFlowResultSummary(flow);
             _lastRunProjectId=projectId;
             _lastRunEngineeringRevision=engineeringRevision;
@@ -1927,12 +1947,17 @@ namespace CxVisual.Studio
         {
             if(_logicFlow!=null)
             {
+                if(!IsCurrentResultScope(_activeFlowProjectId,
+                    _activeFlowEngineeringRevision))
+                {
+                    FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
+                    return;
+                }
                 FlowResultPreview.Text=FormatFlowResultSummary(_logicFlow);
                 return;
             }
             if(_lastRunResultSummary!=null&&
-                _lastRunProjectId==_viewModel.ProjectSession.Project.Id&&
-                _lastRunEngineeringRevision==_viewModel.ProjectSession.Revision)
+                IsCurrentResultScope(_lastRunProjectId,_lastRunEngineeringRevision))
             {
                 FlowResultPreview.Text=_lastRunResultSummary;
                 return;
@@ -2222,6 +2247,8 @@ namespace CxVisual.Studio
                 var inputs=compiled.InputDefaults.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal);
                 inputs["accepted"]=true;
                 _logicFlow=engine.StartFlowWithControl(compiled.Plan,_logicDebug,inputs);
+                _activeFlowProjectId=runSnapshot.ProjectId;
+                _activeFlowEngineeringRevision=runSnapshot.Revision;
                 long cursor=0;
                 Action update=()=>
                 {
@@ -2276,6 +2303,8 @@ namespace CxVisual.Studio
                     _viewModel.AttachVisualRuntimeSource(previousVisualOwner);
                 }
                 _logicFlow=null;
+                _activeFlowProjectId=Guid.Empty;
+                _activeFlowEngineeringRevision=-1;
                 _logicDebug=null;
                 _logicRunning=false;
             }
