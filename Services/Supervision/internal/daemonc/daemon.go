@@ -47,6 +47,13 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 // which recovery might start a replacement after the worker exits but before
 // the event is read from the channel. No additional wire event is introduced.
 func RunProgramContextWithTerminal(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string, onTerminal func(program.Event)) {
+	RunProgramContextWithStop(ctx, a0, programEvent, fnFindProgram, logger, wd, onTerminal, nil)
+}
+
+// RunProgramContextWithStop preserves the existing guardian loop and event
+// protocol while giving the original Worker responsibility for its child's
+// stop/Wait receipt. The controller is local to one guardian generation.
+func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string, onTerminal func(program.Event), controller *StopController) {
 	var status program.Status
 	a1 := a0
 
@@ -172,6 +179,9 @@ func RunProgramContextWithTerminal(ctx context.Context, a0 program.Program, prog
 			continue
 		}
 
+		// Attach only the child created by THIS Worker. A bare PID from
+		// a file or UDP message cannot replace its owned process handle.
+		controller.attach(cmd)
 		// 执行成功
 		status.Pid = cmd.Process.Pid
 		status.IsRun = true
@@ -180,16 +190,22 @@ func RunProgramContextWithTerminal(ctx context.Context, a0 program.Program, prog
 			// Start has already succeeded: cancellation must not leave an
 			// untracked child running if the main loop cannot receive it.
 			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
+			waitErr := cmd.Wait()
+			controller.finish(cmd, waitErr)
 			return
 		}
 
 		// 父进程的守护协程阻塞: 等待子进程退出
 		err = cmd.Wait()
+		stoppedByRequest := controller.finish(cmd, err)
 		// 子进程运行秒数
 		dat := time.Now().Unix() - t
-		// 异常退出
-		if dat < int64(a1.MinExitTime) {
+		// A controlled stop is neither a crash nor a restart-limit
+		// violation, even when the exit status reflects an OS kill signal.
+		if stoppedByRequest {
+			status.StartFailCount = 0
+			status.ErrorCount = 0
+		} else if dat < int64(a1.MinExitTime) {
 			status.ErrorCount++
 		} else {
 			// 正常退出
