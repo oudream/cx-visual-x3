@@ -103,7 +103,13 @@ func Append(workDir string, entry Entry) error {
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
-	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	flags := os.O_WRONLY | os.O_APPEND
+	if errors.Is(statErr, os.ErrNotExist) {
+		// An initial journal cannot be redirected by a symlink created
+		// after Lstat. Competing Daemon instances also fail closed.
+		flags |= os.O_CREATE | os.O_EXCL
+	}
+	file, err := os.OpenFile(target, flags, 0600)
 	if err != nil {
 		return err
 	}
