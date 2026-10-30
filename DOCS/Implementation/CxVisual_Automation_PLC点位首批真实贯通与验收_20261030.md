@@ -121,3 +121,15 @@ G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写
 新增 `Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs` 的真实 TCP/HMI 无关 G1 场景：无 Host 授权拒绝、Guest 拒绝、外部持有设备资源租约时不应发送写报文、释放后 FC06+FC03 回读确认、同 OperationId 不重发，以及写寄存器 ACK 后读回不一致时 BusinessCode=UNKNOWN 且只发送一次。相关 G1/Config L1 结论需要以**本批固定 Commit SHA** 的 Actions 日志为准。
 
 **未关闭**：MRK 层当前返回 Completed+业务未知，而不是全局 CommandState.Unknown；如需统一改变状态语义，必须由 MRK 唯一 Owner 决议和全系统回归，不可只在专业库更改。设备回读不是运动到位/光源安全停止的证明。Studio/TestCenter 设备调试页、跨进程 Host 认证、跨宿主资源协调与现场 G2/G3 仍待后续开发。
+
+## 十一、WP02 PLC有界多点顺序扫描与逐点质量（2026-10-30）
+
+本轮在正式 `PADPlcPointBridge` 中新增 `ScanAsync(IEnumerable<string>, CancellationToken)`，并以 `PADPlcScanResult` / `PADPlcPointScanResult` 给开发者返回**独立的逐点结果**，不复制 MDS Current、不新建扫描线程或另外的缓存/命令系统。
+
+- **能力**：一次 1～64 个已绑定 PLC 点；先对全部稳定ID、重复、点表版本和MDS定义进行预检。无效集合在发送任何PLC报文前拒绝。
+- **执行**：复用已有 `_writeGate` 与 `ReadAndMapAsync` 的FC03真实读回、单次暂存、连接代次/配置再校验及ProviderHost入MDS。按入参顺序逐点发出正式MPA/MCN事务，不生成第二套调度器。
+- **失败**：单点 `TimeoutException`、`IOException`、`PADPlcOutcomeUnknownException` 记录明确的 `FailureCode`，该点经原有ProviderHost置Stale、不修改最后一个真实值/RefreshUtc；其余点继续采样，`AllSucceeded=false`。配置漂移、未授权、取消或连接代次变化属于整体fail-closed，立即中止，不伪装部分成功。
+- **取消与一致性**：取消之前成功采样的点已在MDS，不能回滚；本API不是跨点原子采样、不是Modbus FC03合并寄存器批量读取，也不保证外部共享TCP设备的实时确定性。多设备并发/跨Host抢占仍由现有MRK全局资源约束和PLC控制器策略负责。
+- **实测G1用例**：两个寄存器 `input101`（只读）与 `word100`（可写）经真实TCP分别读回，验证输入顺序/数值/Good；重复/空/未知点及取消必须在发包前拒绝；设备模拟端只丢弃一次 `input101` 的FC03应答，验证该点Stale且未伪刷新采样时间、后续 `word100` 仍为Good，真实恢复后输入再次Good。
+
+**验收等级**：本批代码已提交至master并由 `.github/workflows/automation-plc-g1-windows.yml` 正式Windows专项验收；结果只可依据该具体变更SHA的真实CI日志。现场真实PLC G2、硬件安全/高负荷G3、单报文连续寄存器合并优化、周期调度和Studio/TestCenter交互仍未完成。
