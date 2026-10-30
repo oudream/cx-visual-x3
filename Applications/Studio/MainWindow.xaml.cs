@@ -1889,20 +1889,38 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="设置执行实例断点失败: "+ex.Message;}
         }
+        private bool HasCurrentFlowDebugScope()
+        {
+            return _logicFlow!=null&&_logicDebug!=null&&
+                IsCurrentResultScope(_activeFlowProjectId,_activeFlowEngineeringRevision);
+        }
         private void OnFlowDebugPause(object sender,RoutedEventArgs args)
         {
-            if(_logicDebug==null){LogicInfo.Text="当前没有活跃MRK调试会话";return;}
+            if(!HasCurrentFlowDebugScope())
+            {
+                LogicInfo.Text="当前工程/Revision无可控制的MRK调试会话";
+                return;
+            }
             _logicDebug.Pause();
             LogicInfo.Text="已请求在下一个MRK节点边界暂停";
         }
         private void OnFlowDebugResume(object sender,RoutedEventArgs args)
         {
-            if(_logicDebug==null){LogicInfo.Text="当前没有活跃MRK调试会话";return;}
+            if(!HasCurrentFlowDebugScope())
+            {
+                LogicInfo.Text="当前工程/Revision无可控制的MRK调试会话";
+                return;
+            }
             _logicDebug.Resume();
             LogicInfo.Text="已恢复MRK执行";
         }
         private void OnFlowDebugStep(object sender,RoutedEventArgs args)
         {
+            if(_logicDebug!=null&&!HasCurrentFlowDebugScope())
+            {
+                LogicInfo.Text="当前工程/Revision无可控制的MRK调试会话";
+                return;
+            }
             LogicInfo.Text=_logicDebug!=null&&_logicDebug.StepOnce()?
                 "已单步释放一个等待的MRK节点":"当前无可单步的等待节点";
         }
