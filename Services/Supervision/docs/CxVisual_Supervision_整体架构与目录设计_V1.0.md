@@ -115,3 +115,13 @@ Services/Supervision/
 为 S08 增加只读 `/api/v1/alerts/history`，底层 `internal/alerts` 直接复用 Monitor NDJSON 日志，不建立第二套状态或数据库。识别规则只匹配原 `EventMaxError`、`EventMaxCount` 和明确写有“启动失败”的 `EventStart`，普通退出、登录和心跳不视为告警。
 
 仅允许本机查询，拒绝远端地址、外部 Host、转发头与跨域 Origin。返回的 `kind=historical-failures` 明示“历史故障观察”而非“当前活动告警”。未来确认、恢复、角色与审计必须有真正的数据模型与安全闭环，再开放对应接口。
+
+## 9. P0 新 API 最小访问控制（2026-10-30）
+
+**已提交代码，不等于完整远程认证**：`internal/httpapi.Register` 已为 `GET /api/v1/overview`、`/programs`、`/programs/:id` 增加原有 `security.LocalOnly()`；原先 `/api/v1/events`、`/api/v1/alerts/history` 已受该限制；`/api/v1/health` 仍仅返回 Monitor HTTP 存活而不调用进程快照。禁止访问请求在进入实际 SnapshotProvider 前被拒绝，响应 403。无新增接口、进程和认证服务。
+
+`LocalOnly` 目前要求直接来源为 loopback、Host 为 loopback/localhost、没有 Forwarded/X-Forwarded-For/X-Real-IP 和 Origin；这是一项**保守的临时本机访问门禁，不是 RBAC 或 TLS 客户端认证**。用户在另一台电脑直接访问 H5 时，静态页面可能可加载，但这些敏感 API 将显示 403；**这是安全策略变化，不能在前端绕过**。开发期 Vite 代理默认回环调用可继续使用，正式远程访问须新建经审查的认证授权方案并在 Monitor 和最终 Owner 处防护，切勿依赖反向代理伪造 localhost 或删除转发头来绕过门禁。
+
+**历史兼容留存的风险**：`GET /programs_status` 继续保持旧调用方依赖的返回与访问合同，若 Monitor 监听到外网卡，它仍可能被未认证访问；启动时 `httpListenMayBeRemote` 对非回环/未知 HTTP Host 记录显式安全告警。运维须通过 `sys.config` HTTP host 绑定本机，或网络/主机防火墙 ACL 保护所有 Monitor 端口（包括旧 UDP 控制面）。当前并不具备远程写操作、登录、RBAC、审计、设备安全控制；只能把受控本机只读范围视为现有实现。
+
+**回归位置**：`internal/httpapi/routes_test.go` 检查全部三个敏感路径及拒绝时零 Provider 调用；`cmd/monitor/web_security_test.go` 验证监听暴露风险；`web/src/api/client.test.ts` 验证 403 与真实 Monitor 连接/服务错误的显示区别。自动化 Go/TS 测试实际通过情况须到 GitHub Actions 针对固定 SHA 查询。
