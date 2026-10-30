@@ -311,16 +311,20 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 throw new ArgumentException("接收地址不属于本通道");
             if(bytes==null||count<0||count>bytes.Length)
                 throw new ArgumentOutOfRangeException("count");
+            // 与池化接收路径一致：没有Legacy订阅者时不构造全量
+            // FTRChannelReceiveContext副本，也不白白预留一次消息字节额度。
+            // 诊断的真实Rx字节与独立Frame证据仍照常记录。
+            Action<FTRChannelReceiveContext> handler=Received;
             FTRBufferedByteBudget budget=_inFlightBudget;
-            using(var lease=budget==null?null:budget.Lease())
+            using(var lease=handler==null||budget==null?null:budget.Lease())
             {
                 if(lease!=null)lease.Reserve(count);
-                var context=new FTRChannelReceiveContext(address,bytes,count,correlationId){SessionId=this.SessionId};
+                FTRChannelReceiveContext context=handler==null?null:
+                    new FTRChannelReceiveContext(address,bytes,count,correlationId)
+                    {SessionId=this.SessionId};
                 _diagnostics.RecordReceive(count);
                 Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count,address);
-                // 保持与池化接收路径相同的Observer隔离语义：一个插件/订阅者报错
-                // 不能中断其他订阅者或导致HTTP/WS单Peer被误判为物理故障。
-                Action<FTRChannelReceiveContext> handler=Received;
+                // 保持Observer隔离：一个订阅者故障不破坏其他订阅者或物理通道。
                 if(handler!=null)
                     foreach(Action<FTRChannelReceiveContext> observer in handler.GetInvocationList())
                         try{observer(context);}
