@@ -40,7 +40,7 @@ onMounted(() => { void store.refresh() })
       description="未配置登录及访问权限之前，本功能仅允许在 Monitor 主机本地查看；不支持确认、清除或远程处置。" />
     <el-alert v-if="error" type="warning" :closable="false" show-icon
       title="异常记录暂不可用"
-      :description="error.includes('403') ? '接口仅允许本机访问。远程查看须完成安全鉴权与日志脱敏。' : error" />
+      :description="error.startsWith('访问被拒绝') ? '接口仅允许本机访问。远程查看须完成安全鉴权与日志脱敏。' : error" />
     <div class="filter-row">
       <el-input v-model="search" clearable class="search-box" placeholder="搜索程序 ID 或异常内容" />
       <el-checkbox v-model="onlyCritical">仅严重异常</el-checkbox>
@@ -53,7 +53,11 @@ onMounted(() => { void store.refresh() })
       <el-table-column label="事件" min-width="140">
         <template #default="{ row }"><el-tag :type="row.severity === 'critical' ? 'danger' : 'warning'" effect="plain">{{ label(row.kind) }}</el-tag></template>
       </el-table-column>
-      <el-table-column prop="programId" label="程序 ID" min-width="148" />
+      <el-table-column label="程序 ID" min-width="148">
+        <template #default="{ row }">
+          <RouterLink class="subtle-link" :to="{ path: '/programs', query: { id: row.programId } }">{{ row.programId }}</RouterLink>
+        </template>
+      </el-table-column>
       <el-table-column prop="pid" label="PID" width="90" />
       <el-table-column prop="message" label="原始说明" min-width="280" show-overflow-tooltip />
     </el-table>
