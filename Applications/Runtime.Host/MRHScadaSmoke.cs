@@ -272,8 +272,10 @@ namespace CxVisual.Runtime.Host
                                 pipeName,new MRHScadaPipeRequest{SchemaVersion=1,Operation="discover"});
                             Check(discovery.Status=="Ok"&&discovery.Devices.Length==2&&
                                 discovery.DeploymentVersion==group.DeploymentVersion&&
-                                discovery.Devices.All(x=>x.Points.Length==0),
-                                "本机受限Pipe未按真实工程发现两个设备");
+                                discovery.Devices.All(x=>x.Points.Length==0 &&
+                                    x.Running && x.CompletedCycles>=2 &&
+                                    x.SuccessfulCycles>=2 && x.PartialCycles==0),
+                                "本机Pipe发现必须包含独立真实FC03成功周期与零部分失败诊断");
                             MRHScadaPipeRequest query=new MRHScadaPipeRequest{
                                 SchemaVersion=1,Operation="snapshot",DeviceRef=a.ToString("N"),
                                 ExpectedDeploymentVersion=group.DeploymentVersion,
