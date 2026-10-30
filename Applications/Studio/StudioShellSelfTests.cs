@@ -3758,10 +3758,29 @@ namespace CxVisual.Studio
                             workspace.CurrentAnalysis.RoiSignature==savedFaceCase.RoiSignature&&
                             workspace.CurrentAnalysis.SelectedVertexIndices.Count==9&&
                             workspace.CurrentAnalysis.SliceRoiRecipe==null&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe!=null&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe.Faces.Count==8&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe.Signature==
+                                savedFaceCase.FaceRoiRecipe.Signature&&
+                            workspace.SelectedMeshFaceCount==8&&
+                            workspace.VisibleMeshFaceHighlightCount==8&&
                             workspace.Scene3D.Snapshot().Single(x=>
                                 x.Kind==MVI3DSceneKind.Measurement).SourceRef==
                                 "ct3d:plane:"+savedFaceId.ToString("N"),
-                            "真实多面片ROI必须经MEM Data/Visual一笔提交，重开恢复Feature、顶点及Scene来源。");
+                            "V5面片ROI经MEM提交后重开须恢复配方、8片WPF真实高亮和Feature来源。");
+                        var again=AwaitStudioTask(
+                            workspace.RecomputeSelectedMeshFacesAsync(CancellationToken.None));
+                        Assert(workspace.HasPendingAnalysis&&
+                            again.Plane.ResultId!=savedFaceId&&again.FaceRoiRecipe!=null&&
+                            again.FaceRoiRecipe.Signature==savedFaceCase.FaceRoiRecipe.Signature&&
+                            again.ParameterSignature==savedFaceCase.ParameterSignature,
+                            "V5重开后无需旧WPF拾取对象也能沿原面片配方再次原值复算。");
+                        workspace.DiscardPendingAnalysis();
+                        Assert(!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==savedFaceId&&
+                            workspace.SelectedMeshFaceCount==8&&
+                            workspace.VisibleMeshFaceHighlightCount==8,
+                            "放弃V5重算预览不得更改正式MEM Result和高亮。");
                         Assert(window.StudioEngineeringRevision==originalRevision,
                             "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
                         window.CloseStudioDocument("doc.ct3d");
