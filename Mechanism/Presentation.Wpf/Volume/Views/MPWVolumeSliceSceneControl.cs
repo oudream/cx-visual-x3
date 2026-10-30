@@ -20,6 +20,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
     /// 这是可运行的三维切片浏览，不是GLSL体绘；不能以它替代旧Raymarch。
     /// 不持有体数据或工程状态，调用方直接提供图像与三刀位置。
     /// </summary>
+    /// <summary>显示网格鼠标命中射线，非工业计量值和非原Mesh面片身份。</summary>
+    public sealed class MPWVolumeMeshRayEventArgs : EventArgs
+    {
+        public MPWVolumeMeshRayEventArgs(Point3D origin,Point3D hit)
+        {DisplayOrigin=origin;DisplayHit=hit;}
+        public Point3D DisplayOrigin {get;private set;}
+        public Point3D DisplayHit {get;private set;}
+    }
+
     public sealed class MPWVolumeSliceSceneControl : Grid
     {
         private readonly Viewport3D _viewport = new Viewport3D();
@@ -122,6 +131,49 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 return count;
             }
         }
+        private int _rawWidth,_rawHeight,_rawDepth;
+        /// <summary>Ctrl+Shift点击真实表面Mesh后发出显示射线；交由CT3D在原值网格再次拾取。</summary>
+        public event EventHandler<MPWVolumeMeshRayEventArgs> MeshFaceRayRequested;
+
+        /// <summary>按当前真实Volume尺寸及各向异性显示比例还原体素坐标。</summary>
+        public Point3D DisplayPointToVoxel(Point3D display)
+        {
+            Dispatcher.VerifyAccess();
+            if(_rawWidth<=0||_rawHeight<=0||_rawDepth<=0||
+                _displaySx<=0||_displaySy<=0||_displaySz<=0)
+                throw new InvalidOperationException("尚未绑定有效原Volume显示空间。");
+            return new Point3D(
+                (display.X/_displaySx+.5)*_rawWidth-.5,
+                (-display.Y/_displaySy+.5)*_rawHeight-.5,
+                (display.Z/_displaySz+.5)*_rawDepth-.5);
+        }
+
+        /// <summary>只接受最前面的可见主Mesh命中，防止透过切片或其他对象拾取。</summary>
+        public bool TryGetSurfaceMeshDisplayRay(Point point,out Point3D origin,out Point3D hit)
+        {
+            Dispatcher.VerifyAccess();
+            origin=new Point3D();hit=new Point3D();
+            if(_meshOverlay.Content==null||_rawWidth<=0||
+                double.IsNaN(point.X)||double.IsInfinity(point.X)||
+                double.IsNaN(point.Y)||double.IsInfinity(point.Y)||
+                _viewport.ActualWidth<=0||_viewport.ActualHeight<=0||
+                point.X<0||point.Y<0||point.X>=_viewport.ActualWidth||
+                point.Y>=_viewport.ActualHeight)return false;
+            bool matched=false;
+            Point3D contact=new Point3D();
+            VisualTreeHelper.HitTest(_viewport,null,result=>
+            {
+                var mesh=result as RayMeshGeometry3DHitTestResult;
+                if(mesh==null)return HitTestResultBehavior.Continue;
+                if(Object.ReferenceEquals(mesh.ModelHit,_meshOverlay.Content))
+                {matched=true;contact=mesh.PointHit;}
+                return HitTestResultBehavior.Stop;
+            },new PointHitTestParameters(point));
+            if(!matched)return false;
+            origin=_camera.Position;hit=contact;
+            return true;
+        }
+
         private MVI3DSceneState _selectionScene;
 
         /// <summary>Ctrl+点击真实3D几何选择唯一MVI实例；WPF只消费场景引用。</summary>
@@ -429,6 +481,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         /// <summary>清空空间切片贴图；窗口关闭时释放GPU纹理的WPF引用。</summary>
         public void Clear()
         {
+            _rawWidth=0;_rawHeight=0;_rawDepth=0;
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
             BindAdditionalMeshes(null,null);
@@ -664,6 +717,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             double divisor = Math.Max(sx, Math.Max(sy, sz));
             sx /= divisor; sy /= divisor; sz /= divisor;
             _displaySx=sx;_displaySy=sy;_displaySz=sz;
+            _rawWidth=width;_rawHeight=height;_rawDepth=depth;
             double x = sx * (Clamp(positionX, width) - 0.5);
             double y = sy * (0.5 - Clamp(positionY, height));
             double z = sz * (Clamp(positionZ, depth) - 0.5);
@@ -806,6 +860,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         private void OnDown(object sender, MouseButtonEventArgs e)
         {
+            if((Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==
+                (ModifierKeys.Control|ModifierKeys.Shift))
+            {
+                Point3D origin,hit;
+                if(TryGetSurfaceMeshDisplayRay(e.GetPosition(_viewport),out origin,out hit))
+                {
+                    var handler=MeshFaceRayRequested;
+                    if(handler!=null)handler(this,new MPWVolumeMeshRayEventArgs(origin,hit));
+                }
+                e.Handled=true;return;
+            }
             if((Keyboard.Modifiers&ModifierKeys.Control)!=0&&
                 TrySelectSceneAtPoint(e.GetPosition(_viewport)))
             {
