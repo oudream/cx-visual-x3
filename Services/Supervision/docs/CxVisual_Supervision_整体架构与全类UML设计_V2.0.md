@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：129 项（S/R 源码存在或复用 52 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 129 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：130 项（S/R 源码存在或复用 53 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 130 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -123,6 +123,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go cmd/monitor | HeartbeatStatus | 心跳观察状态 | 不推导 Ready |
 | S | Go cmd/monitor | ProcessStatus | 进程资源采样 | 单位需显式 |
 | S | Go internal/daemonc | RunProgram [函数] | 循环启动/Wait/失败与重启 | 渐进治理退避、停止 |
+| S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
 | S | Go cmd/daemon | recoveryPrograms [函数] | 旧程序恢复装配入口 | 保留旧守护兼容 |
 
@@ -634,7 +635,7 @@ API 返回错误必须有稳定的 Code、Operation/Trace、来源/时间/授权
 - **H5 行为**：`web/src/api/client.ts` 将 403 转为明确的本机访问限制提示，`AppShell.vue` 区分“权限受限”与“Monitor 断线”，`web/src/api/client.test.ts` 保持 200/403/500 正反回归。跨机器使用新 H5 的真实受控查看需设计经审批的认证方案，禁止删除 LocalOnly 或代理伪造本机来绕过。
 - **证据等级**：当前仅为已写入 master 的源码/测试/文档（S）；GitHub Actions Go 三平台、Web typecheck/Vitest/build 的**本轮 SHA 执行结果尚未取得**，不得冒称 G1。隔离现场部署、网络渗透及旧客户兼容测试仍待 G2/G3。
 
-**对象设计影响**：这次完成了 S01/S02/S11 的部分访问控制，而不是额外创建 P0 类簇；保持 129 项全类的“设计条目”而非“129 个实装类”口径。详细功能与实际完成度回填 [12 大功能域与实施验收矩阵 V1.0](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
+**对象设计影响**：这次完成了 S01/S02/S11 的部分访问控制，而不是额外创建 P0 类簇；现有 130 项设计条目，不代表 130 个实装类。详细功能与实际完成度回填 [12 大功能域与实施验收矩阵 V1.0](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
 
 
 ## 16. Daemon可靠守护与真实隔离测试（2026-10-30）
