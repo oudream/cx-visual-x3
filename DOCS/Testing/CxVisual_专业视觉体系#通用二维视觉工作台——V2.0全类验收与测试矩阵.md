@@ -708,3 +708,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-10 | 旧UIA工作流`d5ddf497`的[CI #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)实际为**failure**，失败位于Studio源码CS0104（`Condition`类型二义性），WPF/文件弹窗步骤被跳过；改用全限定`System.Windows.Automation.Condition`后必须以新固定SHA重新验收 | 修复`4327a2a9` G2，**不得记旧失败为GUI失败或宣称新版已过G3/G5** |
 
 验收边界：真实系统鼠标测试与UIA测试是自动化Windows GUI证据；用户手动ROI操控、多分辨率、多DPI及工业现场仍需要额外复核。无完整新SHA成功不得关闭IMG-05。
+
+### IMG-05 原生Windows UIAutomation新反证与编译阻塞分类（2026-10-30）
+
+| ID | 真实验收要求 | 代码证据及门禁 |
+|---|---|---|
+| R1-UIA-11 | 旧CI失败严格分类：`aa9e2c7a`的[ROI #41040812867](https://github.com/oudream/cx-visual-x3/actions/runs/41040812867)为Studio HMI局部变量遮蔽`CS0136`；修复只更改HMI Lambda变量名，不涉及Vision业务 | `49b8d56f` G2；新Windows全编译待G3 |
+| R1-UIA-12 | 已保存ROI经真实Win32鼠标在原MPW Viewer重绘后，UIA实际点击Studio Ribbon `UndoCommand/RedoCommand`，MEM Data/Visual ROI身份应恢复/重做，版本正确 | `e7bead82`、`4da5d132` G2；不得把先前直调`Session.Undo`算作真实UIA |
+| R1-UIA-13 | 同Run第二次MRK执行后，错误RAW重绑拒绝并逐字对比重绑之前的结果状态；失败不得误报“仍显示CSV导出提示” | `b4958839` G2；专项记录按`START/STEP/PASS/FAIL`逐阶段落盘 |
+| R1-UIA-14 | 通过真实UIA选择Mask使图窗切到Result槽，点击“保存选中ROI到MEM”必须拒绝，Revision不变；原图槽仍允许已授权工程ROI提交 | `752025b6`、`af167f6c` G2；Windows UIA尚待固定SHA验证 |
+| R1-UIA-15 | 独立`studio-roi-dialog-uia-windows.yml`同一分支只保留最新提交，完成构建、真实Open/Save对话框、Win32系统鼠标、新老ROI重绑/导出/MEM Undo/Redo完整试验后才升级G4/G5 | `c3f31b6d` G2；[ROI #41043512541](https://github.com/oudream/cx-visual-x3/actions/runs/41043512541)最新查询queued，不宣称通过 |
+
