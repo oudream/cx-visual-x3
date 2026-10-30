@@ -56,9 +56,9 @@ onMounted(() => { void guard.refresh() })
         <div class="metric-note">Daemon 本地持久锁；非活动告警总数</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">启动扫描隔离</div>
+        <div class="metric-label">恢复隔离（含启动凭证）</div>
         <div class="metric-value" :class="{ 'guard-alert-number': (orphanCount ?? 0) > 0 }">{{ orphanCount ?? '—' }}</div>
-        <div class="metric-note">上次启动扫描，不代表实时存活数量</div>
+        <div class="metric-note">旧PID与未清算启动意图；非实时进程数</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">诊断来源</div>
@@ -69,7 +69,7 @@ onMounted(() => { void guard.refresh() })
 
     <el-alert type="info" :closable="false" show-icon class="guard-notice"
       title="安全只读视图 · 不提供启停、重启、解锁或确认"
-      description="闭锁来源于 Daemon 终止记录，隔离来源于上次启动的 PID 扫描。均不是实时 OS 进程身份、业务 Ready 或设备安全许可；处理前必须按现场运维规程核查。" />
+      description="闭锁来自 Daemon 终止日志；隔离来自上次启动的旧 PID 与未结清启动凭证扫描。即使凭证没有 PID，也必须隔离，直到原进程经现场核查。此页面不代表实时 OS 身份、业务 Ready 或设备安全许可。" />
     <el-alert v-if="error" type="warning" :closable="false" show-icon class="guard-notice"
       :title="'守护诊断查询未刷新：' + error"
       description="已显示的历史快照可能过期；请先确认 Monitor 本机访问与 Daemon 工作目录。" />
@@ -77,7 +77,7 @@ onMounted(() => { void guard.refresh() })
     <div class="guard-sources">
       <section class="panel" v-for="source in [
         { key: 'terminal', name: '终止闭锁日志', data: report?.terminal, note: '原文件更新时间，不代表当前进程运行状态' },
-        { key: 'orphans', name: '遗留进程扫描', data: report?.orphans, note: 'Daemon 上一次启动扫描时刻，可能过期' },
+        { key: 'orphans', name: '启动隔离与凭证对账', data: report?.orphans, note: '上次 Daemon 启动时旧 PID + 未结清启动凭证扫描，可能过期' },
       ]" :key="source.key">
         <div class="panel-heading">
           <div><h2>{{ source.name }}</h2><p>{{ source.note }}</p></div>
