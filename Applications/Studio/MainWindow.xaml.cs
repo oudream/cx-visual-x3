@@ -105,12 +105,14 @@ namespace CxVisual.Studio
             try
             {
                 MEMPage page=_viewModel.ActivePage;
-                if(page==null)throw new InvalidOperationException("请先选择工程主流程页面");
+                if(page==null)throw new InvalidOperationException("请先选择工程流程页面");
+                MEMContent content=ActiveFlowCanvas()!=null?
+                    ActiveFlowContent():page.RootContent;
                 MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
                 IMRKVersionedCapabilityResolver resolver=ResolverForFlow(
-                    snapshot,page.RootContent.Id);
+                    snapshot,content.Id);
                 _preparedCpuRelease=MOCProjectRelease.Prepare(
-                    snapshot,page.RootContent.Id,resolver,FlowVersions(resolver));
+                    snapshot,content.Id,resolver,FlowVersions(resolver));
                 LogicInfo.Text="CPU仿真软件候选已锁定：Revision "+
                     _preparedCpuRelease.EngineeringRevision+"；能力版本 "+
                     _preparedCpuRelease.CapabilityVersions.Count+"；指纹 "+
@@ -2468,11 +2470,13 @@ namespace CxVisual.Studio
             {
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
+                MEMContent runningContent=ActiveFlowCanvas()!=null?
+                    ActiveFlowContent():page.RootContent;
                 MEMProjectSnapshot runSnapshot=_viewModel.ProjectSession.GetSnapshot();
                 IMRKVersionedCapabilityResolver resolver=ResolverForFlow(
-                    runSnapshot,page.RootContent.Id);
+                    runSnapshot,runningContent.Id);
                 var checkedBuild=new MOCBuildService().Build(
-                    runSnapshot,page.RootContent.Id,resolver);
+                    runSnapshot,runningContent.Id,resolver);
                 if(!checkedBuild.Succeeded)
                 {
                     LogicInfo.Text=FormatBuildDiagnostics(checkedBuild);
@@ -2488,7 +2492,7 @@ namespace CxVisual.Studio
                 if(_preparedCpuRelease!=null)
                 {
                     // 同一工程可能同时打开多个Root Page；候选不能套用到另一个主流程。
-                    if(_preparedCpuRelease.EntryContentId!=page.RootContent.Id)
+                    if(_preparedCpuRelease.EntryContentId!=runningContent.Id)
                         throw new InvalidOperationException("studio.cpu_release.entry_mismatch");
                     // 候选锁定旧Revision、子Content和Host声明能力版本；
                     // 过期/未授权时绝不自动回退为普通CPU运行。
@@ -2560,7 +2564,7 @@ namespace CxVisual.Studio
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
                     previous.AddRange(changes.Events.Select(e=>ProjectFlowTrace(compiled,e,
-                        page.RootContent.Id,_logicFlow.FlowId,
+                        runningContent.Id,_logicFlow.FlowId,
                         releaseFingerprint,publicationRevision)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
