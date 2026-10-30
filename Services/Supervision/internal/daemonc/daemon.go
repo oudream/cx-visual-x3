@@ -39,6 +39,14 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 // RunProgramContext stops retry/backoff promptly when Daemon is shutting down.
 // The main process still owns termination of an already-running child process.
 func RunProgramContext(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string) {
+	RunProgramContextWithTerminal(ctx, a0, programEvent, fnFindProgram, logger, wd, nil)
+}
+
+// RunProgramContextWithTerminal notifies the local Daemon owner synchronously
+// before publishing a terminal guard-limit event. This closes the window in
+// which recovery might start a replacement after the worker exits but before
+// the event is read from the channel. No additional wire event is introduced.
+func RunProgramContextWithTerminal(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string, onTerminal func(program.Event)) {
 	var status program.Status
 	a1 := a0
 
@@ -63,14 +71,22 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 
 		//daemon 信息描述
 		if status.ErrorCount > a1.MaxError {
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxError, Status: status}) {
+			terminal := program.Event{Event: program.EventMaxError, Status: status}
+			if onTerminal != nil {
+				onTerminal(terminal)
+			}
+			if !emitProgramEvent(ctx, programEvent, terminal) {
 				return
 			}
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 失败次数太多,退出\n", a1.Path, a1.ID)
 			break
 		}
 		if a1.MaxCount > 0 && status.StartCount > a1.MaxCount {
-			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxCount, Status: status}) {
+			terminal := program.Event{Event: program.EventMaxCount, Status: status}
+			if onTerminal != nil {
+				onTerminal(terminal)
+			}
+			if !emitProgramEvent(ctx, programEvent, terminal) {
 				return
 			}
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 重启次数太多退出\n", a1.Path, a1.ID)
