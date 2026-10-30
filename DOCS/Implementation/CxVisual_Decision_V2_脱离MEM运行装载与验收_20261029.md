@@ -62,3 +62,11 @@
 - `MRHFileTrustedReleaseAdmission` 仍要求部署前显式可信初始化，正常运行发现缺失、损坏账本直接拒绝，不会重置版本水位。
 - 同步加入 `release-trusted-smoke` 真实 Host 端到端测试入口和 Unified Runtime Windows CI：临时测试证书、真正 Decision Plan、已签名归档、专业 Resolver、MRK Stage/Activate、错误证书指纹、篡改、跨实例重放及账本撕裂反证；不使用生产私钥或外设。
 - 安全边界：**预置证书指纹与账本所在目录的 OS ACL / 文件删除保护，由运维部署提供**；单纯公钥指纹不保护可由攻击者任意修改的 Host 配置，SHA-256 链不具备抗特权攻击者篡改能力。还未具备机台设备联锁/真实 HIL 或无人值守产线发布许可。
+
+## 2026-10-30：可信Host公开能力与Windows固定提交验收
+
+- [2257901eaa2c](https://github.com/oudream/cx-visual-x3/commit/2257901eaa2c0f99a84fb59d52b1bf770554e3dd)：首次将 Host 证书指纹、签名文件装载、真实 MRK Stage/Activate 及临时证书完整测试接入应用程序集；初次测试暴露无权主体曾在原子预留前查询专业 Resolver 的安全边界，已后续修正。
+- [d0080a6ed0ac](https://github.com/oudream/cx-visual-x3/commit/d0080a6ed0ac863b0a8866ad6d87f164ae3b1705)：向 `IMOCTrustedReleaseAdmission` 增加只读 `IsAuthorized`，在 Runtime Binder 和专业 Resolver 访问之前拒绝无权主体；原 `TryAuthorizeAndReserve` 继续在 Stage 前执行可持久的原子二次授权和版本预留。
+- 固定 SHA `d0080a6ed0ac` 对应 [Decision Windows 40984207218](https://github.com/oudream/cx-visual-x3/actions/runs/40984207218)、[Unified Runtime Windows 40984207370](https://github.com/oudream/cx-visual-x3/actions/runs/40984207370) 均 **Success**：全量 .NET48 编译、ArchitectureSmoke 专项与默认回归、Host 受信公钥→真实签名 Plan→MRK Stage/安全点 Activate、无权限主体提前拒绝、跨实例水位拒绝、损坏账本拒绝均通过。
+- [6c0d072955af](https://github.com/oudream/cx-visual-x3/commit/6c0d072955afce0808ebb9c5304d239f3380d0a3)：正式 Host 的 `StageFile` 移除 `allowUnverifiedLegacyContracts` 开关，强制严格能力合同；对声明 KeyUsage 的证书要求 `DigitalSignature`。对应测试 [3184c76bcf03](https://github.com/oudream/cx-visual-x3/commit/3184c76bcf03331c2f9a5602ee05130fc9783335) 新增仅限密钥加密用途证书的拒绝反例。其 [Unified Runtime Windows 40984569527](https://github.com/oudream/cx-visual-x3/actions/runs/40984569527) **尚待最终 CI 判定**，不能计入上述全绿结论。
+- 安全部署前置条件：外部可信配置必须保护 Scope、证书路径、证书 SHA-256 指纹、KeyId、主体授权与安全点策略；账本目录必须施加 OS ACL、防删除及可信恢复。可信证书只提供发布签名者身份，真实机器联锁/设备 ACK/HIL 和长时间故障恢复仍需机台验收。代码并未内置测试私钥作为生产信任锚。
