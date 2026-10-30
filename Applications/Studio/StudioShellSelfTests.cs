@@ -4740,6 +4740,20 @@ namespace CxVisual.Studio
                     page.RootContent.DescendantsAndSelf().OfType<MRCRectangle>()
                         .Any(x=>x.Name=="ready状态"),
                     "Studio状态灯没有正式落入MEM或没有原子事务");
+                // 本机真实布尔点一键放置共享工业电机Faceplate，不复制专业Widget树。
+                menu=window.CreateStudioResourceEditorMenu(page);
+                hmi=menu.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="HMI：添加工业组件");
+                status=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header).StartsWith("ready",StringComparison.Ordinal));
+                before=engineering.Revision;
+                status.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="放置电机Faceplate（复用Symbol）")
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert(engineering.Revision==before+1&&
+                    engineering.Project.Children.OfType<MEMSymbol>().Any(x=>
+                        x.Name=="HMI.Motor.Faceplate.v1"),
+                    "Studio原Page菜单未原子放置共享电机Faceplate");
                 string key=window.OpenStudioHmiPage(page.Id);
                 Assert(key.Contains("hmi.scada.live") &&
                     window.GetStudioResourceDocumentIdentity(key)!=null,
@@ -4771,6 +4785,24 @@ namespace CxVisual.Studio
                     .MDSVariableTable("hmi-g1-next"));
                 Assert(window.GetStudioResourceDocumentIdentity(key)==null,
                     "切换Host MDS Scope后旧HMI Viewer/订阅没有释放");
+                // SCADA部署编辑必须接入原MHS工作区与显式Host同根目录，不写另一个JSON。
+                string mhsRoot=Path.Combine(Path.GetTempPath(),
+                    "cxvisual-hmi-mhs-"+Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(mhsRoot);
+                try
+                {
+                    window.SetStudioConfigurationRoot(mhsRoot);
+                    window.OpenStudioDocument("doc.config");
+                    Assert(window.GetStudioContentIds().Contains("doc.config"),
+                        "SCADA项目部署未复用既有MHS配置文档");
+                    AssertThrows(()=>window.SetStudioConfigurationRoot(mhsRoot));
+                    Assert(window.TryCloseStudioDocument("doc.config",true),
+                        "MHS项目配置文档没有正常释放");
+                }
+                finally
+                {
+                    if(Directory.Exists(mhsRoot))Directory.Delete(mhsRoot,true);
+                }
                 File.WriteAllText(report,"PASS HMI Studio WPF STA real ResourceMenu / "+
                     "MEM transaction / MDS binding / live viewer / save-open / scope disposal");
                 return true;
