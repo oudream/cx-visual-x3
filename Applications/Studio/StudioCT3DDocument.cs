@@ -748,9 +748,20 @@ namespace CxVisual.Studio
             if(faces==null)throw new ArgumentNullException("faces");
             if(_roiCancellation!=null)
                 throw new InvalidOperationException("已有ROI分析运行中。");
+            // 输入可能是工程师或SDK持有的可变List：在开始后台计算前固定原面片序列。
+            // 不复制任何Mesh/Volume原值，仅固定引用集合。
+            CT3DMeshFaceReference[] faceSnapshot=new CT3DMeshFaceReference[faces.Count];
+            if(faceSnapshot.Length==0||faceSnapshot.Length>30000)
+                throw new ArgumentOutOfRangeException("faces","原Mesh面片ROI数量应为1～30000。");
+            for(int i=0;i<faceSnapshot.Length;i++)
+            {
+                if(faces[i]==null)throw new ArgumentException("面片列表包含空引用。","faces");
+                faceSnapshot[i]=faces[i];
+            }
             CT3DAnalysisCase original=_current;
             MVIVolumeViewState state=_state;
             FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
+            long faceRevision=_faceSelectionRevision;
             int index=_caseIndex;
             string root=_root;
             long epoch=++_roiEpoch;
@@ -760,9 +771,10 @@ namespace CxVisual.Studio
             {
                 _status.Text="按双精度原Mesh真实三角面在后台重算专业结果。";
                 CT3DAnalysisCase result=await Task.Run(()=>
-                    original.RecomputeWithMeshFaces(root,faces,linked.Token),linked.Token);
+                    original.RecomputeWithMeshFaces(root,faceSnapshot,linked.Token),linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
-                if(_disposed||epoch!=_roiEpoch||!Object.ReferenceEquals(state,_state)||
+                if(_disposed||epoch!=_roiEpoch||faceRevision!=_faceSelectionRevision||
+                    !Object.ReferenceEquals(state,_state)||
                     !Object.ReferenceEquals(original,_current)||index!=_caseIndex||
                     !Object.ReferenceEquals(selected,_state.SelectedSliceRectangle))
                     throw new OperationCanceledException("面片ROI分析完成前工程或交互会话已变化。");
