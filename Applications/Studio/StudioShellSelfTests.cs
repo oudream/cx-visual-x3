@@ -3687,6 +3687,15 @@ namespace CxVisual.Studio
                         MEMPage page=vm.ProjectSession.AddPage("S2-WPF-真实专业按钮");
                         vm.ActivePage=page;
                         window.OpenStudioDocument("doc.flow");
+                        // A previous S1 publication test can intentionally leave
+                        // a candidate staged. This independent WPF execution
+                        // tests a NEW software Flow, not stale Stage rejection.
+                        var preparedField=typeof(MainWindow).GetField(
+                            "_preparedCpuRelease",
+                            System.Reflection.BindingFlags.NonPublic|
+                            System.Reflection.BindingFlags.Instance);
+                        Assert(preparedField!=null,"Studio软件发布候选私有状态丢失");
+                        preparedField.SetValue(window,null);
                         window.FlowUseEffectiveConfig.IsChecked=false;
                         window.FlowRawPath.Text=raw;
                         window.FlowRawWidth.Text="5";
