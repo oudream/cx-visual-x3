@@ -436,6 +436,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<InvalidOperationException>(()=>reopened.FaceRoiRecipe.Resolve(
                     CT3DAssetReference.Capture(folder,"source.raw",info,frame,8,CancellationToken.None),
                     reopened.Mesh,CancellationToken.None));
+                // V5不仅恢复一个临时结果：必须经MEM真实Revision提交、Undo/Redo与再次落盘。
+                MEMContent owner=engineering.Resolve(faceAddress) as MEMContent;
+                Check(owner!=null,"V5必须定位原有MEM Content，不能创建第二工程节点。");
+                int beforeFaceRevision=engineering.Revision;
+                CT3DAnalysisPersistence.RecomputeAndCommit(engineering,owner,
+                    beforeFaceRevision,folder,CancellationToken.None);
+                CT3DAnalysisCase committed=CT3DAnalysisPersistence.Open(engineering,
+                    faceAddress,folder,CancellationToken.None);
+                Check(engineering.Revision==beforeFaceRevision+1&&
+                    committed.FaceRoiRecipe!=null&&
+                    committed.FaceRoiRecipe.Signature==reopened.FaceRoiRecipe.Signature&&
+                    committed.RoiSignature==reopened.RoiSignature&&
+                    committed.ParameterSignature==reopened.ParameterSignature&&
+                    committed.Plane.ResultId!=reopened.Plane.ResultId,
+                    "V5原面片ROI在唯一MEM Revision中复算，签名稳定但Result身份更新。");
+                Reject<InvalidOperationException>(()=>
+                    CT3DAnalysisPersistence.RecomputeAndCommit(engineering,owner,
+                        beforeFaceRevision,folder,CancellationToken.None));
+                engineering.Undo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,faceAddress,folder,
+                    CancellationToken.None).Plane.ResultId==reopened.Plane.ResultId,
+                    "MEM Undo必须恢复V5原ResultId及对应专业配方。");
+                engineering.Redo().RequireValue();
+                Check(CT3DAnalysisPersistence.Open(engineering,faceAddress,folder,
+                    CancellationToken.None).Plane.ResultId==committed.Plane.ResultId,
+                    "MEM Redo必须恢复V5新ResultId并保持原面片配方。");
+                engineering.SaveAs(faceProject);
+            }
+            using(var verified=MEMEngineering.Open(faceProject))
+            {
+                CT3DAnalysisCase afterRestart=CT3DAnalysisPersistence.Open(verified,
+                    faceAddress,folder,CancellationToken.None);
+                Check(afterRestart.FaceRoiRecipe!=null&&
+                    afterRestart.FaceRoiRecipe.Signature==recomputedByFaces.FaceRoiRecipe.Signature&&
+                    afterRestart.ParameterSignature==recomputedByFaces.ParameterSignature&&
+                    afterRestart.Plane.ResultId!=recomputedByFaces.Plane.ResultId,
+                    "V5经MEM复算提交、Undo/Redo与落盘后再次关闭重开，专业配方仍可追溯。");
             }
             Check(!Directory.GetFiles(folder,"*.tmp",SearchOption.AllDirectories).Any(),"失败不遗留临时制品");
         }
