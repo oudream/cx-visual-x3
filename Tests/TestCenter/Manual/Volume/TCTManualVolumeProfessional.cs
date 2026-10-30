@@ -350,6 +350,24 @@ namespace CxVisual.TestCenter.UI
             RaiseStateChanged();
         }
 
+        private async void StartPersistedSliceRoiEditFromUi()
+        {
+            try
+            {
+                double minimum,maximum;
+                if(!double.TryParse(_sliceRoiMinimumMm.Text,NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out minimum)||
+                    !double.TryParse(_sliceRoiMaximumMm.Text,NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out maximum))
+                    throw new ArgumentException("请输入有效的切片ROI毫米偏移上下限。");
+                await SaveEditedSliceRoiAsync(minimum,maximum,CancellationToken.None);
+            }
+            catch(Exception error)
+            {
+                _status.Text="已保存ROI继续编辑失败："+error.Message;
+            }
+        }
+
         private void StartSliceRoiPlaneFromUi()
         {
             try
