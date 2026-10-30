@@ -2298,9 +2298,9 @@ namespace CxVisual.Studio
                             .OfType<System.Windows.DependencyObject>())visit(child);
                     };
                     visit(root);
-                    // 默认已有Vision、CT3D和MDS生命周期三个Section；
-                    // 再注册Automation后应为四张卡，列数仍按可用宽度限制在1~3。
-                    Assert(panels.Any(g=>g.Children.Count==4&&g.Columns>=1&&g.Columns<=3),
+                    // 默认正式项目已包括Vision、CT3D、MDS及SCADA部署四段；
+                    // 再注册Automation设备配置成为五张卡，仍复用1~3列布局。
+                    Assert(panels.Any(g=>g.Children.Count==5&&g.Columns>=1&&g.Columns<=3),
                         "配置组合未使用可响应布局的统一1/2/3列容器");
                     string rootDir=System.IO.Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
