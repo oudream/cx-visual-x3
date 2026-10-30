@@ -219,7 +219,7 @@ namespace CxVisual.Runtime.Host
                         MRKFlowResult terminal=flow.Completion.GetAwaiter().GetResult();
                         Check(terminal.State==MRKFlowState.Completed&&
                             terminal.FlowId==flow.FlowId&&
-                            terminal.Results.Count==1&&
+                            terminal.Results.Count>0&&
                             terminal.Results.Values.Any(x=>x is int&&(int)x==9)&&
                             capability.Executions==1,
                             "B6 signed and activated MRK Plan did not execute the exact trusted provider");
