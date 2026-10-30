@@ -205,6 +205,12 @@ namespace CxVisual.Studio
                             cancelled.Completion.Result.State==MRKFlowState.Cancelled&&
                             executions==2,
                             "B5暂停Flow取消未释放等待者或错误执行后续算法");
+                        command("OnFlowInspectData");
+                        Assert(preview.Text.Contains("Cancelled")&&
+                            preview.Text.Contains("暂无已提交StepResult")&&
+                            !preview.Text.Contains("first =")&&
+                            !preview.Text.Contains("second ="),
+                            "B5取消Flow仍向界面发布未完成节点或上次Flow的旧结果");
                     }
                     finally
                     {
