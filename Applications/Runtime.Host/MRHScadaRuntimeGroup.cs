@@ -134,6 +134,11 @@ namespace CxVisual.Runtime.Host
                 }
                 if(additionalApproval!=null&&!additionalApproval())
                     throw new InvalidOperationException("SCADA设备组准备期间部署版本漂移");
+                // 检查每台设备的Connector Effective和MEM文件戳是否仍属于
+                // 同一次有效装配；不能仅看项目级部署Effective。
+                if(prepared.Any(x=>!x.IsStillApproved))
+                    throw new InvalidOperationException(
+                        "SCADA设备组准备期间Connector或MEM工程版本漂移，拒绝混版启动");
                 return new MRHScadaRuntimeGroup(prepared,deploymentVersion,
                     additionalApproval,projectPath,configRoot,configs);
             }
