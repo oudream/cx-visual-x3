@@ -39,7 +39,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         // 显示级高亮不承接原Mesh顶点索引、原值计量或MEM。
         private readonly ModelVisual3D _selectedFaceOverlay=new ModelVisual3D();
         private MPWVolumeDisplayMesh _selectedFacePreview;
-        public int SelectedFaceHighlightTriangleCount {get;private set;}
+        /// <summary>真实WPF MeshGeometry3D当前生成的高亮三角面数，而不是输入请求计数。</summary>
+        public int SelectedFaceHighlightTriangleCount
+        {
+            get
+            {
+                var model=_selectedFaceOverlay.Content as GeometryModel3D;
+                var mesh=model==null?null:model.Geometry as MeshGeometry3D;
+                return mesh==null?0:mesh.TriangleIndices.Count/3;
+            }
+        }
         private readonly Dictionary<Guid,ModelVisual3D> _additionalMeshes=
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalMeshTriangles=
@@ -519,7 +528,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             if(preview.TriangleCount<1||preview.TriangleCount>512)
                 throw new ArgumentOutOfRangeException("preview");
             _selectedFacePreview=preview;
-            SelectedFaceHighlightTriangleCount=preview.TriangleCount;
             RefreshSelectedFaceHighlight();
         }
 
@@ -527,7 +535,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             Dispatcher.VerifyAccess();
             _selectedFacePreview=null;
-            SelectedFaceHighlightTriangleCount=0;
             _selectedFaceOverlay.Content=null;
         }
 
