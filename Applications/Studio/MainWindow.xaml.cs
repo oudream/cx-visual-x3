@@ -2258,7 +2258,7 @@ namespace CxVisual.Studio
                 var result=await _logicFlow.Completion;
                 update();
                 CaptureCompletedFlowPreview(_logicFlow,
-                    runSnapshot.Project.Id,runSnapshot.Revision);
+                    runSnapshot.ProjectId,runSnapshot.Revision);
                 LogicInfo.Text="仿真执行结束: "+result.State+
                     "；FlowId="+result.FlowId.ToString("N")+
                     (result.Error==null?"":"；错误: "+result.Error.Message);
