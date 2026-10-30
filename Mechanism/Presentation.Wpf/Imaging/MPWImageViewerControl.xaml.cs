@@ -237,10 +237,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _polygonDraft.Count>0;
         }
 
+        private bool HasCapturedGesture()
+        {
+            // 点选多边形/两线的草稿可以跨多次MouseDown存在，不属于捕获中的拖动。
+            // 仅捕获操作异常丢失时才回滚；Esc仍由HasTransientGesture取消所有草稿。
+            return _overlayEdit.IsActive || _dragging || _selecting || _moving ||
+                _resizing || _editingVertex || _rotatingOverlay || _secondaryDragging;
+        }
+
         private void OnGestureLostMouseCapture(object sender,MouseEventArgs e)
         {
-            // 只有非正常失捕才取消；MouseUp先Complete并清理标志再ReleaseMouseCapture。
-            if(HasTransientGesture())CancelTransientGesture();
+            // MouseUp先Complete并清理捕获态再ReleaseMouseCapture。
+            // 正常释放右Pane平移不能取消另一个跨多次点击的测量草稿。
+            if(HasCapturedGesture())CancelTransientGesture();
         }
 
         private void OnGesturePreviewKeyDown(object sender,KeyEventArgs e)
