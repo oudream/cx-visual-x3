@@ -635,3 +635,50 @@ API 返回错误必须有稳定的 Code、Operation/Trace、来源/时间/授权
 - **证据等级**：当前仅为已写入 master 的源码/测试/文档（S）；GitHub Actions Go 三平台、Web typecheck/Vitest/build 的**本轮 SHA 执行结果尚未取得**，不得冒称 G1。隔离现场部署、网络渗透及旧客户兼容测试仍待 G2/G3。
 
 **对象设计影响**：这次完成了 S01/S02/S11 的部分访问控制，而不是额外创建 P0 类簇；保持 129 项全类的“设计条目”而非“129 个实装类”口径。详细功能与实际完成度回填 [12 大功能域与实施验收矩阵 V1.0](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
+
+
+## 16. Daemon可靠守护与真实隔离测试（2026-10-30）
+
+> **性质**：已提交的 Go 源码增量及隔离测试源码，不代表本轮三平台 CI 已通过。沿用既定 Monitor + Daemon 进程、Program/SQLite、UDP 与旧 HTTP 合同，不创建新的运行或专业真源。
+
+### 16.1 实际对象与调用归属
+
+| Owner / 源文件 | 本轮实装 | 仍待验证 |
+|---|---|---|
+| internal/daemonc/daemon.go | 保留 RunProgram 原入口；新增 RunProgramContext；DaemonRun 改为 Go 1.19 atomic.Bool；StartWaitTime 与事件发送支持 Context 取消 | 取消重试不等于已运行子进程已终止，PID 终止仍归原 Daemon Main |
+| cmd/daemon/main.go | workerCtx 贯通启动、周期恢复、原重启请求，首次 FirstWaitTime 可取消；信号先取消 Worker；退出通知非阻塞；信号订阅释放 | 异步 PID 跟踪和重复 Worker、进程树清理、OS Service 停止 |
+| daemonc.startProc | 验证空路径；父进程 stdout/stderr 文件句柄在子进程 Start 后（成功或失败）释放；保留原输出重定向 | Windows/Linux/macOS 真实长期句柄稳定性 |
+| program.Event/Status 与 Daemon Main | 启动失败计数先更新再报告、失败 PID 清零；退出事件保留真实 PID，日志耗时按毫秒→秒换算并明确异常短运行 | 长稳状态对账、现场异常退出确认 |
+| internal/monitorc.MonC | 创建时保存 IP 和 Port，首次失败后 CheckChannel 不再重连到空 Host 或端口 0 | UDP 真正断连后的重新连接、UdpC 关闭后的接收协程清理 |
+| cmd/daemon 初始化 | 自身 Program 读取失败时 Logger 初始化前输出 stderr，不再调用空 Logger | 真实损坏配置/数据库场景 |
+
+### 16.2 守护与停止调用序列
+
+~~~mermaid
+sequenceDiagram
+ participant Main as Daemon Main
+ participant Worker as RunProgramContext
+ participant Child as 受管子进程
+ participant Monitor as MonC / Monitor
+ Main->>Worker: Start(ctx,Program,FindProgram)
+ Worker->>Worker: 查配置/阈值/可取消重试延时
+ Worker->>Child: startProc(原 stdout/stderr 合同)
+ Child-->>Worker: OS Start / Wait / Exit
+ Worker->>Main: 原 Program.Event + 正确失败次数
+ Main->>Monitor: 原 UDP 上报
+ opt 系统退出信号
+ Main->>Main: cancelWorkers + DaemonRun.Store(false)
+ Main->>Child: 原 PID 管理链尝试停止
+ Worker-->>Main: 取消等待和未消费事件发送
+ end
+~~~
+
+### 16.3 隔离测试与证据等级
+
+1. internal/daemonc/daemon_test.go：空程序路径拒绝、缺失程序启动失败、日志句柄清理、使用当前测试可执行程序作为短生命周期真实子进程、stdout/stderr 重定向、Start/Wait/Exit、失败计数与 MaxError 终止、长等待取消及无消费者事件取消。
+2. cmd/daemon/main_test.go：秒/毫秒单位正确性、短时异常退出、正常退出与时钟异常、首次启动延时取消。
+3. internal/monitorc/monc_test.go：连接失败时保存远端 Host 和 Port，并对相同目标重试。
+4. 需要核验 Go 三平台构建及 go test -count=1 ./...；可用时使用 go test -race -count=1 ./internal/daemonc ./internal/monitorc ./cmd/daemon。对应 GitHub Actions：supervision-migration.yml。
+5. 当前仅有源码提交证据（S），本轮尚未取得可核查的 CI 通过与真实隔离运行记录（G1/G2 待验）；不把测试文件存在视为测试成功。
+
+**全类设计的收敛**：无需为上述 P0 能力批量创建新 Manager/Process/Operation 类，先在原 Go 对象上完成正确性与可靠性。遗留风险包括进程树终止及回执、PID 映射重复 Worker 竞态、UdpC 接收协程退出、真实网络断线、S11 认证审计；S01～S12 进度仍以 [12大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引。
