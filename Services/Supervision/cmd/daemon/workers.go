@@ -19,6 +19,7 @@ type programWorkerGate struct {
 	pendingStop  map[int64]*daemonc.StopController
 	activeStop   map[int64]*daemonc.StopController
 	terminal     map[int64]int
+	orphaned     map[int64]string
 	persistPath  string
 	storageFault error
 }
@@ -30,6 +31,7 @@ func newProgramWorkerGate() *programWorkerGate {
 		pendingStop: make(map[int64]*daemonc.StopController),
 		activeStop:  make(map[int64]*daemonc.StopController),
 		terminal:    make(map[int64]int),
+		orphaned:    make(map[int64]string),
 	}
 }
 
@@ -62,6 +64,30 @@ func (g *programWorkerGate) enablePersistence(path string) error {
 
 // terminalSnapshot returns only the local latch reasons for startup
 // diagnostics. It cannot change any latch or grant restart permission.
+// quarantineOrphans installs startup-only, fail-closed observations. It is
+// intentionally distinct from MaxError/MaxCount terminal limits and has no
+// UDP/HTTP reset operation. Inspect and resolve offline before restart.
+func (g *programWorkerGate) quarantineOrphans(records map[int64]string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.active) != 0 {
+		return errors.New("cannot quarantine legacy processes after workers start")
+	}
+	for id, reason := range records {
+		if id > 0 && reason != "" {
+			g.orphaned[id] = reason
+		}
+	}
+	return nil
+}
+
+func (g *programWorkerGate) orphanReason(id int64) (string, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	reason, exists := g.orphaned[id]
+	return reason, exists
+}
+
 func (g *programWorkerGate) terminalSnapshot() map[int64]int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -118,6 +144,10 @@ func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), all
 		g.mu.Unlock()
 		return false, false
 	}
+	if _, quarantined := g.orphaned[id]; quarantined {
+		g.mu.Unlock()
+		return false, false
+	}
 	if _, exists := g.active[id]; exists {
 		if allowQueue {
 			g.pending[id] = run
@@ -153,6 +183,12 @@ func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
 		return
 	}
 	if _, blocked := g.terminal[id]; blocked {
+		delete(g.active, id)
+		delete(g.activeStop, id)
+		g.mu.Unlock()
+		return
+	}
+	if _, quarantined := g.orphaned[id]; quarantined {
 		delete(g.active, id)
 		delete(g.activeStop, id)
 		g.mu.Unlock()
