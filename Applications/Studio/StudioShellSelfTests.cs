@@ -274,6 +274,16 @@ namespace CxVisual.Studio
                             !preview.Text.Contains("productA"),
                             "B5 Flow B查看混入上一Flow结果");
                         ownerField.SetValue(window,Guid.NewGuid());
+                        // Real scene refresh (project switch) must revoke the
+                        // visible old Flow before the user presses Inspect.
+                        var refreshSceneWhileRunning=typeof(MainWindow).GetMethod(
+                            "RefreshScene",flags);
+                        Assert(refreshSceneWhileRunning!=null,
+                            "B5活跃Flow缺少工程切换后的场景更新入口");
+                        refreshSceneWhileRunning.Invoke(window,new object[0]);
+                        Assert(preview.Text.Contains("无可查看的运行结果")&&
+                            !preview.Text.Contains("productB"),
+                            "B5切换工程时活跃Flow结果未即时撤销");
                         inspectClick();
                         Assert(preview.Text.Contains("无可查看的运行结果")&&
                             !preview.Text.Contains("productB"),
