@@ -99,3 +99,11 @@ Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
 - 真实 PLC 设备固件、异常断网和工位安全系统的 G2/G3：**未执行**。
 
 下一步优先：①M12/MRK真实资源租约与操作身份上下文；②PLC多测点/批量扫描与Bad/Stale分级；③Studio/TestCenter真实PLC点表和调试面板；④真正现场设备G2/HIL。
+
+## 九、PLC只读输入与Provider唯一数据源（2026-10-30）
+
+在 G1 源码审核中发现：`MDSProtocolDataTargetAccess.WriteAsync` 的普通 `UpdateBoxed` 遵从工程变量 `Writable`，所以只读DI点的真实采样不能直接走普通写变量API。现已修复专业桥接：经过 Modbus FC03、会话与点表复核后，使用已注册 `PADDeviceVariableProvider.Emit` → `MDSVariableProviderHost` 接纳物理采样，允许 `Writable=false` 的变量更新但禁止无授权控制写入。最终数值和质量仍由 MDS 唯一拥有。
+
+G1增加 `holding:101` 只读点、FC03真实TCP回包、MDS HasValue/Good、写入拒绝、Channel断链 Stale。桥接不再保留未使用的 `IMPADataTargetAccess dataOwner` 构造参数。**运行合同要求先创建/注册/绑定/启动PAD Provider Host，再读取设备点**；否则操作应拒绝，而不是宣称数据提交成功。由于当前 ProviderHost 接收回调不返回逐点提交ACK，批量采样的可观察确认还应在正式MDS Owner中进一步完善，不以单个Emit布尔值代表最终下游存储/观察者都成功。
+
+本段代码及本批正反测试已提交；必须以新SHA的 Windows CI为准判断G1，G2/G3仍未执行。
