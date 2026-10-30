@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"gogo/internal/program"
 )
 
@@ -149,5 +150,38 @@ func TestOrphanQuarantineCannotBeClearedByNormalRecovery(t *testing.T) {
 	}
 	if reason,ok:=gate.orphanReason(id);!ok||reason==""{
 		t.Fatal("quarantine reason was lost")
+	}
+}
+
+
+func TestOrphanScanQuarantinesPIDReusedByUnrelatedExecutable(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestOrphanGuardChildHelper$")
+	cmd.Env = append(os.Environ(), "CX_SUPERVISION_ORPHAN_CHILD=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	dir := t.TempDir()
+	other := filepath.Join(dir, "different-program")
+	if err := os.WriteFile(other, []byte("not the running executable"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := program.Program{ID: 9912, Path: other, Enabled: program.ENABLE}
+	createLegacyPIDForTest(t, dir, a, strconv.Itoa(cmd.Process.Pid))
+	reason, blocked := scanLegacyPIDFiles(dir, []program.Program{a})[a.ID]
+	if !blocked || !strings.Contains(reason, "unverified identity") {
+		t.Fatalf("reused/live foreign PID must be quarantined: %q (blocked=%t)", reason, blocked)
+	}
+	// The candidate remains a live test child; the read-only scanner did not terminate it.
+	exists, err := process.PidExists(int32(cmd.Process.Pid))
+	if err != nil || !exists {
+		t.Fatalf("read-only scan killed or lost unrelated PID: exists=%t err=%v", exists, err)
 	}
 }
