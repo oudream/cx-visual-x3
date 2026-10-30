@@ -623,3 +623,15 @@ API 返回错误必须有稳定的 Code、Operation/Trace、来源/时间/授权
 5. **下一个源码重点**：SR-04 原 Gin、pprof 与监控安全边界；然后按已有 Go 守护策略做不触碰真实被管理程序的隔离故障注入。S03～S07 和 S09～S12 在有权威 Provider 时才实现。
 
 **详细逐项完成度与证据继续以[12 大功能域与实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引，本节只记录对象设计如何映射回真实代码。**
+
+## 15. P0 只读查询安全门禁实际实现（2026-10-30）
+
+本节是 V2.0 设计落实的**源码级增量**，仍非 S11 完整身份/RBAC/审计或 B 阶段远程控制完成声明。
+
+- **直接沿用现有类型而不新增全类**：`internal/httpapi.Register` 复用 `security.LocalOnly()`，覆盖 `GET /api/v1/overview`、`/programs`、`/programs/:id`；`events` 与 `alerts/history` 原来已受限。`/api/v1/health` 保留最小 HTTP 活性探针。
+- **真实正反覆盖**：`internal/httpapi/routes_test.go` 检验每个敏感 API 拒绝远程来源、Host 伪造、Forwarded/X-Forwarded-For/X-Real-IP、跨域 Origin 和非法 RemoteAddr，并断言拒绝前绝不执行 SnapshotProvider；回环正常请求继续按旧 DTO 返回。无新增 Go Authenticator/Authorizer 的空实现。
+- **兼容与残余风险**：`cmd/monitor/web.go` 的 `httpListenMayBeRemote` 识别非回环/未知绑定，`main.go` 对潜在远程 HTTP 监听输出告警。**旧 `/programs_status` 原访问合同仍未认证，旧 UDP 控制路径也未变**；只能依实际绑定、网络 ACL、部署隔离保护。未实装远程鉴权、审计、命令可靠回执，不能标记 S11 完成。
+- **H5 行为**：`web/src/api/client.ts` 将 403 转为明确的本机访问限制提示，`AppShell.vue` 区分“权限受限”与“Monitor 断线”，`web/src/api/client.test.ts` 保持 200/403/500 正反回归。跨机器使用新 H5 的真实受控查看需设计经审批的认证方案，禁止删除 LocalOnly 或代理伪造本机来绕过。
+- **证据等级**：当前仅为已写入 master 的源码/测试/文档（S）；GitHub Actions Go 三平台、Web typecheck/Vitest/build 的**本轮 SHA 执行结果尚未取得**，不得冒称 G1。隔离现场部署、网络渗透及旧客户兼容测试仍待 G2/G3。
+
+**对象设计影响**：这次完成了 S01/S02/S11 的部分访问控制，而不是额外创建 P0 类簇；保持 129 项全类的“设计条目”而非“129 个实装类”口径。详细功能与实际完成度回填 [12 大功能域与实施验收矩阵 V1.0](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
