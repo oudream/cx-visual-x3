@@ -79,7 +79,13 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
                                 using(MemoryStream content=new MemoryStream())
                                 // 某些.NET48 HTTP响应流不及时响应ReadAsync取消；停止时
                                 // 只关闭本次响应流，不CancelPendingRequests影响其它请求。
-                                using(operation.Register(()=>{try{stream.Dispose();}catch(ObjectDisposedException){}}))
+                                using(operation.Register(()=>
+                                {
+                                    // Token回调可能由Timer线程触发。单流清理异常绝不可逃逸杀Host；
+                                    // 实际请求仍由下层Read/Deadline异常报告给调用者。
+                                    try{stream.Dispose();}
+                                    catch(Exception){}
+                                }))
                                 {
                                     int n;
                                     while((n=await stream.ReadAsync(buffer,0,buffer.Length,operation)
