@@ -469,6 +469,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(!next.HasGap && next.Changes.Count == 0 &&
                 next.NextCursor == first.NextCursor,
                 "incremental cursor replayed old transitions");
+            // Debug history is lossy by contract, but committed MDS/MRK results
+            // remain authoritative and can be inspected without reconstructing trace.
+            IDictionary<string,string> safe=flow.Context.ResultSummariesSnapshot(8);
+            Check(safe.Count==2&&safe["A"]=="Int32 value=1"&&
+                safe["B"]=="Int32 value=2",
+                "B5追踪环形缓冲丢失后误删真实结果或从缺失事件重建错误数据");
             Await(engine.StopAsync());
         }
 
