@@ -224,12 +224,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .GetAwaiter().GetResult() == 88,
                         "点表恢复后必须重新采样，不可复用已拒绝的回包");
 
+                    // 连接一旦明确关闭，原Good不能继续用于现场控制；
+                    // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
+                    IMDSVariableSnapshot beforeClose = table.Inspect("Station.Word");
+                    connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    IMDSVariableSnapshot afterClose = table.Inspect("Station.Word");
+                    Check(afterClose.Quality == MDSVariableQuality.Stale &&
+                        afterClose.RefreshUtc == beforeClose.RefreshUtc &&
+                        afterClose.Revision > beforeClose.Revision &&
+                        object.Equals(afterClose.CurrentObject, beforeClose.CurrentObject),
+                        "关闭Channel应把已读取的PLC值标记Stale而非延续Good");
                     Console.WriteLine("PASS Automation PLC real TCP loopback Modbus 03/06 -> MDS / authorized readback / Unknown");
                 }
                 finally
                 {
                     host.Stop();
-                    connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    if (connector.IsStarted)
+                        connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    bridge.Dispose();
                 }
             }
             Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word", CancellationToken.None)
