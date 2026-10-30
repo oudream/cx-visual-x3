@@ -179,7 +179,7 @@ namespace CxVisual.Professional.Automation.Scada
                     (_effectiveStillApproved==null||_effectiveStillApproved());
                 _commandsBinding=PADPlcMrkCommandRegistration.RegisterUInt16Write(
                     hostCenter,_provider,_deviceRef,commandId,_configVersion,
-                    activeGenerationApproved);
+                    activeGenerationApproved,()=>SessionGeneration);
                 return _commandsBinding;
             }
         }
