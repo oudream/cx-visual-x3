@@ -431,7 +431,12 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 	ps := getPrograms()
 	for i := 0; i < len(ps); i++ {
 		a := ps[i]
-		if a.ID == program.DefaultProgramIdDaemon {
+		if a.ID == program.DefaultProgramIdDaemon || a.Enabled != program.ENABLE {
+			continue
+		}
+		// Terminal limits are latched before the terminal Event is sent.
+		// Recovery must not wait FirstWaitTime or restart a latched Program.
+		if _, blocked := _programWorkers.blocked(a.ID); blocked {
 			continue
 		}
 		bProgramHasRun := false
