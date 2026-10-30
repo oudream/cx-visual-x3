@@ -59,10 +59,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         internal static void Run(MRKCommandCenter commands,
+            MRKResourceLeaseCoordinator sharedLeases,
             PADPlcPointBridge bridge,MDSVariableTable table,
             Func<int> writes,Func<ushort> actualRegister,Action<bool> ignoreWrite)
         {
-            if(commands==null||bridge==null||table==null||writes==null||
+            if(commands==null||sharedLeases==null||bridge==null||table==null||writes==null||
                 actualRegister==null||ignoreWrite==null)
                 throw new ArgumentNullException("B3 mixed-professional prerequisites");
             var options=new CxVisionInspectionOptions{
@@ -155,12 +156,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 professionalTypes:professionalTypes,expectedCapabilityVersions:versions);
             string visionStep="w"+inspectBlock.ToString("N");
             string plcStep="w"+plcBlock.ToString("N");
-            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16),sharedLeases);
             try
             {
                 int before=writes();
-                MRKFlowHandle flow=engine.StartFlow(compiled.Plan,
-                    compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                MRKFlowHandle flow;
+                using(MRKResourceLease held=sharedLeases.TryAcquire(
+                    PADPlcMrkCommandRegistration.ResourceForDevice("station01"),
+                    "b3-maintenance"))
+                {
+                    Check(held!=null,"cannot hold the real device resource lease");
+                    flow=engine.StartFlow(compiled.Plan,
+                        compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                    // The real CPU work may finish, but the underlying
+                    // FC06 must wait until maintenance releases the device.
+                    Check(!flow.Completion.Wait(TimeSpan.FromMilliseconds(180))&&
+                        writes()==before,
+                        "PLC wrote while maintenance owned the same MRK device resource");
+                }
                 Check(flow.Completion.Wait(TimeSpan.FromSeconds(12)),
                     "real Vision+PLC Flow timeout");
                 MRKFlowResult done=flow.Completion.GetAwaiter().GetResult();
