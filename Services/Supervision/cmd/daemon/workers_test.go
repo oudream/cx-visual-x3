@@ -9,10 +9,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"gogo/internal/daemonc"
 	"gogo/internal/program"
-	"time"
 )
 
 func waitWorkerReleased(t *testing.T, gate *programWorkerGate, id int64) {
