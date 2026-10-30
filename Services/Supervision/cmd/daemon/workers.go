@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"gogo/internal/daemonc"
@@ -16,6 +17,8 @@ type programWorkerGate struct {
 	active   map[int64]struct{}
 	pending  map[int64]func()
 	terminal map[int64]int
+	persistPath string
+	storageFault error
 }
 
 func newProgramWorkerGate() *programWorkerGate {
@@ -28,6 +31,40 @@ func newProgramWorkerGate() *programWorkerGate {
 
 // start reserves an ID before launching its worker. Recovery must never
 // implicitly queue another guardian while an existing one is still alive.
+// enablePersistence loads the last Daemon instance's terminal limits before
+// any managed worker is admitted. Corrupt/unreadable files are fatal startup
+// errors, not a reason to silently erase the limits.
+func (g *programWorkerGate) enablePersistence(path string) error {
+	if path == "" {
+		return errors.New("terminal latch path must not be empty")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.active) != 0 {
+		return errors.New("cannot enable terminal persistence with running guardians")
+	}
+	loaded, err := readTerminalLatches(path)
+	if err != nil {
+		g.storageFault = err
+		return err
+	}
+	if err := writeTerminalLatches(path, loaded); err != nil {
+		g.storageFault = err
+		return err
+	}
+	g.persistPath = path
+	g.terminal = loaded
+	g.storageFault = nil
+	return nil
+}
+
+func (g *programWorkerGate) persistenceError() error {
+	g.mu.Lock()
+	err := g.storageFault
+	g.mu.Unlock()
+	return err
+}
+
 func (g *programWorkerGate) start(ctx context.Context, id int64, run func()) bool {
 	started, _ := g.admit(ctx, id, run, false)
 	return started
@@ -47,6 +84,10 @@ func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), all
 	}
 	g.mu.Lock()
 	if ctx.Err() != nil {
+		g.mu.Unlock()
+		return false, false
+	}
+	if g.storageFault != nil {
 		g.mu.Unlock()
 		return false, false
 	}
@@ -77,6 +118,10 @@ func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
 		g.mu.Unlock()
 		return
 	}
+	if g.storageFault != nil {
+		g.mu.Unlock()
+		return false, false
+	}
 	if _, blocked := g.terminal[id]; blocked {
 		delete(g.active, id)
 		g.mu.Unlock()
@@ -91,15 +136,22 @@ func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
 // Recovery can then never race the event-consumer loop and relaunch a worker.
 // The latch lives until Daemon process restart or a future separately
 // authenticated administrative reset; legacy UDP does not clear it.
-func (g *programWorkerGate) markTerminal(event program.Event) {
+func (g *programWorkerGate) markTerminal(event program.Event) error {
 	if event.Status.Id <= 0 ||
 		(event.Event != program.EventMaxError && event.Event != program.EventMaxCount) {
-		return
+		return nil
 	}
 	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.terminal[event.Status.Id] = event.Event
 	delete(g.pending, event.Status.Id)
-	g.mu.Unlock()
+	if g.persistPath != "" {
+		if err := writeTerminalLatches(g.persistPath, g.terminal); err != nil {
+			g.storageFault = err
+			return err
+		}
+	}
+	return nil
 }
 
 func (g *programWorkerGate) blocked(id int64) (int, bool) {
@@ -126,12 +178,20 @@ var _programWorkers = newProgramWorkerGate()
 
 func launchProgramWorker(ctx context.Context, a program.Program, events chan program.Event) bool {
 	return _programWorkers.start(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, _programWorkers.markTerminal)
+		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+			if err := _programWorkers.markTerminal(event); err != nil {
+				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
+			}
+		})
 	})
 }
 
 func requestProgramWorker(ctx context.Context, a program.Program, events chan program.Event) (bool, bool) {
 	return _programWorkers.request(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, _programWorkers.markTerminal)
+		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+			if err := _programWorkers.markTerminal(event); err != nil {
+				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
+			}
+		})
 	})
 }
