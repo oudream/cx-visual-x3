@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gogo/internal/daemonc"
+	"gogo/internal/launchjournal"
 	"gogo/internal/program"
 )
 
@@ -96,6 +97,15 @@ func (g *programWorkerGate) terminalSnapshot() map[int64]int {
 		copyOf[id] = reason
 	}
 	return copyOf
+}
+
+// failStorage blocks all future workers after an unsafe evidence write or
+// deletion. It does not kill unrelated already-running child processes.
+func (g *programWorkerGate) failStorage(err error) {
+	if err == nil { return }
+	g.mu.Lock()
+	if g.storageFault == nil { g.storageFault = err }
+	g.mu.Unlock()
 }
 
 func (g *programWorkerGate) persistenceError() error {
@@ -272,21 +282,27 @@ var _programWorkers = newProgramWorkerGate()
 func launchProgramWorker(ctx context.Context, a program.Program, events chan program.Event) bool {
 	controller := daemonc.NewStopController(a.ID)
 	return _programWorkers.startWithStop(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithStop(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+		daemonc.RunProgramContextWithLaunchEvidence(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
 			if err := _programWorkers.markTerminal(event); err != nil {
 				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
 			}
-		}, controller)
+		}, controller, launchjournal.New(*_workDir, a.ID), func(err error) {
+			_programWorkers.failStorage(err)
+			_logger.Printf("CRITICAL: child launch journal unavailable for Program %d: %v; subsequent starts blocked", a.ID, err)
+		})
 	}, controller)
 }
 
 func requestProgramWorker(ctx context.Context, a program.Program, events chan program.Event) (bool, bool) {
 	controller := daemonc.NewStopController(a.ID)
 	return _programWorkers.requestWithStop(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithStop(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+		daemonc.RunProgramContextWithLaunchEvidence(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
 			if err := _programWorkers.markTerminal(event); err != nil {
 				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
 			}
-		}, controller)
+		}, controller, launchjournal.New(*_workDir, a.ID), func(err error) {
+			_programWorkers.failStorage(err)
+			_logger.Printf("CRITICAL: child launch journal unavailable for Program %d: %v; subsequent starts blocked", a.ID, err)
+		})
 	}, controller)
 }
