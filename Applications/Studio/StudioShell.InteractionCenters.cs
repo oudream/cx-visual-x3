@@ -31,6 +31,23 @@ namespace CxVisual.Studio
             MPWCommandCenterControl view=doc==null?null:doc.Content as MPWCommandCenterControl;
             if(view!=null)view.Bind(owner,allowInvoke);
         }
+        /// <summary>宿主停止或切换Scope前撤销旧句柄，释放当前UI订阅。</summary>
+        public void DetachStudioMessageCenter(MNMMessageCenter owner)
+        {
+            if(!Object.ReferenceEquals(_studioMessageHost,owner))return;
+            _studioMessageHost=null;_studioMessagePublish=false;
+            LayoutDocument doc=FindStudioContent("doc.messages") as LayoutDocument;
+            MPWMessageCenterControl view=doc==null?null:doc.Content as MPWMessageCenterControl;
+            if(view!=null)view.Bind(null);
+        }
+        public void DetachStudioCommandCenter(MRKCommandCenter owner)
+        {
+            if(!Object.ReferenceEquals(_studioCommandHost,owner))return;
+            _studioCommandHost=null;_studioCommandInvoke=false;
+            LayoutDocument doc=FindStudioContent("doc.commands") as LayoutDocument;
+            MPWCommandCenterControl view=doc==null?null:doc.Content as MPWCommandCenterControl;
+            if(view!=null)view.Bind(null);
+        }
         public void OpenStudioMessageCenter(MNMMessageCenter owner,bool allowPublish=false)
         {
             AttachStudioMessageCenter(owner,allowPublish);
