@@ -135,8 +135,8 @@ func TestPriorJournalWithoutOSBirthStaysUnresolved(t *testing.T) {
 	}
 	found, err := Scan(wd)
 	if err != nil { t.Fatal(err) }
-	if !strings.Contains(found[9007199254740995], "unverified-original-birth") &&
-		!strings.Contains(found[9007199254740995], "pid-not-observable") {
+	if !strings.Contains(found[9007199254740995], "unreconciled launch") ||
+		!strings.Contains(found[9007199254740995], "osBirthMs=0 identity=") {
 		t.Fatalf("old unbound record must stay quarantined: %+v", found)
 	}
 	r.ProcessStartMs = -1
