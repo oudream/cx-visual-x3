@@ -515,6 +515,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(edit.TryUpdate(unlocked.Translate(1,0)),"最后一次更新");
             Ensure(store.Remove(roi.Id) && !edit.Cancel() && store.Find(roi.Id)==null,
                 "外部删除后旧手势不能重新插入已删除对象");
+            // 外部隐藏整层不必修改Item实例，也要使旧鼠标手势失效。
+            var hiddenStore=new MVIImageOverlayStore();
+            var hiddenRoi=hiddenStore.Add(new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,3,3)));
+            var hiddenGesture=new MVIImageOverlayEditGesture(hiddenStore);
+            Ensure(hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Move),
+                "可见原图元应能进入短命移动");
+            hiddenStore.SetLayerVisible(MVIImageOverlayLayer.Roi,false);
+            Ensure(!hiddenGesture.TryUpdate(hiddenRoi.Translate(1,1)) &&
+                !hiddenGesture.IsActive && !hiddenGesture.Cancel() &&
+                Object.ReferenceEquals(hiddenStore.Find(hiddenRoi.Id),hiddenRoi),
+                "外部隐藏图层后应取消后续草稿更新且不产生额外Store写入");
+            hiddenStore.SetLayerVisible(MVIImageOverlayLayer.Roi,true);
+            Ensure(hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Move) &&
+                hiddenGesture.Complete(),
+                "重新显示同一图层后允许新的独立编辑");
             Console.WriteLine("PASS MVI ImageOverlay: 编辑State Begin/Update/Complete/Cancel、回滚与外部修改隔离");
         }
 
