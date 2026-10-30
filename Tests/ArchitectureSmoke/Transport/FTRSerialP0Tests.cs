@@ -17,7 +17,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FTRSerialChannelConfiguration config=new FTRSerialChannelConfiguration {
                 Id="f17-serial-real-os-negative",
                 PortName="COM65534",BaudRate=115200,DataBits=8,
-                Parity="None",StopBits="One",ReceiveBufferBytes=4096,
+                Parity="None",StopBits="One",Handshake="RequestToSend",
+                ReceiveBufferBytes=4096,
                 ReceiveByteBudget=8192,QueueCapacity=2,
                 SendQueueCapacity=2,SendByteBudget=16384,
                 SendTimeoutMs=800,StopTimeoutMs=2000,ReceiveIdleTimeoutMs=1000,
@@ -28,6 +29,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(restored.Kind==FTRChannelKind.Serial&&restored.PortName==config.PortName&&
                 restored.ReceiveByteBudget==8192&&restored.SendTimeoutMs==800&&
                 restored.ReceiveIdleTimeoutMs==1000&&
+                restored.Handshake=="RequestToSend"&&
                 !restored.CapturePayloadEvidence&&
                 restored.DescribeType().Topology==FTRChannelTopology.SharedBus,
                 "Serial正式FCM参数/共享总线身份丢失");
@@ -35,6 +37,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             bool wrong=false;
             try{invalid.Validate();}catch(ArgumentException){wrong=true;}
             Check(wrong,"非法Serial数据位未拒绝");
+            wrong=false;
+            try{new FTRSerialChannelConfiguration{Handshake="UnknownFlowControl"}.Validate();}
+            catch(ArgumentException){wrong=true;}
+            Check(wrong,"非法Serial流控值未在接触物理设备前被FCM拒绝");
+            Check(new FTRSerialChannelConfiguration().Handshake=="None",
+                "新参数默认值不得改变旧工程串口流控");
             using(var channel=new FTRSerialChannel(restored))
             {
                 Check(channel.State==FTRChannelState.Closed,"构造串口时不能自动访问硬件");
