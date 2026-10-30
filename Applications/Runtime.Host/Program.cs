@@ -27,6 +27,8 @@ namespace CxVisual.Runtime.Host
                     return MRHUnifiedRuntimeHost.Serve(args[1]);
                 if (verb == "scada-g1-smoke" && args.Length == 1)
                     return MRHScadaSmoke.Run();
+                if (verb == "scada-group-serve" && args.Length == 3)
+                    return MRHScadaRuntimeGroup.Serve(args[1],args[2]);
                 if (verb == "scada-serve" && args.Length >= 7 && args.Length <= 10)
                 {
                     bool contiguous=false,serviceMode=false,recover=false;
@@ -88,7 +90,7 @@ namespace CxVisual.Runtime.Host
                     Show(MVISceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-group-serve <project.cxproj> <mhsRoot> | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
                 return 2;
             }
             catch (Exception ex)
