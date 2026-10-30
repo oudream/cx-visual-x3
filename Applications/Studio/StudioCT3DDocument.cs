@@ -453,6 +453,7 @@ namespace CxVisual.Studio
                 {
                     _selectedMeshFaces.Clear();
                     _faceSelectionRevision++;
+                    _scene.ClearSelectedMeshFaces();
                 }
                 // 唯一MVI ROI意图入口：鼠标、SDK、清除和跨正交视图均使旧预览失效。
                 CancelPendingAnalysis();
@@ -510,9 +511,11 @@ namespace CxVisual.Studio
                     analysis.Mesh.Mesh,_volume.SpatialFrame,_volume.OriginalWidth,
                     _volume.OriginalHeight,_volume.OriginalDepth);
                 _scene.SetSurfaceMesh(display);
+                RefreshSelectedMeshFaceHighlight();
             }
             else
             {
+                _scene.ClearSelectedMeshFaces();
                 _scene.ClearSurfaceMesh();
                 _scene.SetSurfacePoints(MPWVolumeSurfaceProjection.Project(
                     analysis.Surface.Points,_volume.SpatialFrame,_volume.OriginalWidth,
@@ -641,6 +644,8 @@ namespace CxVisual.Studio
         }
 
         public int SelectedMeshFaceCount {get{return _selectedMeshFaces.Count;}}
+        public int VisibleMeshFaceHighlightCount
+        {get{return _scene.SelectedFaceHighlightTriangleCount;}}
 
         /// <summary>WPF显示射线经过原Voxel及FVO标定Frame变为真实毫米射线；
         /// 只有专业FGE原Mesh重新求交的三角面StableId可进入选择集。</summary>
@@ -677,8 +682,35 @@ namespace CxVisual.Studio
             if(existing>=0)_selectedMeshFaces.RemoveAt(existing);
             else _selectedMeshFaces.Add(current);
             _faceSelectionRevision++;
+            RefreshSelectedMeshFaceHighlight();
             _status.Text="选中原Mesh面片："+_selectedMeshFaces.Count+
                 "（Ctrl+Shift增删面片，点击「选中面片重算」）。";
+        }
+
+        /// <summary>原值FGE面片投影为有限WPF黄色高亮，仅做显示不回写专业数据。</summary>
+        private void RefreshSelectedMeshFaceHighlight()
+        {
+            if(_volume==null||_current==null||_selectedMeshFaces.Count==0||
+                _current.Kind!=CT3DAnalysisKind.MeshPlane)
+            {
+                _scene.ClearSelectedMeshFaces();
+                return;
+            }
+            int count=Math.Min(_selectedMeshFaces.Count,512);
+            var vertices=new List<FGEPoint3D>(count*3);
+            var triangles=new List<int>(count*3);
+            for(int i=0;i<count;i++)
+            {
+                CT3DMeshFaceReference face=_selectedMeshFaces[i];
+                int offset=vertices.Count;
+                vertices.Add(face.PointA);vertices.Add(face.PointB);vertices.Add(face.PointC);
+                triangles.Add(offset);triangles.Add(offset+1);triangles.Add(offset+2);
+            }
+            var geometry=new FGETriangleMesh3D(vertices,triangles);
+            var preview=MPWVolumeSurfaceProjection.ProjectMesh(geometry,
+                _volume.SpatialFrame,_volume.OriginalWidth,
+                _volume.OriginalHeight,_volume.OriginalDepth,512);
+            _scene.SetSelectedMeshFaces(preview);
         }
 
         public Task<CT3DAnalysisCase> RecomputeSelectedMeshFacesAsync(
