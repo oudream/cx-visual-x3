@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"gogo/internal/program"
 )
@@ -53,5 +55,32 @@ func TestFormatDaemonExitEvent(t *testing.T) {
 				t.Fatalf("unexpected %q in %q", tc.notExpected, msg)
 			}
 		})
+	}
+}
+
+
+func TestWaitForFirstStartHonorsCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if waitForFirstStart(ctx, time.Hour) {
+		t.Fatal("cancelled initial startup delay should not start a program")
+	}
+	if !waitForFirstStart(context.Background(), 0) {
+		t.Fatal("zero initial wait must not prevent startup")
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	done := make(chan bool, 1)
+	go func() {
+		done <- waitForFirstStart(ctx, time.Hour)
+	}()
+	cancel()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("startup delay continued despite cancellation")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("startup delay did not cancel promptly")
 	}
 }
