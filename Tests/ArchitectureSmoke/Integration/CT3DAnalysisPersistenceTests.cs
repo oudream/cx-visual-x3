@@ -220,10 +220,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Math.Abs(loadedLayout.SnapshotLayer("inspection")[0].Opacity-.4)<1e-12,
                     "同一MEM事务Undo/Redo完整恢复专业结果及Scene可视引用");
                 int editRevision=engineering.Revision;
+                Reject<InvalidOperationException>(()=>CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(
+                    engineering,owner,editRevision,folder,sliceRoi,.49,.51,CancellationToken.None));
+                Check(engineering.Revision==editRevision,
+                    "已有Scene Visual却未提供结果重绑定器时不得提交孤立Data");
                 CT3DAnalysisPersistence.RecomputeSliceRoiAndCommit(engineering,owner,
-                    editRevision,folder,sliceRoi,.49,.51,CancellationToken.None);
+                    editRevision,folder,sliceRoi,.49,.51,
+                    (previous,next)=>MVI3DSceneLayoutPersistence.CreateReboundAspect(
+                        loadedLayout,item=>
+                        {
+                            if(item.Kind!=MVI3DSceneKind.Mesh||
+                                item.SourceRef!="ct3d:mesh:"+previous.Mesh.ResultId.ToString("N"))
+                                throw new InvalidDataException("旧Scene对象来源不属于本次专业Case。");
+                            return "ct3d:mesh:"+next.Mesh.ResultId.ToString("N");
+                        },CancellationToken.None),CancellationToken.None);
                 var persistedEdited=CT3DAnalysisPersistence.Open(engineering,address,
                     folder,CancellationToken.None);
+                var revisedLayout=new MVI3DSceneState();
+                MVI3DSceneLayoutPersistence.Open(engineering,address,revisedLayout,
+                    item=>item.SourceRef=="ct3d:mesh:"+persistedEdited.Mesh.ResultId.ToString("N"),
+                    CancellationToken.None);
+                Check(revisedLayout.SelectedId==loadedLayout.SelectedId&&
+                    revisedLayout.SnapshotLayer("inspection").Count==1&&
+                    revisedLayout.SnapshotLayer("inspection")[0].Id==visualMesh&&
+                    Math.Abs(revisedLayout.SnapshotLayer("inspection")[0].Opacity-.4)<1e-12,
+                    "ROI重算原子更新Visual来源并保持Scene实例Id、选择、分组及透明度");
                 Check(engineering.Revision==editRevision+1&&
                     persistedEdited.Plane.ResultId!=restored.Plane.ResultId&&
                     persistedEdited.RoiSignature==restored.RoiSignature&&
@@ -237,10 +258,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(engineering.Revision==revised,
                     "ROI修改的版本冲突及取消不得改变MEM工程");
                 engineering.Undo().RequireValue();
+                var oldLayoutAfterUndo=new MVI3DSceneState();
+                MVI3DSceneLayoutPersistence.Open(engineering,address,oldLayoutAfterUndo,
+                    item=>item.SourceRef=="ct3d:mesh:"+restored.Mesh.ResultId.ToString("N"),
+                    CancellationToken.None);
+                Check(oldLayoutAfterUndo.SelectedId==visualMesh,
+                    "ROI Undo必须同时恢复旧Scene来源和选中实例");
                 Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
                     .Plane.ResultId==restored.Plane.ResultId,
                     "ROI编辑Undo应完整恢复旧Feature身份");
                 engineering.Redo().RequireValue();
+                var newLayoutAfterRedo=new MVI3DSceneState();
+                MVI3DSceneLayoutPersistence.Open(engineering,address,newLayoutAfterRedo,
+                    item=>item.SourceRef=="ct3d:mesh:"+persistedEdited.Mesh.ResultId.ToString("N"),
+                    CancellationToken.None);
+                Check(newLayoutAfterRedo.SelectedId==visualMesh,
+                    "ROI Redo必须同时恢复新Scene来源与原实例选择");
                 Check(CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None)
                     .Plane.ResultId==persistedEdited.Plane.ResultId,
                     "ROI编辑Redo应完整恢复新Feature身份");
