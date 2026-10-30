@@ -849,6 +849,9 @@ namespace CxVisual.Studio
                     displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     displayedProject=projectId;
                     displayedPage=page.Id;
+                    // 已存ROI和临时图窗的几何绑定于当前MEM Revision。
+                    // 发生外部工程修改或Undo/Redo后，不允许旧图元覆盖较新定义。
+                    displayedRevision=revision;
                     resultPreview.Visibility=Visibility.Visible;
                     resultExpander.Visibility=Visibility.Visible;
                     resultExpander.IsExpanded=true;
@@ -888,6 +891,12 @@ namespace CxVisual.Studio
                 if(resultPreview.Session.ActiveSlot!=MVIImageSlot.Original)
                 {
                     resultDetail.Text="Mask/Result是本Run只读证据；请先显示原图再保存ROI。";
+                    return;
+                }
+                if(displayedRevision!=_viewModel.ProjectSession.Revision)
+                {
+                    resultDetail.Text="工程Revision已变化，当前ROI图元可能过期；"+
+                        "请重新运行工程ROI或重新绑定源，再提交修改。";
                     return;
                 }
                 try
@@ -944,7 +953,9 @@ namespace CxVisual.Studio
                             resultPreview.Overlays.Remove(projected.Id);
                     }
                     resultPreview.Session.ClearResult();
-                    displayedRun=null;displayedRevision=-1;
+                    displayedRun=null;
+                    // 下一次本图窗继续编辑须以刚提交成功的新工程版本为基线。
+                    displayedRevision=session.Revision;
                     resultList.Items.Clear();resultList.Visibility=Visibility.Collapsed;
                     sourceButton.IsEnabled=false;contourButton.IsEnabled=false;
                     runExportButton.IsEnabled=false;rawExportButton.IsEnabled=false;
