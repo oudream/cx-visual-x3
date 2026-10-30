@@ -89,7 +89,7 @@ onMounted(() => { void guard.refresh() })
         <div v-if="!source.data?.available" class="muted guard-error">
           {{ source.data?.error || '尚未完成首次查询，或当前目录不具备读取条件。' }}
         </div>
-        <div v-else class="muted">本次文件记录 {{ source.data.items.length }} 项。记录为 0 不表示当前设备、服务或业务健康。</div>
+        <div v-else class="muted">本次文件记录 {{ source.data?.items.length ?? 0 }} 项。记录为 0 不表示当前设备、服务或业务健康。</div>
       </section>
     </div>
 
