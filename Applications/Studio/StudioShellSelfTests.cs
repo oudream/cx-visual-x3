@@ -3165,6 +3165,9 @@ namespace CxVisual.Studio
                         Assert(workspace.HasPendingAnalysis&&edited.Plane.SampleCount==9&&
                             edited.Plane.ResultId!=baseline.Plane.ResultId,
                             "Studio选区没有形成可持久化的新专业Feature");
+                        Assert(!window.TryCloseStudioDocument("doc.ct3d")&&
+                            window.GetStudioContentIds().Contains("doc.ct3d"),
+                            "Studio有未保存专业结果时不能直接关闭并丢失分析");
                         workspace.SavePendingResult();
                         Assert(!workspace.HasPendingAnalysis,
                             "专业结果提交成功后仍错误保留未保存状态");
