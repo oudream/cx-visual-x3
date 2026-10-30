@@ -6,6 +6,9 @@ namespace CxVisual.Mechanism.Visual
     /// <summary>编辑操作类别仅表示短命手势；正式工程提交/Undo仍归MEM/MTC。</summary>
     public enum MVIImageOverlayEditKind { Move, Resize, Rotate, PolygonVertex }
 
+    /// <summary>同一双视口会话内的输入来源；不依赖WPF元素或鼠标捕获对象。</summary>
+    public enum MVIImageGesturePane { Primary, Secondary }
+
     /// <summary>
     /// UI无关、单Owner的GoF State短事务：Begin -> Update* -> Complete/Cancel。
     /// 一次只能编辑唯一MVI OverlayStore中的一个对象；保存编辑前不可变快照。
@@ -18,18 +21,28 @@ namespace CxVisual.Mechanism.Visual
         private MVIImageOverlayItem _original;
         private MVIImageOverlayItem _lastWritten;
         private MVIImageOverlayEditKind? _kind;
+        private MVIImageGesturePane? _originPane;
 
         public MVIImageOverlayEditGesture(MVIImageOverlayStore store)
         { _store=store ?? throw new ArgumentNullException("store"); }
 
         public bool IsActive { get { return _original!=null; } }
         public MVIImageOverlayEditKind? Kind { get { return _kind; } }
+        public MVIImageGesturePane? OriginPane { get { return _originPane; } }
 
-        public bool Begin(MVIImageOverlayItem item,MVIImageOverlayEditKind kind)
+        public bool IsEditing(MVIImageOverlayEditKind kind,MVIImageGesturePane pane)
+        {
+            return IsActive && _kind==kind && _originPane==pane;
+        }
+
+        public bool Begin(MVIImageOverlayItem item,MVIImageOverlayEditKind kind,
+            MVIImageGesturePane pane = MVIImageGesturePane.Primary)
         {
             if(item==null)throw new ArgumentNullException("item");
             if(!Enum.IsDefined(typeof(MVIImageOverlayEditKind),kind))
                 throw new ArgumentOutOfRangeException("kind");
+            if(!Enum.IsDefined(typeof(MVIImageGesturePane),pane))
+                throw new ArgumentOutOfRangeException("pane");
             if(IsActive)throw new InvalidOperationException("上一编辑手势未完成或取消。");
             if(item.IsLocked || !ReferenceEquals(_store.Find(item.Id),item) ||
                !_store.GetVisibleItems().Any(x=>x.Id==item.Id))
@@ -37,6 +50,7 @@ namespace CxVisual.Mechanism.Visual
             _original=item;
             _lastWritten=item;
             _kind=kind;
+            _originPane=pane;
             return true;
         }
 
@@ -57,6 +71,15 @@ namespace CxVisual.Mechanism.Visual
             if(!_store.Replace(updated)){Abandon();return false;}
             _lastWritten=updated;
             return true;
+        }
+
+        /// <summary>只有发起编辑的视口可以提交；其它视口MouseUp不改变活动State。</summary>
+        public bool CompleteFrom(MVIImageGesturePane pane)
+        {
+            if(!Enum.IsDefined(typeof(MVIImageGesturePane),pane))
+                throw new ArgumentOutOfRangeException("pane");
+            if(_originPane!=pane)return false;
+            return Complete();
         }
 
         public bool Complete()
@@ -91,6 +114,7 @@ namespace CxVisual.Mechanism.Visual
             _original=null;
             _lastWritten=null;
             _kind=null;
+            _originPane=null;
         }
     }
 }
