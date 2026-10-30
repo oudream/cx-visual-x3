@@ -81,20 +81,27 @@ namespace CxVisual.Runtime.Host
             // FCM/MHS版本可能由另一个Studio进程提交，不能仅检查本Host
             // 已缓存section对象。每轮通过正式MHS OpenExisting重新读磁盘版本；
             // 首批正确性优先，频繁批读的缓存/版本事件优化由MHS Owner裁决。
+            // 同一个Connector可同时被采集轮询、Pipe诊断和恢复守卫读取。
+            // MHS存储对OpenExisting会取独占文件锁；同Host内这些只读核验
+            // 必须串行，避免把竞争锁失败误认为Connector配置真的发生漂移。
+            object connectorReadGate=new object();
             Func<bool> stillApproved=()=>
             {
-                try
+                lock(connectorReadGate)
                 {
-                    MHSConfigSection<MCNConnectorConfiguration> live=
-                        new MHSConfigService(configRoot)
-                            .OpenExisting<MCNConnectorConfiguration>(new FCMConfigIdentity(
-                                "CxVisual.Module.Connector","module",connectorModuleId));
-                    return !live.HasPendingApply &&
-                        string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal) &&
-                        File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp &&
-                        (additionalApproval==null || additionalApproval());
+                    try
+                    {
+                        MHSConfigSection<MCNConnectorConfiguration> live=
+                            new MHSConfigService(configRoot)
+                                .OpenExisting<MCNConnectorConfiguration>(new FCMConfigIdentity(
+                                    "CxVisual.Module.Connector","module",connectorModuleId));
+                        return !live.HasPendingApply &&
+                            string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal) &&
+                            File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp &&
+                            (additionalApproval==null || additionalApproval());
+                    }
+                    catch { return false; }
                 }
-                catch { return false; }
             };
             PADScadaDeviceSession session=new PADScadaDeviceSession(
                 deviceRef,scopeId,connectorModuleId,version,effective,
