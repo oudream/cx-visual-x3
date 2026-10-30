@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -427,5 +428,18 @@ func TestWorkerOwnedChildrenVisibleBeforeStartEventConsumption(t *testing.T) {
 	waitWorkerReleased(t, gate, programID)
 	if _, present := gate.ownedChildren()[programID]; present {
 		t.Fatal("exited guardian still exposes a stoppable child")
+	}
+}
+
+
+func TestLaunchEvidenceStorageFaultBlocksEveryAdmission(t *testing.T) {
+	gate := newProgramWorkerGate()
+	gate.failStorage(errors.New("journal fsync failed"))
+	if gate.persistenceError() == nil { t.Fatal("storage failure was not latched") }
+	if gate.start(context.Background(), 501, func(){t.Error("worker started")}) {
+		t.Fatal("persistent evidence failure allowed new worker")
+	}
+	if started,queued:=gate.request(context.Background(),501,func(){t.Error("queued after journal failure")});started||queued {
+		t.Fatal("evidence failure allowed queued replacement")
 	}
 }
