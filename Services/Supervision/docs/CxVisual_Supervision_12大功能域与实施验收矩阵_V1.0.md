@@ -445,3 +445,14 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **证据等级**：正式源码、回归测试、H5 提示与 CI 规则已提交（S），但此轮没有固定 SHA 的 Go Windows/Linux/macOS CI 通过日志或现场浏览器／工控机长稳数据，**G1/G2/G3 均待验**。不能把新测试存在误称测试成功。
 
 **本期承诺边界**：针对 Daemon 进程级 SIGKILL，在文件系统正常工作条件下的 Start 前意图窗口进行保守封堵；AttemptID 并非 OS 原生 PID 创建时间，不能证明 PID 未复用、子孙进程树已退出、设备 Ready；突然断电时的磁盘元数据持久性、目录 ACL、只读挂载、跨平台文件系统差异仍待验证。后续是 OS 创建代次与归属验证、持久操作回执/对账及 S11 的可信认证授权审计。
+
+
+## 二十二、OS创建时间与可执行文件的只读证据核验（2026-10-30）
+
+**来源与实际源码**：`internal/launchjournal/identity.go` 使用仓库既有 `gopsutil/v3/process` 的 `CreateTime` 与 `Exe` 读取 OS 进程创建毫秒时间和真实可执行文件，利用 `os.SameFile` 核对保存的 Program.Path。`journal.Record` 新增可选字段 `processStartMs`，`Started` 在原 Worker 成功启动子进程之后读取并保存；无法获取创建时间时保持 0（未知），旧凭证不需要无依据地补齐。`Scan` 在**已有未清算凭证**的隔离理由中写入 `osBirthMs` 与 `identity`，包括创建时间不一致、时间吻合但文件不一致、证据不可读或观察吻合。
+
+**唯一安全裁决**：**所有未清算凭证一律继续隔离**，绝不因 PID、创建时间、执行文件均观察一致而自动认领、Kill、删除凭证或解锁。PID 与 OS 时间可能在检查后变化（TOCTOU）、进程树可能部分存活；AttemptID 是 Daemon 尝试标识，不是 OS 原生防 PID 重用的安全句柄。OS 获取失败不影响保守隔离。旧 UDP/SQLite 与 H5 GET API 协议不变，不新增写操作。
+
+**前端**：`web/src/utils/guard.ts` 增加 `identityEvidenceLabel`，依据 Daemon 原始 `identity=...` 显示“PID 创建时间不匹配／证据不足／创建时间及文件观察一致但未证明归属”等解释；`GuardView.vue` 新增“进程身份观察（非授权）”列，`ProgramsView.vue` 在详情中显示相同说明，原始 reason 仍保留以供追溯。该列基于**上次 Daemon 启动扫描的静态结果**，不是实时 OS 状态，不能通过页面筛选影响守护 Gate。
+
+**回归与风险**：`identity_test.go` 覆盖同一 PID 的不同 OS 创建时间、创建时间缺失、仅有 intent 没有 PID、旧凭证不自动放行；`guard.test.ts` 覆盖 H5 三类文字及老格式无身份观察的保守说明。Linux Race CI 回归筛选增加创建时间相关测试，原 Go Windows/macOS/Linux 全量 Build/Test 与前端 Typecheck/Vitest/Build 保持。源码提交已确认；当前尚无本轮固定 SHA 的三平台 CI 完成报告，因此本功能 **S（已提交）/G1 待验/G2、G3 待现场验证**，不得宣称 OS 原子进程身份闭环或安全授权已验收。
