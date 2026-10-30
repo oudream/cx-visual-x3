@@ -13,22 +13,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MVIImageSession session = new MVIImageSession();
             int changes = 0;
             session.Changed += (sender, args) => { changes++; };
+            long initialGeneration=session.OriginalGeneration;
             long stale = session.BeginOriginalLoad();
+            Check(session.OriginalGeneration==initialGeneration+1,
+                "开始异步原图加载应立刻使旧原图计算代次失效");
             long latest = session.BeginOriginalLoad();
+            Check(session.OriginalGeneration==initialGeneration+2,
+                "连续异步加载必须产生不同原图代次");
             Check(!session.TryCompleteOriginalLoad(stale, first), "过期异步图必须拒绝");
             Check(session.ActiveImage == null && changes == 0, "拒绝旧图不得发事件");
             Check(session.TryCompleteOriginalLoad(latest, second), "当前异步结果必须接受");
             Check(session.ActiveImage == second && changes == 1, "图像生效与Observer事件");
+            Check(session.OriginalGeneration==initialGeneration+3,
+                "成功接受异步原图时必须产生新的原图代次");
             long oldToken = session.BeginOriginalLoad();
             session.SetOriginal(first);
             Check(!session.TryCompleteOriginalLoad(oldToken, second) &&
                 session.ActiveImage == first, "同步加载令牌应阻止旧异步图覆盖");
+            long stableSourceGeneration=session.OriginalGeneration;
             session.SetResult(second);
             Check(session.HasResult && session.ActiveSlot == MVIImageSlot.Original, "原图和结果槽");
+            Check(session.OriginalGeneration==stableSourceGeneration,
+                "添加派生Result不能伪装原图来源发生变化");
             session.Select(MVIImageSlot.Result);
             Check(session.ActiveImage == second, "结果图切换");
             session.Select(MVIImageSlot.Result);
-            Check(changes == 4, "重复选择不发变更");
+            Check(changes == 4 && session.OriginalGeneration==stableSourceGeneration,
+                "选择原图/结果槽不得改变原图代次或重复发事件");
             long resultVersion = session.SourceVersion;
             Check(session.ClearResult() &&
                 session.Original == first && session.Result == null &&
@@ -36,6 +47,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 session.ActiveSlot == MVIImageSlot.Original &&
                 session.SourceVersion == resultVersion + 1 && changes == 5,
                 "清理派生结果应保留原图、切回原图、只产生一次版本与通知");
+            Check(session.OriginalGeneration==stableSourceGeneration,
+                "清理结果槽不得改变真实原图来源代次");
             Check(!session.ClearResult() &&
                 session.SourceVersion == resultVersion + 1 && changes == 5,
                 "重复清理派生结果不得增加代次或发Observer通知");
@@ -62,18 +75,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 session.Result == null, "旧源版本不能覆盖新原图");
             long currentResultVersion = session.SourceVersion;
             int beforeCurrentCommit = changes;
+            stableSourceGeneration=session.OriginalGeneration;
             Check(session.TrySetResult(currentResultVersion, first) &&
                 session.Result == first &&
                 session.SourceVersion == currentResultVersion + 1 &&
                 changes == beforeCurrentCommit + 1,
                 "当前计算结果必须原子提交且只发一次通知");
+            Check(session.OriginalGeneration==stableSourceGeneration,
+                "异步提交Result不能将未改动的原图错误标记为新来源");
             Check(!session.TrySetResult(currentResultVersion, second) &&
                 session.Result == first &&
                 session.SourceVersion == currentResultVersion + 1 &&
                 changes == beforeCurrentCommit + 1,
                 "同版本晚到第二份结果不得覆盖先提交结果");
             long versionBeforeClear = session.SourceVersion;
+            stableSourceGeneration=session.OriginalGeneration;
             session.Clear();
+            Check(session.OriginalGeneration==stableSourceGeneration+1,
+                "清空原图必须将全部旧派生计算的原图代次标记过期");
             Check(!session.TrySetResult(versionBeforeClear, first) &&
                 session.Original == null && session.Result == null,
                 "清空会话后旧Result不得重新出现");
