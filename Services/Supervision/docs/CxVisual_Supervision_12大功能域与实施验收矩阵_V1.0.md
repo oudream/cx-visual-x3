@@ -249,5 +249,5 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - **实际代码**：`internal/httpapi/routes.go` 中 `/api/v1/overview`、`/programs`、`/programs/:id` 新增 `security.LocalOnly()`；`/api/v1/health` 保持最小存活探针；原 `events`、`alerts/history` 已沿用同一限制。禁止路径必须先拒绝再调用 Provider，不能泄漏进程 ID、路径、资源与心跳。
 - **正反测试**：`internal/httpapi/routes_test.go` 为三个 API 增加直接外网地址、外部 Host、Forwarded/X-Forwarded-For/X-Real-IP、跨域 Origin、无效地址正反测试及拒绝时零 Provider 调用；`cmd/monitor/web_security_test.go` 验证 HTTP 绑定风险提示；前端 `web/src/api/client.test.ts` 区分 403、500、正常 200。
 - **生产可见行为**：非本机访问 H5 可能加载静态页面，但受保护 API 会收到 403，UI 标记“监控查询权限受限”；Monitor HTTP 绑定疑似外网时明确警告旧 `/programs_status` **尚未认证**。为保证旧调用方兼容，保留该 API 的旧访问合同；**远程安全闭环未完成，不能作为公网部署依据**。
-- **回归及部署门禁**：旧 `/programs_status`、UDP、SQLite、Go Monitor+Daemon、所有 JSON Schema 未更改。新查询安全行为确实可能限制远程旧 H5 使用新的 `/api/v1` 路由，须按 [部署文档](../../deploy/README.md) 用回环地址及防火墙或另经审批的认证方案部署，禁止客户端绕过。
+- **回归及部署门禁**：旧 `/programs_status`、UDP、SQLite、Go Monitor+Daemon、所有 JSON Schema 未更改。新查询安全行为确实可能限制远程旧 H5 使用新的 `/api/v1` 路由，须按 [部署文档](../deploy/README.md) 用回环地址及防火墙或另经审批的认证方案部署，禁止客户端绕过。
 - **证据等级**：当前为已提交源码/测试（S）；本轮环境未取得推送 SHA 的 Go 三平台测试、前端 typecheck/Vitest/build 完成证据，G1 待 CI；隔离网络安全验证、旧系统兼容现场测试仍属于 G2/G3 待完成。S11 正式认证授权/审计与 B 期可靠 Daemon 操作仍是未完成目标。
