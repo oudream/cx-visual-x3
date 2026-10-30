@@ -3423,6 +3423,10 @@ namespace CxVisual.Studio
                         Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
                             workspace.CurrentAnalysis.GetFeatureMeasurements().Count==2,
                             "Studio重新打开不能恢复已保存的Feature及Measurement");
+                        Assert(workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement&&
+                            workspace.Scene3D.SelectedId==hiddenMeasurement,
+                            "Studio工程保存重开必须恢复原Measurement Scene身份及选择，不生成第二套实例");
                         using(var engineering=MEMEngineering.Open(project))
                         {
                             var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
