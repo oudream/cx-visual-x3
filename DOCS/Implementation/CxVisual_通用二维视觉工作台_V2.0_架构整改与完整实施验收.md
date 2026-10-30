@@ -374,6 +374,15 @@
 - **验证级别**：本轮WPF Esc事件在`8d94fa04`的Imaging Job中构建及`--imaging-viewer-smoke`两个Step已success；完整Job被后续其它默认Smoke阻断。IMG-01/02仍为InProgress；G5人手鼠标/键盘与工业G6继续未验。
 
 
+### 7.12 IMG-01/02 捕获态与跨点击草稿解耦、外部切图和隐藏层提交保护（2026-10-30）
+
+- **依据**：04《视觉场景与交互工具》ST01/D04-02/03/05；02《UML总体模型》MVI/MPW责任界线；实施统筹IMG-01/02、IMG-12与IMG-18。此次遵循现有`MVIImageSession`、`MVIImageOverlayEditGesture`、单一`OverlayStore`及MEM/MTC唯一正式Undo，不建立第二个编辑数据库。
+- **实际缺陷①**：旧`OnGestureLostMouseCapture`调用`HasTransientGesture`，其中包含跨多次点击的`_polygonDraft.Count>0`；当副Pane正常平移后释放捕获，可能错误取消仍在等待下一点的两线/多边形草稿。[`8ae31b52`](https://github.com/oudream/cx-visual-x3/commit/8ae31b522b8a0831383cf40fa043e91937f02ee4)在MPW区分`HasCapturedGesture`与`HasTransientGesture`：LostMouseCapture仅取消真正捕获的拖动，Esc仍取消包括跨点击草稿在内的全部暂态。[`f86f8309`](https://github.com/oudream/cx-visual-x3/commit/f86f830904d1d4bd795e2e68ff7065fc5ed55180)用真实WPF主副Pane LostMouseCapture事件分别回归“首点草稿保留、第二点可续、Esc仍清除”。该SHA [Imaging #41013724419](https://github.com/oudream/cx-visual-x3/actions/runs/41013724419)整Job成功，可登记受控WPF G3/G4；非人手UIA G5。
+- **实际缺陷②**：MPW开放`Session`给开发者，外部直接`Session.SetOriginal`触发`RefreshDisplay`；旧逻辑仅清Store和草稿，没有统一取消捕获与旧Overlay手势。[`101395a8`](https://github.com/oudream/cx-visual-x3/commit/101395a88cbbc0b69f86a8a94cf627976a1dcd97)在检测到`Original`引用改变时先`CancelTransientGesture`，并清除旧选中ID，保证所有宿主通过公开Session切图也遵守统一状态机。[ `bb8bc5e8` ](https://github.com/oudream/cx-visual-x3/commit/bb8bc5e87459a106ad95bac6ca09243d8a08dac8)在真实TCT WPF烟测增加从公开Session直接切新Gray16原图后草稿消失，再恢复原图继续其它案例。
+- **实际缺陷③**：MVI编辑`Complete()`原仅比较Item引用；外部隐藏图层不替换Item实例，可能错误提交正在拖动的不可见草稿。[`d8b80eba`](https://github.com/oudream/cx-visual-x3/commit/d8b80eba824477de909ffde7fe39a57f9bfedde8)在Complete增加可见性与解锁检查，若当前仍为自身草稿但已隐藏则`Cancel()`恢复原几何，保持外部隐藏设置。[`8895b5a9`](https://github.com/oudream/cx-visual-x3/commit/8895b5a99bdaeb20da8dcae99846b47c634948e7)补隐藏图层后MouseUp拒绝、回滚前状态及重新显示不复活旧草稿的反证。
+- **固定CI状态**：`f86f8309`的[Imaging #41013724419](https://github.com/oudream/cx-visual-x3/actions/runs/41013724419)已成功；`8895b5a9`对应[Imaging #41013971612](https://github.com/oudream/cx-visual-x3/actions/runs/41013971612)和[Runtime #41013971625](https://github.com/oudream/cx-visual-x3/actions/runs/41013971625)本条登记时待实测结果，**不得把f86的绿色直接归为8895的通过**。
+- **结论**：IMG-01/02仍`InProgress`；本次只收敛捕获/草稿与公共Session切图/图层可见性三处状态边界。完整双Pane真鼠标UIA、窗口焦点/多DPI、厂内大图及持续性能仍需G5/G6，既有公开API未破坏、无新增工程/NuGet/DLL。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
