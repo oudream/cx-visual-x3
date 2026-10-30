@@ -202,6 +202,22 @@ func (g *programWorkerGate) clearPending(id int64) {
 	g.mu.Unlock()
 }
 
+// ownedChildren lists actual active children from the original Worker
+// controllers, not the asynchronously updated legacy _runProgramIds map.
+// It includes children whose EventStart has not yet been consumed. Each
+// stop request must still validate its controller/child generation.
+func (g *programWorkerGate) ownedChildren() map[int64]int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	children := make(map[int64]int)
+	for id, controller := range g.activeStop {
+		if pid := controller.ActivePID(); pid > 0 {
+			children[id] = pid
+		}
+	}
+	return children
+}
+
 func (g *programWorkerGate) stopController(id int64) *daemonc.StopController {
 	g.mu.Lock()
 	defer g.mu.Unlock()
