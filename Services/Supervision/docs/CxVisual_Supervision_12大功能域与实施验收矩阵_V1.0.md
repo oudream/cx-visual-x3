@@ -456,3 +456,18 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **前端**：`web/src/utils/guard.ts` 增加 `identityEvidenceLabel`，依据 Daemon 原始 `identity=...` 显示“PID 创建时间不匹配／证据不足／创建时间及文件观察一致但未证明归属”等解释；`GuardView.vue` 新增“进程身份观察（非授权）”列，`ProgramsView.vue` 在详情中显示相同说明，原始 reason 仍保留以供追溯。该列基于**上次 Daemon 启动扫描的静态结果**，不是实时 OS 状态，不能通过页面筛选影响守护 Gate。
 
 **回归与风险**：`identity_test.go` 覆盖同一 PID 的不同 OS 创建时间、创建时间缺失、仅有 intent 没有 PID、旧凭证不自动放行；`guard.test.ts` 覆盖 H5 三类文字及老格式无身份观察的保守说明。Linux Race CI 回归筛选增加创建时间相关测试，原 Go Windows/macOS/Linux 全量 Build/Test 与前端 Typecheck/Vitest/Build 保持。源码提交已确认；当前尚无本轮固定 SHA 的三平台 CI 完成报告，因此本功能 **S（已提交）/G1 待验/G2、G3 待现场验证**，不得宣称 OS 原子进程身份闭环或安全授权已验收。
+
+
+## 二十三、启动凭证原子独占与停止流水持久对账（2026-10-30）
+
+**本轮先修确定问题**：`internal/launchjournal/Journal.Begin` 原来先 Lstat 不存在，再通过临时文件 Rename 落盘，中间存在检查/写入竞态。现在按 ProgramId 的 `.json` 使用 `O_CREATE|O_EXCL` 独占创建，Sync 成功后才允许 Worker 调用 Start；崩溃留下半写凭证仍必须隔离。`Started` 先重读磁盘意图并核对 AttemptID/ProgramId/stage，确认同一启动尝试才可写 PID；`Finished` 再核对 ID/stage/PID，拒绝清除被替换的其他尝试。`journal_test.go` 增加 32 并发竞争及缺失/篡改/替换凭证测试。保留 OS 创建时间只读核验，不等于跨进程原子 PID 所有权。
+
+**新的可靠操作证据**：`internal/stopjournal` 的原始 `Entry` 由 128 位 OperationID、字符串 ProgramId、PID、动作、状态、WaitCompleted 与 UTC 组成，写入工作目录 `supervision/daemon-stop-operations.ndjson`。`cmd/daemon/queueOwnedStop` 在提交第一次 OS Stop 之前同步追加并 Sync `requested`，失败则不发 Kill；后续 `refused/signal-failed/unknown/wait-confirmed` 与原 Worker 迟到 Wait 共享同一 OperationID，分事件追加，按已观察到的最高可信 Wait 状态合并，避免延迟 unknown 覆盖 wait-confirmed。损坏、空白、部分写入、超限日志阻止新的停止流水追加和对应停止请求，避免产生不可对账的新操作。4MiB 总上限、4KiB 单条与 200 条最近操作读模型是当前实现限制，不是长周期归档策略。
+
+**原架构和UI**：`internal/httpapi/RegisterStopHistory` 复用原 security.LocalOnly/ReadOnlyHeaders 注册 `GET /api/v1/stops/history`，Monitor 从同工作目录读取，不暴露 POST/PUT/DELETE。`web/src/views/StopHistoryView.vue` 新增“停止历史”只读页面；导航、轮询、未结清统计、状态分类、Operation ID、历史 PID、原始错误、Program ID 跳转均已接入原 Element Plus/Pinia/Vue Router。缺失日志与异常日志是 `available=false`；不可把 requested、unknown 或 Kill 返回 nil 误称退出完成；原 Worker WaitConfirmed 仍不等于业务/设备 Ready。
+
+**回归源码与CI**：`stopjournal/journal_test.go` 包含跨读写重载、64位ID、乱序迟到、身份冲突、损坏文件、并发追加、非法 WaitCompleted、旧日志拒绝继续；`httpapi/stop_history_test.go` 包含外部 IP/Host/Forwarded 403 和本地 GET 200、无写路由；`web/src/api/client.test.ts` 包含只读合同/403。原工作流三系统 Go 全量 Build/Test 和 Vue typecheck/Vitest/build 保留，Linux Race Test 增加 stopjournal/httpapi 对应定向回归。
+
+**证据等级**：目前确认源码、测试、文档已提交 GitHub master（S），但**没有本轮固定 SHA 全量 Go/Windows/Linux/macOS CI、前端构建成功或设备长稳/断电验证**，因此 G1/G2/G3 待验。不能将新包或测试存在称为测试已通过。S11 登陆/身份/授权、不可篡改审计、在线安全恢复、可靠停止业务确认仍未实现。
+
+**现场重要边界**：若操作流水已满/损坏，新受管软件停止请求会因无法持久登记而拒绝；该机制**不能替代独立硬件急停或工业安全回路**，运维人员须按设备实际安全规程处理，离线备份归档后恢复日志，不允许在运行中清空追溯记录。Daemon 被强制杀死时仅保留 requested 表示状态未结清，不自动声称真实进程仍存活或已退出。
