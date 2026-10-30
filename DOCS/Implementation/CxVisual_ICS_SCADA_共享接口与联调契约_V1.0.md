@@ -163,3 +163,18 @@ A侧Runtime.Host的v1 Pipe discover/snapshot中，Devices[]增加仅附加的lon
 - A提供只读CLI：`CxVisual.Runtime.Host.exe scada-pipe-probe <pipeName> discover`和`CxVisual.Runtime.Host.exe scada-pipe-probe <pipeName> snapshot <DeviceRef> <DeploymentEffective> <ConnectorEffective> <Generation>`。调用时必须是当前Host允许的同Windows用户，不依赖Studio，仍使用既有v1 Pipe/授权ACL，返回JSON和退出码（Ok=0、Rejected=3），不提供控制或FC06。
 - 实际G1在运行PLC双工站的Host测试进程之外另外启动一个**真实Windows子进程**，通过Pipe验证MDS Good/Revision、真实原值、Generation FailClosed；不共享进程内的MDS/Connector实例。此Probe是A的诊断工具，不替代B专业的`PHMScadaReadOnlyPipeClient`。B仍由自己的Owner调用现有v1 discover/snapshot，并保持原先的登录、版本及显示语义。
 - 本测试证明Host IPC服务与独立本机进程互通，尚未证明真实WPF应用直接连接实际PLC Host、远程跨账户用户授权或可信MRK控制；需后续双Owner联合Windows端到端门禁。
+
+
+## 14. A4已存在MRK命令与版本双栅栏（2026-10-30）
+
+**真实代码**：`Professional/Automation/Plc/PADPlcMrkCommandRegistration.cs`（强类型MRK注册）和`PADPlcMrkWriteCapabilityProvider.cs`（MOC/Decision Provider）。两种版本不能混淆：
+1. `capabilityVersion`：Decision Plan绑定和可信发布的专业能力版本，经`IMRKVersionedCapabilityResolver.TryGetCapabilityVersion`验证。
+2. `commandEffectiveVersion`：该PLC Connector从正式MHS捕获的`EffectiveVersion`，必须作为**独立参数**注入Provider构造器，再由Provider写入`MRKCommandRequest.Inputs["EffectiveVersion"]`，由`RegisterUInt16Write(... approvedVersion, effectiveStillApproved)`在实际FC06以前校验。
+
+正式构造签名：`new PADPlcMrkWriteCapabilityProvider(center, deviceRef, trustedCaller, capabilityVersion, fallback: null, commandEffectiveVersion: approvedConnectorEffectiveVersion)`。旧的四/五参数构造保持兼容未固定版本的历史Command注册；**不能将此兼容入口当成生产受控命令装配**。受信Host仍须自行提供已认证的Caller与MRKCommandCenter授权回调、设备租约、实际模式/安全链和专业点级授权，不允许HMI以Caller字符串冒充登录认证。
+
+`MRHScadaRuntime.Open(..., additionalApproval: projectDeploymentStillApproved, authorizeWrite: trustedProfessionalAuthorization)`是Host内部唯一显式写授权装配入口：未提供项目级Deployment审批回调时拒绝创建可写会话；`host.RegisterTrustedWriteCommands(center, commandId)`必须在`StartAsync`前调用，默认`scada-serve/scada-group-serve`仍注入`authorizeWrite:null`且没有任何写Pipe/CLI。被注册的Handler在发FC06前再次核验采集Session活跃与MHS配置未漂移；Stop/重连后的旧Session不可继续写。
+
+**正式输入**：`DeviceRef`路由到`Automation/PLC/{DeviceRef}`、CommandCode=`WriteUInt16`；输入`StableId:string`、`Value:ushort`、`EffectiveVersion:string`；输出`RegisterReadbackMatched:bool`。调用由真正MRK`OperationId`唯一约束、资源Lease和`MaxAttempts=1/Idempotent=false`管理。写入FC06及FC03读回一致的`BusinessCode=PLC_REGISTER_READBACK_CONFIRMED`只代表**寄存器回读**；`PLC_REGISTER_OUTCOME_UNKNOWN`或`MRKCommandState.Unknown`必须显式显示未知并人工/可信状态复核，不能自动重发。MRK已存在`MRKCommandPipeServer/Client`与OS Peer身份读取，但SCADA正式运行CLI**尚未基于生产认证/模式/安全策略开放远程写口**；不得误用本项目只读Pipe承接命令。
+
+A增加真实OS Modbus TCP的`--automation-plc` G1：Decision/MRK正式Plan发版本锁定命令得到FC06+FC03，旧版/缺版/运行配置漂移不发FC06。源码SHA `0ead2604`、`7ee0bcdf`、`58662b7e`、`bcd338d3`、`abbdc7a7`；**是否G1通过取决于对应Windows运行结果，不因提交源码直接判定PASS**。HMI-B可据此完成有授权接入的操作按钮和Unknown UI，但仍不得自行创建命令授权、重放超时写入。
