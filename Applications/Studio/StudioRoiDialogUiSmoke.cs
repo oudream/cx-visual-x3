@@ -272,8 +272,10 @@ namespace CxVisual.Studio
                 Require(status.Text.Contains("原图校验通过") &&
                     Object.ReferenceEquals(viewer.Session.Original,null)==false &&
                     viewer.Session.Original.Stride==10 &&
-                    vm.ProjectSession.Revision==revision,
-                    "真实文件弹框重绑原像素/Stride失败或更改了工程Revision："+status.Text);
+                    vm.ProjectSession.Revision==revision &&
+                    viewer.SelectedOverlayId==roi.Id &&
+                    viewer.Overlays.Find(roi.Id)!=null,
+                    "真实文件弹框未直接恢复正式ROI几何、像素/Stride或更改了工程Revision："+status.Text);
                 // 使用真实UIAutomation按钮切换MPW工具，不再依赖测试调用ToolMode属性。
                 await Click(hwnd,"Studio.ModuleCenter.DrawRectangleRoi");
                 Require(viewer.ToolMode==MVIImageToolMode.RectangleRoi &&
@@ -289,6 +291,28 @@ namespace CxVisual.Studio
                 Require(viewer.ToolMode==MVIImageToolMode.Navigate &&
                     vm.ProjectSession.Revision==revision,
                     "真实Studio ROI工具切换应恢复导航且不写入MEM");
+                // 旧工程ROI重绑后，无需先执行MRK也无需重读MHS，即可显式
+                // 将已选择的有效ROI几何通过原MEM单事务再次提交。
+                await Click(hwnd,"Studio.ModuleCenter.CommitSelectedRoi");
+                Require(details.Text.Contains("已提交正式MEM Data/Visual") &&
+                    vm.ProjectSession.Revision==revision+1 &&
+                    vm.ProjectSession.IsDirty,
+                    "真实Studio ROI保存按钮必须在零Run状态复用已存配方提交MEM");
+                revision=vm.ProjectSession.Revision;
+                vm.SaveProject(project);
+                using(MEMEngineeringSession saved=MEMEngineering.Open(project))
+                {
+                    MEMPage fromDisk=saved.Find(pageId) as MEMPage;
+                    Require(fromDisk!=null,"已保存工程中ROI Page身份丢失");
+                    CxVisionRoiRecipe recipe=CxVisionRoiEngineering.Open(saved,
+                        saved.GetAddress(fromDisk.RootContent));
+                    Require(recipe.RoiId==roi.Id &&
+                        recipe.ConfigurationRevision==43 &&
+                        recipe.SourceId=="img05/native/file" &&
+                        !saved.IsDirty,
+                        "ROI几何编辑不能重写已保存SourceId/MHS配置版本或丢失MEM身份");
+                    saved.Close(true);
+                }
                 await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
                 await Until(()=>details.Text.Contains("工程ROI复算完成")||
                     details.Text.Contains("失败"),"点击运行工程ROI");
