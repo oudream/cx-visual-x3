@@ -72,6 +72,18 @@ namespace CxVisual.Mechanism.Connectivity
         Task<MPAProtocolOperationResult> WriteDevicePointAsync(string pointName,
             MPAProtocolContext context, CancellationToken cancellationToken);
     }
+    /// <summary>
+    /// 可选的连续寄存器单事务读取能力。协议Owner负责地址、站号、长度、帧与事务校验；
+    /// 返回按传入点名排列的已解码值，不自行提交数据仓。调用方核验会话后发布MDS。
+    /// 不是通用协议必需能力，也不是跨点事务性MDS快照。
+    /// </summary>
+    public interface IMPAProtocolContiguousPointReader
+    {
+        Task<IReadOnlyList<object>> ReadContiguousPointsAsync(
+            IReadOnlyList<string> pointNames, MPAProtocolContext context,
+            CancellationToken cancellationToken);
+    }
+
     public interface IMPAProtocolReceiver
     {
         void HandleReceived(FTRChannelReceiveContext received, MPAProtocolContext context);
