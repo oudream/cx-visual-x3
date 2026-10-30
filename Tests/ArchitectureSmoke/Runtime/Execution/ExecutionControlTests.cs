@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DebugBreakpointStepAndResume();
             ResultInspectionNeverCopiesRawBuffersOrLeaksText();
             ResultInspectionIsBoundedForLongFlows();
+            ResultSummariesSeparateFailedAndSuccessfulProducts();
             QualifiedLoopIterationBreakpoint();
             CancellationUnblocksPausedFlow();
             CancelledBreakpointsAreRemovedImmediately();
@@ -129,6 +130,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     view.ContainsKey("k031")&&!view.ContainsKey("k032")&&
                     view.Keys.SequenceEqual(view.Keys.OrderBy(x=>x,StringComparer.Ordinal)),
                     "B5大流程摘要数量或排序不确定");
+            }
+            finally { Await(engine.StopAsync(true)); }
+        }
+
+        private static void ResultSummariesSeparateFailedAndSuccessfulProducts()
+        {
+            // B4/B5 negative proof: failures must not merge another product's
+            // committed data into the debug view, even on a shared MRK engine.
+            var plan=new MRKExecutionPlan("b4.multi-product-summary",new[]
+            {
+                new MRKExecutionStep("measure",new string[0],(ctx,ct)=>
+                    Task.FromResult((object)(int)ctx.Inputs["ProductId"])),
+                new MRKExecutionStep("judge",new[]{"measure"},(ctx,ct)=>
+                {
+                    int product=(int)ctx.Inputs["ProductId"];
+                    if(product==101)
+                        throw new InvalidOperationException("product-101 inspection failed");
+                    return Task.FromResult((object)(product+1));
+                })
+            });
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+            try
+            {
+                var failed=engine.StartFlow(plan,
+                    new Dictionary<string,object>{{"ProductId",101}});
+                var passed=engine.StartFlow(plan,
+                    new Dictionary<string,object>{{"ProductId",202}});
+                MRKFlowResult first=Await(failed.Completion);
+                MRKFlowResult second=Await(passed.Completion);
+                IDictionary<string,string> failView=failed.Context.ResultSummariesSnapshot(8);
+                IDictionary<string,string> okView=passed.Context.ResultSummariesSnapshot(8);
+                Check(first.State==MRKFlowState.Failed&&
+                    second.State==MRKFlowState.Completed&&failed.FlowId!=passed.FlowId&&
+                    failView.Count==1&&failView["measure"]=="Int32 value=101"&&
+                    !failView.ContainsKey("judge")&&
+                    okView.Count==2&&okView["measure"]=="Int32 value=202"&&
+                    okView["judge"]=="Int32 value=203",
+                    "B4故障产品与正常产品的真实MRK结果摘要串流或发布了失败节点");
             }
             finally { Await(engine.StopAsync(true)); }
         }
