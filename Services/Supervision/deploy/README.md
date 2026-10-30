@@ -62,3 +62,14 @@ Daemon 达到受管程序的 MaxError 或 MaxCount 终止上限后，将终止�
 使用：本机打开 Monitor H5 → 左侧“守护诊断”查看数据来源、时刻和原因 → 点击 Program ID 在“程序与服务”定位对应程序 → 在“事件记录”或“异常历史”核查旧事件，最终结合现场操作日志和设备实际状况判断。运行总览同步提供守护上限与孤儿隔离两类计数；历史扫描不随程序运行动态更新，**并不代表当前 OS/业务 Ready**。只有来源确实可用且未记录该 Program 时才显示“无已记录保护项”，并不是自动解除锁。
 
 发布：按照现有 web/dist/ → assets/comm/ 方式部署新版 H5，确保 Go Monitor/Daemon 同版本、且已有文件布局符合规范；远程跨机器访问新诊断端点仍返回 403。必须走现场受控离线恢复，不要通过修改浏览器请求、清空 PID 或删除闭锁文件绕过守护策略。完整 Go 与 Web CI 的对应 SHA 成功记录取得前不得把该版本宣布为生产验收通过。
+
+
+## Daemon 启动凭证与异常中断恢复（2026-10-30）
+
+Daemon 现已在执行子进程 Start 前同步写入每个 Program 的**启动意图凭证**，位置为 `supervision/launch-attempts/<ProgramId>.json`，包含十进制 Program ID、AttemptID、阶段（`intent` 或 `started`）、PID 与观察时间。只有对应原 Worker 的 `Wait()` 返回后才能清算。它与原 `pid/<程序名>.pid`、`daemon-terminal-latches.json` 分开；**这是保守崩溃恢复证据，不是缓存文件，部署时不得定期清理**。
+
+Daemon 启动会合并扫描旧 PID 文件和未清算意图，即使无旧 PID 文件，`intent` 阶段（PID=0）的文件也阻止该 Program 自动恢复；`started` 阶段只提供原 Worker 记录的 PID 观察，不能凭它自动认领/杀死进程。隔离原因在本机 H5 的“守护诊断”与程序详情显示，观察时间是最后一次 Daemon 启动扫描；不是 OS 当前子进程状态。读写失败时拒绝本次新启动并阻断新的 Worker，不能当作该 Program 正常运行。
+
+**离线处置**：检查日志中的 `ORPHAN QUARANTINE`、原 Program ID、AttemptID、当前 OS PID/可执行文件与设备业务安全状态；由授权维护人员停止 Daemon，备份完整 PID/启动意图/闭锁日志并记录故障、处理人、时间与原因。只有在确认原进程及子孙进程已安全停止、无重复启动风险后，才允许对相应 Program 的未清算凭证进行受控离线审查和处置。不可直接通过浏览器/旧 UDP 解锁、批量删除文件或仅凭 PID 数值发送 Kill。
+
+**未验证限制**：本轮目标针对 Daemon SIGKILL 的进程级崩溃窗口；随机 AttemptID 不是 OS 创建时间，磁盘突然断电或不同文件系统的目录项同步一致性、进程树、设备 Ready 仍需现场验证。正式登录、权限、审批和不可篡改操作审计尚未完成，不能宣称已经具备安全在线解锁能力。
