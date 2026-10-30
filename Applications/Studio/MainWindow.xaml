@@ -69,8 +69,10 @@
                 <Button Command="{Binding NewCommand}" Content="新建工程"/>
                 <Button Command="{Binding AddCommand}" Content="添加矩形"/>
                 <Button Command="{Binding MoveCommand}" Content="右移20"/>
-                <Button Command="{Binding UndoCommand}" Content="撤销"/>
-                <Button Command="{Binding RedoCommand}" Content="重做"/>
+                <Button Command="{Binding UndoCommand}" Content="撤销"
+                        AutomationProperties.AutomationId="Studio.Engineering.Undo"/>
+                <Button Command="{Binding RedoCommand}" Content="重做"
+                        AutomationProperties.AutomationId="Studio.Engineering.Redo"/>
                 <Button Command="{Binding SaveCommand}" Content="保存工程"/>
                 <Button Command="{Binding LoadCommand}" Content="打开工程"/>
                 <Button Command="{Binding AddPageCommand}" Content="添加页面"/>
