@@ -20,6 +20,7 @@ namespace CxVisual.Mechanism.Data.Variables
         internal abstract object ReadBoxed();
         internal abstract void UpdateBoxed(object value);
         internal abstract void RefreshProviderBoxed(object value, MDSVariableQuality quality, string source);
+        internal abstract void MarkProviderQualityBoxed(MDSVariableQuality quality, string source);
         internal abstract object BatchGate { get; }
         internal abstract void ValidateBatch(MDSVariableBatchItem item);
         internal abstract MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item, bool captureBatch);
@@ -211,6 +212,34 @@ namespace CxVisual.Mechanism.Data.Variables
             if (value == null && typeof(T).IsValueType) throw new InvalidCastException("变量类型不匹配");
             if (value != null && value.GetType() != typeof(T)) throw new InvalidCastException("变量类型不匹配");
             RefreshFromProvider((T)value, quality, source);
+        }
+        // 质量变化不是新的物理采样：保留最后一笔真实值及RefreshUtc/ChangeUtc。
+        // 仅由具有有效ProviderHost绑定与世代的来源调用，不能伪造Good新采样。
+        internal override void MarkProviderQualityBoxed(MDSVariableQuality quality, string source)
+        {
+            if (quality == MDSVariableQuality.Good ||
+                !Enum.IsDefined(typeof(MDSVariableQuality), quality))
+                throw new ArgumentOutOfRangeException("quality");
+            Action<string> notify;
+            Action<MDSVariableChange> observer;
+            MDSVariableChange captured = null;
+            lock (_gate)
+            {
+                if (_removed) throw new ObjectDisposedException("MDSVariable");
+                if (!_hasValue || _quality == quality) return;
+                if (_definition.AccessPolicy != null)
+                    _definition.AccessPolicy.Demand(_definition, null, source, true);
+                if (_revision == long.MaxValue) throw new OverflowException("变量Revision溢出");
+                _quality = quality;
+                _revision = checked(_revision + 1);
+                notify = _notify; observer = _observer;
+                if (observer != null)
+                    captured = new MDSVariableChange(_definition.VariableId, _definition.Name,
+                        _current, _previous, _hasPrevious, _quality, _source, DateTime.UtcNow,
+                        _revision, MDSVariableChangeKind.Quality, InstanceGeneration);
+            }
+            if (observer != null) observer(captured);
+            if (notify != null) notify(_definition.Name);
         }
         // 下述仅为显式Batch/SnapshotBatch服务，不给普通Update增加全表事务锁。
         internal override object BatchGate { get { return _gate; } }
