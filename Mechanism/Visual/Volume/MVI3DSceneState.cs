@@ -380,6 +380,29 @@ namespace CxVisual.Mechanism.Visual
             return new MPMAspect(MPMAspectKind.Visual,ProviderId,Schema,payload,true);
         }
 
+        /// <summary>从旧Scene生成新专业ResultId的Visual Aspect。
+        /// 保持实例Id、组、透明度与选择不变；调用方只负责将旧专业来源映射到新来源。</summary>
+        public static MPMAspect CreateReboundAspect(MVI3DSceneState previous,
+            Func<MVI3DSceneItem,string> mapSource,CancellationToken cancellation)
+        {
+            if(previous==null)throw new ArgumentNullException("previous");
+            if(mapSource==null)throw new ArgumentNullException("mapSource");
+            var items=new List<MVI3DSceneItem>();
+            foreach(MVI3DSceneItem old in previous.Snapshot())
+            {
+                cancellation.ThrowIfCancellationRequested();
+                string updated=mapSource(old);
+                if(string.IsNullOrWhiteSpace(updated)||updated.Length>1024)
+                    throw new InvalidDataException("专业Scene来源重绑定失败，拒绝保留过期ResultId。");
+                items.Add(new MVI3DSceneItem(old.Id,old.Kind,updated,
+                    old.SourceRevision,old.SpatialFrameRef,old.Visible,old.Opacity,
+                    old.LayerKey,old.GroupKey));
+            }
+            var rebound=new MVI3DSceneState();
+            rebound.RestoreItems(items,previous.SelectedId);
+            return CreateAspect(rebound,cancellation);
+        }
+
         /// <summary>资源校验由实际Asset/Result Owner提供；任何未解析的Ref拒绝整体恢复。</summary>
         public static void Open(MEMEngineeringSession engineering,MRIObjectAddress address,
             MVI3DSceneState destination,Func<MVI3DSceneItem,bool> resolveSource,
