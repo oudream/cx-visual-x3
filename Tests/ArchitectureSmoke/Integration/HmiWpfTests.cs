@@ -177,6 +177,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                         enabled.LastActionFeedback.State != MPWLiveActionState.Unknown)
                                         throw new InvalidOperationException(
                                             "HMI Click->MEM Action->受信适配->Unknown显示未闭环");
+                                    // Unknown不得让原会话的同一按钮重复写入；
+                                    // 即使程序直接抬升WPF Click事件，也必须被Owner拒绝。
+                                    liveButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                                    if (enabled.CanRequestAction || hostCalls != 1)
+                                        throw new InvalidOperationException(
+                                            "HMI Unknown后旧会话重新发出非幂等操作");
                                     if (doc.Revision != actionRevision)
                                         throw new InvalidOperationException(
                                             "HMI现场操作污染MEM工程Revision");

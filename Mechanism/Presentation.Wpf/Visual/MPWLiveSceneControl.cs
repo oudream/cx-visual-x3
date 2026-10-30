@@ -59,6 +59,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private MPWLiveActionFeedback _lastActionFeedback;
         private string _actionMessage = "";
         private int _actionInFlight;
+        private bool _outcomeRequiresReconciliation;
         private readonly SceneView _scene;
         private readonly ListView _pointList;
         private readonly TextBlock _status;
@@ -138,7 +139,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             catch { Dispose(); throw; }
         }
-        public bool CanRequestAction { get { return !_closed && _trustedAction != null; } }
+        public bool CanRequestAction
+        { get { return !_closed && _trustedAction != null && !_outcomeRequiresReconciliation; } }
         public MPWLiveActionFeedback LastActionFeedback { get { return _lastActionFeedback; } }
 
         /// <summary>
@@ -147,7 +149,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         /// </summary>
         private async void OnWidgetEventRequested(object sender, MPWWidgetEventArgs args)
         {
-            if (_closed || _trustedAction == null) return;
+            if (!CanRequestAction) return;
             if (_engineering.Revision != _revision ||
                 _engineering.Find(_resourceId) == null || args.Address == null)
             {
@@ -186,9 +188,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 Interlocked.Exchange(ref _actionInFlight, 0);
                 if (!_closed)
                 {
+                    // Unknown可能已经真正发出；Accepted尚未完成最终结算。
+                    // 未经新运行会话重新认证、回读和人工核实，不在原画面重发。
+                    _outcomeRequiresReconciliation =
+                        _lastActionFeedback.State == MPWLiveActionState.Unknown ||
+                        _lastActionFeedback.State == MPWLiveActionState.Accepted;
+                    if (_outcomeRequiresReconciliation) _scene.IsHitTestVisible = false;
                     _actionMessage = "操作结算：" + _lastActionFeedback.State +
                         " · " + _lastActionFeedback.Reason +
-                        "（寄存器回读不代表机构物理到位）";
+                        (_outcomeRequiresReconciliation ?
+                        "（结果未确认：本画面已锁定，请核实现场状态后重新建立受信会话）" :
+                        "（寄存器回读不代表机构物理到位）");
                     Refresh();
                 }
             }
@@ -242,7 +252,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         "当前采样质量Good")+
                     " · " + (_trustedAction == null ?
                         "未接入受信设备控制通道" :
-                        "操作须经受信宿主逐次授权") +
+                        (_outcomeRequiresReconciliation ?
+                            "操作结果待核实，已禁止后续操作" :
+                            "操作须经受信宿主逐次授权")) +
                     (string.IsNullOrEmpty(_actionMessage) ? "" : " · " + _actionMessage);
             }
             catch (Exception error)

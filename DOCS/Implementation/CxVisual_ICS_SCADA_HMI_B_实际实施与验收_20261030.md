@@ -84,3 +84,9 @@
 - 每次Widget事件均校验原MEM工程Revision、Page、完整MRI实例地址；同一视图操作未结算前不重复发，宿主异常/无结果显示Unknown，不自动重试，也不把回读当作机械动作到位。页面销毁取消生命周期Token、解除事件订阅；已有只读Pipe始终调用旧构造，不能控制设备。
 - `Tests/ArchitectureSmoke/Integration/HmiWpfTests.cs`：实际STA Window+原MEM Button，经`PHMHmiScreenAuthoring`原子保存ActionId；分别验证默认预览禁控、显式受信委托的Click→`PHMHmiRuntimeSession.RequestActionAsync`→已保存ActionId→Unknown反馈、MEM Revision不受影响。测试委托只返回软件回执，不是PLC现场执行。
 - 验收状态：本批提交后的Windows `hmi-mds-g1-windows.yml` 及真实HMI STA执行仍需以固定SHA工作流结果为准；远程认证命令服务未交付，Runtime.Host只读Pipe不开放写控制。
+
+## 2026-10-30 第七批：Unknown/Accepted旧会话重复操作门禁
+
+- `MPWLiveSceneControl` 收到受信宿主`Unknown`或仍只是`Accepted`的状态后，关闭本画面的Widget点击权限，显示现场状态待核实，不能在旧上下文快速重复控制。没有自动清除门禁；需重新验证身份/设备真实状态后建立新的受信运行会话。
+- `HmiWpfTests` 新增真实WPF同一Button第二次Click的负面验证：首次Host回执Unknown以后，第二次不会再次调用受信宿主，且工程Revision不变。
+- 本门禁是HMI前端的辅助Fail-Closed；Host仍必须以自身认证、幂等操作号、版本和联锁最终裁决，不可将UI锁定冒充硬件安全或跨进程授权。
