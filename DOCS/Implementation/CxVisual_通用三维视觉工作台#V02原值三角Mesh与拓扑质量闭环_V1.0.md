@@ -414,3 +414,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **工程级V5**：ArchitectureSmoke在真实MEM工程读取已存面片配方后，调用既有CT3DAnalysisPersistence.RecomputeAndCommit执行真正的Revision受控编辑；验证ResultId更新、RoiSignature/ParameterSignature稳定、旧Revision拒绝、MEM Undo/Redo和保存后再次重开，仍归MEM唯一Owner。
 - **Studio真实回归**：调用SDK面片异步拟合后立刻清空调用方List，仍由快照完成8面片原值ROI；已存V5的8面片关闭重开后，取消其中1面片、执行7面片原值拟合，验证新签名/ResultId，正式保存、再次重开后为7面片与7个WPF黄色高亮而非旧版8面片。
 - **提交及证据**：317dedd31d9eb625a4d5c52b66f9658bb68088e5、98b8dee7973fa4a64c8ad52a32e8937263243f74、cbea2c6e3f3049a2dc92f1ee1235a9fd39489a58、b0385a5b64da4a492085cf4f372baf658b0b48b0。最后一SHA的Studio S1 `41046758031` 与TestCenter `41046758053`仍Queued；本轮CT3D专项 `41046611708`当前Pending，不能记为通过。G4 GPU实机和G5工业计量精度仍未完成。
+
+
+### 10.36 B包：原Mesh面片选择顺序规范化与V5历史保真（2026-10-30）
+
+- **问题与源码修复**：Ctrl+Shift面片组合选择原先按照用户点击顺序写入 `CT3DMeshFaceRoiRecipe` 的指纹。同一组面片正序/逆序对应相同原值顶点集合，却得到不同配方及 `ParameterSignature`；新增配方在 `Capture` 时按真实 `TriangleIndex` 规范化排序，不改变原Mesh、FGE求交或MEM提交职责。
+- **兼容性**：历史V5制品的 `Read` 保留原文件面片排列，沿用当时的参数签名和内容Hash，不将已存工程悄悄升级为新顺序；后续用户正式编辑时才产生新规范配方。旧V1～V4读取路径不变。
+- **回归**：`CT3DAnalysisPersistenceTests` 使用真实UInt16体数据和8个原Mesh顶面三角面，正逆顺序独立原值拟合，校验ROI/参数签名一致且Feature ResultId不同；原有V5保存、MEM重开、Undo/Redo及复算继续作为回归门禁。该记录为源码和测试新增说明，Windows CT3D G1～G3须以具体提交SHA的Actions结果判定，不以未运行测试冒称通过；真实GPU G4、工业精度G5仍未完成。

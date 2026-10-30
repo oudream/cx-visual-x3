@@ -83,6 +83,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 recomputedByFaces.FaceRoiRecipe.Faces.Count==8&&
                 recomputedByFaces.ParameterSignature!=analysis.ParameterSignature,
                 "专业面片选择参数签名包含有序原Mesh面片配方，不复用旧参数合同。");
+            // 相同原Mesh面片集合即使用户Ctrl+Shift点击顺序相反，也应形成同一配方。
+            // Feature ResultId仍应不同；不把两次真实原值拟合混为同一运行结果。
+            var reversedFaces=new List<CT3DMeshFaceReference>(topFaces);
+            reversedFaces.Reverse();
+            var recomputedInReverse=analysis.RecomputeWithMeshFaces(folder,reversedFaces,
+                CancellationToken.None);
+            Check(recomputedInReverse.FaceRoiRecipe.Signature==
+                    recomputedByFaces.FaceRoiRecipe.Signature&&
+                recomputedInReverse.ParameterSignature==recomputedByFaces.ParameterSignature&&
+                recomputedInReverse.RoiSignature==recomputedByFaces.RoiSignature&&
+                recomputedInReverse.Plane.ResultId!=recomputedByFaces.Plane.ResultId&&
+                recomputedInReverse.FaceRoiRecipe.Faces[0].TriangleIndex==
+                    topFaces.Min(face=>face.TriangleIndex),
+                "同源面片集合的选择顺序不得改变ROI/参数身份或原值拟合合同。");
             Reject<InvalidOperationException>(()=>analysis.RecomputeWithSavedMeshFaces(
                 folder,CancellationToken.None));
             Reject<ArgumentOutOfRangeException>(()=>CT3DMeshFaceSelection.Reference(analysis,-1));

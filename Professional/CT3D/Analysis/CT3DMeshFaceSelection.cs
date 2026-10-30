@@ -130,13 +130,19 @@ namespace CxVisual.Professional.CT3D
     {
         private readonly ReadOnlyCollection<CT3DMeshFaceReference> _faces;
         private CT3DMeshFaceRoiRecipe(CT3DAssetReference source,
-            CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces)
+            CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces,
+            bool preserveSerializedOrder)
         {
             CT3DMeshFaceSelection.ResolveVertices(source,mesh,faces);
             SourceSignature=source.Signature;
             MeshMethod=mesh.Method;
             MeshThreshold=mesh.Threshold;
-            _faces=new List<CT3DMeshFaceReference>(faces).AsReadOnly();
+            // 新选区以三角面身份规范排序，点击顺序不应改变专业参数签名。
+            // 读取已有V5制品必须保留原序列，避免使历史参数签名失效。
+            var ordered=new List<CT3DMeshFaceReference>(faces);
+            if(!preserveSerializedOrder)
+                ordered.Sort((left,right)=>left.TriangleIndex.CompareTo(right.TriangleIndex));
+            _faces=ordered.AsReadOnly();
             using(var stream=new MemoryStream())
             using(var w=new BinaryWriter(stream,Encoding.UTF8,true))
             {
@@ -153,7 +159,7 @@ namespace CxVisual.Professional.CT3D
             CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces)
         {
             if(faces==null)throw new ArgumentNullException("faces");
-            return new CT3DMeshFaceRoiRecipe(source,mesh,faces);
+            return new CT3DMeshFaceRoiRecipe(source,mesh,faces,false);
         }
         /// <summary>验证当前资产、Frame、原Mesh方法与面片StableId，
         /// 返回与配方绑定的原值面片引用；允许Headless/SDK调用。</summary>
@@ -204,7 +210,7 @@ namespace CxVisual.Professional.CT3D
                     throw new InvalidDataException("存档面片指纹与真实原Mesh拓扑不一致。");
                 faces.Add(actual);
             }
-            return new CT3DMeshFaceRoiRecipe(source,mesh,faces);
+            return new CT3DMeshFaceRoiRecipe(source,mesh,faces,true);
         }
     }
 }
