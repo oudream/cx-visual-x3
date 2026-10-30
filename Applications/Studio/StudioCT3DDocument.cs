@@ -134,6 +134,8 @@ namespace CxVisual.Studio
         public CT3DAnalysisCase CurrentAnalysis {get{return _pending??_current;}}
         public string ProjectPath {get{return _projectPath;}}
         public MPWVolumeFourViewWorkbenchControl Workbench {get{return _workbench;}}
+        /// <summary>工作台唯一MVI三维场景，供SDK、工具面板与工程编辑共用。</summary>
+        public MVI3DSceneState Scene3D {get{return _state==null?null:_state.Scene3D;}}
 
         private void TryAction(Action action)
         {
@@ -264,6 +266,13 @@ namespace CxVisual.Studio
         {
             var scene=_state.Scene3D;
             var old=preserveStyles?scene.Snapshot():null;
+            Guid? oldSelected=preserveStyles?scene.SelectedId:null;
+            MVI3DSceneKind? selectedKind=null;
+            if(old!=null&&oldSelected.HasValue)
+            {
+                MVI3DSceneItem previouslySelected=old.FirstOrDefault(x=>x.Id==oldSelected.Value);
+                if(previouslySelected!=null)selectedKind=previouslySelected.Kind;
+            }
             MVI3DSceneKind shape=analysis.Kind==CT3DAnalysisKind.MeshPlane?
                 MVI3DSceneKind.Mesh:MVI3DSceneKind.Surface;
             scene.Clear();
@@ -292,7 +301,15 @@ namespace CxVisual.Studio
                     scene.SetVisibility(item.Id,style.Visible);
                 }
             }
-            scene.Select(measurement);
+            // ROI分析不得悄悄改掉用户的可视选择；隐藏对象也不能被强制选中。
+            if(!preserveStyles)
+                scene.Select(measurement);
+            else if(selectedKind.HasValue)
+            {
+                MVI3DSceneItem selected=scene.Snapshot().FirstOrDefault(x=>
+                    x.Kind==selectedKind.Value&&x.Visible);
+                if(selected!=null)scene.Select(selected.Id);
+            }
         }
 
         private void OnVolumeStateChanged(object sender,System.ComponentModel.PropertyChangedEventArgs e)
