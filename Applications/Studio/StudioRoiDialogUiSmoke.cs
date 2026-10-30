@@ -173,28 +173,40 @@ namespace CxVisual.Studio
             if(!enumerationOk)
                 diagnostics.Add("EnumChildWindows ended early, Win32="+
                     Marshal.GetLastWin32Error());
-            // 常规文件框的1001 Edit优先于1148 ComboBox；不能操作未知
-            // 地址栏/搜索栏，也不能在多个同优先级控件中随意选一个。
-            foreach(int id in new[]{1001,1148})
+            // 实际Windows runner记录：ComboBoxEx32(1148) →
+            // ComboBox(1148) → Edit(1148)，三层同ID且内层才接收文本。
+            // 优先选原生Edit，不把外层ComboBox误认成另一个文件名字段。
+            var edits=candidates.Where(x=>
+                String.Equals(x.Item2,"Edit",StringComparison.OrdinalIgnoreCase)&&
+                (x.Item3==1148 || x.Item3==1001 || x.Item4==1148)).ToArray();
+            if(edits.Length!=1)
             {
-                var matching=candidates.Where(x=>x.Item3==id ||
-                    (id==1148&&x.Item4==1148)).ToArray();
-                if(matching.Length!=1)continue;
-                try
+                diagnostics.Add("Win32文件名Edit候选数="+edits.Length);
+                return null;
+            }
+            try
+            {
+                AutomationElement entry=AutomationElement.FromHandle(edits[0].Item1);
+                object pattern;
+                bool supported=entry.TryGetCurrentPattern(ValuePattern.Pattern,out pattern);
+                bool writable=supported&&!((ValuePattern)pattern).Current.IsReadOnly;
+                diagnostics.Add("内层Win32 Edit="+edits[0].Item1+
+                    " Id="+edits[0].Item3+" ParentId="+edits[0].Item4+
+                    " ValuePattern="+supported+" Writable="+writable);
+                if(writable)
                 {
-                    AutomationElement entry=AutomationElement.FromHandle(
-                        matching[0].Item1);
-                    object pattern;
-                    if(entry.TryGetCurrentPattern(ValuePattern.Pattern,out pattern) &&
-                       !((ValuePattern)pattern).Current.IsReadOnly)
-                    {
-                        Mark("通过原生子窗口定位可写文件名UIA控件：Class="+
-                            matching[0].Item2+" Id="+matching[0].Item3);
-                        return entry;
-                    }
+                    Mark("已验证内层文件名Edit支持真实ValuePattern：HWND="+
+                        edits[0].Item1);
+                    return entry;
                 }
-                catch(ElementNotAvailableException){}
-                catch(InvalidOperationException){}
+            }
+            catch(ElementNotAvailableException ex)
+            {
+                diagnostics.Add("Win32 Edit已释放："+ex.GetType().Name);
+            }
+            catch(InvalidOperationException ex)
+            {
+                diagnostics.Add("Win32 Edit UIA不可用："+ex.Message);
             }
             return null;
         }
