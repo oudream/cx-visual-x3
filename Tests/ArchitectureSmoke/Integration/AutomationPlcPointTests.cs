@@ -53,6 +53,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 TargetRef = "plc/Station.Word", Direction = MPADataDirection.Outbound,
                 Operation = MPADataOperation.ReadValue, Required = true
             });
+            protocolConfig.Points.Add(new MPAPointDefinition("input101", "holding:101", typeof(ushort))
+            {
+                StationAddress = "1", CanRead = true, CanWrite = false
+            });
+            protocolConfig.Mappings.Add(new MPADataMapping {
+                PointRef = "input101", TargetKind = MPADataTargetKind.Variable,
+                TargetRef = "plc/Station.Input", Direction = MPADataDirection.Inbound,
+                Operation = MPADataOperation.WriteValue, Required = true
+            });
             MCNConnectorConfiguration connectorConfig = new MCNConnectorConfiguration {
                 DisplayName = "AUT-PLC Connector",
                 Channel = new FTRTcpClientChannelConfiguration {
@@ -75,18 +84,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             PADDeviceVariableCatalog catalog = new PADDeviceVariableCatalog("aut-plc");
             catalog.Register(new PADDeviceVariableDefinition("word", "Station", "Word",
                 typeof(ushort), null, true));
+            catalog.Register(new PADDeviceVariableDefinition("input", "Station", "Input",
+                typeof(ushort), null, false));
             catalog.InstallDefinitions(table);
             registry.Register(table);
             PADPlcPointBridge bridge = new PADPlcPointBridge(
-                connector, catalog, new MDSProtocolDataTargetAccess(registry),
-                new FTRSubChannelAddress("aut-plc-channel"), "plc",
-                new [] { new PADPlcPointBinding("word", "word100") });
+                connector, catalog, new FTRSubChannelAddress("aut-plc-channel"), "plc",
+                new [] { new PADPlcPointBinding("word", "word100"),
+                    new PADPlcPointBinding("input", "input101") });
             Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
-                new MDSProtocolDataTargetAccess(registry),
                 new FTRSubChannelAddress("aut-plc-channel"), "plc",
                 new [] { new PADPlcPointBinding("word", "missing-point") }));
             Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
-                new MDSProtocolDataTargetAccess(registry),
                 new FTRSubChannelAddress("aut-plc-channel"), "wrong-scope",
                 new [] { new PADPlcPointBinding("word", "word100") }));
             // 不能将一个PLC测点额外映射到未授权MDS目标或命令中心；
@@ -98,7 +107,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
             };
             protocolConfig.Mappings.Add(illicitVariable);
             Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
-                new MDSProtocolDataTargetAccess(registry),
                 new FTRSubChannelAddress("aut-plc-channel"), "plc",
                 new [] { new PADPlcPointBinding("word", "word100") }));
             protocolConfig.Mappings.Remove(illicitVariable);
@@ -109,7 +117,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
             };
             protocolConfig.Mappings.Add(illicitCommand);
             Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
-                new MDSProtocolDataTargetAccess(registry),
                 new FTRSubChannelAddress("aut-plc-channel"), "plc",
                 new [] { new PADPlcPointBinding("word", "word100") }));
             protocolConfig.Mappings.Remove(illicitCommand);
@@ -130,6 +137,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         plc.Requests == 1 && plc.Writes == 0,
                         "F17/MPA/MCN真实03帧读取→MDS唯一变量");
 
+                    // 只读PLC输入DI不能通过普通MDS.Update写入，必须由设备Provider采样。
+                    object input = bridge.ReadAndMapAsync("input", CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(input is ushort && (ushort)input == 99 &&
+                        table.Get<ushort>("Station.Input") == 99 &&
+                        table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
+                        "只读PLC输入应通过MDS ProviderHost接纳真实规约采样");
+                    Reject<InvalidOperationException>(() => provider.WriteAsync("input", (ushort)12,
+                        "operator", CancellationToken.None).GetAwaiter().GetResult());
+
                     // 运行态点表发生跨目标或地址漂移时，必须在发送报文前拒绝。
                     protocolConfig.Mappings.Add(illicitCommand);
                     Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word",
@@ -141,7 +158,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word",
                         CancellationToken.None).GetAwaiter().GetResult());
                     livePoint.Address = originalAddress;
-                    Check(plc.Requests == 1 && plc.Writes == 0 &&
+                    Check(plc.Requests == 2 && plc.Writes == 0 &&
                         table.Get<ushort>("Station.Word") == 42,
                         "运行态点表漂移应先拒绝，不能触发未授权硬件报文");
 
@@ -234,6 +251,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         afterClose.Revision > beforeClose.Revision &&
                         object.Equals(afterClose.CurrentObject, beforeClose.CurrentObject),
                         "关闭Channel应把已读取的PLC值标记Stale而非延续Good");
+                    Check(table.Inspect("Station.Input").Quality == MDSVariableQuality.Stale,
+                        "断线时只读PLC输入也必须标记Stale");
                     Console.WriteLine("PASS Automation PLC real TCP loopback Modbus 03/06 -> MDS / authorized readback / Unknown");
                 }
                 finally
@@ -329,7 +348,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             byte[] reply;
                             if (function == 3)
                             {
-                                ushort value = ActualRegister;
+                                int register = (pdu[1] << 8) | pdu[2];
+                                ushort value = register == 101 ? (ushort)99 : ActualRegister;
                                 reply = new byte[] { 3, 2, (byte)(value >> 8), (byte)value };
                             }
                             else if (function == 6 && pdu.Length == 5)
