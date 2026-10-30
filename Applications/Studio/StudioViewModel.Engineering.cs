@@ -341,7 +341,23 @@ namespace CxVisual.Studio
                         Properties.Add(item);
                     }
                     var visual=reference==null?node as MRCVisualItem:null;
-                    if(visual!=null){foreach(var pair in new[]{Tuple.Create("x",visual.X),Tuple.Create("y",visual.Y),Tuple.Create("width",visual.Width),Tuple.Create("height",visual.Height),Tuple.Create("rotation",visual.Rotation)})Properties.Add(Row(visual.Id,pair.Item1,MPMValueKind.Number,MPMBinding.Literal(MPMValue.Number(pair.Item2)),false,true));}
+                    if(visual!=null)
+                    {
+                        foreach(var pair in new[]{Tuple.Create("x",visual.X),Tuple.Create("y",visual.Y),
+                            Tuple.Create("width",visual.Width),Tuple.Create("height",visual.Height),
+                            Tuple.Create("rotation",visual.Rotation)})
+                            Properties.Add(Row(visual.Id,pair.Item1,MPMValueKind.Number,
+                                visual.GetBinding(pair.Item1)??MPMBinding.Literal(MPMValue.Number(pair.Item2)),false,true));
+                        MRCTextElement textVisual=visual as MRCTextElement;
+                        if(textVisual!=null)
+                        {
+                            // 原Text和已有绑定是唯一MEM真源；不产生第二份HMI文本状态。
+                            MPMBinding textBinding=textVisual.GetBinding("text")??
+                                MPMBinding.Literal(MPMValue.String(textVisual.Text));
+                            Properties.Add(Row(visual.Id,"text",MPMValueKind.String,
+                                textBinding,false,true));
+                        }
+                    }
                 }
                 Ports.Clear();Connections.Clear();if(_editor.CurrentResourceId.HasValue)
                 {
@@ -484,8 +500,28 @@ namespace CxVisual.Studio
                 if(row.Reference)e.SetOverride(ProjectSession.FindReference(row.OwnerId),row.Member,binding);
                 else if(row.Visual)
                 {
-                    var item=(MRCVisualItem)ProjectSession.Find(row.OwnerId);if(binding.Kind!=MPMBindingKind.Literal)e.SetBinding(item,row.Member,binding);
-                    else{double value=binding.Value.AsNumber();e.SetBinding(item,row.Member,null);switch(row.Member){case "x":e.Move(item,value,item.Y);break;case "y":e.Move(item,item.X,value);break;case "width":e.Resize(item,value,item.Height);break;case "height":e.Resize(item,item.Width,value);break;case "rotation":e.Rotate(item,value);break;}}
+                    var item=(MRCVisualItem)ProjectSession.Find(row.OwnerId);
+                    MRCTextElement textElement=item as MRCTextElement;
+                    if(row.Member=="text"&&textElement!=null)
+                    {
+                        if(binding.Kind==MPMBindingKind.Literal)
+                        {
+                            e.SetBinding(item,"text",null);
+                            e.SetText(textElement,binding.Value.AsString());
+                        }
+                        else e.SetBinding(item,"text",binding);
+                    }
+                    else if(binding.Kind!=MPMBindingKind.Literal)e.SetBinding(item,row.Member,binding);
+                    else
+                    {
+                        double value=binding.Value.AsNumber();
+                        e.SetBinding(item,row.Member,null);
+                        switch(row.Member){case "x":e.Move(item,value,item.Y);break;
+                            case "y":e.Move(item,item.X,value);break;
+                            case "width":e.Resize(item,value,item.Height);break;
+                            case "height":e.Resize(item,item.Width,value);break;
+                            case "rotation":e.Rotate(item,value);break;}
+                    }
                 }
                 else e.SetProperty(ProjectSession.Find(row.OwnerId),row.Member,binding);return true;
             }).RequireValue();
