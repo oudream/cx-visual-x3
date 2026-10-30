@@ -127,13 +127,20 @@ namespace CxVisual.Runtime.Host
 
         internal static int Serve(string projectPath,string configRoot,
             string guid,string moduleId,string scopeId,string intervalText,bool contiguous,
-            bool serviceMode = false)
+            bool serviceMode = false, bool recoveryMode = false)
         {
             Guid deviceId; int intervalMs;
             if(!Guid.TryParse(guid,out deviceId)||
                 !int.TryParse(intervalText,System.Globalization.NumberStyles.None,
                     System.Globalization.CultureInfo.InvariantCulture,out intervalMs))
                 throw new ArgumentException("SCADA需要有效的工程Device GUID和采样间隔毫秒整数");
+            if(recoveryMode)
+            {
+                if(!serviceMode)
+                    throw new ArgumentException("--recover requires --service (never replays a write)");
+                return MRHScadaRecoverySupervisor.Serve(projectPath,configRoot,deviceId,
+                    moduleId,scopeId,intervalMs,contiguous);
+            }
             using(MRHScadaRuntime host=Open(projectPath,configRoot,deviceId,
                 moduleId,scopeId,intervalMs,contiguous))
             {
