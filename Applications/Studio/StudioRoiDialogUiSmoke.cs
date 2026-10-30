@@ -627,13 +627,18 @@ namespace CxVisual.Studio
                 revision=vm.ProjectSession.Revision;
                 // 使用原MEM History验证一笔Data+Visual事务能原样撤销/重做，
                 // 不由MVI OverlayStore另建编辑历史。
-                Trace(report,"新ROI已提交MEM，正在从Studio原Ribbon点击撤销/重做");
+                Trace(report,"新ROI已提交MEM；通过真实Studio编辑Tab呈现Undo/Redo命令");
+                // Studio Ribbon按当前选项卡动态装载命令：默认“主页”不挂载
+                // 编辑组的Undo/Redo Button。必须像真实用户先切到“编辑”。
+                await Click(hwnd,"Studio.Ribbon.Tab.Edit");
+                Trace(report,"已切换真实Studio编辑Ribbon，点击原Undo命令");
                 await Click(hwnd,"Studio.Engineering.Undo");
                 MEMPage undoPage=vm.ProjectSession.Find(pageId) as MEMPage;
                 Require(undoPage!=null &&
                     CxVisionRoiEngineering.Open(vm.ProjectSession,
                         vm.ProjectSession.GetAddress(undoPage.RootContent)).RoiId==roi.Id,
                     "撤销必须原子恢复原ROI的Data与Visual身份");
+                await Click(hwnd,"Studio.Ribbon.Tab.Edit");
                 await Click(hwnd,"Studio.Engineering.Redo");
                 MEMPage redoPage=vm.ProjectSession.Find(pageId) as MEMPage;
                 Require(redoPage!=null &&
