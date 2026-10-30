@@ -1389,7 +1389,18 @@ namespace CxVisual.Studio
                     x.Id==CxVisionThresholdProvider.CapabilityId);
                 CreateProfessionalCpuFlow(_viewModel.ProjectSession,content,
                     inspect,width,height);
-                RefreshScene();
+                if(_activeStudioDocumentId=="doc.flow")RefreshScene();
+                else
+                {
+                    MOLFlowCanvas canvas=ActiveFlowCanvas();
+                    if(canvas!=null)
+                    {
+                        MEMNodeSnapshot updated=_viewModel.ProjectSession
+                            .GetSnapshot().Find(content.Id);
+                        canvas.WiringDefinition=MOLWiringCodec.Get(updated);
+                        canvas.RetainValidSelection();
+                    }
+                }
                 LogicInfo.Text="真实Vision CPU节点已写入MEM/MOL，可保存重开；执行需绑定本地RAW文件，"+
                     "不允许直接从Studio向PLC发命令。";
             }
