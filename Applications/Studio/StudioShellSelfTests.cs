@@ -312,8 +312,14 @@ namespace CxVisual.Studio
                         "Studio.ModuleCenter.MedianRadius") &&
                         rawPanel.Children.OfType<Button>().Any(x=>
                             System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
-                            "Studio.ModuleCenter.CancelRaw"),
-                        "Studio模块中心缺少拆分式RAW四五节点/半径与取消的共用操作入口");
+                            "Studio.ModuleCenter.CancelRaw") &&
+                        rawPanel.Children.OfType<Button>().Any(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.BindSavedRoiRaw") &&
+                        rawPanel.Children.OfType<TextBox>().Any(x=>
+                            System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                            "Studio.ModuleCenter.BindSavedRoiStride"),
+                        "Studio模块中心缺少RAW检测、取消或正式工程ROI原图重绑入口");
                     var resultPanel=moduleHeader.Children.OfType<Expander>()
                         .SingleOrDefault(x=>System.Windows.Automation.AutomationProperties
                             .GetAutomationId(x)=="Studio.ModuleCenter.ResultPanel");
@@ -3526,7 +3532,7 @@ namespace CxVisual.Studio
                         Assert(badStride,"未显式提供原Stride时不应猜测/截断RAW");
 
                         byte[] changed=(byte[])bytes.Clone();
-                        changed[39]=89; // 即使只改Padding也必须与保存的完整原始帧Hash一致。
+                        changed[30]=209; // 更改第四行首像素低字节，必须拒绝错源。
                         File.WriteAllBytes(wrongPath,changed);
                         bool wrongSource=false;
                         try{MainWindow.LoadStudioSavedRoiRaw(reopened,address,
