@@ -228,7 +228,9 @@ func main() {
 			cancelWorkers()
 			daemonc.DaemonRun.Store(false)
 			pendingShutdown := 0
-			for programID, pid := range _runProgramIds {
+			// Enumerate child handles owned by current workers. The legacy
+			// _runProgramIds map is event-driven and can lag a real Start.
+			for programID, pid := range _programWorkers.ownedChildren() {
 				if !safeManagedPID(pid) {
 					continue
 				}
