@@ -48,6 +48,11 @@ namespace CxVisual.Mechanism.Visual
             return new MVI3DSceneItem(Id,Kind,SourceRef,SourceRevision,
                 SpatialFrameRef,Visible,Opacity,layerKey,groupKey);
         }
+        internal MVI3DSceneItem WithSource(string sourceRef)
+        {
+            return new MVI3DSceneItem(Id,Kind,sourceRef,SourceRevision,
+                SpatialFrameRef,Visible,Opacity,LayerKey,GroupKey);
+        }
     }
 
     /// <summary>
@@ -79,6 +84,31 @@ namespace CxVisual.Mechanism.Visual
                 spatialFrameRef,true,opacity));
             ChangedNow();
             return id;
+        }
+
+        /// <summary>专业结果复算只改变资源引用，不重建Scene实例；
+        /// 先逐项校验再一次更新，保留选择、图层、组、显隐和透明度。</summary>
+        public void RemapSources(Func<MVI3DSceneItem,string> remap)
+        {
+            if(remap==null)throw new ArgumentNullException("remap");
+            var updated=new List<MVI3DSceneItem>(_items.Count);
+            bool changed=false;
+            foreach(MVI3DSceneItem item in _items)
+            {
+                string next=remap(item);
+                if(string.IsNullOrWhiteSpace(next)||next.Length>1024)
+                    throw new ArgumentException("重新绑定三维专业来源失败。","remap");
+                if(string.Equals(next,item.SourceRef,StringComparison.Ordinal))
+                    updated.Add(item);
+                else
+                {
+                    updated.Add(item.WithSource(next));
+                    changed=true;
+                }
+            }
+            if(!changed)return;
+            for(int i=0;i<_items.Count;i++)_items[i]=updated[i];
+            ChangedNow();
         }
 
         public ReadOnlyCollection<MVI3DSceneItem> Snapshot()
