@@ -39,3 +39,17 @@
 - Tests/ArchitectureSmoke/Integration/HmiRuntimeTests.cs：真实MEM text变量绑定磁盘保存重开和MDS=99动态显示、静态原文不变；HmiWpfTests.cs额外断言WPF实时投影91和原文。
 - 固定提交：动态Text 4800d17、Studio变量选择5c1f842/334ffaa/491c0c5/cea6db6、Text属性30eba84、WPF回归865400e、保存重开9776a12。
 - 第一版G1 #41028059482已SUCCESS，但其SHA **未包含**本段改动。新增完整G1/Studio编译/STA仍需新SHA Windows CI通过后才可登记Automated。
+
+## 2026-10-30 第三批：工业控件、Studio真编辑与独立Host只读Pipe联调
+
+**真实源码（已提交，不等于相应SHA的CI通过）**
+
+- B1/B5：Professional/HMI/PHMHmiScreenAuthoring.cs 使用原MEM Page/MTC事务生成Numeric Text、布尔状态灯、ProgressBar及默认无Action的Button；AssignSavedAction仅保存ActionId，所有现场控制仍由可信MRK Host授权。StudioShell.Hmi.cs与StudioShell.ResourceTree.cs将组件生成注册进原资源树的Page右键，候选来自现有MDS或受信Pipe真实StablePointId。
+- B2：MPWLiveSceneControl 增加高频Dispatcher刷新合并、Bad/Stale画面降亮、Source/UTC时间、质量统计；仍使用原MVI+SceneView，不创建第二个Canvas。StudioShell.ResourceEditors.cs对已过工程Revision的HMI Viewer重新打开重建订阅。
+- B3：PHMHmiRuntimeSession多Action点击逐项验证工程版本/取消/会话，不允许第一个Action后版本改变继续执行剩余动作；部分下发的结果是Unknown。
+- B4：Studio --hmi-studio-smoke 真WPF STA测试：Page右键选真实MDS点、单MTC事务创建控件、Studio HMI Viewer、cxproj保存重开、旧Scope释放。HmiRuntimeTests补足灯状态、Undo/Redo、行为/绑定持久化和版本漂移反例。
+- B6：A并行新增正式的同账户Windows只读Pipe v1，字段、格式、长度预算以DOCS/Implementation/CxVisual_ICS_SCADA_共享接口与联调契约_V1.0.md §7 为准。B新建PHMScadaReadOnlyPipeClient及PHMScadaRemoteReadSession消费Discover/Snapshot，检查DeploymentVersion、ConfigVersion、Generation、UInt16/Int16、Quality与时间；断线/版本拒绝立即撤回旧Good，不建立第二个变量仓或远程写接口。
+- B6 Studio：StudioShell.Hmi.Remote.cs发现当前Host设备与有效MEM DeviceRef，选择工站打开原Page上的MPWLiveSceneControl，工程/Scope切换释放原订阅，禁用全部现场控制。
+- B6协议门禁：HmiScadaPipeTests / --hmi-pipe使用真正Windows NamedPipe做v1请求/回复、点位类型/版本/品质、代次拒绝。服务端是协议测试夹具，不等于运行真实Runtime.Host。A真实双PLC TCP/Host Pipe测试另取其对应CI证据。
+
+**验收边界**：首版软件G1 #41028059482只属于旧SHA成功。上述新代码在Windows .NET48 x64的构建、HMI Runtime/WPF/Studio/Pipe门禁与现场PLC G2/HIL G3尚不能声明通过。跨账户/远程身份与命令授权、独立客户端正式发布、P&ID/趋势/报警与完整Faceplate仍未完成。
