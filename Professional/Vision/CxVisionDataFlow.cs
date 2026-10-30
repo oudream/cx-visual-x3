@@ -158,6 +158,71 @@ namespace CxVisual.Professional.Vision
             }
         }
 
+        /// <summary>
+        /// R1 CASE-01/02：原图精确ROI阈值由FIM计算，独立Mask进入现有
+        /// MRK/MDS四邻域检测和面积测量。不将ROI外接框当成真实形状，
+        /// 不把阈值外的像素写入原图，也不冒充持久MEM工程或产品质量判定。
+        /// includesPixel须来自固定的不可变ROI快照；Host必须对源图版本、
+        /// ROI编辑代次及取消完成后再决定是否显示该Run。
+        /// </summary>
+        public static async Task<CxVisionRunSummary> RunRoiInspectionPreviewAsync(
+            FIMImageBuffer image, CxVisionInspectionOptions options,
+            string sourceId, FIMPixelRegion region,
+            Func<int,int,bool> includesPixel, CancellationToken cancellation)
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(options==null)throw new ArgumentNullException("options");
+            if(string.IsNullOrWhiteSpace(sourceId))
+                throw new ArgumentException("来源身份不能为空","sourceId");
+            cancellation.ThrowIfCancellationRequested();
+            var depth=CxVisionImageInterop.GetPixelDepth(image);
+            if(depth!=options.PixelDepth)
+                throw new ArgumentException("ROI检测位深与原FIM图像不匹配","options");
+            // 先验证完整专业规则（包括不支持AI），不能临时用另一条配置绕过。
+            new CxVisionThresholdPipeline(options);
+            var clipped=region.ClipTo(image);
+            double maximum=depth==CxVisionPixelDepth.Bits8?255:65535;
+            FIMThresholdRegionResult segmented=FIMImageOperations.ThresholdInRegion(
+                image,options.GrayThreshold,maximum,clipped,includesPixel,cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            // FIM已经做过真实ROI灰度阈值，MRK仅对二值Mask以255为真进行
+            // 原有四邻域/面积筛选，不能在ROI外创造新的命中像素。
+            var binaryOptions=new CxVisionInspectionOptions {
+                PixelDepth=CxVisionPixelDepth.Bits8,GrayThreshold=255,
+                MinDefectArea=options.MinDefectArea,
+                MaxDefectArea=options.MaxDefectArea,UseAi=false
+            };
+            var plan=CreateCpuInspectionPlanWithMeasuredArtifacts(binaryOptions);
+            var inputs=CxVisionImageInterop.ToCpuInspectionInputs(
+                segmented.Mask,CxVisionPixelDepth.Bits8);
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(3,10));
+            try
+            {
+                MRKFlowHandle handle=engine.StartFlow(plan,inputs);
+                using(cancellation.Register(()=>handle.RequestCancel()))
+                {
+                    MRKFlowResult run=await handle.Completion.ConfigureAwait(false);
+                    cancellation.ThrowIfCancellationRequested();
+                    if(run.State!=MRKFlowState.Completed)
+                        throw new InvalidOperationException("ROI MRK检测未完成："+run.State+
+                            (run.Error==null?"":" / "+run.Error.Message));
+                    var inspection=run.GetCommittedOutput<CxVisionInspectionResult>(
+                        "Inspection");
+                    FIMImageBuffer mask=run.GetCommittedOutput<FIMImageBuffer>(
+                        "ThresholdMask");
+                    long area=run.GetCommittedOutput<long>("AcceptedRegionPixelArea");
+                    if(inspection.ThresholdPixelCount!=segmented.PixelCount ||
+                        mask.Width!=image.Width || mask.Height!=image.Height ||
+                        mask.PixelFormat!=FIMPixelFormat.Gray8)
+                        throw new InvalidOperationException("ROI FIM分割与MRK检测结果不一致");
+                    return CxVisionRunSummary.FromInspection(run.FlowId,
+                        sourceId.Trim(),inspection,completedUtc:run.CompletedUtc,
+                        acceptedRegionPixelArea:area,thresholdMask:mask);
+                }
+            }
+            finally {await engine.StopAsync().ConfigureAwait(false);}
+        }
+
         private static MRKExecutionPlan BuildCpuInspectionPlan(
             CxVisionInspectionOptions options, long revision,
             bool publishArtifacts, bool publishMeasurements)
