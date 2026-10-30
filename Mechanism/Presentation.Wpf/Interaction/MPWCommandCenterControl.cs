@@ -119,6 +119,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
             _cancel.IsEnabled=_allowed&&!_busy;
             if(_catalog.Items.Count>0)_catalog.SelectedIndex=0;
         }
+        /// <summary>按正式Target/Code定位项目命令，供Studio绑定与自动化使用。</summary>
+        public bool SelectCommand(string target,string code)
+        {
+            if(_disposed)throw new ObjectDisposedException("MPWCommandCenterControl");
+            foreach(MRKCommandDescriptor descriptor in _catalog.Items.OfType<MRKCommandDescriptor>())
+            {
+                if(descriptor.Target==target&&descriptor.Definition.CommandCode==code)
+                {_catalog.SelectedItem=descriptor;return true;}
+            }
+            return false;
+        }
+        /// <summary>按正式Schema成员设置JSON输入，不绕过Invoke时的FDC校验。</summary>
+        public void SetInputJson(string member,string json)
+        {
+            if(_disposed)throw new ObjectDisposedException("MPWCommandCenterControl");
+            TextBox field;
+            if(!_inputs.TryGetValue(member,out field))
+                throw new ArgumentException("未选择命令或Schema中没有该参数", "member");
+            field.Text=json??"";
+        }
         private void SelectDescriptor(MRKCommandDescriptor descriptor)
         {
             _selected=descriptor;
