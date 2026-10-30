@@ -197,4 +197,6 @@ MRK服务端以Windows命名管道ACL限制为宿主Windows账户，并由OS `Ge
 
 **供HMI-B消费的公共API**：使用既有`MRKCommandPipeClient(".", approvedPipeName)`，执行`InvokeAsync(new MRKCommandRequest(PADPlcMrkCommandRegistration.TargetForDevice(deviceRef), PADPlcMrkCommandRegistration.WriteUInt16Code, new Dictionary<string,object>{{"StableId",stableId},{"Value",(ushort)value},{"EffectiveVersion",configEffective},{"SessionGeneration",sessionGeneration}}, operationId:operationId, options:new MRKCommandOptions(remote:true), expectedSchemaVersion:1))`。对端的真实Caller从Windows peer获取；`QueryAsync(operationId)`只查询同一身份的受控操作，**Unknown时仅查询、不可自动重发**。当Session/Effective改变，旧命令被拒绝；场景释放时必须`StopAsync`并注销命令。
 
+受信Host还必须显式注入第三个动态委托`Func<bool> currentControlGuard`（生产模式/设备Ready/物理联锁的实时审批来源）；它不只是MRK入口权限，必须在设备Handler即将发FC06前再次检查。G1另加入“MRK已受理后控制模式立即撤销”的真实OS TCP反例，要求严格零FC06。
+
 首轮实际Windows Socket G1在`MRHScadaSmoke.RunAuthorizedDevice`中新增独立的OS NamedPipe收发、FC06+FC03、Query、错误Generation、命令模式撤权、Peer撤权及Stop拒写；关联实现SHA `a0aa314a`、`c5687ad5`、`7aeb1253`。**这些增量尚须对应SHA的Windows CI成功才算G1通过。** 本Host内部装配**没有默认生产CLI参数或配置自动启用控制**，原`scada-serve/scada-group-serve`继续只读，也未完成真正HMI窗口跨进程联合执行、Windows SCM、实机安全/HIL。
