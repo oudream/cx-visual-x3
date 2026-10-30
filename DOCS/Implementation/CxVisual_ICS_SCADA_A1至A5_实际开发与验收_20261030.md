@@ -152,3 +152,11 @@
 - **会话失效禁写**：`PADScadaDeviceSession.RegisterWriteCommands`在Handler已有MHS Effective检查上增加`IsRunning`，Stop/旧Session不可能凭旧审批版本继续FC06（SHA `58662b7e`）。
 - **Host G1实际写回读**：`MRHScadaSmoke`的真实OS TCP夹具增加可选FC06回显/忽略写入后FC03旧值，用正式MEM保存/MHS项目部署/Connector Effective装配可写Session及MRK，断言Guest拒绝、过期版拒绝、一次写回读/MDS更新、同OperationId去重、ACK后读回不符Unknown、Stop后拒写且MDS Stale。测试仅在显式受信装配中激活，原只读夹具无额外写入口（SHA `2d0bacd6`/ `7f6f8108`）。**此Host新增用例必须等待对应SHA Windows CI实际通过才能标为G1成功**。
 - **工业边界**：G1只确认本机OS Socket、软件身份策略、寄存器写/回读；未证明物理执行器到位、现场Interlock、Windows SCM长期服务、跨账户安全认证、远程受信命令Pipe或断电Journal完整恢复；本轮未做危险设备指令开放。
+
+
+## 19. A4命令F17 Generation拒旧会话与SCADA首轮CI修复（2026-10-30）
+- `PADPlcMrkCommandRegistration.RegisterUInt16Write`新增`Func<string> currentSessionGeneration`可选专业注册栅栏：正式`PADScadaDeviceSession.RegisterWriteCommands`提供当前F17 SessionId字符串，MRK命令声明`SessionGeneration:string`为必填且在FC06以前比对。历史未传此委托的普通MRK插件注册保持兼容；禁止将历史三参数模式用于正式SCADA远程受控操作。
+- `PADPlcMrkWriteCapabilityProvider`新增可选`commandSessionGeneration`，与已经独立存在的`commandEffectiveVersion`同时透传给正式MRK Handler；从不将Decision CapabilityVersion假充MHS Effective或F17 SessionGeneration。命令输入必须由受信Host在当代次生成，不应由UI任意声明。
+- 正式ArchitectureSmoke `--automation-plc`增MRK直接调用与MOC真实Flow两类正反：匹配Generation与Effective得到真实FC06+FC03，旧/错误Generation、缺少或旧Effective必须拒绝且不产生设备写入；`RunAuthorizedDevice` 在Runtime.Host新增明确项目审批和专业授权下真实FC06、回读、MDS质量、去重、业务Unknown与Stop禁写，同时拒绝未认证身份和过期会话。
+- 首批Host运行CI Run `41054939828` SHA `08e29cbc` 已证实.NET48 Host编译通过，但新G1运行失败，旧CLI只输出聚合异常简短信息。SHA `17fe287e`为测试命令加完整调用栈输出；检查测试夹具发现旧`TcpPlcFixture` FC03仅接受 count=2，实际受控PLC写入后的FC03读回count=1被错误拒绝，因此SHA `e8095c7e`把可写测试夹具的FC03返回长度/MBAP改为请求点数对应值；默认只读双工站夹具仍拒绝未批准的单点/写入。此为针对真实源码和日志的修复，**尚待新固定SHA Windows G1成功**。
+- G1纯软件真实OS TCP/身份委托/寄存器回读，不代表生产级认证、危险设备功能安全、SCM安装、跨进程命令操作审计持久化、物理执行器完成或HIL G2/G3。
