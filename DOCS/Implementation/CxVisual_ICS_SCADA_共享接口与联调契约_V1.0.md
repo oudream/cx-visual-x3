@@ -117,7 +117,9 @@ CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceG
 
 线协议v1：每连接一次请求、一次回复；little-endian Int32长度前缀 + UTF-8 JSON。请求不超过4096字节，响应不超过1048576字节，读写超时3秒。仅有：
 - discover: 请求 {"SchemaVersion":1,"Operation":"discover"}，返回Status=Ok、DeploymentVersion、Devices[]的DeviceRef/ScopeId/ConfigVersion/Generation/Running；Points为空。
-- snapshot: 请求 {"SchemaVersion":1,"Operation":"snapshot","DeviceRef":"<真实MEM Guid>","ExpectedDeploymentVersion":"<项目Effective>","ExpectedConfigVersion":"<Connector Effective>","ExpectedGeneration":"<本次Session Generation>"}。返回Devices[0].Points，每项包含StablePointId、VariableId、Type、Unit、HasValue、Value（InvariantCulture字符串）、Quality、RefreshUtc（UTC ISO 8601）、SourceId、Revision。数值只读取唯一MDS Inspect；非跨点原子事务，不产生第二份Current。
+- snapshot: 请求 {"SchemaVersion":1,"Operation":"snapshot","DeviceRef":"<真实MEM Guid>","ExpectedDeploymentVersion":"<项目Effective>","ExpectedConfigVersion":"<Connector Effective>","ExpectedGeneration":"<本次Session Generation>"}。返回Devices[0].Points，每项包含StablePointId、VariableId、Type、Unit、HasValue、Value（InvariantCulture字符串）、Quality、RefreshUtc/ChangeUtc（有真实样本时为UTC ISO 8601）、SourceId、Revision。数值只读取唯一MDS Inspect；非跨点原子事务，不产生第二份Current。
 - 版本缺失或漂移、设备不运行或未批准时返回Status=Rejected及ErrorCode；可见DEPLOYMENT_VERSION_MISMATCH、SESSION_VERSION_MISMATCH、SESSION_NOT_APPROVED等。全部其他操作包括write均为READ_ONLY_OPERATION，不可借该Pipe提交控制、重放设备写入或回避MRK授权。
 
 HMI-B可按以上合同用Windows NamedPipeClientStream连接本机同账户Host并做受控只读Snapshot；运行Generation或Effective改变后必须重新discover，不复用旧控制上下文。该功能不提供可靠持续订阅、跨账户身份/角色、命令、告警历史或远程控制，后续需由现有公共Owner实施。Windows G1使用双PLC真实本机TCP FC03、MDS Good/Revision，再经真实Pipe验证设备发现、Snapshot、旧Generation拒绝与零FC06；CI及硬件级别必须按实际固定SHA分别登记。
+
+**Owner后续收敛点**：F17 已存在 NamedPipe Channel，但当前 F17 Server 配置尚无可显式审查的同账户 ACL 注入合同；本版只读Pipe属于 Host 的受限本机观察控制面，不用于现场 PLC/设备连接，也不注册通用 Channel。正式跨账户/远程和流式订阅接入前，须由 F17/安全 Owner 审查是否将 ACL、身份/流控及消息封装归一到现有 Transport，禁止在 SCADA 扩展第二套通用通信框架。
