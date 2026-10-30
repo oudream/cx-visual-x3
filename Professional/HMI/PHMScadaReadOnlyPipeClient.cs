@@ -91,9 +91,11 @@ namespace CxVisual.Professional.HMI
             if(!Enum.TryParse(point.Quality,true,out quality)||
                 !Enum.IsDefined(typeof(MDSVariableQuality),quality))
                 throw new InvalidDataException("hmi.pipe.quality_invalid");
-            DateTime refreshed;
-            if(!DateTime.TryParse(point.RefreshUtc,CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind,out refreshed))
+            // A合同：未采样HasValue=false时RefreshUtc/ChangeUtc为null，不是零时间。
+            DateTime refreshed=default(DateTime);
+            if(point.HasValue &&
+                !DateTime.TryParse(point.RefreshUtc,CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,out refreshed))
                 throw new InvalidDataException("hmi.pipe.timestamp_invalid");
             StablePointId=point.StablePointId;VariableId=point.VariableId;
             ValueTypeName=point.Type;
