@@ -220,7 +220,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     // 真实03帧已经送出，但在回包到达前配置被篡改：
                     // 暂存数据不得污染唯一MDS仓，也不得伪报一个有效采样。
                     plc.PauseNextRead();
-                    long revisionBeforeDrift = table.Inspect("Station.Word").Revision;
+                    IMDSVariableSnapshot beforeDrift = table.Inspect("Station.Word");
                     Task<object> inFlight = bridge.ReadAndMapAsync("word", CancellationToken.None);
                     Check(plc.WaitUntilReadPaused(), "PLC模拟器未进入待读回状态");
                     livePoint.Address = "holding:101";
@@ -234,9 +234,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         livePoint.Address = originalAddress;
                         plc.ReleasePausedRead();
                     }
-                    Check(table.Inspect("Station.Word").Revision == revisionBeforeDrift &&
+                    IMDSVariableSnapshot afterDrift = table.Inspect("Station.Word");
+                    Check(afterDrift.Quality == MDSVariableQuality.Stale &&
+                        afterDrift.Revision > beforeDrift.Revision &&
+                        afterDrift.RefreshUtc == beforeDrift.RefreshUtc &&
+                        afterDrift.ChangeUtc == beforeDrift.ChangeUtc &&
+                        object.Equals(afterDrift.CurrentObject,beforeDrift.CurrentObject) &&
                         table.Get<ushort>("Station.Word") == 88,
-                        "读回进行中变更点表：不能写入已过期的MDS数据");
+                        "读回中点表漂移必须仅标记Stale，不能写入旧回包或伪刷新采样时间");
                     Check((ushort)bridge.ReadAndMapAsync("word", CancellationToken.None)
                         .GetAwaiter().GetResult() == 88,
                         "点表恢复后必须重新采样，不可复用已拒绝的回包");
