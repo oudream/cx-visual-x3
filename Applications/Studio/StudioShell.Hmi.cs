@@ -151,10 +151,20 @@ namespace CxVisual.Studio
                                 pointName,x,y,0,100)));
                     }
                     if(boolean)
+                    {
                         binding.Items.Add(CreateStudioHmiInsertItem(
                             "添加状态灯",origin,pageId,scope,pointName,
                             (x,y)=>PHMHmiScreenAuthoring.AddStatusLamp(origin,pageId,pointName,
                                 pointName,x,y)));
+                        binding.Items.Add(CreateStudioHmiInsertItem(
+                            "放置电机Faceplate（复用Symbol）",origin,pageId,scope,pointName,
+                            (x,y)=>PHMFaceplateAuthoring.Place(origin,pageId,
+                                PHMFaceplateKind.Motor,pointName+"电机",pointName,x,y)));
+                        binding.Items.Add(CreateStudioHmiInsertItem(
+                            "放置阀门Faceplate（复用Symbol）",origin,pageId,scope,pointName,
+                            (x,y)=>PHMFaceplateAuthoring.Place(origin,pageId,
+                                PHMFaceplateKind.Valve,pointName+"阀门",pointName,x,y)));
+                    }
                     hmi.Items.Add(binding);
                 }
                 if(scope.Definitions().Length>100)
@@ -219,9 +229,19 @@ namespace CxVisual.Studio
                             PHMHmiScreenAuthoring.AddProgress(origin,pageId,id,id,x,y,0,100)));
                 }
                 if(boolean)
+                {
                     item.Items.Add(CreateStudioHmiInsertItem("添加状态灯",
                         origin,pageId,null,id,(x,y)=>
                             PHMHmiScreenAuthoring.AddStatusLamp(origin,pageId,id,id,x,y)));
+                    item.Items.Add(CreateStudioHmiInsertItem("放置电机Faceplate",
+                        origin,pageId,null,id,(x,y)=>
+                            PHMFaceplateAuthoring.Place(origin,pageId,
+                                PHMFaceplateKind.Motor,id+"电机",id,x,y)));
+                    item.Items.Add(CreateStudioHmiInsertItem("放置阀门Faceplate",
+                        origin,pageId,null,id,(x,y)=>
+                            PHMFaceplateAuthoring.Place(origin,pageId,
+                                PHMFaceplateKind.Valve,id+"阀门",id,x,y)));
+                }
                 hmi.Items.Add(item);
             }
         }
