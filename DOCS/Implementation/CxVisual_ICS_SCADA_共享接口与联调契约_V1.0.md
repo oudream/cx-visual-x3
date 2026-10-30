@@ -109,3 +109,15 @@ CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceG
 - `Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs`：历史真实TCP Modbus G1，FC03/FC06、PAD→MDS、MRK与Vision编排。
 - `Applications/Runtime.Host/MRHScadaSmoke.cs` + `.github/workflows/scada-runtime-host-g1-windows.yml`：MEM保存重开、MHS Effective、Headless Socket采样、Stop/Restart/配置漂移G1；**以当次固定SHA Actions成功日志为准**。
 - Studio/HMI的真实UIA由B提交，与A的Host合同分界；本文件只由A维护。并行修改以Owner为准。
+
+
+## 7. A3 同账户Windows Pipe本机只读观察协议（2026-10-30）
+
+正式入口：CxVisual.Runtime.Host.exe scada-group-serve <project.cxproj> <mhsRoot> --read-pipe <pipeName>。只在已生效的MHS项目部署装配成功后监听，不指定时没有IPC。实现位于 Applications/Runtime.Host/MRHScadaReadOnlyPipe.cs；仅允许启动Host的同一Windows账户访问。绝不开放未授权跨账户/公网写入，也不取代正式跨进程鉴权平台。
+
+线协议v1：每连接一次请求、一次回复；little-endian Int32长度前缀 + UTF-8 JSON。请求不超过4096字节，响应不超过1048576字节，读写超时3秒。仅有：
+- discover: 请求 {"SchemaVersion":1,"Operation":"discover"}，返回Status=Ok、DeploymentVersion、Devices[]的DeviceRef/ScopeId/ConfigVersion/Generation/Running；Points为空。
+- snapshot: 请求 {"SchemaVersion":1,"Operation":"snapshot","DeviceRef":"<真实MEM Guid>","ExpectedDeploymentVersion":"<项目Effective>","ExpectedConfigVersion":"<Connector Effective>","ExpectedGeneration":"<本次Session Generation>"}。返回Devices[0].Points，每项包含StablePointId、VariableId、Type、Unit、HasValue、Value（InvariantCulture字符串）、Quality、RefreshUtc（UTC ISO 8601）、SourceId、Revision。数值只读取唯一MDS Inspect；非跨点原子事务，不产生第二份Current。
+- 版本缺失或漂移、设备不运行或未批准时返回Status=Rejected及ErrorCode；可见DEPLOYMENT_VERSION_MISMATCH、SESSION_VERSION_MISMATCH、SESSION_NOT_APPROVED等。全部其他操作包括write均为READ_ONLY_OPERATION，不可借该Pipe提交控制、重放设备写入或回避MRK授权。
+
+HMI-B可按以上合同用Windows NamedPipeClientStream连接本机同账户Host并做受控只读Snapshot；运行Generation或Effective改变后必须重新discover，不复用旧控制上下文。该功能不提供可靠持续订阅、跨账户身份/角色、命令、告警历史或远程控制，后续需由现有公共Owner实施。Windows G1使用双PLC真实本机TCP FC03、MDS Good/Revision，再经真实Pipe验证设备发现、Snapshot、旧Generation拒绝与零FC06；CI及硬件级别必须按实际固定SHA分别登记。

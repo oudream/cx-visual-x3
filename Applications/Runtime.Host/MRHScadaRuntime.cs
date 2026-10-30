@@ -25,14 +25,16 @@ namespace CxVisual.Runtime.Host
         private readonly MHSConfigSection<MCNConnectorConfiguration> _section;
         private readonly string _effectiveVersion;
         private readonly PADScadaDeviceSession _device;
+        private readonly Func<bool> _stillApproved;
         private bool _stopped;
 
         private MRHScadaRuntime(string projectPath,DateTime stamp,
             MHSConfigSection<MCNConnectorConfiguration> section,
-            string version,PADScadaDeviceSession device)
+            string version,PADScadaDeviceSession device,Func<bool> stillApproved)
         {
             _projectPath=projectPath;_projectStamp=stamp;
             _section=section;_effectiveVersion=version;_device=device;
+            _stillApproved=stillApproved;
         }
 
         internal static MRHScadaRuntime Open(string projectPath,string configRoot,
@@ -98,7 +100,7 @@ namespace CxVisual.Runtime.Host
                 deviceRef,scopeId,connectorModuleId,version,effective,
                 TimeSpan.FromMilliseconds(intervalMs),contiguous,
                 authorizeWrite:null,effectiveStillApproved:stillApproved);
-            return new MRHScadaRuntime(source,stamp,section,version,session);
+            return new MRHScadaRuntime(source,stamp,section,version,session,stillApproved);
         }
 
         internal string DeviceRef {get{return _device.DeviceRef;}}
@@ -106,6 +108,7 @@ namespace CxVisual.Runtime.Host
         internal string ConfigVersion {get{return _effectiveVersion;}}
         internal string Generation {get{return _device.SessionGeneration;}}
         internal bool IsRunning {get{return _device.IsRunning;}}
+        internal bool IsStillApproved {get{return _stillApproved();}}
         internal long CompletedCycles {get{return _device.CompletedCycles;}}
         internal long PartialCycles {get{return _device.PartialCycles;}}
         internal PADScadaDeviceSession Device {get{return _device;}}

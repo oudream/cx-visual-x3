@@ -227,6 +227,45 @@ namespace CxVisual.Runtime.Host
                         plcA.Reads>=2&&plcB.Reads>=2 &&
                         plcA.Writes==0&&plcB.Writes==0,
                         "两个工站真实TCP原始值发生串台或出现未授权FC06");
+                    string pipeName="scada-g1-"+Guid.NewGuid().ToString("N");
+                    using(CancellationTokenSource pipeStop=new CancellationTokenSource())
+                    {
+                        Task pipeServer=MRHScadaReadOnlyPipe.RunAsync(group,pipeName,pipeStop.Token);
+                        try
+                        {
+                            MRHScadaPipeReply discovery=MRHScadaReadOnlyPipe.ExchangeForSmoke(
+                                pipeName,new MRHScadaPipeRequest{SchemaVersion=1,Operation="discover"});
+                            Check(discovery.Status=="Ok"&&discovery.Devices.Length==2&&
+                                discovery.DeploymentVersion==group.DeploymentVersion&&
+                                discovery.Devices.All(x=>x.Points.Length==0),
+                                "本机受限Pipe未按真实工程发现两个设备");
+                            MRHScadaPipeRequest query=new MRHScadaPipeRequest{
+                                SchemaVersion=1,Operation="snapshot",DeviceRef=a.ToString("N"),
+                                ExpectedDeploymentVersion=group.DeploymentVersion,
+                                ExpectedConfigVersion=group.Find(a).ConfigVersion,
+                                ExpectedGeneration=group.Find(a).Generation};
+                            MRHScadaPipeReply snapshot=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
+                            Check(snapshot.Status=="Ok"&&snapshot.Devices.Length==1&&
+                                snapshot.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
+                                    x.HasValue&&x.Value=="73"&&x.Quality=="Good"&&x.Revision>0),
+                                "真实Pipe没有读取MDS Good/原值/Revision");
+                            query.ExpectedGeneration=Guid.NewGuid().ToString("N");
+                            MRHScadaPipeReply rejected=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
+                            Check(rejected.Status=="Rejected"&&
+                                rejected.ErrorCode=="SESSION_VERSION_MISMATCH",
+                                "IPC旧Generation未拒绝");
+                            query.Operation="write";
+                            rejected=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
+                            Check(rejected.Status=="Rejected"&&
+                                rejected.ErrorCode=="READ_ONLY_OPERATION"&&plcA.Writes==0,
+                                "IPC不允许绕过MRK写入设备");
+                        }
+                        finally
+                        {
+                            pipeStop.Cancel();
+                            pipeServer.GetAwaiter().GetResult();
+                        }
+                    }
                     group.Find(a).StopAsync().GetAwaiter().GetResult();
                     Check(group.Find(a).Device.Inspect("word100").Quality==
                         MDSVariableQuality.Stale,

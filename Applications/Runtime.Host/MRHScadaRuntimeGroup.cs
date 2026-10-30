@@ -41,10 +41,13 @@ namespace CxVisual.Runtime.Host
     {
         private readonly List<MRHScadaRuntime> _devices;
         private readonly string _deploymentVersion;
+        private readonly Func<bool> _deploymentApproval;
         private bool _started, _stopped, _disposed;
 
-        private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices,string deploymentVersion)
-        { _devices=devices;_deploymentVersion=deploymentVersion; }
+        private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices,string deploymentVersion,
+            Func<bool> approval)
+        { _devices=devices;_deploymentVersion=deploymentVersion;
+          _deploymentApproval=approval; }
 
         /// <summary>正式入口：MEM ProjectId关联MHS已持久发布的SCADA部署配置。</summary>
         internal static MRHScadaRuntimeGroup OpenFromEngineering(
@@ -118,7 +121,7 @@ namespace CxVisual.Runtime.Host
                 }
                 if(additionalApproval!=null&&!additionalApproval())
                     throw new InvalidOperationException("SCADA设备组准备期间部署版本漂移");
-                return new MRHScadaRuntimeGroup(prepared,deploymentVersion);
+                return new MRHScadaRuntimeGroup(prepared,deploymentVersion,additionalApproval);
             }
             catch
             {
@@ -130,6 +133,9 @@ namespace CxVisual.Runtime.Host
 
         internal string DeploymentVersion {get{return _deploymentVersion;}}
         internal int Count {get{return _devices.Count;}}
+        internal bool IsDeploymentApproved {get{return !_disposed &&
+            (_deploymentApproval==null||_deploymentApproval());}}
+        internal MRHScadaRuntime[] SnapshotDevices(){return _devices.ToArray();}
         internal MRHScadaRuntime Find(Guid deviceNodeId)
         {
             string key=deviceNodeId.ToString("N");
@@ -177,7 +183,7 @@ namespace CxVisual.Runtime.Host
             for(int i=_devices.Count-1;i>=0;i--)
                 _devices[i].Dispose();
         }
-        internal static int Serve(string projectPath,string configRoot)
+        internal static int Serve(string projectPath,string configRoot,string readPipeName = null)
         {
             using(MRHScadaRuntimeGroup group=OpenFromEngineering(projectPath,configRoot))
             using(CancellationTokenSource signal=new CancellationTokenSource())
@@ -187,16 +193,26 @@ namespace CxVisual.Runtime.Host
                     e.Cancel=true;signal.Cancel();
                 };
                 Console.CancelKeyPress+=onCancel;
+                Task pipeTask=null;
                 try
                 {
                     group.StartAsync(signal.Token).GetAwaiter().GetResult();
+                    if(readPipeName!=null)
+                        pipeTask=MRHScadaReadOnlyPipe.RunAsync(group,readPipeName,signal.Token);
                     Console.WriteLine("SCADA Group online. Devices="+group.Count+
                         " DeploymentEffective="+group.DeploymentVersion+
                         ". Ctrl+C stops all. Read-only; no command replay.");
                     Task cancellation=Task.Delay(Timeout.Infinite,signal.Token);
                     Task[] watchers=_devicesCompletion(group);
-                    Task[] all=watchers.Concat(new[]{cancellation}).ToArray();
+                    Task[] all=watchers.Concat(new[]{cancellation})
+                        .Concat(pipeTask==null?new Task[0]:new[]{pipeTask}).ToArray();
                     Task terminal=Task.WhenAny(all).GetAwaiter().GetResult();
+                    if(terminal==pipeTask)
+                    {
+                        try{pipeTask.GetAwaiter().GetResult();}catch(Exception error)
+                        {Console.Error.WriteLine("SCADA Pipe异常: "+error.Message);}
+                        return 3;
+                    }
                     if(terminal==cancellation)
                     {
                         group.StopAsync().GetAwaiter().GetResult();
@@ -215,7 +231,15 @@ namespace CxVisual.Runtime.Host
                 {
                     return 0;
                 }
-                finally {Console.CancelKeyPress-=onCancel;}
+                finally
+                {
+                    signal.Cancel();
+                    if(pipeTask!=null)
+                        try{pipeTask.GetAwaiter().GetResult();}
+                        catch(OperationCanceledException){}
+                        catch(ObjectDisposedException){}
+                    Console.CancelKeyPress-=onCancel;
+                }
             }
         }
         private static Task[] _devicesCompletion(MRHScadaRuntimeGroup group)
