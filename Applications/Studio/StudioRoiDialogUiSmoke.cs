@@ -329,6 +329,22 @@ namespace CxVisual.Studio
                     vm.ProjectSession.Revision==revision &&
                     viewer.Session.Original.GetGrayValue(0,0)==210,
                     "错源文件重绑覆盖了有效结果或改变MEM工程状态："+status.Text);
+                // 模拟外部SDK在公开MVI Session对同一个Buffer实例重新标记原图。
+                // 引用未变但Generation已变化；本Run按钮不得继续开启Save弹框。
+                FIMImageBuffer currentSource=viewer.Session.Original;
+                long generation=viewer.Session.OriginalGeneration;
+                viewer.Session.SetOriginal(currentSource);
+                Require(viewer.Session.OriginalGeneration>generation,
+                    "公开MVI Session同实例原图重绑定没有递增Generation");
+                await Click(hwnd,"Studio.ModuleCenter.ExportRunCsv");
+                Require(details.Text.Contains("本Run已失效") &&
+                    !File.Exists(Path.Combine(folder,"stale.csv")) &&
+                    vm.ProjectSession.Revision==revision,
+                    "来源代次已变时UIA导出按钮不得打开文件框或发布旧Run");
+                await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
+                Require(details.Text.Contains("原图来源失效") &&
+                    vm.ProjectSession.Revision==revision,
+                    "来源代次已变时用户重新点击工程ROI不得发布旧Run");
                 File.WriteAllText(report,
                     "PASS: IMG05 Studio真实WPF按钮/Windows Open Save文件对话框/RAW重绑/MRK复算/CSV与错源拒绝\n"+
                     "NOTE: 已有MEM ROI测试夹具；不冒充鼠标画ROI、硬件G6或人工桌面复核。\n",
