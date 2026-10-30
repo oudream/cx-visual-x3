@@ -273,6 +273,17 @@ namespace CxVisual.Studio
                             preview.Text.Contains("productB = Int32 value=202")&&
                             !preview.Text.Contains("productA"),
                             "B5 Flow B查看混入上一Flow结果");
+                        var overlayField=typeof(MainWindow).GetField("_logicOverlay",flags);
+                        var overlay=overlayField==null?null:
+                            overlayField.GetValue(window) as MOLRuntimeOverlay;
+                        var stateField=typeof(MOLRuntimeOverlay).GetField("_states",flags);
+                        var stateCache=overlay==null||stateField==null?null:
+                            stateField.GetValue(overlay) as Dictionary<Guid,string>;
+                        Assert(stateCache!=null,"B5旧Flow可视状态无法验证");
+                        Guid obsoleteBlock=Guid.NewGuid();
+                        stateCache[obsoleteBlock]="Completed";
+                        Assert(overlay.StateOf(obsoleteBlock)=="Completed",
+                            "B5测试未设置旧Flow可视状态");
                         ownerField.SetValue(window,Guid.NewGuid());
                         // Real scene refresh (project switch) must revoke the
                         // visible old Flow before the user presses Inspect.
@@ -282,8 +293,9 @@ namespace CxVisual.Studio
                             "B5活跃Flow缺少工程切换后的场景更新入口");
                         refreshSceneWhileRunning.Invoke(window,new object[0]);
                         Assert(preview.Text.Contains("无可查看的运行结果")&&
-                            !preview.Text.Contains("productB"),
-                            "B5切换工程时活跃Flow结果未即时撤销");
+                            !preview.Text.Contains("productB")&&
+                            overlay.StateOf(obsoleteBlock)==null,
+                            "B5切换工程时活跃Flow结果或旧运行图元颜色未即时撤销");
                         inspectClick();
                         Assert(preview.Text.Contains("无可查看的运行结果")&&
                             !preview.Text.Contains("productB"),
