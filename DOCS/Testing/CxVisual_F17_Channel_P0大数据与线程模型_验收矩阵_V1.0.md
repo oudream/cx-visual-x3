@@ -161,3 +161,9 @@
 - 用例：Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.HttpClientBodyDeadline()，由`--channel-uml-core`/`--channel-transport`自动调用；本机HttpListener真实OS回环已发送HTTP 200及首字节，持续2200ms不结束分块响应体。Client配置RequestTimeoutMs=850，必须在2900ms内返回TimeoutException、Received次数为0、FTR临时缓冲额度归0，禁止把未完成响应作为有效数据交付。
 - 直接覆盖接收慢Body、取消与资源释放；配合HTTP-CLI-01～05的同门Send重入、受限预算、诊断Payload禁用与继续服务回归。两个入口及Windows全SLN Rebuild/各方向2GiB仍在`.github/workflows/f17-channel-windows.yml`。
 - 代码固定增量：`323a4b3b`、`723c10c4`、`d7ec8b6d`、`6ae8fd4b`；**对应最新版固定SHA的Windows CI运行完成并出具日志之前，全部维持“已提交，待自动验收”**。
+
+### HTTP-CLI-07：新建配置下4MiB合法响应的全程真实内存预算（2026-10-30）
+
+- 入口：FTRMultiClientBudgetTests.HttpClientMultiMegabyteResponse；仍自动包含在`--channel-uml-core`和`--channel-transport`。
+- FCM：HTTP Client默认MaxResponseBytes=4194304、ReceiveByteBudget=12582912（12MiB），校验Converter往返；不修改既有显式历史持久预算。HTTP Server真实HttpListener回环，发送4MiB确定性字节序列；客户端按长度与多个位置检查完整顺序、单次收包、真实ReceivedBytes、PeakBufferedPayloadBytes<=预算、完成后BufferedPayloadBytes=0。
+- CI：`.github/workflows/f17-channel-windows.yml`两套Channel软件入口都必须输出`F17.HTTP_LARGE_PASS bytes=4194304`。保持原TCP/NamedPipe双向2GiB基准与Windows x64全SLN；本项在其固定SHA Actions真正结束前仍是**已提交、待验证**。
