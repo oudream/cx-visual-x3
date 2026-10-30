@@ -3544,6 +3544,16 @@ namespace CxVisual.Studio
                             "Studio工程保存重开必须恢复原Measurement Scene身份及选择，不生成第二套实例");
                         var finalized=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(
                             .48,.52,CancellationToken.None));
+                        // 真实Studio三维对象列表共享MVI选择集：Mesh+Measurement组合选择。
+                        Guid selectedMesh=workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Mesh).Id;
+                        workspace.Scene3D.Select(selectedMesh);
+                        workspace.Scene3D.ToggleSelection(hiddenMeasurement);
+                        Assert(workspace.Scene3D.SelectedIds.Count==2&&
+                            workspace.Scene3D.SelectedIds[0]==selectedMesh&&
+                            workspace.Scene3D.SelectedIds[1]==hiddenMeasurement&&
+                            workspace.Scene3D.SelectedId==hiddenMeasurement,
+                            "Studio专业Mesh/Measurement组合选择应持有Scene稳定实例身份");
                         workspace.SavePendingResult();
                         Guid finalizedId=finalized.Plane.ResultId;
                         workspace.OpenProject(project);
@@ -3552,8 +3562,11 @@ namespace CxVisual.Studio
                             workspace.CurrentAnalysis.SliceRoiRecipe.MaximumOffsetMm==.52&&
                             workspace.CurrentAnalysis.ParameterSignature==finalized.ParameterSignature&&
                             workspace.CurrentAnalysis.RoiSignature==finalized.RoiSignature&&
-                            workspace.Scene3D.SelectedId==hiddenMeasurement,
-                            "修改已保存ROI毫米范围后，MEM落盘重开必须保留原体素选区、参数及Scene选择");
+                            workspace.Scene3D.SelectedId==hiddenMeasurement&&
+                            workspace.Scene3D.SelectedIds.Count==2&&
+                            workspace.Scene3D.SelectedIds[0]==selectedMesh&&
+                            workspace.Scene3D.SelectedIds[1]==hiddenMeasurement,
+                            "ROI厚度编辑后MEM保存重开必须保留Mesh/Measurement组合选择与全部专业身份");
                         using(var engineering=MEMEngineering.Open(project))
                         {
                             var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
@@ -3630,8 +3643,10 @@ namespace CxVisual.Studio
                             workspace.CurrentAnalysis.SliceRoiRecipe.MaximumOffsetMm==.52&&
                             workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
                                 SelectedSliceRectangle!=null&&
-                            workspace.Scene3D.SelectedId==hiddenMeasurement,
-                            "返回已保存Case必须恢复其独立ROI、毫米厚度及原Scene选择");
+                            workspace.Scene3D.SelectedId==hiddenMeasurement&&
+                            workspace.Scene3D.SelectedIds.Count==2&&
+                            workspace.Scene3D.SelectedIds[0]==selectedMesh,
+                            "返回已保存Case必须恢复ROI、毫米厚度及Mesh/Measurement组合选择");
                         workspace.SelectCaseByIndex(1);
                         Assert(workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId&&
                             workspace.CurrentAnalysis.SliceRoiRecipe==null&&
