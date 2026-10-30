@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Threading;
+using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Foundation.Transport;
 using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Core.Modules;
@@ -31,6 +32,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try { action(); }
             catch (TException) { return; }
             throw new InvalidOperationException("AUT-PLC-G1: expected " + typeof(TException).Name);
+        }
+
+        // 真正的Decision/MRK执行引擎运行PLC Capability；设备命令仍由
+        // 唯一MRKCommandCenter拥有，结果不能把寄存器回读等同物理动作完成。
+        private static MRKFlowResult ExecutePinnedCapability(MRKCommandCenter commands,
+            string commandEffectiveVersion)
+        {
+            PADPlcMrkWriteCapabilityProvider provider=
+                new PADPlcMrkWriteCapabilityProvider(commands,
+                    "plc-versioned","operator","plc-capability-contract-v1",
+                    commandEffectiveVersion:commandEffectiveVersion);
+            MRKResolvedCapability binding;
+            Check(provider.TryResolve(
+                PADPlcMrkWriteCapabilityProvider.CapabilityId,out binding),
+                "受控PLC Capability无法从专业Owner解析");
+            MRKExecutionPlan plan=new MRKExecutionPlan("scada-pinned-plc-command",
+                new[]{new MRKExecutionStep("pinned-plc",new string[0],
+                    binding.ExecuteAsync,
+                    policy:new MRKExecutionPolicy(maxAttempts:1,idempotent:false),
+                    inputs:new[]{
+                        new MRKExecutionInput("StableId",MRKInputSource.FlowInput,
+                            "StableId",typeof(string)),
+                        new MRKExecutionInput("Value",MRKInputSource.FlowInput,
+                            "Value",typeof(ushort))
+                    },output:binding.Output,dataOutputs:binding.DataOutputs)});
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,8));
+            try
+            {
+                MRKFlowHandle flow=engine.StartFlow(plan,new Dictionary<string,object>{
+                    {"StableId","word"},{"Value",(ushort)91}
+                });
+                Check(flow.Completion.Wait(TimeSpan.FromSeconds(12)),
+                    "正式版本锁定PLC Capability未在有界时间结算");
+                return flow.Completion.GetAwaiter().GetResult();
+            }
+            finally{engine.StopAsync(true).GetAwaiter().GetResult();}
         }
 
         public static void Run()
@@ -390,6 +427,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             current.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
                             plc.Writes==beforePinned+1,
                             "当前Effective版本且有可信MRK/PAD授权才执行FC06+FC03");
+
+                        // 真实MOC/Decision能力执行也必须携带命令层MHS Effective。
+                        // 此前适配器只传StableId/Value，无法调成功该正式必填Schema。
+                        int beforeCapability=plc.Writes;
+                        MRKFlowResult pinnedGood=ExecutePinnedCapability(
+                            versionedCenter,"approved-effective-v1");
+                        Check(pinnedGood.State==MRKFlowState.Completed &&
+                            pinnedGood.Results.ContainsKey("pinned-plc") &&
+                            object.Equals(pinnedGood.Results["pinned-plc"],true) &&
+                            plc.Writes==beforeCapability+1 &&
+                            plc.ActualRegister==91,
+                            "Decision→MRK版本锁定真实FC06+FC03不完整");
+
+                        int beforeBadVersion=plc.Writes;
+                        MRKFlowResult pinnedBad=ExecutePinnedCapability(
+                            versionedCenter,"old-effective-v0");
+                        Check(pinnedBad.State==MRKFlowState.Failed &&
+                            !pinnedBad.Results.ContainsKey("pinned-plc") &&
+                            plc.Writes==beforeBadVersion,
+                            "错误命令Effective版本不得执行FC06或输出成功");
+
+                        MRKFlowResult missingPin=ExecutePinnedCapability(
+                            versionedCenter,null);
+                        Check(missingPin.State==MRKFlowState.Failed &&
+                            !missingPin.Results.ContainsKey("pinned-plc") &&
+                            plc.Writes==beforeBadVersion,
+                            "正式MRK必填Effective不可被老未锁定Capability绕过");
+
+                        latestApproved=false;
+                        try
+                        {
+                            MRKFlowResult pinnedDrift=ExecutePinnedCapability(
+                                versionedCenter,"approved-effective-v1");
+                            Check(pinnedDrift.State==MRKFlowState.Failed &&
+                                !pinnedDrift.Results.ContainsKey("pinned-plc") &&
+                                plc.Writes==beforeBadVersion,
+                                "工程配置漂移后即使提交旧批准版本也不能经Flow发FC06");
+                        }
+                        finally{latestApproved=true;}
                     }
 
                     // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
