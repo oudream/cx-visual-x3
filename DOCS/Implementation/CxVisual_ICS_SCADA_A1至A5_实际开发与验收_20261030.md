@@ -137,3 +137,9 @@
 - 两个实际本机Modbus TCP夹具存在，但预检期间两台设备的FC03/FC06计数均必须严格为0；独立进程JSON必须证明相同的Project Deployment Effective、两个DeviceRef/Scope与正式点表，DeviceCommunicationValidated严格false。
 - 在工程配置故意复用同一个F17 ChannelId后，独立进程必须以退出码1拒绝，stdout不能出现表示通过的部署JSON，且无额外PLC IO。G1测试源码固定提交 `edd3c74d5f28075a32799922ba164a5bdd2e87ac`，具体Windows结果应以该SHA Actions运行成功为准。
 - 已关闭的旧门禁：`41048486875`对应SHA`f4b36a5`通过A5工程预检（进程内）；`41052078725`对应SHA`ecca26c`通过A3真实跨进程Pipe发现、MDS Good和旧Generation拒绝。这两项历史PASS不能自动证明本次新独立进程预检已经通过。
+
+
+## 17. A3/A5跨进程实测G1固定SHA成功证据（2026-10-30）
+- **A3跨进程运行数据PASS**：SHA `ecca26c65c04d10a192e1c1467e04bbb7f16571b`，Windows G1 Run `41052078725`；.NET48 Windows x64编译及真实本机TCP双PLC + 独立子进程Pipe discover/snapshot + MDS Good/Revision + 旧Generation拒绝均通过。
+- **A5独立工程预检PASS**：SHA `edd3c74d5f28075a32799922ba164a5bdd2e87ac`，Windows G1 Run `41052386270`；.NET48 Windows x64 Restore/Build、真实独立`Runtime.Host.exe scada-project-check`的保存工程/Effective双设备JSON、预检期间零FC03/FC06、Channel冲突拒绝且无成功JSON均通过。
+- 以上是对应固定SHA实际Windows软件G1，不能扩张为已通过现场PLC G2/G3、硬件联锁、远程跨账户身份授权、受信MRK跨进程控制或正式SCM服务安装。A与HMI-B各自的G1成功尚未等同于真实WPF连接本次双PLC Host的同一次联合用例。
