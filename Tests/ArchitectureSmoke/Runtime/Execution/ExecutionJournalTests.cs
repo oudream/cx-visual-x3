@@ -25,6 +25,89 @@ namespace CxVisual.Tests.ArchitectureSmoke
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
         private static string PathForTest()
         { return Path.Combine(Path.GetTempPath(), "cx-run-" + Guid.NewGuid().ToString("N") + ".bin"); }
+        /// <summary>
+        /// B6: exercise the actual standalone Host executable across process boundaries.
+        /// The Journal is written with the production codec, never by corrupting bytes.
+        /// Unsettled device work must not be replayed or implicitly acknowledged.
+        /// </summary>
+        internal static void RunHostProcessFailClosed()
+        {
+            string executable = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "CxVisual.Runtime.Host.exe");
+            Check(File.Exists(executable), "B6真实Host可执行文件缺失");
+            for (int scenario = 0; scenario != 2; scenario++)
+            {
+                string root = Path.Combine(Path.GetTempPath(),
+                    "cx-host-b6-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(root);
+                string journalPath = Path.Combine(root, "runtime.journal");
+                try
+                {
+                    Guid flowId = Guid.NewGuid();
+                    using (var journal = new MRKFileExecutionJournal(journalPath))
+                    {
+                        journal.Append(new MRKJournalRecord(MRKJournalKind.FlowStarted,
+                            flowId, "b6.unsettled", 2, "", "Running"));
+                        if (scenario == 1)
+                            journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown,
+                                flowId, "b6.unsettled", 2, "device.write", "Unknown",
+                                operationId: Guid.NewGuid()));
+                    }
+                    long originalLength = new FileInfo(journalPath).Length;
+                    string recoveryText;
+                    int recoveryCode = HostProcess(executable, "runtime-recover",
+                        journalPath, out recoveryText);
+                    Check(recoveryCode == 3 &&
+                        recoveryText.Contains("Recovery blocked") &&
+                        recoveryText.Contains(flowId.ToString()),
+                        "B6 Host未拒绝未结案/外部状态未知的Journal恢复");
+                    string runText;
+                    int runCode = HostProcess(executable, "runtime-run",
+                        journalPath, out runText);
+                    Check(runCode == 1 && runText.Contains("宿主启动隔离"),
+                        "B6 未结案Journal被独立Host错误接管");
+                    Check(new FileInfo(journalPath).Length == originalLength &&
+                        !Directory.Exists(Path.Combine(root, "F19-Audit")),
+                        "B6 Host拒绝接管时仍改写运行记录或创建审计会话");
+                    using (var verify = new MRKFileExecutionJournal(journalPath))
+                    {
+                        IList<MRKJournalRecord> recorded = verify.ReadAll();
+                        Check(recorded.Count == (scenario == 0 ? 1 : 2) &&
+                            MRKJournalRecovery.Evaluate(flowId, recorded).Disposition ==
+                                MRKRecoveryDisposition.RequiresReconciliation,
+                            "B6 Host拒绝后Journal事实或人工核对状态丢失");
+                    }
+                }
+                finally { Directory.Delete(root, true); }
+            }
+        }
+
+        private static int HostProcess(string executable, string command,
+            string journalPath, out string output)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(executable,
+                command + " \"" + journalPath + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetDirectoryName(executable)
+            };
+            using (var process = System.Diagnostics.Process.Start(start))
+            {
+                if (process == null) throw new InvalidOperationException("B6 Host无法启动");
+                if (!process.WaitForExit(15000))
+                {
+                    try { process.Kill(); } catch (InvalidOperationException) { }
+                    throw new TimeoutException("B6 Host进程拒绝/恢复测试超时");
+                }
+                output = process.StandardOutput.ReadToEnd() +
+                    process.StandardError.ReadToEnd();
+                return process.ExitCode;
+            }
+        }
+
         private static void RepeatedFlowIdentityAndUnboundTimeoutRequireReconciliation()
         {
             Guid id = Guid.NewGuid();

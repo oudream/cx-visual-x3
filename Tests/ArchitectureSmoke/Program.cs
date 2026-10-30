@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     ExecutionGroupTests.Run();
                     ExecutionPolicyTests.Run();
                     ExecutionJournalTests.Run();
+                    ExecutionJournalTests.RunHostProcessFailClosed();
                     RuntimeVisionDataFlowTests.Run();
                     return 0;
                 }
