@@ -571,3 +571,8 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **质量门禁**：`CxVisual.Unified.sln` /Release/x64、`ArchitectureSmoke --vision-results`、`--imaging`及默认回归，`Studio --module-center-cpu-self-test`与`--shell-self-test`，`TestCenter --imaging-viewer-smoke`。CI源代码测试存在≠实际通过；当前工具无法取得本批push工作流匹配SHA的Windows成功记录，因此不得登记G3～G5完成。
 
+### 33.1 重开配置来源防漂移（2026-10-30）
+
+- `CxVisionDataFlow.RunRoiInspectionPreviewAsync`的专业MRK计划现在显式接受保存时的`configRevision`；`CxVisionRoiEngineering.RunSavedAsync`从原Data Aspect传入该Revision，禁止重开后默默退回默认Revision=1。架构回归断言同工程两次重跑的`CxVisionRunSummary.ConfigRevision==21`。
+- `RunSavedAsync`在读取MEM定义前记录工程Revision，MRK完成后再次核对；若中途有其它MEM编辑，拒绝向用户发布过时ROI结果；Studio同时检查当前ProjectId、原图引用和图窗SourceVersion。
+- 代码与测试源码已提交，但本批固定master SHA对应Windows实际成功记录仍未取得，保留G3/G4/G5待验。
