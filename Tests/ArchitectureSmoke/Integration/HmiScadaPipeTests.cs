@@ -168,7 +168,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 object value=remote.Resolve(MDSBindingSource.Variable,
                     "word100",typeof(double));
-                if(value!=null&&(double)value==91d)first.Set();
+                if(value!=null&&(double)value==91d)
+                {
+                    PHMScadaDeviceSnapshot atom=remote.CaptureCurrentSnapshot();
+                    Check(Object.ReferenceEquals(atom.Identity,remote.Identity)&&
+                        atom.Points.Count==1,
+                        "同一Snapshot必须同时包含Host身份与真实点位");
+                    first.Set();
+                }
                 else if(first.IsSet)lost.Set();
             }))
             {
@@ -178,6 +185,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(lost.Wait(TimeSpan.FromSeconds(5))&&
                     remote.Resolve(MDSBindingSource.Variable,"word100",typeof(double))==null,
                     "新Generation拒绝后必须立刻撤回旧Good运行帧");
+                bool revokedSnapshot=false;
+                try{remote.CaptureCurrentSnapshot();}
+                catch(InvalidOperationException){revokedSnapshot=true;}
+                Check(revokedSnapshot,
+                    "Host拒绝/断线后必须禁止从旧Generation捕获待写入意图的快照");
             }
             Check(server.Wait(TimeSpan.FromSeconds(10)), "Pipe v1服务端契约夹具没有完成");
             // A的--recover-device：旧Generation被拒绝后重新Discover，

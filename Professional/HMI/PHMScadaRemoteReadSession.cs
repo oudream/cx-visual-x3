@@ -168,6 +168,22 @@ namespace CxVisual.Professional.HMI
         }
         private void Unsubscribe(Action callback)
         { lock(_gate)_updated-=callback; }
+        /// <summary>
+        /// HMI写入意图预检必须原子读取同一Host Generation的身份与点值。
+        /// 当前没有有效快照、旧代次被撤销或设备身份切换均FailClosed。
+        /// 返回值只供只读类型/品质检查，不能据此获得写授权。
+        /// </summary>
+        public PHMScadaDeviceSnapshot CaptureCurrentSnapshot()
+        {
+            lock(_gate)
+            {
+                if(_disposed)throw new ObjectDisposedException("PHMScadaRemoteReadSession");
+                if(_latest==null||!Object.ReferenceEquals(_latest.Identity,_identity))
+                    throw new InvalidOperationException("hmi.pipe.snapshot_unavailable_or_generation_changed");
+                return _latest;
+            }
+        }
+
         public IReadOnlyList<PHMScadaPointObservation> Points()
         {
             lock(_gate)

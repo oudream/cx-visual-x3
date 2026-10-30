@@ -120,15 +120,22 @@ namespace CxVisual.Studio
                         out deviceId)||deviceId!=remote.Identity.DeviceRef)
                         throw new InvalidOperationException(
                             "MRK命令目标不是当前在线设备");
+                    // 单一Host快照同时携带身份/点值，不允许恢复切换期间
+                    // 混合新Generation与旧一帧数据。
+                    PHMScadaDeviceSnapshot observed=remote.CaptureCurrentSnapshot();
                     PHMHmiPreparedWrite prepared=PHMHmiWritePreparation.Prepare(
                         origin,revision,action,action.ActionId,selectedIdentity,
-                        remote.Identity,remote.Points(),valueBox.Text,
+                        observed.Identity,observed.Points,valueBox.Text,
                         confirmed.IsChecked==true,TimeSpan.FromSeconds(5),DateTime.UtcNow);
                     // 复用MRK唯一强类型Schema：StableId、Value、Effective、
                     // Generation，禁止HMI创建新的参数类型/阈值校验体系。
                     var verified=command.Definition.BindInputs(prepared.Inputs);
                     if(verified.Count!=4)
                         throw new InvalidOperationException("hmi.write.mrk_schema_mismatch");
+                    if(!Object.ReferenceEquals(remote.CaptureCurrentSnapshot().Identity,
+                        observed.Identity))
+                        throw new InvalidOperationException(
+                            "hmi.write.generation_changed_during_precheck");
                     result.Text="软件预检通过（未下发）：PointId="+
                         prepared.StablePointId+"，Value="+prepared.Value+
                         "，Effective="+prepared.ConfigVersion+

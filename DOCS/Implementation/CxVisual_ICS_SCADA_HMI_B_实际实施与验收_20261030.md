@@ -139,3 +139,8 @@
 - `Applications/Studio/StudioShell.Hmi.WritePrecheck.cs`：现有Page HMI菜单增加受信目录+当前Host可用时的写入意图检查窗口，可选择已保存Click的按钮、人工输入当前UInt16设定值并勾选确认。再次核验原注册`MRKCommandDescriptor`和`FDCCommandDefinition.BindInputs`，显示DeviceRef/Scope/双版本和“仅准备未发送”；没有真实Host或MRK目录禁用。此时不做现场写入、不伪造ACK/Readback/机械完成。
 - `HmiScadaPipeTests`用真实NamedPipe合同采样与MEM Page/Button/Action/MVI路由，验证四个强类型输入和65535上界；反证65536、负数、浮点、16进制、空值、前后空格、未确认、点位Stale及错误ActionId，并确保MEM Revision不变。`StudioShellSelfTests`确认未授权来源下UI入口默认禁用。
 - 本批仅实现“用户输入→类型/时效/版本检查→待认证操作意图”，A侧正式Runtime.Host远程Operator认证、授权在线提交、FC06/FC03业务回执与Unknown实机联调仍未关闭；请勿把G1软件预检冒充G2/G3真实控制验收。
+
+### 第十三批补充：同代次Host快照原子预检
+
+- `PHMScadaRemoteReadSession.CaptureCurrentSnapshot()`在原`_gate`临界区返回**同一Host Snapshot的Identity+Points**，旧Generation已撤销、通信中断、工程会话释放时直接拒绝；避免分别读取`Identity`与`Points`在recover-device竞态里拼接新代次/旧数值。
+- Studio预检改为先捕获同帧再执行`PHMHmiWritePreparation.Prepare`和MRK`BindInputs`，最后复核代次；仍然不发控制，不把瞬时质量Good当成真正设备安全或授权。新增真实NamedPipe合同测试：正常时身份/点同帧，旧Host拒绝后无法捕获旧帧。
