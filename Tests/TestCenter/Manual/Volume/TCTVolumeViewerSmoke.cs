@@ -1227,6 +1227,38 @@ namespace CxVisual.TestCenter.UI
                     continuedCase.Source.Signature==restored.Source.Signature&&
                     continuedCase.RoiSignature==restored.RoiSignature,
                     "Studio/Headless可在重开后复用物理切片ROI与CT3D公共API继续编辑");
+                Guid originalPlaneId=restored.Plane.ResultId;
+                viewport.SelectRectangleRoi(5,5,6,6);
+                AwaitProfessional(frame.SaveEditedSliceRoiAsync(.49,.51,
+                    System.Threading.CancellationToken.None));
+                var editedFromWpf=frame.LastOpenedProfessionalCase;
+                Check(editedFromWpf!=null&&
+                    editedFromWpf.Plane.ResultId!=originalPlaneId&&
+                    editedFromWpf.RoiSignature==restored.RoiSignature,
+                    "WPF切片ROI继续编辑必须通过MEM事务替换专业ResultId");
+                using(var editedEngineering=CxVisual.Mechanism.Core.MEMEngineering.Open(project))
+                {
+                    var editedOwner=editedEngineering.Project.DescendantsAndSelf()
+                        .OfType<CxVisual.Mechanism.Core.MEMContent>()
+                        .Single(c=>c.Aspects.Any(a=>a.ProviderId==CT3DAnalysisPersistence.ProviderId));
+                    var resultAddress=editedEngineering.GetAddress(editedOwner);
+                    var editedOnDisk=CT3DAnalysisPersistence.Open(editedEngineering,
+                        resultAddress,root,System.Threading.CancellationToken.None);
+                    var visualOnDisk=new MVI3DSceneState();
+                    MVI3DSceneLayoutPersistence.Open(editedEngineering,resultAddress,
+                        visualOnDisk,item=>item.Kind==MVI3DSceneKind.Volume
+                            ?item.SourceRef==editedOnDisk.Source.SourceRef
+                            :item.Kind==MVI3DSceneKind.Mesh
+                                ?item.SourceRef=="ct3d:mesh:"+editedOnDisk.Mesh.ResultId.ToString("N")
+                                :item.Kind==MVI3DSceneKind.Measurement&&
+                                    item.SourceRef=="ct3d:plane:"+editedOnDisk.Plane.ResultId.ToString("N"),
+                        System.Threading.CancellationToken.None);
+                    Check(editedOnDisk.Plane.ResultId==editedFromWpf.Plane.ResultId&&
+                        visualOnDisk.Count==3&&
+                        visualOnDisk.SnapshotLayer("analysis").Count==1,
+                        "真实WPF ROI编辑保存后Data/Visual三对象来源必须在同一MEM工程一致");
+                }
+                restored=editedFromWpf;
                 Guid planeId=restored.Plane.ResultId;
                 AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 Check(frame.LastMeshPlaneFit.ResultId==planeId,"重复重开不改变结果身份");
