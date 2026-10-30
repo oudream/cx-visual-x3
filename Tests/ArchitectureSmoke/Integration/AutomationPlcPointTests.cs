@@ -163,17 +163,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(plc.ActualRegister == 55 && table.Get<ushort>("Station.Word") == 55 &&
                         plc.Writes == 2, "ACK但硬件寄存器未变必须返回Unknown，不自动重发");
 
+                    // 无新采样时仅改变质量：保留上一条真实寄存器值和采样时刻。
+                    IMDSVariableSnapshot beforeTimeout = table.Inspect("Station.Word");
                     plc.IgnoreWrite = false; plc.IgnoreRead = true;
                     Reject<PADPlcOutcomeUnknownException>(() => provider.WriteAsync("word", (ushort)88,
                         "operator", CancellationToken.None).GetAwaiter().GetResult());
                     Check(plc.Writes == 3 && plc.ActualRegister == 88 &&
                         table.Get<ushort>("Station.Word") == 55,
                         "写ACK后读回超时属于Unknown，不能伪造最新MDS成功样本");
+                    IMDSVariableSnapshot afterTimeout = table.Inspect("Station.Word");
+                    Check(afterTimeout.Quality == MDSVariableQuality.Stale &&
+                        afterTimeout.HasValue &&
+                        object.Equals(afterTimeout.CurrentObject, (ushort)55) &&
+                        afterTimeout.RefreshUtc == beforeTimeout.RefreshUtc &&
+                        afterTimeout.Revision > beforeTimeout.Revision,
+                        "PLC回读超时应标记MDS Stale，不能刷新真实采样时间");
                     plc.IgnoreRead = false;
                     object recovered = bridge.ReadAndMapAsync("word", CancellationToken.None)
                         .GetAwaiter().GetResult();
-                    Check((ushort)recovered == 88 && table.Get<ushort>("Station.Word") == 88,
-                        "控制链恢复后须重新从现场读取事实");
+                    Check((ushort)recovered == 88 && table.Get<ushort>("Station.Word") == 88 &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good,
+                        "现场重新采样后数据值与MDS Quality必须一起恢复Good");
+                    IMDSVariableSnapshot validSample = table.Inspect("Station.Word");
+                    Reject<ArgumentOutOfRangeException>(() =>
+                        provider.EmitQuality("word", MDSVariableQuality.Good));
+                    Check(provider.EmitQuality("word", MDSVariableQuality.Bad),
+                        "质量报告需要活动的PAD Provider绑定");
+                    IMDSVariableSnapshot badSample = table.Inspect("Station.Word");
+                    Check(badSample.Quality == MDSVariableQuality.Bad &&
+                        badSample.RefreshUtc == validSample.RefreshUtc &&
+                        badSample.ChangeUtc == validSample.ChangeUtc &&
+                        badSample.Revision > validSample.Revision &&
+                        object.Equals(badSample.CurrentObject, validSample.CurrentObject),
+                        "质量-only变更不能伪造物理值和采样时间");
+                    Check((ushort)bridge.ReadAndMapAsync("word", CancellationToken.None)
+                        .GetAwaiter().GetResult() == 88 &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good,
+                        "真实回读须恢复Good而不能仅凭质量事件恢复Good");
                     // 真实03帧已经送出，但在回包到达前配置被篡改：
                     // 暂存数据不得污染唯一MDS仓，也不得伪报一个有效采样。
                     plc.PauseNextRead();
