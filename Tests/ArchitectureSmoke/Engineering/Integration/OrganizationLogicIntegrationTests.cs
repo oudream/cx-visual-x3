@@ -91,6 +91,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2ExtractLinearContent();
             G07ProjectReleaseLockAndAuthorization();
             G06CpuVisionThroughMOC();
+            G06ArchivedPlanExecutesRealCpuProvider();
             G04ParameterSubflowIsolation();
             V2NamedSubflowDataContracts();
             V2ThreeLevelNamedData();
@@ -1985,6 +1986,129 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         /// <summary>G04-F：提取带Data参数的Control子流程，按两次调用隔离MRK绑定。</summary>
+
+        /// <summary>
+        /// Real test pixels are a deterministic input source, not a simulated
+        /// professional algorithm. Vision computation remains the real CPU Owner.
+        /// </summary>
+        private sealed class G06ArchivedInputResolver : IMRKVersionedCapabilityResolver
+        {
+            internal const string SourceId="vision.test.archived-pixels";
+            internal const string SourceVersion="vision.test.archived-pixels.v1";
+            private readonly byte[] _pixels;
+            private readonly CxVisionThresholdProvider _vision;
+            private readonly MRKResolvedCapability _source;
+            internal G06ArchivedInputResolver(byte[] pixels,CxVisionThresholdProvider vision)
+            {
+                _pixels=(byte[])pixels.Clone();
+                _vision=vision;
+                _source=new MRKResolvedCapability((context,token)=>{
+                    token.ThrowIfCancellationRequested();
+                    return Task.FromResult((object)((byte[])_pixels.Clone()));
+                },new MRKExecutionOutput(typeof(byte[])),
+                    dataOutputs:new Dictionary<string,Type>{{"Pixels",typeof(byte[])}},
+                    inputs:new MRKCapabilityInput[0]);
+            }
+            public bool TryResolve(string id,out MRKResolvedCapability result)
+            {
+                if(id==SourceId){result=_source;return true;}
+                return _vision.TryResolve(id,out result);
+            }
+            public bool TryGetCapabilityVersion(string id,out string version)
+            {
+                if(id==SourceId){version=SourceVersion;return true;}
+                return _vision.TryGetCapabilityVersion(id,out version);
+            }
+        }
+
+        /// <summary>
+        /// B2/B3 real vertical proof: the MEM tree is CLOSED before a canonical
+        /// Decision archive is loaded, Host versions are pinned, and the existing
+        /// MRK executes actual professional CPU threshold/connected-region code.
+        /// </summary>
+        private static void G06ArchivedPlanExecutesRealCpuProvider()
+        {
+            byte[] pixels={210,210,0,0,0,210,0,0,0,0,0,0,0,0,250};
+            var options=new CxVisionInspectionOptions{
+                PixelDepth=CxVisionPixelDepth.Bits8,GrayThreshold=200,
+                MinDefectArea=2,MaxDefectArea=100,UseAi=false};
+            var vision=new CxVisionThresholdProvider(options,12);
+            var source=new G06ArchivedInputResolver(pixels,vision);
+            var sourceDescriptor=new MOCCapabilityDescriptor(
+                G06ArchivedInputResolver.SourceId,"Archived RAW Source","Vision/Input",
+                new[]{new MPCPortDescriptor("Pixels",MPCPortDirection.Output,
+                    "byte[]",MPCPortKind.Data)});
+            var catalog=new MDCStaticCatalogSnapshot(new[]{
+                sourceDescriptor,vision.DescribeCapabilities().Single()
+            });
+            MDCDeclarativePlan serializedPlan=null;
+            Guid inspect=Guid.Empty;
+            var session=MEMEngineering.Create("G06-detached-real-vision");
+            try
+            {
+                var entry=session.AddPage("InspectArchived").RootContent;
+                MOCFlowBuilder.Edit(session,entry,flow=>{
+                    Guid capture=flow.Step(G06ArchivedInputResolver.SourceId);
+                    inspect=flow.Step(CxVisionThresholdProvider.CapabilityId);
+                    flow.AddPort(capture,new MPCPortDescriptor("Pixels",
+                        MPCPortDirection.Output,"byte[]",MPCPortKind.Data));
+                    flow.AddPort(inspect,new MPCPortDescriptor("RawPixels",
+                        MPCPortDirection.Input,"byte[]",MPCPortKind.Data,required:true));
+                    flow.AddPort(inspect,new MPCPortDescriptor("Width",
+                        MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
+                    flow.AddPort(inspect,new MPCPortDescriptor("Height",
+                        MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
+                    flow.AddPort(inspect,new MPCPortDescriptor("Inspection",
+                        MPCPortDirection.Output,
+                        CxVisionAcceptedRegionMeasureProvider.InspectionTypeId,
+                        MPCPortKind.Data));
+                    flow.SetParameter(inspect,"Width","5");
+                    flow.SetParameter(inspect,"Height","3");
+                    flow.Connect(capture,"Done",inspect,"Start");
+                    flow.Connect(capture,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                });
+                serializedPlan=new MDCDeclarativePlanCompiler().Compile(
+                    session.GetSnapshot(),entry.Id,catalog);
+            }
+            finally {session.Close(true);}
+            byte[] archive=MDCPlanArchiveCodec.Serialize(serializedPlan);
+            MDCDeclarativePlan reloaded=MDCPlanArchiveCodec.Deserialize(archive);
+            var versions=new Dictionary<string,string>(StringComparer.Ordinal){
+                {G06ArchivedInputResolver.SourceId,G06ArchivedInputResolver.SourceVersion},
+                {CxVisionThresholdProvider.CapabilityId,vision.ReleaseVersion}
+            };
+            MOCCompiledPlan compiled=new MOCManifestRuntimeBinding().Bind(
+                reloaded,catalog,source,expectedCapabilityVersions:versions);
+            MOCTraceView trace;
+            MRKFlowResult result=Execute(compiled,
+                compiled.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),out trace);
+            string step="w"+inspect.ToString("N");
+            var computed=result.Results.ContainsKey(step)?
+                result.Results[step] as CxVisionInspectionResult:null;
+            Check(result.State==MRKFlowState.Completed&&computed!=null&&
+                computed.ConfigRevision==12&&computed.ThresholdPixelCount==4&&
+                computed.Regions.Count==1&&computed.Regions[0].PixelArea==3&&
+                !computed.Passed&&trace.Events.Any(x=>x.Origin.BlockId==inspect&&
+                    x.Transition.State==MRKStepState.Completed),
+                "B2/B3 detached archive with closed MEM did not execute real Vision pixels or restore SourceMap");
+
+            // A newer algorithm/configuration must not silently run an old
+            // detached Plan. Check rejection before the new provider executes.
+            var upgraded=new CxVisionThresholdProvider(options,13);
+            bool versionRejected=false;
+            try
+            {
+                new MOCManifestRuntimeBinding().Bind(reloaded,catalog,
+                    new G06ArchivedInputResolver(pixels,upgraded),
+                    expectedCapabilityVersions:versions);
+            }
+            catch(InvalidOperationException ex)
+            {versionRejected=ex.Message.StartsWith(
+                "moc.bind.provider_version_mismatch:",StringComparison.Ordinal);}
+            Check(versionRejected,
+                "B2 detached real Vision Plan accepted an upgraded Provider version");
+        }
+
         /// <summary>G06：真实CPU像素处理经V2 MOC构建、MRK调度和专业Provider，不用模拟结果。</summary>
         private static void G06CpuVisionThroughMOC()
         {
