@@ -55,27 +55,7 @@ func logProgramDaemonEvent(ProgramId int64, pid int, event int, msg string) {
 
 func dealProgramDaemonEvent(e *program.Event) {
 	path, maxCount, maxError := getProgramInfo(e.Status.Id)
-	desc := fmt.Sprintf(" ( id:%d; pid:%d; 启动次数:%d/%d; 失败次数:%d/%d )。",
-		e.Status.Id, e.Status.Pid, e.Status.StartCount, maxCount, e.Status.ErrorCount, maxError)
-	msg := ""
-	switch e.Event {
-	case program.EventMaxError:
-		msg = path + "退出，失败次数太多，不再守护。" + desc
-	case program.EventMaxCount:
-		msg = path + "退出，启动次数太多，不再守护。" + desc
-	case program.EventStart:
-		if e.Status.IsRun {
-			msg = path + "启动成功。" + desc
-		} else {
-			msg = path + "启动失败。" + desc + e.Message
-		}
-	case program.EventExit:
-		if e.Status.ErrorCount > 0 {
-			msg = fmt.Sprintf("%s退出，运行时长：%d秒。", path, elapsedRunSeconds(utilities.TimeGetCurrentMsepoch(), e.Status.LastRunTime)) + desc
-		} else {
-			msg = path + "退出，运行时间太短" + desc + e.Message
-		}
-	}
+	msg := formatProgramDaemonEvent(*e, path, maxCount, maxError, utilities.TimeGetCurrentMsepoch())
 	// log file
 	logger.Println(_titleMons.Info + msg)
 	// log db
@@ -86,7 +66,43 @@ func dealProgramDaemonEvent(e *program.Event) {
 	}
 }
 
- // elapsedRunSeconds converts the daemon start timestamp (milliseconds)
+// formatProgramDaemonEvent is the single Monitor-side normalization of the
+// legacy Daemon event protocol. Keep the original event codes and status
+// untouched: old clients still depend on them.
+// ErrorCount is updated by Daemon after Wait: a short run increments it,
+// while a sufficiently long run resets it.
+func formatProgramDaemonEvent(e program.Event, path string, maxCount, maxError int, nowMs int64) string {
+	desc := fmt.Sprintf(" ( id:%d; pid:%d; 启动次数:%d/%d; 失败次数:%d/%d )。",
+		e.Status.Id, e.Status.Pid, e.Status.StartCount, maxCount, e.Status.ErrorCount, maxError)
+	switch e.Event {
+	case program.EventMaxError:
+		return path + "退出，失败次数太多，不再守护。" + desc
+	case program.EventMaxCount:
+		return path + "退出，启动次数太多，不再守护。" + desc
+	case program.EventStart:
+		if e.Status.IsRun {
+			return path + "启动成功。" + desc
+		}
+		// The Daemon sends raw OS errors (usually English). The normalized
+		// Chinese failure marker keeps historical incident classification
+		// independent of the locale of the original error.
+		return path + "启动失败。" + desc + e.Message
+	case program.EventExit:
+		elapsed := elapsedRunSeconds(nowMs, e.Status.LastRunTime)
+		if e.Status.ErrorCount > 0 {
+			return fmt.Sprintf("%s异常退出（运行时间过短），运行时长：%d秒。", path, elapsed) + desc + e.Message
+		}
+		message := fmt.Sprintf("%s退出，运行时长：%d秒。", path, elapsed) + desc
+		if e.Message != "" && e.Message != "<nil>" {
+			message += e.Message
+		}
+		return message
+	default:
+		return ""
+	}
+}
+
+// elapsedRunSeconds converts the daemon start timestamp (milliseconds)
  // to seconds, without producing a negative value on clock rollback.
 func elapsedRunSeconds(nowMs, startedAtMs int64) int64 {
 	if nowMs <= startedAtMs || startedAtMs <= 0 {
