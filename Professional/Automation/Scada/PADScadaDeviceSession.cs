@@ -42,7 +42,8 @@ namespace CxVisual.Professional.Automation.Scada
         public PADScadaDeviceSession(string deviceRef, string scopeId,
             string moduleId, string configVersion, MCNConnectorConfiguration effective,
             TimeSpan interval, bool contiguous = false,
-            Func<string,PADDeviceVariableDefinition,bool> authorizeWrite = null)
+            Func<string,PADDeviceVariableDefinition,bool> authorizeWrite = null,
+            Func<bool> effectiveStillApproved = null)
         {
             if (string.IsNullOrWhiteSpace(deviceRef) || string.IsNullOrWhiteSpace(scopeId) ||
                 string.IsNullOrWhiteSpace(moduleId) || string.IsNullOrWhiteSpace(configVersion))
@@ -109,7 +110,7 @@ namespace CxVisual.Professional.Automation.Scada
             _providerHost.Register(_provider);
             _catalog.Bind(_providerHost,_scopeId);
             _polling=new PADPlcPollingSession(_bridge,bindings.Select(b=>b.StableId),
-                interval,contiguous);
+                interval,contiguous,effectiveStillApproved);
         }
 
         public string DeviceRef {get{return _deviceRef;}}
