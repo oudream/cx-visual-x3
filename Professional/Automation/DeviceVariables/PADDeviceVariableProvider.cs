@@ -79,6 +79,27 @@ namespace CxVisual.Professional.Automation.DeviceVariables
             return await _writer.WriteAsync(definition, frozen, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// 通知MDS已有样本的可靠性变化，不附带新的物理值，不重置最后采样时间。
+        /// 无样本或Provider未运行时不制造假定的值。
+        /// </summary>
+        public bool EmitQuality(string stableId, MDSVariableQuality quality)
+        {
+            PADDeviceVariableDefinition definition = _catalog.FindById(stableId);
+            if (definition == null) return false;
+            if (quality == MDSVariableQuality.Good || !Enum.IsDefined(typeof(MDSVariableQuality), quality))
+                throw new ArgumentOutOfRangeException("quality");
+            Action<MDSVariableProviderSample> sink;
+            lock (_gate)
+            {
+                if (_disposed) throw new ObjectDisposedException("PADDeviceVariableProvider");
+                sink = _sink;
+            }
+            if (sink == null) return false;
+            sink(MDSVariableProviderSample.QualityOnly(stableId, quality));
+            return true;
+        }
+
         public bool Emit(string stableId, object value, MDSVariableQuality quality = MDSVariableQuality.Good)
         {
             PADDeviceVariableDefinition definition = _catalog.FindById(stableId);
