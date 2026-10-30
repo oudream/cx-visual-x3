@@ -477,7 +477,7 @@
                                         ToolTip="先选择两个及以上有Done控制输出的分支；在原工程事务中连接到Judge节点的Start端口"/>
                                 <Button x:Name="FlowWireMode" Content="开始连线" Click="OnToggleWiring"/>
                                 <Button Content="验证工程编排" Click="OnValidateWiring"/>
-                                <Button Content="仿真 / 离线CPU执行追踪" Click="OnRunLogicDemo"
+                                <Button x:Name="FlowRunSoftware" Content="仿真 / 离线CPU执行追踪" Click="OnRunLogicDemo"
                                         ToolTip="仿真使用原有模拟Provider；Vision使用真实Professional CPU和本地RAW快照；PLC写入一律要求独立Host授权"/>
                             </WrapPanel>
                             <WrapPanel Margin="10,0,10,8">
@@ -493,7 +493,7 @@
                                 <ComboBox x:Name="FlowRawBits" Width="55" SelectedIndex="0">
                                     <ComboBoxItem Content="8"/><ComboBoxItem Content="16"/>
                                 </ComboBox>
-                                <Button Content="插入真实RAW→Vision CPU节点" Margin="8,0,0,0"
+                                <Button x:Name="FlowInsertProfessionalCpu" Content="插入真实RAW→Vision CPU节点" Margin="8,0,0,0"
                                         Click="OnCreateProfessionalCpuFlow"
                                         ToolTip="在空Content中一次MEM事务加入可保存可重开的RAW→真实阈值/四邻接专业算法及强类型端口"/>
                             </WrapPanel>
