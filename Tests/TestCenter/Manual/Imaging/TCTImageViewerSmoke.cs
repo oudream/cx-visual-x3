@@ -930,6 +930,48 @@ namespace CxVisual.TestCenter.UI
                     polygonMask.GetGrayValue(2,2)!=0)
                     throw new InvalidOperationException(
                         "三角形阈值掩码错误地使用外接矩形或整个图像");
+                // R1 CASE-01/02：在同一真实WPF工作台上选中三角ROI，
+                // FIM阈值精确选6像素，再交给MRK连通域与面积；不使用外接框代替。
+                cpuTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                Button roiCpu=FindControl<Button>(frame,"TCT.Imaging.CpuVisionRoiRun");
+                if(roiCpu==null || !roiCpu.IsEnabled)
+                    throw new InvalidOperationException("专业ROI→MRK工作台按钮缺失");
+                cpuThreshold.Text="1";cpuArea.Text="1";
+                roiCpu.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var roiWait=System.Diagnostics.Stopwatch.StartNew();
+                while(frame.CpuEvidence==null && roiWait.ElapsedMilliseconds<20000)
+                {
+                    var loop=new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                var roiRun=frame.CpuEvidence;
+                FIMImageBuffer roiMask=roiRun==null?null:
+                    roiRun.Items.Single(x=>x.Kind==
+                        CxVisual.Professional.Vision.CxVisionResultKind.Mask).Image;
+                if(roiRun==null || roiMask==null ||
+                   roiMask.PixelFormat!=FIMPixelFormat.Gray8 ||
+                   roiMask.GetGrayValue(0,2)!=255 ||
+                   roiMask.GetGrayValue(3,0)!=0 ||
+                   roiMask.GetGrayValue(2,2)!=0 ||
+                   roiRun.Items.Single(x=>x.Name=="阈值命中像素数").IntegerValue!=6 ||
+                   roiRun.Items.Single(x=>x.Kind==
+                       CxVisual.Professional.Vision.CxVisionResultKind.Measurement)
+                       .IntegerValue!=6 ||
+                   frame.Viewer.Session.Original.GetGrayValue(3,3)!=16)
+                    throw new InvalidOperationException(
+                        "R1三角形ROI→MRK专业Run误用外接框、面积不为6或修改原图");
+                frame.Viewer.SelectOverlay(null);
+                if(frame.CpuEvidence!=null ||
+                   frame.Viewer.Session.Result!=null)
+                    throw new InvalidOperationException(
+                        "R1 ROI选择改变后旧MRK Run/Mask未自动撤销");
+                frame.Viewer.SelectOverlay(thresholdPolygon.Id);
+                frame.Viewer.ShowResult(polygonMask);
                 // 真实轮廓按钮必须产出可见MVI PolygonAnnotation，而非仅得到模型/外接框。
                 Button contourButton=FindControl<Button>(frame,
                     "TCT.Imaging.ExtractMaskContours");
