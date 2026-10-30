@@ -48,6 +48,25 @@ namespace CxVisual.TestCenter.UI
                 }
                 return;
             }
+            if(e.Args.Length==1&&e.Args[0]=="--module-plc-readonly-ui-automation")
+            {
+                ShutdownMode=ShutdownMode.OnExplicitShutdown;
+                string report=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    "TestCenter-PlcReadOnly-UIA-Report.txt");
+                try
+                {
+                    if(File.Exists(report))File.Delete(report);
+                    await TCTPlcReadOnlyUiSmoke.RunAsync();
+                    Shutdown(0);
+                }
+                catch(Exception ex)
+                {
+                    File.WriteAllText(report,"FAIL TCT.Plc.UIA"+
+                        Environment.NewLine+ex);
+                    Shutdown(3);
+                }
+                return;
+            }
             if(e.Args.Length==1&&e.Args[0]=="--module-connector-ui-automation")
             {
                 ShutdownMode=ShutdownMode.OnExplicitShutdown;
