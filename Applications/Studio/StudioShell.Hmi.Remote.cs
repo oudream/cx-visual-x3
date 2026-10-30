@@ -75,7 +75,8 @@ namespace CxVisual.Studio
                              point.Quality==CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good
                              ?"Stale":point.Quality.ToString()),
                     Source=point.Source,
-                    Updated=point.RefreshUtc.ToString("O",CultureInfo.InvariantCulture)
+                    Updated=point.RefreshUtc==default(DateTime)?"—":
+                        point.RefreshUtc.ToString("O",CultureInfo.InvariantCulture)
                 }).ToArray(),
                 refresh=>remote.Subscribe(refresh),
                 null);
