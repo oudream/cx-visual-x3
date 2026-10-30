@@ -2176,11 +2176,29 @@ namespace CxVisual.Studio
         private static string FormatFlowResultSummary(MRKFlowHandle flow)
         {
             var values=flow.Context.ResultSummariesSnapshot(32);
-            string[] rows=values.Select(x=>x.Key+" = "+x.Value).ToArray();
+            // Selective, trusted professional projection. Do not enumerate
+            // ResultsSnapshot (may hold whole RAW images) or arbitrary ToString.
+            // The UI retains only bounded scalar text after Flow disposal.
+            var rows=new List<string>();
+            foreach(var pair in values)
+            {
+                object value;
+                if(flow.Context.TryGetAbsoluteResult(pair.Key,out value) &&
+                    value is CxVisionInspectionResult)
+                {
+                    CxVisionInspectionResult vision=(CxVisionInspectionResult)value;
+                    rows.Add(pair.Key+" = VisionCPU 阈值像素="+
+                        vision.ThresholdPixelCount+
+                        " 区域数="+vision.Regions.Count+
+                        " 合格="+vision.Passed+
+                        " 配置Revision="+vision.ConfigRevision);
+                }
+                else rows.Add(pair.Key+" = "+pair.Value);
+            }
             return "Flow "+flow.FlowId.ToString("N")+
                 " / "+flow.GetSnapshot().State+
                 " / 显示最多32条结果，当前 "+values.Count+" 条"+Environment.NewLine+
-                (rows.Length==0?"暂无已提交StepResult":
+                (rows.Count==0?"暂无已提交StepResult":
                     string.Join(Environment.NewLine,rows));
         }
         private bool IsCurrentResultScope(Guid projectId,int engineeringRevision)
