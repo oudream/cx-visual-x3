@@ -108,9 +108,9 @@ func main() {
 	defer cancelWorkers()
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	//cbr:c + break 通知守护进程退出的管道
-	cbr := make(chan bool)
+	cbr := make(chan bool, 1)
 
-	csg := make(chan os.Signal)
+	csg := make(chan os.Signal, 1)
 	// 订阅系统信号:ctrl+c
 	signal.Notify(csg, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	//从管道csg抓取系统信号：:ctrl+c，并从管道cbr发出消息
@@ -121,8 +121,9 @@ func main() {
 				_logger.Println(_title.Info+"接收到信號-退出: ", s)
 				_logger.Println(_title.Info + "开始退出..")
 				// 發出退出信號
+				cancelWorkers()
 				ticker.Stop()
-				cbr <- true
+				select { case cbr <- true: default: }
 				_logger.Println(_title.Info + "Ticker stopped")
 			default:
 				_logger.Println(_title.Info+"接收到信號-other: ", s)
@@ -154,9 +155,7 @@ func main() {
 			_logger.Printf(_title.Error+"Check DB[ mqtt, redis, influxdb ] Connected Status Fail, program[ %s ] can not be run.\n", a.Path)
 			continue
 		}
-		if a.FirstWaitTime > 0 {
-			time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
-		}
+		if a.FirstWaitTime > 0 && !waitForFirstStart(workerCtx, time.Second * time.Duration(a.FirstWaitTime)) { break }
 		go daemonc.RunProgramContext(workerCtx, a, cae, findProgramById, _logger, *_workDir)
 		_logger.Println(_title.Info + "Run Program: " + a.Path)
 	}
@@ -377,6 +376,26 @@ func main() {
 	_logger.Println(_title.Info + "Daemon End")
 }
 
+
+// waitForFirstStart allows Daemon shutdown to interrupt first-start delays
+// without creating or killing a process in the waiting worker.
+func waitForFirstStart(ctx context.Context, delay time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if delay <= 0 {
+		return true
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return ctx.Err() == nil
+	}
+}
+
 func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 	ps := getPrograms()
 	for i := 0; i < len(ps); i++ {
@@ -390,9 +409,7 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 		}
 		// run program
 		if !bProgramHasRun {
-			if a.FirstWaitTime > 0 {
-				time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
-			}
+			if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second * time.Duration(a.FirstWaitTime)) { return }
 			go daemonc.RunProgramContext(ctx, a, cae, findProgramById, _logger, *_workDir)
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
