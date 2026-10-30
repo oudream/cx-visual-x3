@@ -74,7 +74,7 @@ jobs:
           # detector against the real owned-child stop/Wait integration on
           # Linux. Windows/macOS retain their normal build/test matrix.
           if [[ "$RUNNER_OS" == "Linux" && "$(go env CGO_ENABLED)" == "1" ]]; then
-            go test -race -count=1 ./internal/daemonc ./cmd/daemon -run 'TestOwnedStop|TestRunProgramControlledStop|TestProgramWorkerGateStopControllerHandoff|TestOwnedStopDoesNotCrossGuardianGeneration|TestOrphan|TestStartupOrphan'
+            go test -race -count=1 ./internal/daemonc ./internal/guardview ./internal/httpapi ./cmd/monitor ./cmd/daemon -run 'TestOwnedStop|TestRunProgramControlledStop|TestProgramWorkerGateStopControllerHandoff|TestOwnedStopDoesNotCrossGuardianGeneration|TestOrphan|TestStartupOrphan|TestGuard|TestTerminal|TestQueryRoutes'
           fi
           echo "Built and smoke-tested Monitor and Daemon for $RUNNER_OS"
 
