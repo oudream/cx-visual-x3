@@ -275,6 +275,24 @@ namespace CxVisual.Studio
             }
             MVI3DSceneKind shape=analysis.Kind==CT3DAnalysisKind.MeshPlane?
                 MVI3DSceneKind.Mesh:MVI3DSceneKind.Surface;
+            if(preserveStyles&&old!=null&&old.Count==3&&
+                old.Count(x=>x.Kind==MVI3DSceneKind.Volume)==1&&
+                old.Count(x=>x.Kind==shape)==1&&
+                old.Count(x=>x.Kind==MVI3DSceneKind.Measurement)==1)
+            {
+                string geometryRef=shape==MVI3DSceneKind.Mesh?
+                    "ct3d:mesh:"+analysis.Mesh.ResultId.ToString("N"):
+                    "ct3d:surface:"+analysis.Surface.ResultId.ToString("N");
+                Guid measurementId=analysis.Kind==CT3DAnalysisKind.MeshPlane?analysis.Plane.ResultId:
+                    analysis.Kind==CT3DAnalysisKind.SurfaceSphere?analysis.Sphere.ResultId:
+                    analysis.Cylinder.ResultId;
+                string measurementKind=analysis.Kind==CT3DAnalysisKind.MeshPlane?"plane":
+                    analysis.Kind==CT3DAnalysisKind.SurfaceSphere?"sphere":"cylinder";
+                scene.RemapSources(item=>item.Kind==MVI3DSceneKind.Volume
+                    ?analysis.Source.SourceRef:item.Kind==shape?geometryRef:
+                    "ct3d:"+measurementKind+":"+measurementId.ToString("N"));
+                return;
+            }
             scene.Clear();
             scene.Add(MVI3DSceneKind.Volume,analysis.Source.SourceRef,
                 analysis.Source.Revision,analysis.Source.Signature);
