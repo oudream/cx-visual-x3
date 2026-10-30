@@ -148,7 +148,8 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 			status.ErrorCount = 0
 		}
 		status.IsRun = false
-		status.Pid = 0
+		// Keep the exited child's PID in the exit event for diagnosis.
+		// A failed subsequent start clears the stale PID before reporting.
 		//被守护的进程停止后，通过管道向守护进程发出消息
 		programEvent <- program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}
 		logger.Printf(_titleDaemon.Error+"进程[%s](%d) pid(%d)退出, 共运行了%d秒: %s\n", a1.Path, a1.ID, cmd.ProcessState.Pid(), dat, err)
