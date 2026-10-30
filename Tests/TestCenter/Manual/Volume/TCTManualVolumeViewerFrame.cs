@@ -212,6 +212,7 @@ namespace CxVisual.TestCenter.UI
                 _state.Scene3D.Add(MVI3DSceneKind.Volume,sourceRef,_sphereEpoch,
                     "volume:physical-frame");
                 _scene.BindCamera(_state.Camera);
+                _scene.BindSceneSelection(_state.Scene3D);
                 if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
                 _state.Scene3D.Changed += OnProfessionalSceneChanged;
