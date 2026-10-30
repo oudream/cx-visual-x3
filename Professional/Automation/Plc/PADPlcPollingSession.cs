@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,13 @@ namespace CxVisual.Professional.Automation.Plc
     /// 部分点失败由PADPlcPointBridge写入MDS Stale，下一轮只读重新采样可恢复Good。
     /// 连接断开、点表漂移、协议整批不可信等不可恢复错误终止本会话并交由Host判定重启。
     /// </summary>
+    /// <summary>仅确认采集通道连续不可用，允许Host在固定配置下新建只读会话；不是写操作重试许可。</summary>
+    public sealed class PADPlcAcquisitionUnavailableException : IOException
+    {
+        public PADPlcAcquisitionUnavailableException(string message, Exception inner = null)
+            : base(message, inner) { }
+    }
+
     public sealed class PADPlcPollingSession
     {
         private readonly object _gate = new object();
@@ -21,6 +29,8 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly TimeSpan _interval;
         private readonly bool _contiguous;
         private readonly Func<bool> _effectiveStillApproved;
+        private readonly int _maxConsecutiveFailedCycles;
+        private int _consecutiveFailedCycles;
         private FCRPeriodicJob _job;
         private bool _stopped;
         private long _successfulCycles;
@@ -28,7 +38,8 @@ namespace CxVisual.Professional.Automation.Plc
 
         public PADPlcPollingSession(PADPlcPointBridge bridge, IEnumerable<string> stableIds,
             TimeSpan interval, bool contiguous = false,
-            Func<bool> effectiveStillApproved = null)
+            Func<bool> effectiveStillApproved = null,
+            int maxConsecutiveFailedCycles = 0)
         {
             if (bridge == null) throw new ArgumentNullException("bridge");
             if (stableIds == null) throw new ArgumentNullException("stableIds");
@@ -44,7 +55,10 @@ namespace CxVisual.Professional.Automation.Plc
             _stableIds = (string[])points.Clone();
             _interval = interval;
             _contiguous = contiguous;
+            if (maxConsecutiveFailedCycles < 0 || maxConsecutiveFailedCycles > 100)
+                throw new ArgumentOutOfRangeException("maxConsecutiveFailedCycles");
             _effectiveStillApproved = effectiveStillApproved;
+            _maxConsecutiveFailedCycles = maxConsecutiveFailedCycles;
         }
 
         public TimeSpan Interval { get { return _interval; } }
@@ -68,6 +82,7 @@ namespace CxVisual.Professional.Automation.Plc
         }
         public long SuccessfulCycles { get { return Interlocked.Read(ref _successfulCycles); } }
         public long PartialCycles { get { return Interlocked.Read(ref _partialCycles); } }
+        public int ConsecutiveFailedCycles { get { return Volatile.Read(ref _consecutiveFailedCycles); } }
         public Task Completion
         {
             get
@@ -98,12 +113,34 @@ namespace CxVisual.Professional.Automation.Plc
             cancellationToken.ThrowIfCancellationRequested();
             if (_effectiveStillApproved != null && !_effectiveStillApproved())
                 throw new InvalidOperationException("SCADA生效工程配置已变更，停止轮询并要求重新装配");
-            PADPlcScanResult result = _contiguous
-                ? await _bridge.ScanContiguousAsync(_stableIds, cancellationToken).ConfigureAwait(false)
-                : await _bridge.ScanAsync(_stableIds, cancellationToken).ConfigureAwait(false);
+            if (_maxConsecutiveFailedCycles > 0 && !_bridge.TransportOpen)
+                throw new PADPlcAcquisitionUnavailableException("PLC采集Channel已失效，禁止继续轮询旧会话");
+            PADPlcScanResult result;
+            try
+            {
+                result = _contiguous
+                    ? await _bridge.ScanContiguousAsync(_stableIds, cancellationToken).ConfigureAwait(false)
+                    : await _bridge.ScanAsync(_stableIds, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException error) when (_maxConsecutiveFailedCycles > 0)
+            {
+                throw new PADPlcAcquisitionUnavailableException("PLC连续采样超时，须新建会话", error);
+            }
+            catch (IOException error) when (_maxConsecutiveFailedCycles > 0 &&
+                !(error is InvalidDataException))
+            {
+                throw new PADPlcAcquisitionUnavailableException("PLC连续采样连接失效", error);
+            }
             // 仅保存运行计数，不复制上一轮采集值；数据唯一Owner始终为MDS。
             if (result.AllSucceeded) Interlocked.Increment(ref _successfulCycles);
             else Interlocked.Increment(ref _partialCycles);
+            int failures = result.SucceededCount == 0
+                ? Interlocked.Increment(ref _consecutiveFailedCycles)
+                : Interlocked.Exchange(ref _consecutiveFailedCycles, 0);
+            if (_maxConsecutiveFailedCycles > 0 &&
+                (failures >= _maxConsecutiveFailedCycles || !_bridge.TransportOpen))
+                throw new PADPlcAcquisitionUnavailableException(
+                    "PLC连续"+failures+"轮无可信采样/Channel失效，停止旧世代");
         }
 
         /// <summary>
