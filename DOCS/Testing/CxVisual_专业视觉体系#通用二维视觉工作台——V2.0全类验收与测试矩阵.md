@@ -615,3 +615,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-02-05 | Studio真实保存重开ROI复算携带同源Hash、ROI身份及工程Revision | `StudioShellSelfTests.VerifyStudioSavedRoiRebind` | G2；Windows待验 |
 
 需固定各Windows工作流的SHA、结果、MSBuild/STA报告，更新为G3/G4；UIA全程与HIL继续单独G5/G6验收。
+
+
+### IMG-04 Run完成态与Item上下文有效性（2026-10-30）
+
+| 测试ID | 真实测试路径 | 断言内容 | 证据 |
+|---|---|---|---|
+| R1-03-01 | `RuntimeVisionResultTests.RealMrkResultProjection` | 已提交Run标记Completed，当前来源Item Valid，其他SourceId Stale | `2e870e4e` G2；对应Imaging CI待验 |
+| R1-03-02 | `RuntimeVisionResultTests.EmptyAndFailedFlow` | 无候选区域=Completed+Empty Item，失败MRK无CommittedOutputs且不得造合法Run | `2e870e4e` G2 |
+| R1-03-03 | `RuntimeVisionResultTests.IndependentRunsAndStudioProjection` | 同来源不同Run的Item拒绝，null Item为Invalid | `2e870e4e` G2 |
+| R1-03-04 | `RuntimeVisionArtifactsTests.SavedRoiDataVisualEngineering` | 已保存ROI配置下源SHA或MEM Revision改变返回Stale，正确上下文Valid | `6f940672` G2 |
+| R1-03-05 | Studio ModuleCenter结果选择 | 现有Project/Page/Revision/原图引用门禁加`AssessItemValidity`，Empty提供正常无候选反馈、Stale拒绝显示 | `adbe2740` G2；UIA待验 |
+| R1-03-06 | Windows CPU Studio STA回归 | 固定SHA `adbe2740` `Module Center CPU`与`Studio S1`均成功，包含Release/x64编译与各自真实STA操作 | [CPU #41003894207](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)、[Studio #41003894214](https://github.com/oudream/cx-visual-x3/actions/runs/41003894214) G3/G4，**非本表全部单测G4** |
+
+验证约束：本轮`CxVisionRunSummary`仍只是已发布的轻量只读投影；Cancelled/Failed/Rejected仍以原`MRKFlowResult`为真源，不能为了显示产生带有效ResultItem的失败Run。缺失磁盘Artifact的真实生命周期由IMG-06验证，不能拿当前内存Item判定冒充持久库。全套Imaging测试需待相同源码提交关联CI结果后再正式更新G4；后续UIA/HIL另按G5/G6。
