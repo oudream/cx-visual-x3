@@ -126,12 +126,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "HMI未形成已确认的强类型UInt16+Effective+Generation候选参数");
                 foreach(string invalid in new[]{"65536","-1","1.5","0x10"," 9",""})
                 {
-                    bool rejected=false;
+                    bool invalidRejected=false;
                     try{PHMHmiWritePreparation.Prepare(engineering,revision,
                         actions[0],actionId,devices[0],devices[0],sample.Points,
                         invalid,true,TimeSpan.FromSeconds(5),sampleNow);}
-                    catch(ArgumentOutOfRangeException){rejected=true;}
-                    Check(rejected,"非法UInt16输入未被拒绝："+invalid);
+                    catch(ArgumentOutOfRangeException){invalidRejected=true;}
+                    Check(invalidRejected,"非法UInt16输入未被拒绝："+invalid);
                 }
                 bool confirmationRejected=false;
                 try{PHMHmiWritePreparation.Prepare(engineering,revision,actions[0],
