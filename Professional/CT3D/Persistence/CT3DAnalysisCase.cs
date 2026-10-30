@@ -407,11 +407,23 @@ namespace CxVisual.Professional.CT3D
                     throw new InvalidOperationException("ROI四角没有对应有效的原始体素中心。");
                 var current=FVOSliceImageBuilder.RectangleToPhysical(volume,x,y,z,
                     rectangle.Plane,rectangle.Left,rectangle.Top,rectangle.Right,rectangle.Bottom);
+                if(!SamePhysicalCorner(current.TopLeft,rectangle.TopLeft)||
+                    !SamePhysicalCorner(current.TopRight,rectangle.TopRight)||
+                    !SamePhysicalCorner(current.BottomRight,rectangle.BottomRight)||
+                    !SamePhysicalCorner(current.BottomLeft,rectangle.BottomLeft))
+                    throw new InvalidOperationException(
+                        "切片ROI的物理四角与保存的原Voxel像素范围不一致，拒绝编辑。");
                 return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
                     mesh=>CT3DMeshPlaneAnalysis.SelectSlicePrismVertices(mesh,current,
                         minimumOffsetMm,maximumOffsetMm,cancellation),
                     cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
             }
+        }
+
+        private static bool SamePhysicalCorner(FVOPhysicalPoint3D a,FVOPhysicalPoint3D b)
+        {
+            return Math.Abs(a.X-b.X)<=1e-8&&Math.Abs(a.Y-b.Y)<=1e-8&&
+                Math.Abs(a.Z-b.Z)<=1e-8;
         }
 
         /// <summary>替换物理Mesh ROI并生成新Case；来源资产与算法质量约束保持一致。
