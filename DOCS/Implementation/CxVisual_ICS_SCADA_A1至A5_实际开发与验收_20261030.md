@@ -83,3 +83,10 @@
 - 单一只读Pipe在设备更换期间保持监听，变更设备在 `discover` 中暂时不可见；用组内锁串行校验设备引用与MDS快照，防止旧Session Dispose与读端交错。已采集健康设备维持原Generation，故障设备恢复后强制新Generation，旧HMI请求必须拒绝；本入口不添加写命令或第二套Current。
 - 真实Windows G1回归新增：两个本机Modbus TCP socket、A丢一帧FC03后受控重连、B继续周期扫描且原SessionGeneration不变、A恢复后重取MDS Good/Revision、旧HMI请求被拒绝、零FC06、Stop之后没有残留采集。对应 `MRHScadaSmoke.cs`；测试源码存在不等于Windows运行成功，按固定SHA CI结果判断。
 - 已修复旧Windows SCADA G1 `CS0136` 局部变量遮蔽（`MRHScadaSmoke.cs`），旧运行 `41034546591` 失败于编译，不可宣称测试通过。此批待新CI。设备级安全互锁、长稳、历史报警、远程鉴权、SCM、HIL G2/G3仍未验收。
+
+
+## 10. Windows G1当前阻断与固定SHA证据（2026-10-30）
+- 原SCADA Windows G1 `41034546591`（SHA `6b0e04f2`）实际失败于C#编译 `CS0136`（MRHScadaSmoke同作用域 `second` 变量）；已由SHA `e6d0fe45` 修改为明确的 `stationBReply`。
+- 固定SHA `e6d0fe45` 的SCADA G1 `41040268805` **Windows x64 Restore与Build均通过**，但实际启动 `scada-g1-smoke` 后在双工站至少两轮FC03门禁失败，日志原文为“两个独立TCP工站没有同时完成至少2轮FC03”；这不是成功验收。更早双设备运行 `41029431596`、`41032010307` 也在该运行门禁失败。
+- 后续 `MRHScadaSmoke.cs` 已将两个夹具的真实报文数、周期数、PLC Completion完整故障加入失败信息（提交 `b03653df`）；当前等待后续对应Windows G1 CI取得确切根因，**不可猜测归因为驱动、Socket、MHS或线程调度**。在得到新成功日志之前，新增单PLC隔离恢复与Pipe联调只属于已提交源码/待验证测试，不能宣称工业G1验收成功。
+- 工作流已加入同master分支的 `concurrency/cancel-in-progress`，保留最新版本验收以免并行开发不断积压旧Runner；取消的旧SHA不属于成功测试。
