@@ -186,6 +186,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private MVI3DSceneState _additionalScene;
         private Func<MVI3DSceneItem,MPWVolumeDisplayMesh> _additionalMeshResolver;
         private readonly HashSet<Guid> _sceneMeshIds=new HashSet<Guid>();
+        private readonly Dictionary<Guid,string> _sceneMeshKeys=
+            new Dictionary<Guid,string>();
 
         /// <summary>正式MVI场景是唯一显隐/透明度Owner；WPF仅消费其专业几何显示投影。</summary>
         public void BindAdditionalMeshes(MVI3DSceneState scene,
@@ -196,6 +198,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             if(_additionalScene!=null)_additionalScene.Changed-=AdditionalSceneChanged;
             foreach(Guid id in new List<Guid>(_sceneMeshIds))RemoveAdditionalMesh(id);
             _sceneMeshIds.Clear();
+            _sceneMeshKeys.Clear();
             _additionalScene=scene;_additionalMeshResolver=resolver;
             if(scene!=null)
             {
@@ -212,30 +215,58 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             Dispatcher.VerifyAccess();
             if(_additionalScene==null)return;
-            var wanted=new Dictionary<Guid,Tuple<MPWVolumeDisplayMesh,double>>();
-            int triangles=0;
+            var wanted=new Dictionary<Guid,Tuple<string,MPWVolumeDisplayMesh,double>>();
+            int triangles=SurfaceMeshTriangleCount;
             foreach(MVI3DSceneItem item in _additionalScene.Snapshot())
             {
                 if(!item.Visible||(item.Kind!=MVI3DSceneKind.Mesh&&
                     item.Kind!=MVI3DSceneKind.Cad))continue;
-                MPWVolumeDisplayMesh geometry=_additionalMeshResolver(item);
-                if(geometry==null)continue;
-                triangles=checked(triangles+geometry.TriangleCount);
-                if(triangles+SurfaceMeshTriangleCount>50000)
-                    throw new InvalidOperationException("MVI多对象WPF Mesh超出50000三角总预算。");
-                wanted.Add(item.Id,Tuple.Create(geometry,item.Opacity));
+                string key=item.Kind+":"+item.SourceRef+":"+item.SourceRevision+":"+
+                    item.SpatialFrameRef;
+                string old;
+                bool unchanged=_sceneMeshKeys.TryGetValue(item.Id,out old)&&old==key;
+                MPWVolumeDisplayMesh geometry=unchanged?null:_additionalMeshResolver(item);
+                if(!unchanged&&geometry==null)continue;
+                int count=0;
+                if(unchanged)_additionalMeshTriangles.TryGetValue(item.Id,out count);
+                else count=geometry.TriangleCount;
+                triangles=checked(triangles+count);
+                if(triangles>50000)
+                    throw new InvalidOperationException("MVI多对象WPF Mesh总预算超过50000三角面。");
+                wanted.Add(item.Id,Tuple.Create(key,geometry,item.Opacity));
             }
+            // 先移除已失效或来源改变的旧显示资源，避免合法批次在中间状态超预算。
             foreach(Guid id in new List<Guid>(_sceneMeshIds))
-                if(!wanted.ContainsKey(id))
-                {
-                    RemoveAdditionalMesh(id);
-                    _sceneMeshIds.Remove(id);
-                }
+            {
+                Tuple<string,MPWVolumeDisplayMesh,double> planned;
+                string old;
+                if(wanted.TryGetValue(id,out planned)&&
+                    _sceneMeshKeys.TryGetValue(id,out old)&&old==planned.Item1)continue;
+                RemoveAdditionalMesh(id);
+                _sceneMeshIds.Remove(id);
+                _sceneMeshKeys.Remove(id);
+            }
             foreach(var pair in wanted)
             {
-                SetAdditionalMesh(pair.Key,pair.Value.Item1,pair.Value.Item2);
-                _sceneMeshIds.Add(pair.Key);
+                string old;
+                if(_sceneMeshKeys.TryGetValue(pair.Key,out old)&&old==pair.Value.Item1)
+                    SetAdditionalMeshOpacity(pair.Key,pair.Value.Item3);
+                else
+                {
+                    SetAdditionalMesh(pair.Key,pair.Value.Item2,pair.Value.Item3);
+                    _sceneMeshIds.Add(pair.Key);
+                    _sceneMeshKeys[pair.Key]=pair.Value.Item1;
+                }
             }
+        }
+        private void SetAdditionalMeshOpacity(Guid id,double opacity)
+        {
+            ModelVisual3D item;
+            if(!_additionalMeshes.TryGetValue(id,out item))return;
+            var model=item.Content as GeometryModel3D;
+            var diffuse=model==null?null:model.Material as DiffuseMaterial;
+            var brush=diffuse==null?null:diffuse.Brush as SolidColorBrush;
+            if(brush!=null&&brush.Opacity!=opacity)brush.Opacity=opacity;
         }
 
         public int AdditionalMeshCount {get{return _additionalMeshes.Count;}}
@@ -439,8 +470,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 triangles.Add(preview.TriangleIndices[i+1]);
             }
             var geometry=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
-            byte alpha=(byte)Math.Round(opacity*255);
-            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(alpha,77,216,241)));
+            var brush=new SolidColorBrush(Color.FromRgb(77,216,241)){Opacity=opacity};
+            var material=new DiffuseMaterial(brush);
             return new GeometryModel3D(geometry,material){BackMaterial=material};
         }
 
