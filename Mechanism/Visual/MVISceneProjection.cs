@@ -205,6 +205,17 @@ namespace CxVisual.Mechanism.Visual
                         }
                         string displayText=node.TypeId=="core.text"?
                             MRCTextElement.TextFromAspects(node.Aspects):"";
+                        if(_runtimeEnabled&&node.TypeId=="core.text")
+                        {
+                            // 文字运行值只读MDS/MVI绑定，不覆盖MEM保存的原始Text定义。
+                            MPMValue boundText=Value(node,"text",path,MPMValueKind.String);
+                            if(boundText!=null)
+                            {
+                                if(boundText.Kind!=MPMValueKind.String)
+                                    throw new InvalidOperationException("visual.text.runtime_string_required");
+                                displayText=boundText.AsString();
+                            }
+                        }
                         MRCVisualStyle style=MRCVisualAppearance.StyleFromAspects(node.Aspects);
                         if(_runtimeEnabled)
                             style=MVIVisualRuntimeEvaluator.EvaluateStyle(style,
