@@ -148,7 +148,20 @@ namespace CxVisual.TestCenter.UI
             if(draft.Visibility!=Visibility.Collapsed ||
                 viewer.Overlays.Items.Count!=count)
                 throw new InvalidOperationException("切换工具未取消第二次未完成的草稿");
-            Console.WriteLine("PASS TCT Imaging gesture: WPF Esc PreviewKeyDown cancels unfinished line pair without committing Overlay");
+            // SDK直用公开MVI Session切原图，不经过Viewer.ShowOriginal，
+            // 也必须清掉前一个图像的草稿，之后恢复原图供后续WPF验收继续用。
+            FIMImageBuffer sourceBefore=viewer.Session.Original;
+            viewer.ToolMode=MVIImageToolMode.LinePair;
+            viewer.AppendLinePairPoint(new FGEPoint2D(0.5,0.5));
+            if(draft.Visibility!=Visibility.Visible)
+                throw new InvalidOperationException("Session直接切图反例前没有活跃测量草稿");
+            viewer.Session.SetOriginal(new FIMImageBuffer(4,4,FIMPixelFormat.Gray16,new byte[32]));
+            if(draft.Visibility!=Visibility.Collapsed ||
+                viewer.Overlays.Items.Count!=count)
+                throw new InvalidOperationException("Session直接切原图后未终止旧测量手势");
+            frame.SetOriginal(sourceBefore);
+            viewer.ToolMode=MVIImageToolMode.Navigate;
+            Console.WriteLine("PASS TCT Imaging gesture: WPF Esc/normal mouse release/external Session switch preserve correct transient state");
         }
 
         private static T FindControl<T>(DependencyObject root,string id) where T : DependencyObject
