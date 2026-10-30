@@ -360,33 +360,35 @@ namespace CxVisual.Runtime.Host
                 SecurityIdentifier approvedPeerSid=WindowsIdentity.GetCurrent().User;
                 Check(!String.IsNullOrWhiteSpace(actualPeer) && approvedPeerSid!=null,
                     "Windows MRK受信Pipe必须取得真实宿主SID");
+                // The OS can report a peer using a different NTAccount name
+                // spelling than WindowsIdentity.Name. All three authorization
+                // layers must compare the resolved principal SID, never only
+                // the trailing username (which may collide across domains).
+                Func<string,bool> isApprovedOsPrincipal=principal=>
+                {
+                    if(String.IsNullOrWhiteSpace(principal))return false;
+                    try
+                    {
+                        SecurityIdentifier sid=(SecurityIdentifier)
+                            new NTAccount(principal).Translate(typeof(SecurityIdentifier));
+                        return sid.Equals(approvedPeerSid);
+                    }
+                    catch(IdentityNotMappedException){return false;}
+                };
                 bool peerAllowed=true,modeAllowed=true,revokeImmediatelyAfterAdmission=false;
                 bool pipePeerChecked=false,pipePeerMatched=false,commandPolicyChecked=false;
                 string mrkPipe="CxScada.A4."+Guid.NewGuid().ToString("N");
                 using(MRHScadaRuntime host=MRHScadaRuntime.Open(project,configs,
                     deviceId,module,scope,100,true,additionalApproval:approved,
                     authorizeWrite:(principal,point)=>
-                        (principal=="operator" ||
-                         String.Equals(principal,actualPeer,StringComparison.OrdinalIgnoreCase)) &&
+                        (principal=="operator" || isApprovedOsPrincipal(principal)) &&
                          point.StableId=="word100"))
                 using(MRHScadaTrustedCommandPipe trusted=new MRHScadaTrustedCommandPipe(
                     host,mrkPipe,970731,
                     peer=>
                     {
                         pipePeerChecked=true;
-                        // GetImpersonationUserName can use a different name form
-                        // than WindowsIdentity.Name. Resolve both via the OS SID;
-                        // never authorize a matching username in a different domain.
-                        try
-                        {
-                            SecurityIdentifier peerSid=(SecurityIdentifier)
-                                new NTAccount(peer).Translate(typeof(SecurityIdentifier));
-                            pipePeerMatched=peerSid.Equals(approvedPeerSid);
-                        }
-                        catch(IdentityNotMappedException)
-                        {
-                            pipePeerMatched=false;
-                        }
+                        pipePeerMatched=isApprovedOsPrincipal(peer);
                         return peerAllowed && pipePeerMatched;
                     },
                     context=>
@@ -394,8 +396,7 @@ namespace CxVisual.Runtime.Host
                         commandPolicyChecked=true;
                         bool admitted=modeAllowed &&
                             (context.Caller=="operator" ||
-                             String.Equals(context.Caller,actualPeer,
-                                 StringComparison.OrdinalIgnoreCase)) &&
+                             isApprovedOsPrincipal(context.Caller)) &&
                             context.Descriptor.Definition.PermissionKey==
                                 PADPlcMrkCommandRegistration.WritePermission;
                         // Adversarial: authorization passed, but immediately
