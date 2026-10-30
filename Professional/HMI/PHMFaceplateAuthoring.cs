@@ -10,7 +10,6 @@ namespace CxVisual.Professional.HMI
     public static class PHMFaceplateAuthoring
     {
         private const string Online="Online";
-        private const string Caption="Caption";
         public static Guid Place(MEMEngineeringSession project,Guid pageId,
             PHMFaceplateKind kind,string instanceName,string booleanPoint,double x,double y)
         {
@@ -31,8 +30,7 @@ namespace CxVisual.Professional.HMI
                 .FirstOrDefault(s=>s.Name==definitionName);
             if(old!=null)
             {
-                if(!old.Properties.Any(p=>p.Descriptor.MemberId==Online)||
-                    !old.Properties.Any(p=>p.Descriptor.MemberId==Caption))
+                if(!old.Properties.Any(p=>p.Descriptor.MemberId==Online))
                     throw new InvalidOperationException("hmi.faceplate.symbol_definition_conflict");
             }
             return project.Edit("HMI放置工业设备Faceplate实例",e=>
@@ -55,24 +53,20 @@ namespace CxVisual.Professional.HMI
                         "运转绿灯",12,16,36,36);
                     e.SetVisualStyle(running,MRCVisualStyle.Solid(
                         MRCColor.Parse("#FF25AC68")));
-                    MRCTextElement label=e.AddText(symbol.RootGroup,
-                        "设备名称",definitionName,58,19,115,32);
                     e.DefineProperty(symbol,new MPMPropertyDescriptor(Online,
                         MPMValueKind.Boolean,false,true,
                         MPMBinding.Literal(MPMValue.Boolean(false))));
-                    e.DefineProperty(symbol,new MPMPropertyDescriptor(Caption,
-                        MPMValueKind.String,false,true,
-                        MPMBinding.Literal(MPMValue.String(definitionName))));
                     e.ExposeProperty(symbol,Online,project.GetAddress(running),"visible");
-                    e.ExposeProperty(symbol,Caption,project.GetAddress(label),"text");
                 }
                 // 同一共享定义通过MRI引用传入不同绑定；不存在多份独立图形树。
                 MRIResourceReference instance=e.Reference(page.RootContent,
                     symbol,instanceName.Trim());
                 e.SetPlacement(instance,new MRCTransform(1,0,0,1,x,y));
                 e.SetOverride(instance,Online,MPMBinding.Variable(booleanPoint.Trim()));
-                e.SetOverride(instance,Caption,
-                    MPMBinding.Literal(MPMValue.String(instanceName.Trim())));
+                // 原MEM的公开成员映射暂不支持Text文本成员，不绕过Owner制造私有映射；
+                // 实例标签作为同一Page上的原生Text，在相同MTC事务内保存。
+                e.AddText(page.RootContent,instanceName.Trim()+"标签",
+                    instanceName.Trim(),x+58,y+19,112,30);
                 return instance.Id;
             }).RequireValue();
         }
