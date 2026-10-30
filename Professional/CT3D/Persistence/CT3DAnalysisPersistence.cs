@@ -196,6 +196,27 @@ namespace CxVisual.Professional.CT3D
             return Commit(engineering,owner,expectedRevision,root,recomputed,cancellation);
         }
 
+        /// <summary>将重开案例的物理切片ROI修改作为同一MEM事务提交。
+        /// 先验证既有专业结果、RAW及Frame，再重算新Feature，异常/取消不改变MEM Revision。</summary>
+        public static MRIObjectAddress RecomputeSliceRoiAndCommit(
+            MEMEngineeringSession engineering,MEMContent owner,int expectedRevision,
+            string root,FVOPhysicalSliceRectangle rectangle,double minimumOffsetMm,
+            double maximumOffsetMm,CancellationToken cancellation)
+        {
+            if(engineering==null)throw new ArgumentNullException("engineering");
+            if(owner==null||engineering.Find(owner.Id)!=owner)
+                throw new ArgumentException("ROI编辑目标必须属于当前MEM工程。","owner");
+            if(rectangle==null)throw new ArgumentNullException("rectangle");
+            if(engineering.Revision!=expectedRevision)
+                throw new InvalidOperationException("org.version.conflict");
+            cancellation.ThrowIfCancellationRequested();
+            var original=Open(engineering,engineering.GetAddress(owner),root,cancellation);
+            var edited=original.RecomputeWithSliceRectangle(root,rectangle,
+                minimumOffsetMm,maximumOffsetMm,cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            return Commit(engineering,owner,expectedRevision,root,edited,cancellation);
+        }
+
         /// <summary>从唯一MEM工程枚举所有CT3D专业Case；逐个复用Open的Hash/Frame/算法检验。
         /// 任何一个来源损坏即整体失败，不返回似乎完整的部分测量集合。</summary>
         public static IReadOnlyList<CT3DAnalysisCase> OpenAll(MEMEngineeringSession engineering,
