@@ -9,6 +9,32 @@ namespace CxVisual.Mechanism.Lifecycle.Modules
 {
     public enum MLCServiceModuleState { Stopped, Starting, Running, Stopping, Faulted }
 
+    /// <summary>
+    /// Immutable, in-process, owner-derived observation. Lifecycle Running is
+    /// NOT the same as verified service/dependency readiness. Null means
+    /// no provider has supplied actual readiness evidence.
+    /// </summary>
+    public sealed class MLCServiceModuleObservation
+    {
+        internal MLCServiceModuleObservation(string moduleId, string name, int version,
+            MLCServiceModuleState state, bool? verifiedReady, DateTime observedAtUtc)
+        {
+            ModuleId = moduleId;
+            Name = name;
+            Version = version;
+            State = state;
+            VerifiedReady = verifiedReady;
+            ObservedAtUtc = observedAtUtc;
+        }
+        public string ModuleId { get; private set; }
+        public string Name { get; private set; }
+        public int Version { get; private set; }
+        public MLCServiceModuleState State { get; private set; }
+        public bool LifecycleRunning { get { return State == MLCServiceModuleState.Running; } }
+        public bool? VerifiedReady { get; private set; }
+        public DateTime ObservedAtUtc { get; private set; }
+    }
+
     // 复用已有 Lifecycle 所属项目；Host/工作队列/MRK 的唯一 Owner 不变。
     // OnStartAsync/OnStopAsync 必须由真实专业服务完成，没有成功的空壳默认实现。
     public abstract class MLCServiceModuleBase : IMLCServiceModule
@@ -29,6 +55,37 @@ namespace CxVisual.Mechanism.Lifecycle.Modules
         public MLCServiceModuleState State { get { lock (_stateGate) return _state; } }
         public bool IsReady { get { return State == MLCServiceModuleState.Running; } }
         private void SetState(MLCServiceModuleState state) { lock (_stateGate) _state = state; }
+
+        /// <summary>
+        /// Read-only state of THIS running module instance, not a Host registry,
+        /// OS process identity or a remote Supervision service. Providers may
+        /// supply actual dependency/handler evidence via TryObserveReadiness.
+        /// A successful OnStart alone MUST NOT become VerifiedReady=true.
+        /// </summary>
+        public MLCServiceModuleObservation Observe()
+        {
+            MLCServiceModuleState lifecycle = State;
+            bool? verified = lifecycle == MLCServiceModuleState.Running
+                ? (bool?)null : false;
+            if (lifecycle == MLCServiceModuleState.Running)
+            {
+                bool ready;
+                if (TryObserveReadiness(out ready)) verified = ready;
+            }
+            return new MLCServiceModuleObservation(Descriptor.Id, Descriptor.Name,
+                Descriptor.Version, lifecycle, verified, DateTime.UtcNow);
+        }
+
+        /// <summary>
+        /// Return false when actual readiness evidence is unavailable.
+        /// Do not infer readiness from Running, PID, listening port, etc.
+        /// This hook must be side-effect free, fast and safe under observation.
+        /// </summary>
+        protected virtual bool TryObserveReadiness(out bool ready)
+        {
+            ready = false;
+            return false;
+        }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
