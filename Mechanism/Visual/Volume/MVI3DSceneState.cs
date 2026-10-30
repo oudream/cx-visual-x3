@@ -64,9 +64,14 @@ namespace CxVisual.Mechanism.Visual
         private readonly List<MVI3DSceneItem> _items=new List<MVI3DSceneItem>();
         private long _revision;
         private Guid? _selected;
+        // 只承接会话选择，不拥有专业对象。顺序保留最后一个主选择，最多256个。
+        private readonly List<Guid> _selectedIds=new List<Guid>();
         public event EventHandler Changed;
         public long Revision {get{return _revision;}}
         public Guid? SelectedId {get{return _selected;}}
+        public ReadOnlyCollection<Guid> SelectedIds
+        {get{return new List<Guid>(_selectedIds).AsReadOnly();}}
+        public bool IsSelected(Guid id) {return _selectedIds.Contains(id);}
         public int Count {get{return _items.Count;}}
 
         /// <summary>SourceRef由现有工程/资源Owner提供；无持久Ref时须显式使用session临时引用。</summary>
@@ -128,7 +133,7 @@ namespace CxVisual.Mechanism.Visual
             MVI3DSceneItem item=_items[index];
             if(item.Visible==visible)return;
             _items[index]=item.WithStyle(visible,item.Opacity);
-            if(!visible && _selected==id)_selected=null;
+            if(!visible)DropSelection(id);
             ChangedNow();
         }
 
@@ -170,7 +175,7 @@ namespace CxVisual.Mechanism.Visual
                 MVI3DSceneItem item=_items[i];
                 if(item.GroupKey!=groupKey||item.Visible==visible)continue;
                 _items[i]=item.WithStyle(visible,item.Opacity);
-                if(!visible&&_selected==item.Id)_selected=null;
+                if(!visible)DropSelection(item.Id);
                 changed=true;
             }
             if(changed)ChangedNow();
@@ -203,9 +208,30 @@ namespace CxVisual.Mechanism.Visual
         {
             if(id.HasValue && !_items.Exists(x=>x.Id==id.Value && x.Visible))
                 throw new InvalidOperationException("选择必须引用存在且可见的场景项。");
-            if(_selected==id)return;
+            if(_selected==id && _selectedIds.Count==(id.HasValue?1:0))return;
+            _selectedIds.Clear();
+            if(id.HasValue)_selectedIds.Add(id.Value);
             _selected=id;
             ChangedNow();
+        }
+
+        /// <summary>Ctrl追加或取消选中可见Scene实例。最后选择为兼容单选API的主选择。
+        /// 同来源不同实例仍以Scene Id区分，禁止隐式按SourceRef扩展。</summary>
+        public void ToggleSelection(Guid id)
+        {
+            if(!_items.Exists(x=>x.Id==id && x.Visible))
+                throw new InvalidOperationException("只能组合选择存在且可见的Scene实例。");
+            int existing=_selectedIds.IndexOf(id);
+            if(existing>=0)_selectedIds.RemoveAt(existing);
+            else _selectedIds.Add(id);
+            _selected=_selectedIds.Count==0?(Guid?)null:_selectedIds[_selectedIds.Count-1];
+            ChangedNow();
+        }
+
+        private void DropSelection(Guid id)
+        {
+            if(!_selectedIds.Remove(id))return;
+            _selected=_selectedIds.Count==0?(Guid?)null:_selectedIds[_selectedIds.Count-1];
         }
 
         /// <summary>专业结果或工程树通过稳定资源引用定位可见场景项；
@@ -283,7 +309,7 @@ namespace CxVisual.Mechanism.Visual
                 if(!string.Equals(item.SourceRef,sourceRef,StringComparison.Ordinal)||
                     item.SourceRevision>=currentRevision)continue;
                 _items.RemoveAt(i);
-                if(_selected==item.Id)_selected=null;
+                DropSelection(item.Id);
                 count++;
             }
             if(count!=0)ChangedNow();
@@ -294,21 +320,33 @@ namespace CxVisual.Mechanism.Visual
         {
             int index=FindIndex(id);
             _items.RemoveAt(index);
-            if(_selected==id)_selected=null;
+            DropSelection(id);
             ChangedNow();
         }
 
         public void Clear()
         {
-            if(_items.Count==0 && !_selected.HasValue)return;
-            _items.Clear();_selected=null;
+            if(_items.Count==0 && _selectedIds.Count==0)return;
+            _items.Clear();_selected=null;_selectedIds.Clear();
             ChangedNow();
         }
 
         /// <summary>完整验证后一次替换显示快照；不承接资产所有权。</summary>
         internal void RestoreItems(IReadOnlyList<MVI3DSceneItem> items,Guid? selected)
         {
+            RestoreItems(items,selected,selected.HasValue
+                ?(IReadOnlyList<Guid>)new Guid[]{selected.Value}:new Guid[0]);
+        }
+
+        internal void RestoreItems(IReadOnlyList<MVI3DSceneItem> items,Guid? selected,
+            IReadOnlyList<Guid> selectedIds)
+        {
             if(items==null||items.Count>256)throw new InvalidDataException("三维场景项目数量无效。");
+            if(selectedIds==null||selectedIds.Count>items.Count)
+                throw new InvalidDataException("组合选择数量无效。");
+            if(selectedIds.Count==0?selected.HasValue:
+                !selected.HasValue||selectedIds[selectedIds.Count-1]!=selected.Value)
+                throw new InvalidDataException("Scene主选择与组合选择不一致。");
             var ids=new HashSet<Guid>();
             bool selectedExists=!selected.HasValue;
             foreach(MVI3DSceneItem item in items)
@@ -325,9 +363,19 @@ namespace CxVisual.Mechanism.Visual
                     selectedExists=item.Visible;
             }
             if(!selectedExists)throw new InvalidDataException("三维Scene选中对象不存在或不可见。");
+            var selection=new HashSet<Guid>();
+            foreach(Guid id in selectedIds)
+            {
+                MVI3DSceneItem item=null;
+                foreach(MVI3DSceneItem candidate in items)
+                    if(candidate.Id==id){item=candidate;break;}
+                if(id==Guid.Empty||!selection.Add(id)||item==null||!item.Visible)
+                    throw new InvalidDataException("Scene组合选择存在重复、隐藏或失效对象。");
+            }
             _items.Clear();
             foreach(MVI3DSceneItem item in items)_items.Add(item);
             _selected=selected;
+            _selectedIds.Clear();foreach(Guid id in selectedIds)_selectedIds.Add(id);
             ChangedNow();
         }
 
@@ -358,6 +406,7 @@ namespace CxVisual.Mechanism.Visual
         public const string ProviderId="mvi.scene3d.layout";
         private const int Magic=0x3349564d;
         private const int Schema=1;
+        private const int MultiSelectionSchema=2;
         private static readonly UTF8Encoding StrictUtf8=new UTF8Encoding(false,true);
 
         public static MRIObjectAddress Commit(MEMEngineeringSession engineering,MEMContent owner,
@@ -385,12 +434,14 @@ namespace CxVisual.Mechanism.Visual
             if(scene==null)throw new ArgumentNullException("scene");
             var snapshot=scene.Snapshot();
             if(snapshot.Count>256)throw new InvalidOperationException("Scene布局超过256引用预算。");
+            var selectedIds=scene.SelectedIds;
+            int schema=selectedIds.Count>1?MultiSelectionSchema:Schema;
             byte[] payload;
             using(var memory=new MemoryStream())
             {
                 using(var w=new BinaryWriter(memory,StrictUtf8,true))
                 {
-                    w.Write(Magic);w.Write(Schema);
+                    w.Write(Magic);w.Write(schema);
                     w.Write(snapshot.Count);
                     w.Write(scene.SelectedId.HasValue);
                     if(scene.SelectedId.HasValue)w.Write(scene.SelectedId.Value.ToByteArray());
@@ -403,11 +454,16 @@ namespace CxVisual.Mechanism.Visual
                         w.Write(item.Visible);w.Write(item.Opacity);
                         WriteText(w,item.LayerKey,128);WriteText(w,item.GroupKey??"",128);
                     }
+                    if(schema==MultiSelectionSchema)
+                    {
+                        w.Write(selectedIds.Count);
+                        foreach(Guid id in selectedIds)w.Write(id.ToByteArray());
+                    }
                 }
                 payload=memory.ToArray();
             }
             if(payload.Length>262144)throw new InvalidOperationException("场景Visual Aspect超过256KiB预算。");
-            return new MPMAspect(MPMAspectKind.Visual,ProviderId,Schema,payload,true);
+            return new MPMAspect(MPMAspectKind.Visual,ProviderId,schema,payload,true);
         }
 
         /// <summary>从旧Scene生成新专业ResultId的Visual Aspect。
@@ -429,7 +485,7 @@ namespace CxVisual.Mechanism.Visual
                     old.LayerKey,old.GroupKey));
             }
             var rebound=new MVI3DSceneState();
-            rebound.RestoreItems(items,previous.SelectedId);
+            rebound.RestoreItems(items,previous.SelectedId,previous.SelectedIds);
             return CreateAspect(rebound,cancellation);
         }
 
@@ -450,14 +506,16 @@ namespace CxVisual.Mechanism.Visual
                     if(aspect!=null)throw new InvalidDataException("重复三维Scene Aspect。");
                     aspect=candidate;
                 }
-            if(aspect==null||aspect.SchemaVersion!=Schema||aspect.Payload.Length>262144)
+            if(aspect==null||(aspect.SchemaVersion!=Schema&&
+                aspect.SchemaVersion!=MultiSelectionSchema)||aspect.Payload.Length>262144)
                 throw new InvalidDataException("三维Scene布局不存在或Schema无效。");
             var items=new List<MVI3DSceneItem>();
             Guid? selected;
+            var selectedIds=new List<Guid>();
             using(var memory=new MemoryStream(aspect.Payload,false))
             using(var r=new BinaryReader(memory,StrictUtf8,true))
             {
-                if(r.ReadInt32()!=Magic||r.ReadInt32()!=Schema)
+                if(r.ReadInt32()!=Magic||r.ReadInt32()!=aspect.SchemaVersion)
                     throw new InvalidDataException("三维Scene数据头无效。");
                 int count=r.ReadInt32();
                 if(count<0||count>256)throw new InvalidDataException("三维Scene数量超限。");
@@ -478,11 +536,23 @@ namespace CxVisual.Mechanism.Visual
                         throw new InvalidDataException("三维Scene专业资源已失效："+source);
                     items.Add(item);
                 }
+                if(aspect.SchemaVersion==MultiSelectionSchema)
+                {
+                    int count=r.ReadInt32();
+                    if(count<2||count>items.Count)
+                        throw new InvalidDataException("Scene组合选择长度无效。");
+                    for(int i=0;i<count;i++)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        selectedIds.Add(new Guid(ReadExact(r,16)));
+                    }
+                }
+                else if(selected.HasValue)selectedIds.Add(selected.Value);
                 if(memory.Position!=memory.Length)
                     throw new InvalidDataException("三维Scene存在多余负载。");
             }
             cancellation.ThrowIfCancellationRequested();
-            destination.RestoreItems(items,selected);
+            destination.RestoreItems(items,selected,selectedIds);
         }
 
         private static byte[] ReadExact(BinaryReader reader,int size)

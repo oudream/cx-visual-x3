@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Visual;
@@ -243,10 +244,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                         (string.IsNullOrEmpty(item.GroupKey)?"":" / "+item.GroupKey),
                     MinWidth=130,MaxWidth=225,Margin=new Thickness(1),Padding=new Thickness(3,1,3,1),
                     IsEnabled=item.Visible,
-                    FontWeight=_scene.SelectedId==id?FontWeights.Bold:FontWeights.Normal
+                    FontWeight=_scene.IsSelected(id)?FontWeights.Bold:FontWeights.Normal
                 };
                 AutomationProperties.SetAutomationId(select,"MPW.Scene.Select."+id.ToString("N"));
-                select.Click+=(sender,args)=>{if(_scene!=null)_scene.Select(id);};
+                select.Click+=(sender,args)=>{
+                    if(_scene==null)return;
+                    if((Keyboard.Modifiers&ModifierKeys.Control)!=0)_scene.ToggleSelection(id);
+                    else _scene.Select(id);
+                };
                 ToolTipService.SetToolTip(select,item.SourceRef);
                 row.Children.Add(select);
                 var opacity=new Slider {Minimum=0,Maximum=100,Value=item.Opacity*100,

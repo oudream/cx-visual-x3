@@ -344,3 +344,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **实现**：StudioCT3DDocument改为消费当前MVIVolumeViewState.SelectedSliceRectangle唯一属性通知，统一取消后台ROI分析、失效 pending 并通过已有 BuildSceneReferences 恢复已提交专业Scene。MPW事件仅显示物理坐标；后台属性通知检查原MVI会话且投递WPF Dispatcher。ROI通知不重建FIM切片/缩放；待保存Case记录ROI对象实例并在SavePendingResult执行前再核对，从而阻断未派发通知的过期保存。
 - **真实验证**：StudioShellSelfTests真实双Case RAW/MEM工程，使用MVI直接XY→XZ切换，检验旧结果失效、Scene专业来源恢复、旧结果禁止保存、XZ原值拟合及直接ClearRectangleRoi后的结果恢复。固定提交 3bb1cafd4dd9b419415ffd2bf1538e94b4cae180，Studio S1 Windows 41017732086 为SUCCESS（含Release构建、真实WPF STA自测和依赖检查）。TestCenter Windows 41017732080 在此记录时仍执行，不能登记为成功。
 - **未完成边界**：此包仅关闭单矩形ROI跨正交视图的生命周期一致性，不代表多选集/子元素交互、复杂3D ROI、GPU实机G4或工业计量精度G5已通过。
+
+
+### 10.26 B包：MVI统一Scene多对象组合选择、MPW Ctrl选择及MEM持久兼容（2026-10-30）
+
+- **正式增量**：MVI3DSceneState增加SelectedIds（只读快照）、IsSelected及ToggleSelection，保留既有SelectedId主选择和Select单选行为；同源不同场景实例按Guid身份消歧。删除、隐藏、整组隐藏与源版本淘汰同步撤销过期成员，组合选择只触发一次Revision/Changed，不创建独立资源/工程体系。
+- **WPF交互**：MPWVolumeSceneObjectListControl沿用既有按钮，普通单击独选、Ctrl单击追加或取消，组合选中全部加粗显示；下游仍可通过SelectedId访问主选择，不影响旧Viewer API。
+- **工程兼容**：MEM Visual Aspect原Schema1单选制品完全沿用；仅组合选择多于一个实例时写Schema2，末尾追加有限数量的有序场景Guid集合。Open同时支持Schema1/2，并验证来源、可见性、主选择一致、重复/不存在Id后才整体Restore；CreateReboundAspect保持多选顺序。旧数据不自动伪造组合选择或更改Version。
+- **真实回归**：MVIVolumeViewTests覆盖Volume/Mesh/CAD/PointCloud的复合选择、整组隐藏、单次版本通知、Schema1旧工程恢复、Schema2保存重开、主选择删除/隐藏自动降级和非法选择拒绝。以此次源码提交对应固定SHA CT3D B Windows G1～G3以及受影响Studio/TestCenter的实际CI为验收依据，未通过不能登记为T。

@@ -244,6 +244,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(cancelled&&restoredScene.Revision==unchanged,
                         "Scene取消恢复不能修改当前会话");
                 }
+                // Schema1旧单选继续可读；Schema2只在多选时写入，复用同一MEM Visual Aspect。
+                layout.ToggleSelection(meshVisual);
+                layout.ToggleSelection(cloudVisual);
+                Check(layout.SelectedId==cloudVisual&&layout.SelectedIds.Count==3&&
+                    layout.IsSelected(meshVisual)&&layout.IsSelected(cadVisual),
+                    "三类Scene实例Ctrl多选应保留主选择与稳定组合身份");
+                long beforeHiddenSelection=layout.Revision;
+                layout.SetGroupVisibility("inspection",false);
+                Check(layout.SelectedIds.Count==1&&layout.SelectedId==cloudVisual&&
+                    layout.Revision==beforeHiddenSelection+1,
+                    "组隐藏应一次撤销所有受影响的多选项并只发一次变更");
+                layout.SetGroupVisibility("inspection",true);
+                layout.ToggleSelection(cadVisual);
+                layout.ToggleSelection(meshVisual);
+                Guid[] expectedSelection={cloudVisual,cadVisual,meshVisual};
+                Check(layout.SelectedIds.Count==3&&layout.SelectedId==meshVisual,
+                    "恢复可见后Ctrl追加选择不得污染已有对象顺序");
+                MRIObjectAddress multiAddress;
+                using(var engineering=MEMEngineering.Open(projectFile))
+                {
+                    MEMContent owner=engineering.AddPage("组合Scene").RootContent;
+                    multiAddress=MVI3DSceneLayoutPersistence.Commit(engineering,owner,
+                        engineering.Revision,layout,CancellationToken.None);
+                    engineering.SaveAs(projectFile);
+                }
+                using(var engineering=MEMEngineering.Open(projectFile))
+                {
+                    var recovered=new MVI3DSceneState();
+                    MVI3DSceneLayoutPersistence.Open(engineering,multiAddress,recovered,
+                        item=>item.SourceRef=="ct3d:mesh:verified"||
+                            item.SourceRef=="cad:solid:verified"||
+                            item.SourceRef=="ct3d:pointcloud:verified",CancellationToken.None);
+                    Check(recovered.SelectedId==meshVisual&&
+                        recovered.SelectedIds.Count==3&&
+                        recovered.SelectedIds[0]==expectedSelection[0]&&
+                        recovered.SelectedIds[1]==expectedSelection[1]&&
+                        recovered.SelectedIds[2]==expectedSelection[2],
+                        "MEM Schema2保存重开必须恢复组合选择顺序及兼容主选择");
+                    long beforeBad=recovered.Revision;
+                    bool badSelection=false;
+                    try{recovered.ToggleSelection(Guid.NewGuid());}
+                    catch(InvalidOperationException){badSelection=true;}
+                    Check(badSelection&&recovered.Revision==beforeBad,
+                        "不存在的Scene实例不能进入组合选择或变更Revision");
+                    recovered.SetVisibility(meshVisual,false);
+                    Check(!recovered.IsSelected(meshVisual)&&
+                        recovered.SelectedId==cadVisual&&recovered.SelectedIds.Count==2,
+                        "隐藏当前主选择须自动提升剩余可见实例，不能保留过期Scene Id");
+                    recovered.Remove(cloudVisual);
+                    Check(recovered.SelectedIds.Count==1&&
+                        recovered.SelectedId==cadVisual,
+                        "删除多选对象只撤销已删除成员并保留其它选择");
+                    recovered.ToggleSelection(cadVisual);
+                    Check(recovered.SelectedIds.Count==0&&recovered.SelectedId==null,
+                        "Ctrl取消最后对象必须清空单选与组合选择");
+                }
                 Directory.Delete(layoutRoot,true);
                 MVI3DCameraState camera=state.Camera;
                 long cameraRevision=camera.Revision;
