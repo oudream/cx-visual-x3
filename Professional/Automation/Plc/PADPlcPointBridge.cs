@@ -43,7 +43,7 @@ namespace CxVisual.Professional.Automation.Plc
     /// Protocol、Current或命令中心；写入口只能通过PADDeviceVariableProvider的授权回调。
     /// 当前仅支持可回读的Modbus Holding Int16/UInt16点。
     /// </summary>
-    public sealed class PADPlcPointBridge
+    public sealed class PADPlcPointBridge : IDisposable
     {
         private readonly MCNConnectorModule _connector;
         private readonly PADDeviceVariableCatalog _catalog;
@@ -54,6 +54,7 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly SemaphoreSlim _writeGate = new SemaphoreSlim(1, 1);
         private readonly string _scopeId;
         private PADDeviceVariableProvider _qualityProvider;
+        private int _disposed;
 
         public PADPlcPointBridge(MCNConnectorModule connector, PADDeviceVariableCatalog catalog,
             IMPADataTargetAccess dataOwner, FTRSubChannelAddress destination,
@@ -107,6 +108,7 @@ namespace CxVisual.Professional.Automation.Plc
                 _approvedSignatures.Add(binding.StableId, Signature(point, mappings));
             }
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
+            _connector.Channel.StateChanged += OnChannelStateChanged;
         }
 
         /// <summary>
@@ -124,6 +126,19 @@ namespace CxVisual.Professional.Automation.Plc
                 MarkStale(stableId);
                 throw;
             }
+        }
+
+        // Host/Session仍是唯一运行Owner。桥接只消费现有F17状态变化，避免断线后继续展示Good。
+        private void OnChannelStateChanged(FTRChannelState state)
+        {
+            if (state == FTRChannelState.Open || Volatile.Read(ref _disposed) != 0) return;
+            foreach (string id in _bindings.Keys) MarkStale(id);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _connector.Channel.StateChanged -= OnChannelStateChanged;
         }
 
         private void MarkStale(string stableId)
@@ -180,6 +195,10 @@ namespace CxVisual.Professional.Automation.Plc
 
         private void RegisterQualityProvider(PADDeviceVariableProvider provider)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                provider.Dispose(); throw new ObjectDisposedException("PADPlcPointBridge");
+            }
             if (Interlocked.CompareExchange(ref _qualityProvider, provider, null) != null)
             {
                 provider.Dispose();
@@ -189,6 +208,7 @@ namespace CxVisual.Professional.Automation.Plc
 
         private string Resolve(string stableId)
         {
+            if (Volatile.Read(ref _disposed) != 0) throw new ObjectDisposedException("PADPlcPointBridge");
             string point;
             if (stableId == null || !_bindings.TryGetValue(stableId, out point))
                 throw new KeyNotFoundException("PLC变量未绑定：" + stableId);
