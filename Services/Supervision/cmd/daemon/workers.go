@@ -56,6 +56,18 @@ func (g *programWorkerGate) enablePersistence(path string) error {
 	return nil
 }
 
+// terminalSnapshot returns only the local latch reasons for startup
+// diagnostics. It cannot change any latch or grant restart permission.
+func (g *programWorkerGate) terminalSnapshot() map[int64]int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	copyOf := make(map[int64]int, len(g.terminal))
+	for id, reason := range g.terminal {
+		copyOf[id] = reason
+	}
+	return copyOf
+}
+
 func (g *programWorkerGate) persistenceError() error {
 	g.mu.Lock()
 	err := g.storageFault
