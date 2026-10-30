@@ -181,3 +181,15 @@ channel.Dispose();
 - `88e4f1f99`：FTRHttpClientChannelConfiguration在创建新HTTP Client配置时，将默认ReceiveByteBudget明确设为12MiB以覆盖其默认MaxResponseBytes=4MiB时的scratch、MemoryStream扩容期间新旧数组、Received独立副本的峰值。若FCM已有显式持久的ReceiveByteBudget，则按真实旧值执行，不自动扩大已设置的工业内存上限；超预算明确拒绝。用户可按更大Detector图像尺寸逐项增大MaxResponseBytes和ReceiveByteBudget并作真实峰值验证，不宣称自动零复制。
 - `b89a1ba17`：原FTRMultiClientBudgetTests.Run增加真实HTTP 4MiB响应，有效长度及完整逐字节顺序校验、FCM配置往返、预算Peak/current、收发诊断、连接清理；同时保留已提交的HTTP小报文/预算拒绝/嵌套同步Send/慢Body超时回归。`6195861e`使两套Windows F17入口都必须包含`F17.HTTP_LARGE_PASS bytes=4194304`日志，不满足即失败。
 - 本项是HTTP Client聚合/legacy Received的工业大数据软件基线增量，不代替TCP及NamedPipe双向各2GiB的持续流门禁，也不等同于真正Detector/CT传输到专业DataHandle的24h/零复制性能验收。新增测试仍以最新固定SHA实际Windows结果为准。
+
+
+### 2026-10-30 续包：消息型接收低复制与Serial独立收发改造
+
+1. **HTTP小包与双请求重叠额度**：`e89be960`修正HTTP Client在首个极小响应时按MaxResponseBytes预留过大缓冲的行为，改为按实际scratch/有效需求渐进扩容；仍保留扩容时新旧数组并存的预算记账和MaxResponseBytes上界。真实HTTP回环继续检查第一次Received同步再Send、请求全程Deadline、超限拒绝和额度释放。
+2. **无订阅者低复制**：`50926a25`使FTRChannelBase.ReceiveBytes按现有Legacy Received订阅状态按需创建FTRChannelReceiveContext及其独立副本。无订阅者时仍记录真实接收字节和Frame（受CapturePayloadEvidence控制），不白白分配整报文或额外预留count；有订阅者继续保持旧隔离快照合同及额度。此优化适用于原HTTP/WS等共用消息型路径，**不改变TCP/UDP/NamedPipe的FTRReceiveBuffer/Retain所有权合同**。
+3. **4MiB无订阅者测试**：`e1b11deb`在原HTTP真实4MiB回环中以ReceiveByteBudget=7MiB重跑，无Legacy Received仍应有ReceivedBytes=4194304、1次接收、峰值<=7MiB和清零；保存前后独立HTTP通道Session、已有FCM配置及原诊断不改变。
+4. **Serial原类P0改造**：`820208af`仅修改Foundation/Transport/Channels/Implementations/Serial/FTRSerialChannel.cs，SerialPort实物独立Thread阻塞读取，使用StartBufferedReceive/RentReceiveBuffer/PublishReceiveBuffer/DrainBufferedReceive和ReceiveIdleTimeoutMs；同步Send使用原FTRDeadline、逐连接写锁和SerialPort.WriteTimeout，分块不整块复制，异步Send复用相同底层Write和Base异步入场预算；Close按StopTimeoutMs等待读取者、发送与已接纳缓冲后清理。共享总线不创建SubChannel或Modbus站号。
+5. **软件否定性回归**：`e597280a`、`faa1a507`及`d0f0b671`添加FTRSerialP0Tests，并入--channel-transport和--channel-uml-core，Windows工作流要求F17.SERIAL_P0_PASS。仅验证真实串口类的FCM、无联机副作用、预取消、无设备打开失败、恢复关闭及资源清理；不能把不存在COM口当作真实RS232/485收发成功。
+6. **Owner与兼容**：无新增项目、Provider、MPA协议和MRK队列，仍为原FTRChannelBase/FCM/Factory、Serial旧CLR类身份；Serial接收旧瞬时Message事件改为原池化交付，历史订阅者在原Received仍拿独立Data快照。新增TLS/认证继续暂缓，未移除已有SerialPort配置和底层通道输入保护。
+
+**证据状态**：本组新SHA Windows F17工作流受并行提交排队和合并取消影响。完成状态与日志必须核对最新非cancelled固定SHA；没有本地Windows/.NET48编译环境和实体串口，因此此处只记录源码提交与待验软件测试，不声称工业验收或24小时吞吐SLA。
