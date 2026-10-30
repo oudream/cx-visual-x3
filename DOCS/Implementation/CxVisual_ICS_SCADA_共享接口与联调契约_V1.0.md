@@ -26,13 +26,18 @@ foreach (PADDeviceVariableDefinition p in device.PointDefinitions)
     // sample.CurrentObject, sample.HasValue, sample.Quality,
     // sample.RefreshUtc, sample.Revision, sample.Source
 }
-Action<string> receiver = variableName => {
-    // 回调并非WPF Dispatcher线程。由HMI自己切换UI线程后再次Inspect。
-};
-device.DataTable.VariableChanged += receiver;
-// 视图关闭时必须解除注册：
-device.DataTable.VariableChanged -= receiver;
+using (IDisposable subscription = device.Subscribe(
+    changes => {
+        // 既有MDS有界LatestOnly分发；按VariableId/Revision判新旧。
+        // 回调不在WPF Dispatcher线程，HMI自行切换到UI线程刷新视图。
+    },
+    new[] { "word100", "input101" }))
+{
+    // 关闭视图时Dispose，取消订阅；勿持有另一份实时Current。
+}
 ```
+
+上述 `Subscribe` 实际复用 `MDSVariableTable.CreateDispatcher(1024)` 的有界 LatestOnly 机制；合并变更适合HMI实时状态，**不保证逐笔事件全部交付**，审计/报警历史必须由正式History Owner单独实现。
 
 以上没有新增第二份 `Current`。断线/停止/版本漂移时，已采样值保留、`Quality=Stale`，只有真实FC03采样才可恢复Good。变量快照有MDS自身的Source/Revision/时间；Channel SessionId使用 `device.SessionGeneration`，不能将二者伪装成同一个Gen。
 
