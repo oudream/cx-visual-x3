@@ -481,7 +481,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Object.ReferenceEquals(store.Find(roi.Id),roi) &&
                 notifications==2 && !edit.IsActive,
                 "Esc/失捕取消应原位恢复初始对象身份并只通知有效修改");
-            Ensure(!edit.Cancel(),"重复取消不能再次写入或通知");
+            Ensure(!edit.Cancel() && edit.OriginPane==null,
+                "重复取消必须清除手势来源Pane且不得重复通知");
+            Fail<ArgumentOutOfRangeException>(()=>edit.Begin(roi,
+                MVIImageOverlayEditKind.Rotate,(MVIImageGesturePane)99),
+                "非法来源Pane不得启动手势");
+            Ensure(edit.Begin(roi,MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary) &&
+                edit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary) &&
+                !edit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary),
+                "双Pane编辑只能由实际来源视口持有");
+            Ensure(!edit.CompleteFrom(MVIImageGesturePane.Primary) && edit.IsActive &&
+                Object.ReferenceEquals(store.Find(roi.Id),roi),
+                "错误Pane的MouseUp不得提前结束另一个Pane的活动编辑");
+            var fromSecondary=roi.Translate(1,0);
+            Ensure(edit.TryUpdate(fromSecondary) &&
+                !edit.CompleteFrom(MVIImageGesturePane.Primary) &&
+                Object.ReferenceEquals(store.Find(roi.Id),fromSecondary) && edit.IsActive,
+                "错误Pane不得在编辑过程中提交或撤销另一Pane草稿");
+            Ensure(edit.CompleteFrom(MVIImageGesturePane.Secondary) &&
+                !edit.IsActive && edit.OriginPane==null &&
+                Object.ReferenceEquals(store.Find(roi.Id),fromSecondary),
+                "来源Pane正确MouseUp才可完成并清除编辑状态");
+            Fail<ArgumentOutOfRangeException>(()=>edit.CompleteFrom((MVIImageGesturePane)99),
+                "非法Pane的Complete必须拒绝");
+            // 恢复原对象，避免改变现有矩形Resize/Rotate真值向量。
+            Ensure(store.Replace(roi),"隔离双Pane验证后恢复原始测试对象");
 
             Ensure(edit.Begin(roi,MVIImageOverlayEditKind.Resize),"重新开始尺寸编辑");
             var resized=roi.WithResizedRoiHandle(MVIImageResizeHandle.BottomRight,
