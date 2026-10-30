@@ -63,16 +63,41 @@ func (j *Journal) Begin(id int64, path string) error {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
 	}
-	rec := &Record{Version: Version, ProgramID: strconv.FormatInt(id,10),
-		AttemptID: hex.EncodeToString(nonce[:]), Stage: "intent", PID: 0,
-		Path: path, IntendedAt: time.Now().UTC().Format(time.RFC3339Nano)}
-	pathOnDisk := recordPath(j.workDir, id)
-	if _, err := os.Lstat(pathOnDisk); err == nil {
-		return errors.New("unresolved previous launch evidence requires manual reconciliation")
-	} else if !errors.Is(err, os.ErrNotExist) {
+	rec := &Record{
+		Version: Version, ProgramID: strconv.FormatInt(id, 10),
+		AttemptID: hex.EncodeToString(nonce[:]), Stage: "intent",
+		Path: path, IntendedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, err := json.Marshal(rec)
+	if err != nil || len(data) > MaxBytes {
+		return errors.New("cannot serialize bounded launch intent")
+	}
+	directory := recordDir(j.workDir)
+	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
 	}
-	if err := writeRecord(pathOnDisk, rec); err != nil {
+	info, err := os.Lstat(directory)
+	if err != nil || !info.IsDir() {
+		return errors.New("unsafe launch evidence directory")
+	}
+	// O_EXCL reserves the per-Program path atomically. A second Daemon
+	// cannot pass a check-then-Rename race and overwrite this attempt.
+	// A crash during creation leaves incomplete evidence that Scan will
+	// quarantine. OS Start is NEVER called before Sync succeeds.
+	diskPath := recordPath(j.workDir, id)
+	file, err := os.OpenFile(diskPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("unresolved or inaccessible prior launch evidence: %w", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
 		return err
 	}
 	j.active = rec
@@ -84,6 +109,17 @@ func (j *Journal) Begin(id int64, path string) error {
 func (j *Journal) Started(pid int) error {
 	if j == nil || j.active == nil || j.active.Stage != "intent" || pid <= 0 {
 		return errors.New("launch Started without valid durable intent")
+	}
+	// Never replace the proof of a different Worker attempt (or a
+	// corrupted/deleted intent) while observing a successfully started PID.
+	existing, err := readRecord(recordPath(j.workDir, j.id))
+	if err != nil {
+		return err
+	}
+	if existing.AttemptID != j.active.AttemptID ||
+		existing.ProgramID != j.active.ProgramID ||
+		existing.Stage != "intent" {
+		return errors.New("launch intent was replaced or already advanced")
 	}
 	rec := *j.active
 	rec.Stage, rec.PID = "started", pid
@@ -107,7 +143,10 @@ func (j *Journal) Finished() error {
 	if err != nil {
 		return err
 	}
-	if onDisk.AttemptID != j.active.AttemptID || onDisk.ProgramID != j.active.ProgramID {
+	if onDisk.AttemptID != j.active.AttemptID ||
+		onDisk.ProgramID != j.active.ProgramID ||
+		onDisk.Stage != j.active.Stage ||
+		onDisk.PID != j.active.PID {
 		return errors.New("launch evidence changed between Start and Wait")
 	}
 	if err := os.Remove(path); err != nil {
