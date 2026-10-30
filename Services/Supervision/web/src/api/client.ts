@@ -12,6 +12,9 @@ async function request<T>(path: string): Promise<T> {
       headers: { Accept: 'application/json' },
     })
     if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('访问被拒绝：监控数据仅允许在 Monitor 本机查询，远程访问尚未启用身份认证')
+      }
       throw new Error('Monitor API HTTP ' + response.status)
     }
     return (await response.json()) as T
