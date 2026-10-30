@@ -126,8 +126,10 @@ namespace CxVisual.Runtime.Host
         private sealed class TcpPlcFixture : IDisposable
         {
             private readonly TcpListener _listener;
-            private readonly ushort _wordValue;
+            private int _wordValue;
             private readonly ushort _inputValue;
+            private readonly bool _allowWrites;
+            private int _ignoreNextWrite;
             private readonly Task _server;
             private volatile bool _stop;
             private TcpClient _active;
@@ -137,14 +139,21 @@ namespace CxVisual.Runtime.Host
             public int Port {get;private set;}
             public int Reads {get{return Volatile.Read(ref _reads);}}
             public int Writes {get{return Volatile.Read(ref _writes);}}
+            public ushort ActualWord {get{return (ushort)Volatile.Read(ref _wordValue);}}
+            public void IgnoreNextWrite()
+            {
+                if(!_allowWrites)throw new InvalidOperationException("只读PLC不可设写入故障");
+                Interlocked.Exchange(ref _ignoreNextWrite,1);
+            }
             public void DropNextReplies(int count)
             {
                 if(count<1||count>8)throw new ArgumentOutOfRangeException("count");
                 Interlocked.Exchange(ref _dropReplies,count);
             }
-            public TcpPlcFixture(ushort wordValue = 73, ushort inputValue = 99)
+            public TcpPlcFixture(ushort wordValue = 73, ushort inputValue = 99,
+                bool allowWrites = false)
             {
-                _wordValue=wordValue;_inputValue=inputValue;
+                _wordValue=wordValue;_inputValue=inputValue;_allowWrites=allowWrites;
                 _listener=new TcpListener(IPAddress.Loopback,0);
                 _listener.Start();
                 Port=((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -185,6 +194,23 @@ namespace CxVisual.Runtime.Host
                                     throw new InvalidDataException("SCADA夹具MBAP无效");
                                 byte[] request=new byte[5];
                                 if(!Read(stream,request))break;
+                                if(request[0]==6 && _allowWrites)
+                                {
+                                    int register=(request[1]<<8)|request[2];
+                                    ushort next=(ushort)((request[3]<<8)|request[4]);
+                                    if(register!=100)
+                                        throw new InvalidDataException("SCADA测试夹具拒绝越权FC06地址");
+                                    Interlocked.Increment(ref _writes);
+                                    if(Interlocked.Exchange(ref _ignoreNextWrite,0)==0)
+                                        Volatile.Write(ref _wordValue,(int)next);
+                                    // FC06必须原样回显TransactionId/UnitId/地址和写入值；
+                                    // ACK不保证现场值已改变，后续正式FC03另作回读确认。
+                                    byte[] writeAck=new byte[12];
+                                    Array.Copy(mbap,0,writeAck,0,7);
+                                    Array.Copy(request,0,writeAck,7,5);
+                                    stream.Write(writeAck,0,writeAck.Length);
+                                    continue;
+                                }
                                 if(request[0]!=3)
                                 {
                                     Interlocked.Increment(ref _writes);
@@ -198,7 +224,8 @@ namespace CxVisual.Runtime.Host
                                 Array.Copy(mbap,0,response,0,7);
                                 response[4]=0;response[5]=7;
                                 response[7]=3;response[8]=4;
-                                response[9]=(byte)(_wordValue>>8);response[10]=(byte)_wordValue;
+                                ushort current=(ushort)Volatile.Read(ref _wordValue);
+                                response[9]=(byte)(current>>8);response[10]=(byte)current;
                                 response[11]=(byte)(_inputValue>>8);response[12]=(byte)_inputValue;
                                 Interlocked.Increment(ref _reads);
                                 if(Volatile.Read(ref _dropReplies)>0)
@@ -225,7 +252,7 @@ namespace CxVisual.Runtime.Host
         }
 
         private static void ConfigureDevice(string configRoot,string moduleId,string scopeId,
-            string channelId,int port)
+            string channelId,int port,bool writable = false)
         {
             MHSConfigService store=new MHSConfigService(configRoot);
             var section=store.ForScope("module",moduleId)
@@ -240,7 +267,7 @@ namespace CxVisual.Runtime.Host
                 model.Protocol=new MPAProtocolConfiguration("protocol-"+moduleId,"modbus.tcp");
                 model.Protocol.TimeoutMs=550;
                 model.Protocol.Points.Add(new MPAPointDefinition("word100","holding:100",
-                    typeof(ushort)){StationAddress="1",CanRead=true,CanWrite=false});
+                    typeof(ushort)){StationAddress="1",CanRead=true,CanWrite=writable});
                 model.Protocol.Points.Add(new MPAPointDefinition("input101","holding:101",
                     typeof(ushort)){StationAddress="1",CanRead=true,CanWrite=false});
                 foreach(string name in new[]{"word100","input101"})
@@ -249,6 +276,12 @@ namespace CxVisual.Runtime.Host
                         TargetRef=scopeId+"/Station."+(name=="word100"?"Word":"Input"),
                         Direction=MPADataDirection.Inbound,
                         Operation=MPADataOperation.WriteValue,Required=true});
+                if(writable)
+                    model.Protocol.Mappings.Add(new MPADataMapping{
+                        PointRef="word100",TargetKind=MPADataTargetKind.Variable,
+                        TargetRef=scopeId+"/Station.Word",
+                        Direction=MPADataDirection.Outbound,
+                        Operation=MPADataOperation.ReadValue,Required=true});
             },"SCADA多设备正式配置",CancellationToken.None).GetAwaiter().GetResult();
             Check(saved.Success,"多设备MHS保存失败: "+saved.ErrorCode);
             if(section.HasPendingApply)
