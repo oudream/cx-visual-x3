@@ -70,6 +70,12 @@ jobs:
           go build -o "$RUNNER_TEMP/supervision-bin/monitor$ext" ./cmd/monitor
           go build -o "$RUNNER_TEMP/supervision-bin/daemon$ext" ./cmd/daemon
           go test -count=1 ./...
+          # In addition to the regular three-OS suite, run Go's race
+          # detector against the real owned-child stop/Wait integration on
+          # Linux. Windows/macOS retain their normal build/test matrix.
+          if [[ "$RUNNER_OS" == "Linux" && "$(go env CGO_ENABLED)" == "1" ]]; then
+            go test -race -count=1 ./internal/daemonc -run 'TestOwnedStop|TestRunProgramControlledStop'
+          fi
           echo "Built and smoke-tested Monitor and Daemon for $RUNNER_OS"
 
   supervision-web:
