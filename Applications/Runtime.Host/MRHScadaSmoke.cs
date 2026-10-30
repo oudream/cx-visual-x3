@@ -368,7 +368,8 @@ namespace CxVisual.Runtime.Host
                                 PADPlcMrkCommandRegistration.WriteUInt16Code,
                                 new System.Collections.Generic.Dictionary<string,object>{
                                     {"StableId",point},{"Value",value},
-                                    {"EffectiveVersion",expected}
+                                    {"EffectiveVersion",expected},
+                                    {"SessionGeneration",host.Generation}
                                 },caller:caller,operationId:operation,
                                 expectedSchemaVersion:1);
                     int before=plc.Writes;
@@ -383,6 +384,17 @@ namespace CxVisual.Runtime.Host
                         .GetAwaiter().GetResult();
                     Check(stale.BusinessSuccess!=true&&plc.Writes==before,
                         "A4旧Connector Effective不得发送FC06");
+                    MRKCommandResponse staleGeneration=commands.InvokeAsync(
+                        new MRKCommandRequest(target,
+                            PADPlcMrkCommandRegistration.WriteUInt16Code,
+                            new System.Collections.Generic.Dictionary<string,object>{
+                                {"StableId","word100"},{"Value",(ushort)84},
+                                {"EffectiveVersion",version},
+                                {"SessionGeneration",Guid.NewGuid().ToString("N")}
+                            },caller:"operator",expectedSchemaVersion:1))
+                        .GetAwaiter().GetResult();
+                    Check(staleGeneration.BusinessSuccess!=true && plc.Writes==before,
+                        "A4旧F17 Generation即使工程版本相同也不得触发FC06");
                     Guid operationId=Guid.NewGuid();
                     MRKCommandResponse written=commands.InvokeAsync(request(
                         "operator",84,"word100",version,operationId))
