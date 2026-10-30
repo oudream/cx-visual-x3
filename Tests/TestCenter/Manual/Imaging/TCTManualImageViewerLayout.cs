@@ -738,11 +738,14 @@ namespace CxVisual.TestCenter.UI
             WrapPanel cpuActions=Row();
             Action(cpuActions,"运行CPU检测 → Mask","CpuVisionRun",RunCpuVision);
             Action(cpuActions,"运行拆分式工程链","CpuVisionSplitRun",RunCpuSeparatedVision);
+            Action(cpuActions,"选中ROI专业检测","CpuVisionRoiRun",RunCpuSelectedRoiVision);
             Action(cpuActions,"取消CPU检测","CpuVisionCancel",CancelCpuVision);
             content.Children.Add(cpuActions);
             content.Children.Add(Hint("仅接受Gray8/Gray16原图。原CPU按钮保留旧MRK结果；拆分式按钮使用真实MEM→MOC→MRK链，"
                 +"将FIM内存图像作为输入，可选FIM中值增强，再独立阈值Mask→连通区域→面积测量。"
-                +"两者共用结果列表、原图和图窗，切图/改参数会取消旧任务与拒绝过期结果。"));
+                +"选中ROI专业检测使用当前用户ROI像素中心在FIM中分割，再以现有MRK进行区域面积测量；"
+                +"ROI外不参与统计，编辑或重新选择ROI会撤销旧Run；此项为预览而非已保存工程。"
+                +"各操作共用结果列表、原图和图窗，切图/改参数会取消旧任务与拒绝过期结果。"));
 
             content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
             AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
