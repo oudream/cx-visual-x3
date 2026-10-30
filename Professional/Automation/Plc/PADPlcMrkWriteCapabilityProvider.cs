@@ -24,6 +24,9 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly string _target;
         private readonly string _caller;
         private readonly string _version;
+        // Approved Connector Effective for the real MRK command schema; distinct
+        // from the Decision capability release version.
+        private readonly string _commandEffectiveVersion;
         private readonly IMRKVersionedCapabilityResolver _fallback;
         private readonly MRKResolvedCapability _binding;
 
@@ -35,7 +38,8 @@ namespace CxVisual.Professional.Automation.Plc
         /// </summary>
         public PADPlcMrkWriteCapabilityProvider(MRKCommandCenter commands,
             string deviceRef, string trustedCaller, string capabilityVersion,
-            IMRKVersionedCapabilityResolver fallback = null)
+            IMRKVersionedCapabilityResolver fallback = null,
+            string commandEffectiveVersion = null)
         {
             if (commands == null) throw new ArgumentNullException("commands");
             if (string.IsNullOrWhiteSpace(trustedCaller) ||
@@ -47,7 +51,13 @@ namespace CxVisual.Professional.Automation.Plc
             _commands = commands;
             _target = PADPlcMrkCommandRegistration.TargetForDevice(deviceRef);
             _caller = trustedCaller.Trim();
+            if(commandEffectiveVersion!=null &&
+                (string.IsNullOrWhiteSpace(commandEffectiveVersion) ||
+                commandEffectiveVersion.Length>128 ||
+                commandEffectiveVersion.Any(char.IsControl)))
+                throw new ArgumentException("automation.plc.command_effective_version_invalid");
             _version = capabilityVersion;
+            _commandEffectiveVersion = commandEffectiveVersion;
             _fallback = fallback;
             _binding = new MRKResolvedCapability(ExecuteAsync,
                 new MRKExecutionOutput(typeof(bool)),
@@ -124,11 +134,18 @@ namespace CxVisual.Professional.Automation.Plc
                 !(value is ushort))
                 throw new InvalidOperationException("automation.plc.typed_input_required");
 
+            // MOC capabilityVersion pins the Plan/Provider contract; the real
+            // device command has a separate MHS Connector EffectiveVersion.
+            // A pinned registration REQUIRES this strongly typed input before
+            // the MRK handler is even allowed to issue a physical FC06.
+            Dictionary<string,object> arguments=new Dictionary<string,object> {
+                { "StableId", (string)id }, { "Value", (ushort)value }
+            };
+            if(_commandEffectiveVersion!=null)
+                arguments.Add("EffectiveVersion",_commandEffectiveVersion);
             MRKCommandRequest request = new MRKCommandRequest(_target,
                 PADPlcMrkCommandRegistration.WriteUInt16Code,
-                new Dictionary<string, object> {
-                    { "StableId", (string)id }, { "Value", (ushort)value }
-                }, caller: _caller, expectedSchemaVersion: 1);
+                arguments, caller: _caller, expectedSchemaVersion: 1);
             // The device operation may have taken effect even if the caller
             // times out or cancels. Never retry a new OperationId automatically.
             MRKCommandResponse response = await _commands.InvokeAsync(
