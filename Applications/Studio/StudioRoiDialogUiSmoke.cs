@@ -550,6 +550,24 @@ namespace CxVisual.Studio
                     details.Text.Contains("旧Run已失效"),
                     "ROI新Revision须清除旧Run像素/结果列表而保留当前正式ROI");
                 Trace(report,"Run像素已随MEM新Revision释放，ROI几何仍在当前图窗");
+                // 另一工程编辑者改变了当前MEM Revision。即便原像素Buffer、
+                // Page Id和MVI原图代次都不变，旧Overlay也不得覆盖新工程。
+                int savedRevision=vm.ProjectSession.Revision;
+                MEMPage currentPage=vm.ProjectSession.Find(pageId) as MEMPage;
+                Require(currentPage!=null,"最新MEM工程页面丢失");
+                vm.ProjectSession.Rename(currentPage,"IMG05外部工程修改后的页面");
+                Require(vm.ProjectSession.Revision>savedRevision,
+                    "外部MEM真实修改没有推进工程Revision");
+                int externalRevision=vm.ProjectSession.Revision;
+                await Click(hwnd,"Studio.ModuleCenter.CommitSelectedRoi");
+                Require(details.Text.Contains("工程Revision已变化") &&
+                    vm.ProjectSession.Revision==externalRevision &&
+                    CxVisionRoiEngineering.Open(vm.ProjectSession,
+                        vm.ProjectSession.GetAddress(
+                            ((MEMPage)vm.ProjectSession.Find(pageId)).RootContent))
+                        .RoiId==newlyDrawnRoi,
+                    "旧图元绑定必须拒绝覆盖外部已更新的MEM工程定义");
+                Trace(report,"外部MEM Revision改变时真实保存按钮拒绝旧Overlay覆盖");
                 File.AppendAllText(report,
                     "PASS: IMG05 Studio真实WPF按钮/Windows Open Save文件对话框/RAW重绑/MRK复算/CSV与错源拒绝"+Environment.NewLine+
                     "NOTE: 初始MEM ROI由夹具创建；随后原生Win32鼠标拖框新ROI、实际点击Studio Undo/Redo。非人工或工业HIL。"+Environment.NewLine,
