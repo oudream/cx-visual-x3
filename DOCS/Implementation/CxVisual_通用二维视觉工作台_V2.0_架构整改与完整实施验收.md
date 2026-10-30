@@ -452,6 +452,13 @@
 - **实际原生窗口发现补强**：[2d8ea9f7](https://github.com/oudream/cx-visual-x3/commit/2d8ea9f7f265471d2d06f754045bef1a823ea77c)在UIAutomation桌面根查询之外，使用同进程Win32`EnumWindows/GetWindowThreadProcessId/GetClassName`查找真正的`#32770`原生文件框HWND，再以`AutomationElement.FromHandle`操作真实文件名框及确定按钮；不使用Helper跳过文件选择，也不伪造G5结果。
 - **验收边界**：最新固定[ROI UIA #41048969722](https://github.com/oudream/cx-visual-x3/actions/runs/41048969722)提交时为pending，以上改进仅为G2源码与真实日志推断；须等新SHA运行确认原生文件框发现、鼠标拖框、真实Ribbon Undo/Redo、Mask/RAW/CSV和旧Run防串线全流程。旧GUI实际失败保留，不被源码提交抹去。IMG-05/G5仍不关闭。
 
+### 7.22 IMG-05 真正原生GUI失败推进至文件名UIA控件识别（2026-10-30）
+
+- **固定真值**：[Windows ROI UIA #41052451610](https://github.com/oudream/cx-visual-x3/actions/runs/41052451610)对应`7c394175`：Studio .NET48 x64及其真实引用编译成功，Windows GUI进入真实MEM工程Save/Open与首个RAW绑定，**已经找到实际原生文件对话框**，失败精确为`IMG05_UIA 系统文件对话框没有可写文件名框（1148/1001）`。这是比前次“未发现对话框”更深入的实测，不属于ROI算法、指纹或MRK失败。错误发生时RAW状态仍显示前一步非法Stride反馈，不可据此推断重新绑定的业务检查失败。
+- **Win32/UIA模态消死锁**：[9dc78fa6](https://github.com/oudream/cx-visual-x3/commit/9dc78fa6d7a9cba2d7b30ba036dd1371409e570c)避免在50ms轮询内进行`AutomationElement.RootElement.FindAll`；[d60e9a12](https://github.com/oudream/cx-visual-x3/commit/d60e9a12c0d845fe195051fe67eb0b6cac1e1f61)令Windows超时也输出已有STEP；[7c394175](https://github.com/oudream/cx-visual-x3/commit/7c39417560ee87332c93c5079884c9c1ca001426)基于真实Studio GUI线程`EnumThreadWindows`补充文件框发现。[5fa6220b](https://github.com/oudream/cx-visual-x3/commit/5fa6220b616b8ae0322a333a951c950f25da771f)移除同进程`GetWindowText`同步查询，防止其反向等待模态WPF GUI线程。[8a9f8ac8](https://github.com/oudream/cx-visual-x3/commit/8a9f8ac81188c1134416e92e4b41444521949592)增加30秒线程独立的Invoke/Dialog等待状态记录，**只记录不自动放行**；[5b661cc3](https://github.com/oudream/cx-visual-x3/commit/5b661cc30f1792093d97b3bc463d223dd0e09099)为真实文件框HWND、ValuePattern输入和确认按钮分别落盘STEP。
+- **真实文件名输入兼容**：[987d1a81](https://github.com/oudream/cx-visual-x3/commit/987d1a81f65c18ff377a1a437f089684f1fc21d5)保留1148/1001优先识别，并按Windows UIAutomation实际`Edit`控件的`Name`语义与`ValuePattern.IsReadOnly`发现唯一可写文件名输入；候选不唯一时拒绝猜测，并记录至多24个系统Edit/ComboBox控件的类型/名称/ID/可写性。
+- **验收界限**：最后固定[Windows ROI UIA #41053041715](https://github.com/oudream/cx-visual-x3/actions/runs/41053041715)仍pending；原生系统文件框的新ValuePattern路径尚未取得PASS，G5未关闭。仍须连续确认真实RAW绑定→鼠标ROI→MEM Undo/Redo→MRK复算→Mask/CSV/RAW→错源拒绝，不得因局部GUI通过宣布完整IMG-05通过。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
