@@ -81,6 +81,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Console.WriteLine("PASS MDS RuntimeData lifecycle, storage, hardening and compiler");
                     return 0;
                 }
+                if (Array.IndexOf(args, "--hmi-pipe") >= 0) { HmiScadaPipeTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--hmi-wpf") >= 0) return HmiWpfTests.Run();
                 if (Array.IndexOf(args, "--hmi") >= 0) { HmiRuntimeTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--automation-plc") >= 0) { AutomationPlcPointTests.Run(); return 0; }
