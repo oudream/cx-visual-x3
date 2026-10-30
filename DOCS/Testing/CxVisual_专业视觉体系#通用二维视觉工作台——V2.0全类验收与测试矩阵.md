@@ -729,3 +729,12 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-18 | 并行提交不能反复杀死已进入Windows GUI的交互式作业；只合并最新待运行项，不取消已经执行的鼠标/文件对话框测试 | [`8e72f04f`](https://github.com/oudream/cx-visual-x3/commit/8e72f04f7f2198fb43cef55a0065b5fb60dbeeac) `cancel-in-progress:false`；有界25分钟超时保持 |
 
 以上均只是源码/自动化合同提交证据；无本批固定SHA的真实PASS报告，不得将IMG-05列为G4/G5通过。
+
+### IMG-05 原生文件弹框首次真实GUI失败证据及复测（2026-10-30）
+
+| ID | 验收内容 | 固定SHA证据与状态 |
+|---|---|---|
+| R1-UIA-19 | 确认真实GUI阶段开始：Studio工程x64成功编译，MEM夹具工程创建、保存、关闭、重开，首个RAW重绑系统对话框必须被Win32/UIA检测并完成选择 | `dac1e806` [Windows #41046725138](https://github.com/oudream/cx-visual-x3/actions/runs/41046725138) **failure**：已到GUI，OpenFileDialog未被发现（14秒）；不能说完整G5通过 |
+| R1-UIA-20 | 若未发现弹框，须输出同进程顶层UIA Window名/Class/HWND/Enabled、原生`#32770`窗口句柄及Studio RAW状态；真实Invoke异常不得被查窗超时覆盖 | `4d526bf4`、`cf5c19f4`、`2d8ea9f7` G2，固定新版Windows复测待验 |
+| R1-UIA-21 | UIA树跨桌面不可见时以Win32 EnumWindows枚举本进程原生文件框，使用`AutomationElement.FromHandle`继续操作真实输入框，且仅以实际成功执行算G5 | [ROI UIA #41048969722](https://github.com/oudream/cx-visual-x3/actions/runs/41048969722) 初次查询 pending，禁止跳过Dialog使用Helper伪造PASS |
+
