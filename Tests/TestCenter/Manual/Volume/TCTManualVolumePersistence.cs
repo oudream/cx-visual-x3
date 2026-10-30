@@ -141,6 +141,19 @@ namespace CxVisual.TestCenter.UI
 
         /// <summary>已保存的三维案例在当前物理切片ROI上继续编辑；
         /// 专业Data与Scene Visual在同一MEM事务更新，保留旧案例Undo记录。</summary>
+        private bool CanEditSavedSliceRoi
+        {
+            get
+            {
+                return _volume!=null&&_state!=null&&
+                    _state.SelectedSliceRectangle!=null&&
+                    LastOpenedProfessionalCase!=null&&
+                    LastOpenedProfessionalCase.Kind==CT3DAnalysisKind.MeshPlane&&
+                    !string.IsNullOrEmpty(_professionalProjectPath)&&
+                    !string.IsNullOrEmpty(_professionalStoreToken);
+            }
+        }
+
         public async Task SaveEditedSliceRoiAsync(double minimumOffsetMm,
             double maximumOffsetMm,CancellationToken cancellation)
         {
