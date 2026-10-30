@@ -3978,6 +3978,20 @@ namespace CxVisual.Studio
                     CxVisual.Professional.Automation.Plc.PADPlcMrkWriteCapabilityProvider.CapabilityId)
                     .RuntimeAvailable,
                 "Studio不得以离线PLC端口合同冒充已授权的设备执行能力");
+            string oldArea=window.FlowCpuMinArea.Text;
+            try
+            {
+                window.FlowCpuMinArea.Text="NaN";
+                bool rejected=false;
+                try { catalogMethod.Invoke(window,null); }
+                catch(System.Reflection.TargetInvocationException ex)
+                {
+                    rejected=ex.InnerException is InvalidOperationException;
+                }
+                Assert(rejected&&window.StudioEngineeringRevision==studioRevision,
+                    "非法非有限CPU面积被目录或运行入口接受/污染MEM工程");
+            }
+            finally {window.FlowCpuMinArea.Text=oldArea;}
 
             string root=Path.Combine(Path.GetTempPath(),
                 "CxVisual-Studio-S2-"+Guid.NewGuid().ToString("N"));
