@@ -98,7 +98,7 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
                                         {
                                             int previous=content.Capacity;
                                             int next=(int)Math.Min((long)_config.MaxResponseBytes,
-                                                Math.Max(required,Math.Max(4096L,(long)previous*2)));
+                                                Math.Max(required,Math.Max((long)scratch,(long)previous*2)));
                                             lease.Reserve(next);
                                             try{content.Capacity=next;}
                                             catch{lease.Release(next);throw;}
