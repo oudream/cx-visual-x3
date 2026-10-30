@@ -106,3 +106,16 @@ func TestJournalRejectsInvalidWaitAuthority(t *testing.T) {
 		t.Fatal("UNKNOWN must not carry confirmed Wait")
 	}
 }
+
+func TestUnsafePriorHistoryRefusesNextStopBeforeSignal(t *testing.T) {
+	for _, broken := range []string{"", "{incomplete", "{\"operationId\":\"bad\"}\n"} {
+		dir := t.TempDir()
+		if err := os.MkdirAll(dir+"/supervision", 0700); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(Path(dir), []byte(broken), 0600); err != nil { t.Fatal(err) }
+		request, err := NewRequest(420, 256, "config-change")
+		if err != nil { t.Fatal(err) }
+		if err := Append(dir, request); err == nil {
+			t.Fatal("unsafe prior journal accepted a new stop operation")
+		}
+	}
+}
