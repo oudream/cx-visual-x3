@@ -288,6 +288,144 @@ namespace CxVisual.Runtime.Host
                 Check(section.ApplyPendingAtTaskBoundary(),"多设备MHS未能生效");
         }
 
+        // A4真实独立Host装配：MAC/MHS保存工程 + 正式MRKCommandCenter + PAD专业双授权，
+        // Windows OS TCP上确实执行FC06、FC03回读及Unknown/Stop拒写；不是危险硬件HIL。
+        private static void RunAuthorizedDevice(string root)
+        {
+            using(TcpPlcFixture plc=new TcpPlcFixture(73,99,allowWrites:true))
+            {
+                string project=Path.Combine(root,"authorized.cxproj");
+                string configs=Path.Combine(root,"authorized-configs");
+                const string module="connector-authorized";
+                const string scope="authorizedStation";
+                Guid projectId,deviceId;
+                using(MEMEngineeringSession engineering=MEMEngineering.Create(
+                    "A4已批准PLC工站工程"))
+                {
+                    projectId=engineering.Project.Id;
+                    deviceId=engineering.AddPage("ControlledPLC").Id;
+                    engineering.SaveAs(project);
+                }
+                ConfigureDevice(configs,module,scope,"authorized-channel",plc.Port,writable:true);
+                MHSConfigService store=new MHSConfigService(configs);
+                var deployment=store.ForProject(projectId.ToString("N"))
+                    .Open<PADScadaDeploymentConfiguration>();
+                var saved=deployment.UpdateAsync(model=>
+                {
+                    model.Devices.Clear();
+                    model.Devices.Add(new PADScadaDeviceInstallation{
+                        DeviceNodeGuid=deviceId.ToString("N"),ConnectorModuleId=module,
+                        ScopeId=scope,IntervalMs=100,Contiguous=true});
+                },"受控PLC正式保存工程与部署",CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(saved.Success,"A4测试没有保存正式SCADA部署");
+                if(deployment.HasPendingApply)
+                    Check(deployment.ApplyPendingAtTaskBoundary(),"A4测试SCADA部署未生效");
+                string pinnedProject=deployment.EffectiveVersion;
+                object approvalGate=new object();
+                Func<bool> approved=()=>
+                {
+                    lock(approvalGate)
+                    {
+                        try
+                        {
+                            var live=new MHSConfigService(configs)
+                                .OpenExisting<PADScadaDeploymentConfiguration>(
+                                    new CxVisual.Foundation.Data.Configuration.FCMConfigIdentity(
+                                        "CxVisual.Automation.ScadaDeployment",
+                                        "project",projectId.ToString("N")));
+                            return !live.HasPendingApply &&
+                                live.EffectiveVersion==pinnedProject;
+                        }
+                        catch{return false;}
+                    }
+                };
+                // 未经项目部署批准即使传入允许写的delegate，也不准装配。
+                Reject<UnauthorizedAccessException>(()=>MRHScadaRuntime.Open(
+                    project,configs,deviceId,module,scope,100,true,
+                    authorizeWrite:(principal,point)=>true));
+                using(MRHScadaRuntime host=MRHScadaRuntime.Open(project,configs,
+                    deviceId,module,scope,100,true,additionalApproval:approved,
+                    authorizeWrite:(principal,point)=>
+                        principal=="operator"&&point.StableId=="word100"))
+                using(MRKCommandCenter commands=new MRKCommandCenter(
+                    authorize:context=>context.Caller=="operator" &&
+                        context.Descriptor.Definition.PermissionKey==
+                            PADPlcMrkCommandRegistration.WritePermission))
+                using(IDisposable registration=host.RegisterTrustedWriteCommands(commands,970731))
+                {
+                    host.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    Check(SpinWait.SpinUntil(()=>host.CompletedCycles>=2,8000) &&
+                        host.Device.Inspect("word100").Quality==MDSVariableQuality.Good &&
+                        plc.Writes==0,"A4受信Host启动前必须真实读取PLC且尚无写命令");
+                    string target=PADPlcMrkCommandRegistration.TargetForDevice(
+                        deviceId.ToString("N"));
+                    string version=host.ConfigVersion;
+                    Func<string,ushort,string,string,Guid,MRKCommandRequest> request=
+                        (caller,value,point,expected,operation)=>
+                            new MRKCommandRequest(target,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new System.Collections.Generic.Dictionary<string,object>{
+                                    {"StableId",point},{"Value",value},
+                                    {"EffectiveVersion",expected}
+                                },caller:caller,operationId:operation,
+                                expectedSchemaVersion:1);
+                    int before=plc.Writes;
+                    MRKCommandResponse guest=commands.InvokeAsync(request(
+                        "guest",84,"word100",version,Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(guest.Stage==MRKCommandStage.Rejected &&
+                        guest.ErrorCode=="Unauthorized"&&plc.Writes==before,
+                        "A4未认证MRK角色必须在FC06前拒绝");
+                    MRKCommandResponse stale=commands.InvokeAsync(request(
+                        "operator",84,"word100","stale-version",Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(stale.BusinessSuccess!=true&&plc.Writes==before,
+                        "A4旧Connector Effective不得发送FC06");
+                    Guid operationId=Guid.NewGuid();
+                    MRKCommandResponse written=commands.InvokeAsync(request(
+                        "operator",84,"word100",version,operationId))
+                        .GetAwaiter().GetResult();
+                    Check(written.Stage==MRKCommandStage.Accepted &&
+                        written.State==MRKCommandState.Completed &&
+                        written.BusinessSuccess==true &&
+                        written.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
+                        plc.ActualWord==84&&plc.Writes==before+1 &&
+                        SpinWait.SpinUntil(()=>
+                            host.Device.Inspect("word100").HasValue &&
+                            object.Equals(host.Device.Inspect("word100").CurrentObject,(ushort)84),
+                            5000),
+                        "A4真实MRK→FC06→FC03读回与MDS采样未贯通");
+                    MRKCommandResponse dedup=commands.InvokeAsync(request(
+                        "operator",84,"word100",version,operationId))
+                        .GetAwaiter().GetResult();
+                    Check(dedup.OperationId==operationId&&
+                        dedup.BusinessSuccess==true&&plc.Writes==before+1,
+                        "A4同OperationId不能重复提交设备FC06");
+
+                    plc.IgnoreNextWrite();
+                    MRKCommandResponse uncertain=commands.InvokeAsync(request(
+                        "operator",85,"word100",version,Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(uncertain.Stage==MRKCommandStage.Accepted &&
+                        uncertain.BusinessSuccess==false &&
+                        uncertain.BusinessCode=="PLC_REGISTER_OUTCOME_UNKNOWN" &&
+                        plc.ActualWord==84 && plc.Writes==before+2,
+                        "A4设备已应答但实际未写入：必须Unknown且无自动重试");
+
+                    host.StopAsync().GetAwaiter().GetResult();
+                    int afterStop=plc.Writes;
+                    MRKCommandResponse after=commands.InvokeAsync(request(
+                        "operator",86,"word100",version,Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(after.BusinessSuccess!=true&&plc.Writes==afterStop&&
+                        host.Device.Inspect("word100").Quality==
+                            MDSVariableQuality.Stale,
+                        "A4旧会话Stop后即使MHS仍同版也必须拒绝FC06并降级MDS");
+                }
+            }
+        }
+
         private static void RunTwoDevices(string root)
         {
             using(TcpPlcFixture plcA=new TcpPlcFixture(73,99))
@@ -973,7 +1111,8 @@ namespace CxVisual.Runtime.Host
                     }
                     Check(plc.Writes==0,"SCADA首批只读Host不允许写设备");
                     RunTwoDevices(root);
-                    Console.WriteLine("PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift");
+                    RunAuthorizedDevice(root);
+                    Console.WriteLine("PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift and MRK signed-in-process A4 PLC FC06/FC03");
                     return 0;
                 }
             }
