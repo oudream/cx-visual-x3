@@ -202,14 +202,24 @@ namespace CxVisual.Studio
                 int x1=(int)Math.Round(to.X),y1=(int)Math.Round(to.Y);
                 Require(SetCursorPos(x0,y0),"无法移动Windows系统指针到图窗");
                 Thread.Sleep(100);
-                mouse_event(MouseLeftDown,0,0,0,UIntPtr.Zero);
-                for(int i=1;i<=8;i++)
+                bool pressed=false;
+                try
                 {
-                    Require(SetCursorPos(x0+(x1-x0)*i/8,y0+(y1-y0)*i/8),
-                        "真实拖框过程中Windows指针移动失败");
-                    Thread.Sleep(35);
+                    mouse_event(MouseLeftDown,0,0,0,UIntPtr.Zero);
+                    pressed=true;
+                    for(int i=1;i<=8;i++)
+                    {
+                        Require(SetCursorPos(x0+(x1-x0)*i/8,y0+(y1-y0)*i/8),
+                            "真实拖框过程中Windows指针移动失败");
+                        Thread.Sleep(35);
+                    }
                 }
-                mouse_event(MouseLeftUp,0,0,0,UIntPtr.Zero);
+                finally
+                {
+                    // UIA异常/鼠标移动失败时必须释放OS左键，避免影响下一个
+                    // 原生文件弹窗或后续Studio/GitHub runner的真实交互验收。
+                    if(pressed)mouse_event(MouseLeftUp,0,0,0,UIntPtr.Zero);
+                }
             });
             await Until(()=>viewer.SelectedOverlayId.HasValue &&
                 viewer.SelectedOverlayId.Value!=oldRoiId &&
