@@ -249,8 +249,34 @@ namespace CxVisual.Runtime.Host
                                 snapshot.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
                                     x.HasValue&&x.Value=="73"&&x.Quality=="Good"&&x.Revision>0),
                                 "真实Pipe没有读取MDS Good/原值/Revision");
-                            query.ExpectedGeneration=Guid.NewGuid().ToString("N");
+                            // 第二台设备须保留自己的Scope、原始点值和Generation，
+                            // 不能因一台PLC的数据源而跨站串写。
+                            MRHScadaPipeRequest other=new MRHScadaPipeRequest{
+                                SchemaVersion=1,Operation="snapshot",DeviceRef=b.ToString("N"),
+                                ExpectedDeploymentVersion=group.DeploymentVersion,
+                                ExpectedConfigVersion=group.Find(b).ConfigVersion,
+                                ExpectedGeneration=group.Find(b).Generation};
+                            MRHScadaPipeReply second=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,other);
+                            Check(second.Status=="Ok"&&second.Devices.Length==1&&
+                                second.Devices[0].ScopeId=="stationB"&&
+                                second.Devices[0].Generation!=snapshot.Devices[0].Generation&&
+                                second.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
+                                    x.HasValue&&x.Value=="45"&&x.Quality=="Good"),
+                                "本机Pipe跨设备Scope/值/会话串台");
+                            query.ExpectedDeploymentVersion="stale-project-effective";
                             MRHScadaPipeReply rejected=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
+                            Check(rejected.Status=="Rejected"&&
+                                rejected.ErrorCode=="DEPLOYMENT_VERSION_MISMATCH",
+                                "IPC旧工程部署Effective必须拒绝");
+                            query.ExpectedDeploymentVersion=group.DeploymentVersion;
+                            query.ExpectedConfigVersion="stale-connector-effective";
+                            rejected=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
+                            Check(rejected.Status=="Rejected"&&
+                                rejected.ErrorCode=="SESSION_VERSION_MISMATCH",
+                                "IPC旧Connector Effective必须拒绝");
+                            query.ExpectedConfigVersion=group.Find(a).ConfigVersion;
+                            query.ExpectedGeneration=Guid.NewGuid().ToString("N");
+                            rejected=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,query);
                             Check(rejected.Status=="Rejected"&&
                                 rejected.ErrorCode=="SESSION_VERSION_MISMATCH",
                                 "IPC旧Generation未拒绝");
