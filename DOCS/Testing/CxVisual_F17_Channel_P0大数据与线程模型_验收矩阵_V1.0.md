@@ -142,3 +142,16 @@
 - `0445dc9b`、`10f5e418`：PeerRemoved单个观察者异常应记`Observer/Operation`，其余观察者仍得到通知，父Channel仍Open；该正反例已纳入便利测试。
 - `eee8cd6a`：TestCenter健康监控增加`LastFailure.Address`的子客户端ID与Generation呈现，使用正式诊断而非独立记录。
 - **此组最新固定SHA Windows CI尚未结束**；新测试不因更早`350bab076`成功而自动记为通过。全部工控/CT/设备长稳SLA仍待单独验收。
+
+## 2026-10-30 F17 HTTP Client资源预算/回调发送新G1门禁（待Windows结果）
+
+| 用例 | 正式入口 | 真实验证断言 | 状态 |
+|---|---|---|---|
+| HTTP-CLI-01 | FTRMultiClientBudgetTests.HttpClientBoundedResponseAndReentrantSend | 真实HttpListener两个POST：第一个Received回调内同步调用同一Client.Send，第二个响应完整到达；若发送门在回调内持有即死锁；6秒有界等待 | 源码已提交，Windows新SHA待验 |
+| HTTP-CLI-02 | 同上 | ReceiveByteBudget=512，ReceiveBufferBytes=16；真实256字节成功HTTP响应必须因缓冲容量+交付隔离副本峰值超过512而拒绝，禁止交付；额度归0、峰值不超过512、拒绝计数增加 | 源码已提交，Windows新SHA待验 |
+| HTTP-CLI-03 | 同上 | 拒绝后的同一FTR HTTP客户端仍为Open，继续接收下一次小POST回复；业务结果未知不自动重放 | 源码已提交，Windows新SHA待验 |
+| HTTP-CLI-04 | 同上 | CapturePayloadEvidence=false时实际Received/Sent计数仍增长，ReadFrames中Rx/Tx的Bytes为空，不保留诊断大报文副本 | 源码已提交，Windows新SHA待验 |
+| HTTP-CLI-05 | 已有HttpClientSegmentedPost | segmentBytes=3单个37字节同步Send仍仅一次HTTP POST，异步复用相同底层单消息；原合同回归不变 | 旧固定SHA已有Windows证据，新SHA待验 |
+
+变更路径：Foundation/Transport/Channels/Implementations/HTTP/FTRHttpClientChannel.cs、IO/FTRChannelBase.cs、Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.cs；实施及x2对照见DOCS/Implementation/CxVisual_F17_Channel核心UML代码实装与验收_V2.0.md。
+已有P0 TCP与NamedPipe双向各2GiB和池化Retain跨Close回归保持原入口；本批HTTP不是完整无复制流式DataHandle或24小时/工业现场验收。
