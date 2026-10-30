@@ -1,6 +1,7 @@
 package daemonc
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gogo/internal/program"
 )
@@ -106,5 +108,69 @@ func TestRunProgramCountsFailuresBeforeEvents(t *testing.T) {
 	threshold := <-events
 	if threshold.Event != program.EventMaxError || threshold.Status.ErrorCount != 2 {
 		t.Fatalf("expected actual failure limit result, got %+v", threshold)
+	}
+}
+
+
+func TestWaitForRestartIsCancellable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan bool, 1)
+	go func() { done <- waitForRestart(ctx, time.Hour) }()
+	cancel()
+	select {
+	case completed := <-done:
+		if completed {
+			t.Fatal("canceled restart wait must not proceed to next start")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("restart wait did not respond to cancellation")
+	}
+}
+
+func TestRunProgramContextStopsDuringFailureBackoff(t *testing.T) {
+	dir := t.TempDir()
+	a := program.Program{
+		ID: 4201,
+		Path: filepath.Join(dir, "missing-executable"),
+		Dir: dir,
+		Enabled: program.ENABLE,
+		MaxError: 100,
+		MaxCount: 200,
+		StartWaitTime: 3600000, // 1 hour; must be interruptible
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := make(chan program.Event, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		RunProgramContext(ctx, a, events, func(id int64) (program.Program, error) {
+			return a, nil
+		}, log.New(io.Discard, "", 0), dir)
+	}()
+	select {
+	case first := <-events:
+		if first.Event != program.EventStart || first.Status.ErrorCount != 1 {
+			t.Fatalf("expected one failed start before backoff, got %+v", first)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("missing isolated startup failure")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker did not stop promptly during long backoff")
+	}
+	if len(events) != 0 {
+		t.Fatalf("worker retried after cancellation: pending=%d", len(events))
+	}
+}
+
+func TestEmitProgramEventDoesNotBlockAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if emitProgramEvent(ctx, make(chan program.Event), program.Event{Event: program.EventStart}) {
+		t.Fatal("canceled worker must not send into an unconsumed channel")
 	}
 }
