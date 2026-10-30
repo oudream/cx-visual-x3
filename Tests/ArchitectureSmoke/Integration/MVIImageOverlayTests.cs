@@ -461,6 +461,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             int notifications=0;
             store.Changed+=(sender,args)=>notifications++;
             var edit=new MVIImageOverlayEditGesture(store);
+            // 编译兼容不等于二进制兼容；保留旧2参Begin方法元数据身份。
+            Ensure(typeof(MVIImageOverlayEditGesture).GetMethod("Begin",new[]{
+                typeof(MVIImageOverlayItem),typeof(MVIImageOverlayEditKind)})!=null &&
+                typeof(MVIImageOverlayEditGesture).GetMethod("Begin",new[]{
+                    typeof(MVIImageOverlayItem),typeof(MVIImageOverlayEditKind),
+                    typeof(MVIImageGesturePane)})!=null,
+                "新增Pane重载不得移除旧SDK的双参数Begin方法签名");
             Ensure(!edit.IsActive && edit.Kind==null && !edit.Cancel(),
                 "无活动手势取消必须幂等");
             Fail<ArgumentNullException>(()=>edit.Begin(null,
