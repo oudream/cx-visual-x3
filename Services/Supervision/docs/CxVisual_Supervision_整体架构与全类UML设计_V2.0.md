@@ -784,3 +784,31 @@ sequenceDiagram
 - Daemon 历史 exitPidFiles 也已加 safeManagedPID 基础保护，但仍需要目标进程真实身份/代次、退出核验与进程树治理；目前仅可称发送 Kill 请求，不能称 OS 或业务层确认完成。
 
 详见 [12大功能域与实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十四章。
+
+
+## 20. 受管进程停止身份约束与结果分级（2026-10-30）
+
+P0 已在现有 Daemon 内实现第一道 **目标身份验证**：cmd/daemon/pid_identity.go 通过原 gopsutil OS 进程查询与 Go os.SameFile 比对，确认旧 Program.Path 和所选 PID 的真实可执行文件对应同一文件；否则拒绝 Kill，不为此增设另一个独立进程管理中心。
+
+调用点覆盖旧 PID 文件清理、Daemon 退出、配置更新/删除以及原 UDP 重启。更新配置时优先保存旧 Program.Path 作为核验依据，不相信请求中的替换可执行文件路径。日志明确把“拒绝”“发出终止请求”“实际退出已确认”作为不同等级，目前仅有前两类，不能将 OS Kill 返回 nil 视为真正完成停止。
+
+~~~mermaid
+sequenceDiagram
+ participant Main as Daemon进程停止入口
+ participant Config as 原Program配置
+ participant OS as OS进程与可执行文件
+ participant Worker as 原守护Worker
+ Main->>Config: 读取旧Program.Path
+ Main->>OS: PID和实际可执行文件身份核验
+ alt 身份不确定或文件不一致
+ OS-->>Main: 拒绝终止，记录风险
+ else 同一文件候选
+ Main->>OS: 发出终止请求
+ OS-->>Main: 请求接受或失败
+ Note over Main,Worker: 尚未拥有可靠进程退出/进程树/业务Ready回执
+ end
+~~~
+
+仍未关闭的风险：核验之后到实际 Kill 之间存在 TOCTOU 和 PID 重用可能；原子进程句柄代次、Wait() 确认、完整子进程树和工业安全运行许可仍需后续实现。cmd/daemon/pid_identity_test.go 使用自身测试子进程做正反测试源码，**本轮尚无主仓库 Go 三平台 CI 成功证据**。S11 认证、权限、审计和安全解锁仍未开放。
+
+持久闭锁日志已改为最多 1 MiB+1 字节的有界读取，避免恶意/损坏本地文件造成启动内存无限增长。实际证据和风险级别以 [12 大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十四、十五章为准。
