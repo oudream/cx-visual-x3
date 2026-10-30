@@ -25,6 +25,7 @@ using CxVisual.Mechanism.Orchestration;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Foundation.Data.Messages;
+using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Messages;
 using CxVisual.Mechanism.Runtime.Commands;
 using CxVisual.Mechanism.Presentation.Wpf.Interaction;
@@ -103,15 +104,42 @@ namespace CxVisual.Studio
                             "Studio没有使用Mechanism.Presentation.Wpf公共视图或创建了虚假命令目录");
                         AssertThrows(()=>messages.PublishTextAsync().GetAwaiter().GetResult());
                         AssertThrows(()=>commandView.InvokeSelectedAsync().GetAwaiter().GetResult());
+                        window.AttachStudioMessageCenter(bus,true);
                         messages.Subscribe();
                         Assert(bus.Metrics().SubscriptionCount==1,
                             "MNM观察必须使用注入Host的真实订阅令牌");
+                        MNMPublishReceipt receipt=AwaitStudioTask(messages.PublishTextAsync());
+                        Assert(receipt.DeliveredCount>=1&&bus.Metrics().Delivered>=1,
+                            "共用消息中心未从真实MNM收取订阅并发布结果");
+                        var definition=new FDCCommandDefinition(980001,"Double","本机软件倍增",
+                            new[]{new FDCCommandParameterDefinition("Input",typeof(double),true)},
+                            new[]{new FDCCommandParameterDefinition("Output",typeof(double),true)});
+                        using(IDisposable registration=commands.Register(
+                            new MRKCommandDescriptor("Studio/Software",definition),
+                            new MRKDelegateCommandHandler((context,inputs,token)=>
+                                Task.FromResult(new MRKCommandHandlerResult(
+                                    new Dictionary<string,object>{{"Output",
+                                        (double)inputs["Input"]*2.0}})))))
+                        {
+                            window.AttachStudioCommandCenter(commands,true);
+                            Assert(commandView.VisibleCommandCount==1&&
+                                commandView.SelectCommand("Studio/Software","Double"),
+                                "公共MRK视图未发现Host真实命令");
+                            commandView.SetInputJson("Input","3");
+                            MRKCommandResponse executed=AwaitStudioTask(commandView.InvokeSelectedAsync());
+                            Assert(executed.State==MRKCommandState.Completed&&
+                                (double)executed.Outputs["Output"]==6.0&&
+                                commandView.QueryOperation().OperationId==executed.OperationId,
+                                "公共命令中心未完成Schema→MRK→Operation→Query真实软件闭环");
+                        }
                         window.CloseStudioDocument("doc.messages");
                         Assert(bus.Metrics().SubscriptionCount==0,
                             "关闭Studio消息中心没有释放原MNM订阅");
                         window.CloseStudioDocument("doc.commands");
                         Assert(bus.State!=MNMMessageState.Stopped&&commands.Router.Discover().Count==0,
                             "关闭共享WPF视图错误销毁了原Host或创建了测试Handler");
+                        window.DetachStudioMessageCenter(bus);
+                        window.DetachStudioCommandCenter(commands);
                         Assert(window.StudioEngineeringRevision==rev,
                             "消息/命令运行观察不可修改MEM工程Revision");
                     }
