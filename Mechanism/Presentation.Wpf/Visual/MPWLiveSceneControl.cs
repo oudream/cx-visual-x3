@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -23,9 +24,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public string Updated { get; set; }
     }
 
+    /// <summary>仅用于展示受信宿主已结算的操作反馈；不替代MRK命令结果或设备回读。</summary>
+    public enum MPWLiveActionState { Rejected, Accepted, Unknown, Confirmed }
+
+    public sealed class MPWLiveActionFeedback
+    {
+        public MPWLiveActionFeedback(MPWLiveActionState state, string reason)
+        {
+            if (!Enum.IsDefined(typeof(MPWLiveActionState), state))
+                throw new ArgumentOutOfRangeException("state");
+            State = state;
+            Reason = reason ?? "";
+        }
+        public MPWLiveActionState State { get; private set; }
+        public string Reason { get; private set; }
+    }
+
     /// <summary>
     /// MEM真实Page + MVI投影 + 现有SceneView的在线只读承载。
-    /// Host授权前Widget不可点击，专业必须提供可信入口后才能启用交互。
+    /// 未注入受信操作处理器时Widget不可点击；此类不校验设备身份、不直接操作设备。
+    /// 委托必须由应用层先执行工程版本门禁，再交由可信Runtime.Host/MRK最终授权。
     /// </summary>
     public sealed class MPWLiveSceneControl : UserControl, IDisposable
     {
@@ -35,6 +53,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly IMDSExternalBindingResolver _source;
         private readonly Func<IReadOnlyList<MPWLivePoint>> _readPoints;
         private readonly IDisposable _ownedRuntime;
+        private readonly Func<MPWWidgetEventArgs, CancellationToken,
+            Task<MPWLiveActionFeedback>> _trustedAction;
+        private readonly CancellationTokenSource _actionLifetime = new CancellationTokenSource();
+        private MPWLiveActionFeedback _lastActionFeedback;
+        private string _actionMessage = "";
+        private int _actionInFlight;
         private readonly SceneView _scene;
         private readonly ListView _pointList;
         private readonly TextBlock _status;
@@ -48,6 +72,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Func<IReadOnlyList<MPWLivePoint>> readPoints,
             Func<Action,IDisposable> subscribe,
             IDisposable ownedRuntime)
+            : this(engineering, resourceId, source, readPoints, subscribe, ownedRuntime, null)
+        {
+        }
+
+        /// <summary>
+        /// 操作入口为显式可选注入。没有真实受信Host时传null，保持只读；
+        /// 应用Owner必须用PHMHmiRuntimeSession/MVI Action路由并在Host端认证授权。
+        /// </summary>
+        public MPWLiveSceneControl(MEMEngineeringSession engineering, Guid resourceId,
+            IMDSExternalBindingResolver source,
+            Func<IReadOnlyList<MPWLivePoint>> readPoints,
+            Func<Action,IDisposable> subscribe,
+            IDisposable ownedRuntime,
+            Func<MPWWidgetEventArgs, CancellationToken, Task<MPWLiveActionFeedback>> trustedAction)
         {
             if (engineering == null) throw new ArgumentNullException("engineering");
             if (resourceId == Guid.Empty) throw new ArgumentException("resourceId");
@@ -56,7 +94,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _engineering = engineering; _resourceId = resourceId;
             _revision = engineering.Revision;
             _source = source; _readPoints = readPoints; _ownedRuntime = ownedRuntime;
-            _scene = new SceneView { IsDesignMode = false, IsHitTestVisible = false };
+            _trustedAction = trustedAction;
+            _scene = new SceneView { IsDesignMode = false,
+                IsHitTestVisible = trustedAction != null };
+            _scene.WidgetEventRequested += OnWidgetEventRequested;
             _status = new TextBlock
             {
                 Margin = new Thickness(10, 6, 10, 6),
@@ -96,6 +137,61 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _refreshClock.Start();
             }
             catch { Dispose(); throw; }
+        }
+        public bool CanRequestAction { get { return !_closed && _trustedAction != null; } }
+        public MPWLiveActionFeedback LastActionFeedback { get { return _lastActionFeedback; } }
+
+        /// <summary>
+        /// 真WPF Widget事件只转交显式受信处理器。不并行重发、不自动重试，
+        /// 调用进入宿主后即使超时或取消也按Unknown展示，不能当成未执行。
+        /// </summary>
+        private async void OnWidgetEventRequested(object sender, MPWWidgetEventArgs args)
+        {
+            if (_closed || _trustedAction == null) return;
+            if (_engineering.Revision != _revision ||
+                _engineering.Find(_resourceId) == null || args.Address == null)
+            {
+                _lastActionFeedback = new MPWLiveActionFeedback(
+                    MPWLiveActionState.Rejected, "hmi.project_or_widget_identity_invalid");
+                _actionMessage = "操作拒绝：工程版本或实例地址失效";
+                Refresh();
+                return;
+            }
+            if (Interlocked.CompareExchange(ref _actionInFlight, 1, 0) != 0)
+            {
+                _actionMessage = "已有操作尚未结算：拒绝重复下发";
+                Refresh();
+                return;
+            }
+            _lastActionFeedback = null;
+            _actionMessage = "操作已请求，等待可信运行宿主结算";
+            Refresh();
+            try
+            {
+                MPWLiveActionFeedback outcome =
+                    await _trustedAction(args, _actionLifetime.Token);
+                if (_closed) return;
+                _lastActionFeedback = outcome ?? new MPWLiveActionFeedback(
+                    MPWLiveActionState.Unknown, "hmi.host_result_missing");
+            }
+            catch (Exception error)
+            {
+                if (_closed) return;
+                _lastActionFeedback = new MPWLiveActionFeedback(
+                    MPWLiveActionState.Unknown, "hmi.host_outcome_unknown:" +
+                        error.GetType().Name);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _actionInFlight, 0);
+                if (!_closed)
+                {
+                    _actionMessage = "操作结算：" + _lastActionFeedback.State +
+                        " · " + _lastActionFeedback.Reason +
+                        "（寄存器回读不代表机构物理到位）";
+                    Refresh();
+                }
+            }
         }
         private void OnTick(object sender, EventArgs args) { Refresh(); }
         private void ScheduleRefresh()
@@ -144,7 +240,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     "点 · "+(count == 0 ? "未取得实时点位" :
                         degraded > 0 ? "包含不可信或过期值（画面已降亮）" :
                         "当前采样质量Good")+
-                    " · 未接入受信设备控制通道";
+                    " · " + (_trustedAction == null ?
+                        "未接入受信设备控制通道" :
+                        "操作须经受信宿主逐次授权") +
+                    (string.IsNullOrEmpty(_actionMessage) ? "" : " · " + _actionMessage);
             }
             catch (Exception error)
             {
@@ -159,11 +258,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             if (_closed) return;
             _closed = true;
+            _actionLifetime.Cancel();
+            _scene.WidgetEventRequested -= OnWidgetEventRequested;
             if (_refreshClock != null) { _refreshClock.Stop(); _refreshClock.Tick -= OnTick; }
             if (_subscription != null) { _subscription.Dispose(); _subscription = null; }
             if (_ownedRuntime != null) _ownedRuntime.Dispose();
             _scene.SetScene(new MVISceneItem[0], null);
             _pointList.ItemsSource = null;
+            _actionLifetime.Dispose();
         }
     }
 }

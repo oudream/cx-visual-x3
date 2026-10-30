@@ -77,3 +77,10 @@
 - Applications/Studio/StudioShellSelfTests.cs：真实WPF STA通过Page菜单添加进度条、在原属性面板修改最大值、检测原MEM绑定已保存、再提交非法量程必须拒绝且Revision不变。
 - .github/workflows/hmi-mds-g1-windows.yml：增加master工作流concurrency及cancel-in-progress，减少并行频繁提交产生的重复CI排队，仅最新版HMI G1作为完整当前批证据；Studio综合/工程综合CI保留各自独立证据边界。
 - 最新一次验收核查：HMI G1新SHA与Studio S1真实Windows运行仍为queued；此前旧SHA通过记录不能涵盖新增的Pipe、Faceplate、MHS和Widget属性源码。禁止声称本批已验收或实机PLC操作可用。
+
+## 2026-10-30 第六批：受信操作入口的真实WPF Widget事件和结果显示
+
+- `Mechanism/Presentation.Wpf/Visual/MPWLiveSceneControl.cs`：保留原六参默认只读构造；新增显式受信操作委托，只有注入时才允许原SceneView真实Widget点击。委托是UI适配，不承载MRK命令、PLC协议、凭据或新运行仓。
+- 每次Widget事件均校验原MEM工程Revision、Page、完整MRI实例地址；同一视图操作未结算前不重复发，宿主异常/无结果显示Unknown，不自动重试，也不把回读当作机械动作到位。页面销毁取消生命周期Token、解除事件订阅；已有只读Pipe始终调用旧构造，不能控制设备。
+- `Tests/ArchitectureSmoke/Integration/HmiWpfTests.cs`：实际STA Window+原MEM Button，经`PHMHmiScreenAuthoring`原子保存ActionId；分别验证默认预览禁控、显式受信委托的Click→`PHMHmiRuntimeSession.RequestActionAsync`→已保存ActionId→Unknown反馈、MEM Revision不受影响。测试委托只返回软件回执，不是PLC现场执行。
+- 验收状态：本批提交后的Windows `hmi-mds-g1-windows.yml` 及真实HMI STA执行仍需以固定SHA工作流结果为准；远程认证命令服务未交付，Runtime.Host只读Pipe不开放写控制。

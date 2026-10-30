@@ -2,6 +2,9 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Variables;
@@ -13,6 +16,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// <summary>真实WPF STA窗口+MEM Page+MDS+HMI+MVI/SceneView，仍属G1软件门禁。</summary>
     internal static class HmiWpfTests
     {
+        private static T FindVisual<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null) return null;
+            T match = root as T;
+            if (match != null) return match;
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                T found = FindVisual<T>(VisualTreeHelper.GetChild(root, i));
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         public static int Run()
         {
             Exception failure = null;
@@ -80,6 +96,93 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                     throw new InvalidOperationException("HMI的WPF运行绑定没有真实更新");
                             }
                             finally { window.Close(); }
+                        }
+                        // 真WPF Button.Click必须默认禁控；只有显式受信宿主委托
+                        // 才允许沿MEM已保存ActionId走PHM运行会话，测试回执不代表PLC。
+                        Guid actionButton = PHMHmiScreenAuthoring.AddButton(
+                            doc, page.Id, "控制验证", 30, 90);
+                        PHMHmiScreenAuthoring.AssignSavedAction(doc, actionButton, "plc.write");
+                        int actionRevision = doc.Revision;
+                        using (PHMHmiRuntimeSession online = new PHMHmiRuntimeSession(
+                            doc.Project.Id, actionRevision, table,
+                            PHMHmiMode.AuthorizedOnline, TimeSpan.FromMinutes(1)))
+                        {
+                            Func<System.Collections.Generic.IReadOnlyList<MPWLivePoint>> points =
+                                () => new MPWLivePoint[0];
+                            using (MPWLiveSceneControl preview = new MPWLiveSceneControl(
+                                doc, page.Id, online, points, null, null))
+                            {
+                                Window previewWindow = new Window {
+                                    Content = preview, Width = 700, Height = 400,
+                                    Left = -10000, Top = -10000, ShowInTaskbar = false
+                                };
+                                try
+                                {
+                                    previewWindow.Show();
+                                    previewWindow.UpdateLayout();
+                                    Button previewButton = FindVisual<Button>(preview);
+                                    if (previewButton == null || preview.CanRequestAction ||
+                                        preview.LastActionFeedback != null)
+                                        throw new InvalidOperationException(
+                                            "HMI预览应绘制真实按钮但绝不能开放操作入口");
+                                    previewButton.RaiseEvent(new RoutedEventArgs(
+                                        ButtonBase.ClickEvent));
+                                    if (preview.LastActionFeedback != null)
+                                        throw new InvalidOperationException(
+                                            "HMI无受信宿主仍然发送了操作事件");
+                                }
+                                finally { previewWindow.Close(); }
+                            }
+                            int hostCalls = 0;
+                            using (MPWLiveSceneControl enabled = new MPWLiveSceneControl(
+                                doc, page.Id, online, points, null, null,
+                                async (widget, ct) =>
+                                {
+                                    PHMHmiOperationFeedback feedback =
+                                        await online.RequestActionAsync(
+                                            doc, widget.Address, widget.EventId, widget.Value,
+                                            (invocation, token) =>
+                                            {
+                                                hostCalls++;
+                                                if (invocation.ActionId != "plc.write")
+                                                    throw new InvalidOperationException(
+                                                        "HMI操作没有消费已保存ActionId");
+                                                return System.Threading.Tasks.Task.FromResult(
+                                                    new PHMHmiOperationFeedback(
+                                                        PHMHmiOperationState.Unknown,
+                                                        "PLC_REGISTER_OUTCOME_UNKNOWN"));
+                                            }, ct);
+                                    return new MPWLiveActionFeedback(
+                                        feedback.State == PHMHmiOperationState.Unknown ?
+                                            MPWLiveActionState.Unknown :
+                                            MPWLiveActionState.Rejected, feedback.Reason);
+                                }))
+                            {
+                                Window onlineWindow = new Window {
+                                    Content = enabled, Width = 700, Height = 400,
+                                    Left = -10000, Top = -10000, ShowInTaskbar = false
+                                };
+                                try
+                                {
+                                    onlineWindow.Show();
+                                    onlineWindow.UpdateLayout();
+                                    Button liveButton = FindVisual<Button>(enabled);
+                                    if (liveButton == null || !enabled.CanRequestAction)
+                                        throw new InvalidOperationException(
+                                            "受信Host未开放真实WPF Widget点击");
+                                    liveButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                                    Dispatcher.CurrentDispatcher.Invoke(new Action(() => {}),
+                                        DispatcherPriority.Background);
+                                    if (hostCalls != 1 || enabled.LastActionFeedback == null ||
+                                        enabled.LastActionFeedback.State != MPWLiveActionState.Unknown)
+                                        throw new InvalidOperationException(
+                                            "HMI Click->MEM Action->受信适配->Unknown显示未闭环");
+                                    if (doc.Revision != actionRevision)
+                                        throw new InvalidOperationException(
+                                            "HMI现场操作污染MEM工程Revision");
+                                }
+                                finally { onlineWindow.Close(); }
+                            }
                         }
                         doc.Close(true);
                     }
