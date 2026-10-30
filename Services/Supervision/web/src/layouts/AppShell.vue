@@ -42,7 +42,7 @@ onBeforeUnmount(() => {
       </nav>
       <div class="sidebar-foot">
         <span class="connection-indicator" :class="{ offline: !!error }"></span>
-        {{ error ? 'Monitor 连接异常' : updatedAt ? 'Monitor 已连接' : '等待连接' }}
+        {{ error ? (error.startsWith('访问被拒绝') ? '监控查询权限受限' : 'Monitor 连接异常') : updatedAt ? 'Monitor 已连接' : '等待连接' }}
         <small>只读运维控制台 · V1.0</small>
       </div>
     </aside>
