@@ -366,6 +366,14 @@
 - **状态**：IMG-01/02 InProgress；自动WPF Esc路由当前确认TestCenter G4，完整主副Pane鼠标手势G5、最新全量Imaging/Runtime G4需继续闭环。
 
 
+### 7.11 IMG-02 隐藏层禁用与跨专业MDS质量修订反例（2026-10-30）
+
+- [`9944b63b`](https://github.com/oudream/cx-visual-x3/commit/9944b63b23b8ded0a6b9dc5da91ae03f1d524d24)的[Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)、[Unified Runtime #41010672735](https://github.com/oudream/cx-visual-x3/actions/runs/41010672735)均已完成，但**整条Job为failure**。两个Job均在默认架构Smoke因`AUT-PLC-G1`失败；不是IMG-02代码或G4断言失败，不能将此固定SHA记为全量通过。
+- **精确根因**：`PADPlcPointBridge.ReadAndMapAsync`对点表漂移/读回失败调用`MarkStale`，因此已有MDS数据质量更新为`Stale`且**质量Revision应递增**，原采样时间`RefreshUtc`、`ChangeUtc`和`CurrentObject`不得变化；旧`AutomationPlcPointTests`错误要求`Revision`完全不变，和公共MDS质量-only合同冲突。[`d4710675`](https://github.com/oudream/cx-visual-x3/commit/d4710675c59c93af6d808cb3989a4c8d9eba6b0a)改为`Stale+Revision递增+两个时间不变+原值不变`同时验证，不删除反例、不允许旧回包作为新Good采样；运行时PLC/设备安全逻辑保持不变。
+- **进一步图元反证**：[`9431d358`](https://github.com/oudream/cx-visual-x3/commit/9431d358f3312afeab2e1619b8089c49252683f3)在已有MVI State测试补“隐藏ROI图层不得Begin新Move手势”；先前“编辑中隐藏层则TryUpdate拒绝”仍必须通过。此提交触发[Imaging #41011126920](https://github.com/oudream/cx-visual-x3/actions/runs/41011126920)和[Runtime #41011126974](https://github.com/oudream/cx-visual-x3/actions/runs/41011126974)完整新回归，记录时在运行中，不能预报成功。
+- **验证级别**：本轮WPF Esc事件在`8d94fa04`的Imaging Job中构建及`--imaging-viewer-smoke`两个Step已success；完整Job被后续其它默认Smoke阻断。IMG-01/02仍为InProgress；G5人手鼠标/键盘与工业G6继续未验。
+
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
