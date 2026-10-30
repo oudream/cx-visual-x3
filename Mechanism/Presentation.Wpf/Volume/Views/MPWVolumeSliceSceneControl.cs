@@ -35,6 +35,83 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             new Dictionary<Guid,ModelVisual3D>();
         private readonly Dictionary<Guid,int> _additionalPointCloudSizes=
             new Dictionary<Guid,int>();
+        private MVI3DSceneState _pointCloudScene;
+        private Func<MVI3DSceneItem,IReadOnlyList<Vector3>> _pointCloudResolver;
+        private readonly Dictionary<Guid,string> _pointCloudKeys=new Dictionary<Guid,string>();
+
+        /// <summary>MVI是点云实例可视状态的唯一Owner；WPF不持有专业点云资产。</summary>
+        public void BindAdditionalPointClouds(MVI3DSceneState scene,
+            Func<MVI3DSceneItem,IReadOnlyList<Vector3>> resolver)
+        {
+            Dispatcher.VerifyAccess();
+            if(scene!=null&&resolver==null)throw new ArgumentNullException("resolver");
+            if(_pointCloudScene!=null)_pointCloudScene.Changed-=PointCloudSceneChanged;
+            foreach(Guid id in new List<Guid>(_pointCloudKeys.Keys))
+                RemoveAdditionalPointCloud(id);
+            _pointCloudKeys.Clear();
+            _pointCloudScene=scene;_pointCloudResolver=resolver;
+            if(scene!=null)
+            {
+                scene.Changed+=PointCloudSceneChanged;
+                SynchronizePointClouds();
+            }
+        }
+        private void PointCloudSceneChanged(object sender,EventArgs e)
+        {
+            if(Dispatcher.CheckAccess())SynchronizePointClouds();
+            else Dispatcher.BeginInvoke(new Action(SynchronizePointClouds));
+        }
+        private void SynchronizePointClouds()
+        {
+            Dispatcher.VerifyAccess();
+            if(_pointCloudScene==null)return;
+            var wanted=new Dictionary<Guid,Tuple<string,IReadOnlyList<Vector3>,double>>();
+            int count=0;
+            foreach(MVI3DSceneItem item in _pointCloudScene.Snapshot())
+            {
+                if(item.Kind!=MVI3DSceneKind.PointCloud||!item.Visible)continue;
+                string key=item.SourceRef+":"+item.SourceRevision+":"+item.SpatialFrameRef;
+                string oldKey;
+                bool unchanged=_pointCloudKeys.TryGetValue(item.Id,out oldKey)&&oldKey==key;
+                IReadOnlyList<Vector3> points=unchanged?null:_pointCloudResolver(item);
+                if(!unchanged&&points==null)continue;
+                int size=0;
+                if(unchanged)_additionalPointCloudSizes.TryGetValue(item.Id,out size);
+                else size=points.Count;
+                count=checked(count+size);
+                if(count>12000)
+                    throw new InvalidOperationException("三维PointCloud场景合计超过12000显示点预算。");
+                wanted.Add(item.Id,Tuple.Create(key,points,item.Opacity));
+            }
+            foreach(Guid id in new List<Guid>(_pointCloudKeys.Keys))
+            {
+                if(wanted.ContainsKey(id))continue;
+                RemoveAdditionalPointCloud(id);
+                _pointCloudKeys.Remove(id);
+            }
+            foreach(var pair in wanted)
+            {
+                string oldKey;
+                if(_pointCloudKeys.TryGetValue(pair.Key,out oldKey)&&
+                    oldKey==pair.Value.Item1)
+                    SetAdditionalPointCloudOpacity(pair.Key,pair.Value.Item3);
+                else
+                {
+                    SetAdditionalPointCloud(pair.Key,pair.Value.Item2,pair.Value.Item3);
+                    _pointCloudKeys[pair.Key]=pair.Value.Item1;
+                }
+            }
+        }
+        private void SetAdditionalPointCloudOpacity(Guid id,double opacity)
+        {
+            ModelVisual3D visual;
+            if(!_additionalPointClouds.TryGetValue(id,out visual))return;
+            var model=visual.Content as GeometryModel3D;
+            var material=model==null?null:model.Material as DiffuseMaterial;
+            var brush=material==null?null:material.Brush as SolidColorBrush;
+            if(brush!=null&&brush.Opacity!=opacity)brush.Opacity=opacity;
+        }
+
         public int AdditionalPointCloudCount {get{return _additionalPointClouds.Count;}}
         public int AdditionalPointCount
         {
@@ -322,6 +399,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
             BindAdditionalMeshes(null,null);
+            BindAdditionalPointClouds(null,null);
             BindSceneSelection(null);
             ClearSurfaceMesh();
             ClearAdditionalMeshes();
@@ -495,8 +573,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 foreach(int face in faces)triangles.Add(start+face);
             }
             var mesh=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
-            byte alpha=(byte)Math.Round(opacity*255);
-            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(alpha,82,214,242)));
+            var brush=new SolidColorBrush(Color.FromRgb(82,214,242)){Opacity=opacity};
+            var material=new DiffuseMaterial(brush);
             return new GeometryModel3D(mesh,material){BackMaterial=material};
         }
         public void RemoveAdditionalPointCloud(Guid id)
