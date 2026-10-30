@@ -101,11 +101,11 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：130 项（S/R 源码存在或复用 53 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 130 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：136 项（S/R 源码存在或复用 59 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 136 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
-### E1 原 Go 守护与监控实体（均已存在）
+### E1 Go 守护与监控已实现对象（原资产及开发增量）
 
 | 状态 | Owner/包 | 类／接口／函数或组件 | 单一职责 | 不变量／阶段 |
 |---|---|---|---|---|
@@ -123,6 +123,12 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go cmd/monitor | HeartbeatStatus | 心跳观察状态 | 不推导 Ready |
 | S | Go cmd/monitor | ProcessStatus | 进程资源采样 | 单位需显式 |
 | S | Go internal/daemonc | RunProgram [函数] | 循环启动/Wait/失败与重启 | 渐进治理退避、停止 |
+| S | Go internal/daemonc | RunProgramContextWithStop [函数] | 原 Worker 的 exec.Cmd.Wait 承接停止结果 | 原入口和旧事件合同保持兼容 |
+| S | Go internal/daemonc | StopController | 单一 Worker 代次绑定原始 os.Process 句柄发出停止请求 | 不依靠裸 PID 重新发现目标 |
+| S | Go internal/daemonc | StopReceipt | 拒绝、请求失败、未知、Wait 已确认结果分级 | 本地诊断；不等于业务 Ready |
+| S | Go cmd/daemon | ownedStopOutcome / queueOwnedStop | 主循环异步收集原 Worker 停止回执 | 无新增 HTTP/UDP 控制协议 |
+| S | Go cmd/daemon | terminalLatchFile / readTerminalLatches / writeTerminalLatches | 原 Daemon 内守护上限闭锁本地持久化 | 不修改 Program SQLite 表 |
+| S | Go cmd/daemon | verifyManagedExecutablePID [函数] | 无活跃 Worker 的旧 PID 文件最小身份校验 | 不消除 PID 复用竞态 |
 | S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
 | S | Go cmd/daemon | recoveryPrograms [函数] | 旧程序恢复装配入口 | 保留旧守护兼容 |
@@ -812,3 +818,51 @@ sequenceDiagram
 仍未关闭的风险：核验之后到实际 Kill 之间存在 TOCTOU 和 PID 重用可能；原子进程句柄代次、Wait() 确认、完整子进程树和工业安全运行许可仍需后续实现。cmd/daemon/pid_identity_test.go 使用自身测试子进程做正反测试源码，**本轮尚无主仓库 Go 三平台 CI 成功证据**。S11 认证、权限、审计和安全解锁仍未开放。
 
 持久闭锁日志已改为最多 1 MiB+1 字节的有界读取，避免恶意/损坏本地文件造成启动内存无限增长。实际证据和风险级别以 [12 大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十四、十五章为准。
+
+
+## 21. 原守护Worker停止与Wait确认回执（2026-10-30）
+
+### 21.1 源码级落点与单一Owner
+
+旧 Daemon 的配置变更、旧重启和退出路径原先使用 PID 重新查找进程并发送 Kill，无法确认原进程已退出。新增 internal/daemonc/stop.go：StopController 仅持有**本代 RunProgramContextWithStop 已成功启动的 exec.Cmd**，停止操作使用原始 os.Process 句柄，并由唯一 Worker 在 cmd.Wait 返回后调用 finish。其结果为 StopReceipt（只在 Go Daemon 内部使用，不是外部 API）：
+
+- refused：没有对应 Worker 或活动子进程、代次/PID 不匹配、重复停止；
+- signal-failed：向原句柄发送终止信号失败；
+- unknown：请求已发出但超时前没有原 Worker Wait 确认；
+- wait-confirmed：Worker 对同一个 exec.Cmd 的 Wait 已返回且 ProcessState 可用。**不是完整进程树或专业业务 Ready**。
+
+~~~mermaid
+sequenceDiagram
+ participant Main as Daemon配置/重启/关闭
+ participant Gate as programWorkerGate
+ participant Stop as StopController（本代）
+ participant Child as 原exec.Cmd子进程
+ participant Worker as RunProgramContextWithStop
+ Main->>Gate: 查询本代停止控制器
+ Gate-->>Main: StopController
+ Main->>Stop: RequestStop(期望PID)
+ alt 无匹配原始句柄
+ Stop-->>Main: refused
+ else 有本代句柄
+ Stop->>Child: 对原始os.Process发送Kill请求
+ Child-->>Worker: 子进程退出
+ Worker->>Worker: cmd.Wait
+ Worker->>Stop: finish(Wait结果)
+ Stop-->>Main: wait-confirmed / unknown / signal-failed
+ end
+~~~
+
+### 21.2 接入范围、守护原则与留存风险
+
+- cmd/daemon/workers.go 门禁为每一代 Worker 关联一个 StopController，队列中的后继代次在旧 Worker 真正返回之前不能替换停止权。对同一 Program ID 仍仅一个活动守护。
+- cmd/daemon/owned_stop.go 将本地停止请求异步投递，不阻塞主事件循环；结果在 main.go 中记录，关停时有界等待。未获得 Worker Wait 结果时写 UNKNOWN，避免把 Kill 请求误报成成功。
+- Daemon 配置变更、原 UDP 重启、Daemon 自身退出三条运行时停止路径均接入原进程句柄；旧 PID 文件启动清理没有原句柄，因此仅保留保守的文件身份门禁，**仍无 Wait 确认**。
+- 受控停止不计为异常短运行，从而避免误触发 MaxError。原 Program/Event、UDP、SQLite、HTTP 兼容；未新增未经认证的远程写操作。
+- 仍存在原句柄停止与 Wait 的操作系统差异、PID 复用边缘场景、孤儿进程、进程树回收、Windows Service/systemd/launchd 终止语义、Daemon 进程被强杀时未完成回执，以及专业 Service/Device Ready；必须继续 G2/G3 验证。
+
+### 21.3 正反测试与证据等级
+
+- internal/daemonc/stop_test.go：测试进程自身作为真实受管子进程，验证 Kill/Wait、无效及过期 PID 拒绝、取消、超时 UNKNOWN、受控退出不计为异常。
+- cmd/daemon/workers_test.go 和 owned_stop_test.go：新旧 Worker 控制器交接、退出释放、拒绝不存在的守护者，确认与未知的诊断文本严格区分。
+- 已实际在本地 Go 1.23.2/Linux amd64 **独立最小模块**运行 StopController 同构核心的 go test -race -count=15 ./...，通过；**并非主仓库完整构建、Go 三平台 CI 或 G1 通过**。需以固定 SHA 检查监督迁移 GitHub Actions。
+- 详细追溯以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 为准。
