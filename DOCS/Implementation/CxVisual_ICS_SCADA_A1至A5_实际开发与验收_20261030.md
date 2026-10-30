@@ -90,3 +90,13 @@
 - 固定SHA `e6d0fe45` 的SCADA G1 `41040268805` **Windows x64 Restore与Build均通过**，但实际启动 `scada-g1-smoke` 后在双工站至少两轮FC03门禁失败，日志原文为“两个独立TCP工站没有同时完成至少2轮FC03”；这不是成功验收。更早双设备运行 `41029431596`、`41032010307` 也在该运行门禁失败。
 - 后续 `MRHScadaSmoke.cs` 已将两个夹具的真实报文数、周期数、PLC Completion完整故障加入失败信息（提交 `b03653df`）；当前等待后续对应Windows G1 CI取得确切根因，**不可猜测归因为驱动、Socket、MHS或线程调度**。在得到新成功日志之前，新增单PLC隔离恢复与Pipe联调只属于已提交源码/待验证测试，不能宣称工业G1验收成功。
 - 工作流已加入同master分支的 `concurrency/cancel-in-progress`，保留最新版本验收以免并行开发不断积压旧Runner；取消的旧SHA不属于成功测试。
+
+## 11. G1失败修复批次：首采阻断诊断、双PLC夹具线程与关闭幂等（2026-10-30）
+
+- 真实Windows日志：SHA e6d0fe4540 对应SCADA G1 Run 41040268805 的 Restore、Host Windows x64 Build 均通过，但 scada-g1-smoke 在双工站连续两轮FC03门禁失败。这不是软件G1通过。
+- SHA b03653df：新增两台OS TCP夹具真实收包数、FCR完成周期数、Completion完整异常，在新CI里定位首采根因。
+- SHA b67cd676：TcpPlcFixture原先使用默认Task.Run长期阻塞Accept/Read；改为Task.Factory.StartNew LongRunning，让真实Socket夹具拥有专用线程，减少多PLC/FCR并行的线程池竞争。这是合理的夹具修复，但不能在新CI验证前声称全部根因已经定位。
+- SHA e0a1081e：多设备StopAsync复用同一个生命周期Task，避免重复Stop在PLC IO尚未清理前返回；SHA 66391a7551增加双工站并发Stop同Task与Stop后无残余TCP回归。
+- SHA 62af7a35：组装配开始前逐设备复核真实Connector Effective及MEM工程版本。
+- SHA d0ed2799：SCADA G1 workflow启用同master分支并发取消，排队/取消的旧SHA不算成功。最新版本CI仍必须实际执行Windows Restore、Build与OS TCP scada-g1-smoke。
+- 当前真实设备身份、安全互锁、跨账户远程命令、SCM与G2/G3均不在上述本机软件测试证明范围。
