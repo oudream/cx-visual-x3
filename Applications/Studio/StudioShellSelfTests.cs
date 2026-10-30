@@ -4,12 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Runtime.Execution;
 using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
@@ -3110,6 +3112,90 @@ namespace CxVisual.Studio
                     window.ApplyStudioTheme(false);
                     Assert(window.StudioEngineeringRevision==before,
                         "纯视觉/搜索/主题操作修改了MEM工程Revision");
+                });
+                CheckStep("B-CT3D Studio真实MEM Case四视图、ROI编辑与保存重开", () =>
+                {
+                    string folder=Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Studio-CT3D-"+Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(folder);
+                    int originalRevision=window.StudioEngineeringRevision;
+                    try
+                    {
+                        const int n=12;
+                        byte[] bytes=new byte[n*n*n*2];
+                        for(int z=5;z<=6;z++)for(int y=5;y<=6;y++)for(int x=5;x<=6;x++)
+                        {
+                            int index=(x+y*n+z*n*n)*2;
+                            bytes[index]=0xa4;bytes[index+1]=0x06;
+                        }
+                        string raw=Path.Combine(folder,"source.raw");
+                        File.WriteAllBytes(raw,bytes);
+                        string project=Path.Combine(folder,"analysis.cxproj");
+                        var info=new FVORawVolumeInfo(n,n,n,1,1,1,
+                            FVORawVoxelFormat.UInt16,"source.raw");
+                        var frame=new FVOVolumeSpatialFrame(1,1,1,20,30,40,
+                            new double[]{1,0,0,0,1,0,0,0,1},true);
+                        var source=CT3DAssetReference.Capture(folder,"source.raw",
+                            info,frame,1,CancellationToken.None);
+                        var baseline=CT3DAnalysisCase.Analyze(folder,source,1000,100,
+                            CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None);
+                        using(var engineering=MEMEngineering.Create("StudioCT3D"))
+                        {
+                            MEMContent owner=engineering.AddPage("真实三维分析").RootContent;
+                            CT3DAnalysisPersistence.Commit(engineering,owner,
+                                engineering.Revision,folder,baseline,CancellationToken.None);
+                            engineering.SaveAs(project);
+                        }
+                        window.OpenStudioDocument("doc.ct3d");
+                        var tab=window.StudioDock.Layout.Descendents().OfType<LayoutDocument>()
+                            .Single(x=>x.ContentId=="doc.ct3d");
+                        var workspace=tab.Content as StudioCT3DDocument;
+                        Assert(workspace!=null&&workspace.CaseCount==0,
+                            "Studio CT3D文档必须初始不加载任何演示工程");
+                        workspace.OpenProject(project);
+                        Assert(workspace.CaseCount==1&&workspace.CurrentAnalysis!=null&&
+                            workspace.CurrentAnalysis.Kind==CT3DAnalysisKind.MeshPlane,
+                            "真实CT3D MEM工程和原始RAW未进入Studio工作台");
+                        var viewport=workspace.Workbench.GetViewport(FVOSlicePlane.XY);
+                        var physical=viewport.SelectRectangleRoi(5,5,6,6);
+                        Assert(physical.Unit=="mm"&&
+                            Math.Abs(physical.TopLeft.Z-46)<1e-9,
+                            "Studio四视图未使用同一标定Frame的二维物理ROI");
+                        CT3DAnalysisCase edited=workspace.RecomputeSelectedSliceRoi(.49,.51);
+                        Assert(workspace.HasPendingAnalysis&&edited.Plane.SampleCount==9&&
+                            edited.Plane.ResultId!=baseline.Plane.ResultId,
+                            "Studio选区没有形成可持久化的新专业Feature");
+                        workspace.SavePendingResult();
+                        Assert(!workspace.HasPendingAnalysis,
+                            "专业结果提交成功后仍错误保留未保存状态");
+                        Guid editedId=edited.Plane.ResultId;
+                        workspace.OpenProject(project);
+                        Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
+                            workspace.CurrentAnalysis.GetFeatureMeasurements().Count==2,
+                            "Studio重新打开不能恢复已保存的Feature及Measurement");
+                        using(var engineering=MEMEngineering.Open(project))
+                        {
+                            var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
+                                .Single(x=>x.Aspects.Any(a=>
+                                    a.ProviderId==CT3DAnalysisPersistence.ProviderId));
+                            var current=CT3DAnalysisPersistence.Open(engineering,
+                                engineering.GetAddress(owner),folder,CancellationToken.None);
+                            Assert(current.Plane.ResultId==editedId&&
+                                owner.Aspects.Any(a=>a.ProviderId==
+                                    MVI3DSceneLayoutPersistence.ProviderId),
+                                "Studio保存必须同时提交CT3D Data及Scene Visual Aspect");
+                        }
+                        Assert(window.StudioEngineeringRevision==originalRevision,
+                            "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
+                        window.CloseStudioDocument("doc.ct3d");
+                        Assert(!window.GetStudioContentIds().Contains("doc.ct3d"),
+                            "Studio关闭三维工程文档没有释放Dock会话");
+                    }
+                    finally
+                    {
+                        window.TryCloseStudioDocument("doc.ct3d",true);
+                        try{Directory.Delete(folder,true);}catch(IOException){}
+                    }
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
