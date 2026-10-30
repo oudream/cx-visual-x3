@@ -326,3 +326,20 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 **进程停止安全边界**：同时将旧 exitPidFiles 路径纳入 safeManagedPID，禁止以 PID 0/负值/Daemon 本身为目标。此谓词只做 ID 基础校验，**不提供正 PID 的创建代次、真实可执行文件身份、进程树退出等待或业务 Ready 回执**；Kill 返回成功仅代表信号/终止请求已发出，不得说进程已完成停止。后续需由持有真实子进程句柄的 Worker 及 OS 平台适配完成目标身份与停止结果核实。
 
 **证据等级**：已提交正式源码/测试/文档（S）；此轮 GitHub Windows/Linux/macOS Go CI、真实集成 Daemon、物理工控机和长稳/断电 G1/G2/G3 未证实，必须在固定 SHA 下验收。
+
+
+## 十五、停止目标可执行文件身份验证及回执分级（2026-10-30）
+
+**真实源码**：cmd/daemon/pid_identity.go 使用已有 gopsutil/v3/process 查询目标 OS 进程的真实可执行文件，配合 Go os.Stat/os.SameFile 与旧 Program.Path 做同一文件身份对比；空路径、PID 0/负数/Daemon 本身、目标不可访问或路径不相符一律拒绝发送 Kill。该判断不是基于进程名的宽松子串相似度。
+
+**已接入的停止入口**：
+1. 启动阶段旧 PID 文件遗留程序清理：原 LoadProgramRunPid 仅是候选，必须再核验 OS 可执行文件。
+2. Daemon 停止时对 _runProgramIds 的已登记 PID 进行身份校验；未匹配则保留并报警，不盲目 Kill。
+3. 配置更新或删除：先保留更新前旧 Program 的 Path，再对旧 PID 校验；不能使用收到的替换配置路径来确认旧进程。
+4. 原 UDP 重启：依据当前本地 Program 配置验证被管子进程，不相信请求传入的任意路径；无法确认则拒绝终止。
+
+**结果分类**：日志明确区分 refused/failed、stop request SENT（请求已发送）与退出真实确认。当前仅覆盖拒绝或向 OS 发出请求；**尚无安全可靠的 Wait() 完成回执、原子 PID 代次绑定、完整进程树终止和专业 Service/Device Ready 确认**。通过 os.SameFile 缩小误杀风险，但核验到 Kill 之间仍存在 TOCTOU/PID 复用窗口；绝不可把此次工作宣布为完整进程身份或安全停止验收。
+
+**隔离测试**：cmd/daemon/pid_identity_test.go 的负向测试拒绝无效/本进程 PID、空可执行路径；正反测试只由 Go 测试启动自己的临时受管子进程，验证同一可执行文件可识别、错误文件必拒绝，清理时只结束测试创建的子进程。原仓库此项测试/Go 三平台 CI 尚未取得本轮完成证据，G1 待核实。
+
+**持久日志质量补强**：terminal_store.go 改为有界流读取，最大为 1 MiB+1 字节，避免启动阶段因超大坏文件分配无界内存；terminal_store_test.go 补超长文件拒启、只读快照不可改变锁、运行中写故障后拒绝全部新启动等测试。工作目录下的监督日志需要受保护和备份；上限锁的正式权限审核、审计和在线解除仍是 S11 未来工作。
