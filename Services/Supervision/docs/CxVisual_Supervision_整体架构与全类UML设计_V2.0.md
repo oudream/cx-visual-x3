@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：136 项（S/R 源码存在或复用 59 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 136 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：142 项（S/R 源码存在或复用 65 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 142 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -128,6 +128,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go internal/daemonc | StopReceipt | 拒绝、请求失败、未知、Wait 已确认结果分级 | 本地诊断；不等于业务 Ready |
 | S | Go cmd/daemon | ownedStopOutcome / queueOwnedStop | 主循环异步收集原 Worker 停止回执 | 无新增 HTTP/UDP 控制协议 |
 | S | Go cmd/daemon | terminalLatchFile / readTerminalLatches / writeTerminalLatches | 原 Daemon 内守护上限闭锁本地持久化 | 不修改 Program SQLite 表 |
+| S | Go cmd/daemon | orphanObservationFile / writeOrphanObservation | 启动隔离结果带时间戳原子投影，供 Monitor 本机只读展示 | 不是活跃隔离真源或安全许可 |
 | S | Go cmd/daemon | verifyManagedExecutablePID [函数] | 无活跃 Worker 的旧 PID 文件最小身份校验 | 不消除 PID 复用竞态 |
 | S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
@@ -149,6 +150,8 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go internal/httpapi | AlertHistoryProvider | 现有故障历史读取函数类型 | 本地访问限制 |
 | S | Go internal/httpapi | Register [函数] | GET health/overview/programs 路由 | 不注册控制接口 |
 | S | Go internal/httpapi | RegisterAlertHistory [函数] | 注册异常历史查询路由 | 本机只读 |
+| S | Go internal/guardview | Item / Source / Report / Read | 有界解码、独立来源状态、精确 Program ID 投影 | 不读取实时 Daemon 内存或执行控制 |
+| S | Go internal/httpapi | GuardProvider / RegisterGuardDiagnostics | 只读 GET /api/v1/guard | security.LocalOnly；无写路由 |
 | S | Go internal/security | LocalOnly [函数] | 本地访问限制中间件 | 不是身份/RBAC |
 
 ### E3 现有跨体系 C# Owner（复用，不迁入 Go）
@@ -174,6 +177,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 |---|---|---|---|---|
 | S | web/src/types | Program [TS interface] | 进程快照类型 | 与 Go JSON 对齐 |
 | S | web/src/types | Overview [TS interface] | 进程汇总类型 | 只用于现有快照 |
+| S | web/src/types | GuardIssue / GuardSource / GuardReport [TS interface] | 守护文件观测、缺失与来源时间契约 | 不把未知当作健康 |
 | S | web/src/api | fetchOverview/fetchPrograms/fetchProgram [函数] | 当前只读获取进程数据 | 统一 client.ts |
 | S | web/src/api | fetchEvents/fetchAlertHistory [函数] | 事件与历史故障查询 | 原访问限制 |
 | S | web/src/stores | useMonitorStore [Pinia] | 程序与总览快照/过期错误态 | 不持有服务真源 |
@@ -181,6 +185,8 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | web/src/stores | useAlertHistoryStore [Pinia] | 异常历史页面状态 | 不等于活动告警 |
 | S | web/src/stores | useThemeStore [Pinia] | 浅色/深色 Token | 保留双主题 |
 | S | web/src/views | DashboardView/ProgramsView [Vue] | 运行总览与程序详情 | 已有真实接口 |
+| S | web/src/views | GuardView [Vue] | 双来源守护诊断、筛选、时间及原因 | 只读，S11 安全操作未开放 |
+| S | web/src/stores,utils | useGuardStore / guardVerdict | 缓存旧证据标记过期、推导保护状态 | 仅双来源可用才显示无记录 |
 | S | web/src/views | EventsView/AlertsView [Vue] | 事件记录与异常历史 | 已有真实接口 |
 | S | web/src/components | CpuChart [Vue] | CPU 数据图组件 | 不得伪造趋势数据 |
 
@@ -986,3 +992,45 @@ sequenceDiagram
 - PID 文件可能被其他进程复用；扫描只识别/阻断，不承诺进程树实际停止。对确实存活的同一可执行文件也不能断言属于上一代，所以保留隔离和现场核验。
 - 原受管进程的单次启动、StopController/Wait 确认与终止上限跨重启闭锁继续使用本文件前章；本次不是 S11 身份、授权、审计或远程恢复完成。
 - 新增 `cmd/daemon/orphan_guard_test.go` 的真实测试子进程正反用例，`supervision-migration.yml` 扩展 Linux Race 筛选；当前源码已提交（S），主仓库完整 Go 三平台 CI/G1、工业 G2/G3 均未取得成功证据。详见 [功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十九章。
+
+
+## 25. 守护诊断只读展示与H5跨页联动（2026-10-30）
+
+### 25.1 真实 Owner、数据流和安全边界
+
+新增的是**可用的本机诊断能力**，不是 S11 远程授权操作。终止闭锁继续由 Daemon 的 `programWorkerGate` 与 `daemon-terminal-latches.json` 管理；孤儿隔离继续由 Daemon 启动时 `scanLegacyPIDFiles` 和 Gate 负责。诊断展示另生成带时间戳的 `daemon-orphan-observation.json`；该文件不参与启动许可，写失败不能自动清除内存隔离。Monitor 通过 `internal/guardview.Read` 只读装配两份文件，复用 Gin、`security.LocalOnly` 注册 `GET /api/v1/guard`，无新增进程、数据库、认证替身或可写控制 API。
+
+~~~mermaid
+sequenceDiagram
+ participant Daemon as Go Daemon（唯一守护 Owner）
+ participant Files as 本地supervision诊断文件
+ participant Monitor as Go Monitor / guardview
+ participant API as GET /api/v1/guard（仅回环）
+ participant H5 as Vue5页面
+ Daemon->>Files: MaxError/MaxCount锁持久化（原文件）
+ Daemon->>Files: 启动孤儿扫描原因＋观察时间（只读投影）
+ H5->>API: 本机GET 无写操作
+ API->>API: security.LocalOnly
+ API->>Monitor: guardview.Read(workDir)
+ Monitor->>Files: 有界只读/独立校验来源
+ Files-->>Monitor: 记录＋有效性＋观察时间
+ Monitor-->>API: terminal/orphans（available/error/items）
+ API-->>H5: 只读JSON响应
+ H5->>H5: 总览、程序详情、诊断、历史事件跨页对应
+~~~
+
+### 25.2 前端真实页面与对象
+
+- `GuardView.vue`：新增第五个正式路由“守护诊断”，双来源计数/来源可用性/观察时刻/完整原因、搜索、闭锁与孤儿分组、按 Program ID 跳转程序；一条 Program 同时被两种状态记录时保持独立行。
+- `DashboardView.vue`：新增两类守护保护汇总，未知数据不显示数字 0；`ProgramsView.vue`：增加守护保护列、仅保护项筛选、详情中的原始原因、来源失效警告。
+- `EventsView.vue`、`AlertsView.vue`：保持 Monitor 原始事件与历史异常事实，改为可点击 Program ID 的跨页面定位；403 拒绝提示与后端 API 实际错误保持一致。
+- `AppShell.vue`：统一导航、全局刷新、相关页面轮询、深浅主题；复用 Element Plus、Pinia、Vue Router 和现有 CSS，不引入新 UI 库。`useGuardStore` 失败后保留可见旧证据但展示过期风险。`guardVerdict` 只在双来源均可读且无对应记录时返回“无已记录保护项”，并不推出 OS/Service/Device Ready。
+
+### 25.3 验收、可观测性及不宣称的能力
+
+1. 后端：`internal/guardview/report_test.go` 校验坏文件/缺失/双来源独立性/时间/64 位 ProgramId；`internal/httpapi/guard_test.go` 校验 LocalOnly 403 不调用 Provider、成功 GET 与不开放 POST；`cmd/daemon/orphan_observation_test.go` 校验 Daemon 投影与 Monitor 读取互通、空记录与非法输入。
+2. 前端：`web/src/utils/guard.test.ts` 覆盖两来源组合、“无记录”与“未知”的区别及超大 ID；`web/src/api/client.test.ts` 覆盖只读 GET 和远程 403。Go Windows/Linux/macOS、Linux Race 和 Vue Typecheck/Vitest/Build 已在现有 GitHub Actions 中纳入源码门禁，但**本轮 SHA 尚未取得成功执行记录，不是 G1 已验**。
+3. Monitor/Daemon 必须使用能读取同一诊断工作目录的部署配置与权限。闭锁观察时刻为文件最近修改时间；孤儿记录是 **上一次 Daemon 启动扫描**，不能把两者叠加成当前“活动故障”或直接显示为进程存活。
+4. 历史 Worker `Start` 成功到 PID/代次凭证持久化的遗漏窗口仍未关闭；S11 登录/授权/审计、安全解锁及正式停止回执、服务/专业 Ready、跨节点监控仍是未完成内容。
+
+以 [12大功能域实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第20章为交付证据索引。
