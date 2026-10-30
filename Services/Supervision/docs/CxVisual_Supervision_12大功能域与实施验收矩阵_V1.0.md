@@ -286,7 +286,7 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 - workers_test.go：128 个请求并发争抢相同 int64 ProgramId，只能一个取得守护权；不同 ID 可并行；取消、非法 ID、空 Worker 拒绝；旧 Worker 结束后可重入。
 - workers_test.go 的 TestRecoveryProgramsSkipsReservedGuardian：PID=0 且 Worker 仍占用时，周期恢复无需等待其配置的 3600 秒首次延时，也不启动第二个 Worker。
 - main_test.go 的 TestSafeManagedPID：零、负数和 Daemon 自身 PID 必须拒绝。
-- **有限实测**：以同一门禁算法搭建独立 Go 1.19 最小工程、使用 stub 的 Program/Daemon 依赖，go test -count=20 和 go test -race -count=10 均执行成功。该结果**不覆盖**主仓库的正式依赖、真实 recoveryPrograms 集成测试、Go 三系统 CI 或现场设备。
+- **有限实测**：以同一门禁算法搭建独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 最小工程、使用 stub 的 Program/Daemon 依赖，go test -count=20 和 go test -race -count=10 均执行成功。该结果**不覆盖**主仓库的正式依赖、真实 recoveryPrograms 集成测试、Go 三系统 CI 或现场设备。
 
 **交付级别与未完风险**：GitHub 上源码及测试已提交（S）；本轮没有完整仓库 Go/Windows/macOS CI 的真实通过记录，原仓库 G1 仍待核实。旧 Worker 退出前配置启用可能被暂时拒绝并延后到下次恢复；原 MaxError/MaxCount 上限仍可能在后续周期重建 Worker 后被重置；正 PID 身份和进程树停止回执尚未关闭。当前只是同一 Program 的并发守护占用修复，不代表 S11 认证授权、完整 SX-B 故障恢复或远程写操作已验收。
 
@@ -303,6 +303,6 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 
 **新增测试源码**：workers_test.go 覆盖 MaxError/MaxCount 跨恢复拒绝、配置启用排队交接无重叠、终止时丢弃队列、无关事件不闭锁、禁用/闭锁无延时；daemonc/daemon_test.go 检查终止钩子发生在原终止事件发布前。旧 TestRecoveryProgramsSkipsReservedGuardian 已补 Enabled 前置条件，避免因禁用短路造成虚假的防重通过。
 
-**实测与等级**：本地独立 Go 1.19 最小门禁工程执行 go test -count=30 -race ./... 成功（返回码 0），但该工程使用简化依赖，只证明门禁核心并发算法，不代表完整 cx-visual-x3、正式 RunProgramContext 集成测试或 GitHub Windows/Linux/macOS CI 已通过。仓库源码和测试已提交（S），G1/G2/G3 待真实作业/现场证据。
+**实测与等级**：本地独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 最小门禁工程执行 go test -count=30 -race ./... 成功（返回码 0），但该工程使用简化依赖，只证明门禁核心并发算法，不代表完整 cx-visual-x3、正式 RunProgramContext 集成测试或 GitHub Windows/Linux/macOS CI 已通过。仓库源码和测试已提交（S），G1/G2/G3 待真实作业/现场证据。
 
 **剩余风险**：Daemon 进程重启清除锁；人工认证解锁及持久化未实现；旧 UDP 配置与重启仍无可信身份；正 PID 身份、进程树终止、核验回执与活动告警仍未完成，不能宣称 SX-B 全链路验收。
