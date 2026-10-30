@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
@@ -42,12 +43,24 @@ namespace CxVisual.Runtime.Host
         private readonly List<MRHScadaRuntime> _devices;
         private readonly string _deploymentVersion;
         private readonly Func<bool> _deploymentApproval;
+        private readonly string _projectPath, _configRoot;
+        private readonly DateTime _projectStamp;
+        private readonly MRHScadaDeviceLaunch[] _launches;
+        private readonly string[] _connectorVersions, _channelIds;
+        private readonly object _devicesGate = new object();
         private bool _started, _stopped, _disposed;
 
         private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices,string deploymentVersion,
-            Func<bool> approval)
-        { _devices=devices;_deploymentVersion=deploymentVersion;
-          _deploymentApproval=approval; }
+            Func<bool> approval,string projectPath,string configRoot,
+            MRHScadaDeviceLaunch[] launches)
+        {
+            _devices=devices;_deploymentVersion=deploymentVersion;
+            _deploymentApproval=approval;_projectPath=Path.GetFullPath(projectPath);
+            _configRoot=configRoot;_projectStamp=File.GetLastWriteTimeUtc(_projectPath);
+            _launches=(MRHScadaDeviceLaunch[])launches.Clone();
+            _connectorVersions=devices.Select(x=>x.ConfigVersion).ToArray();
+            _channelIds=devices.Select(x=>x.Device.ChannelId).ToArray();
+        }
 
         /// <summary>正式入口：MEM ProjectId关联MHS已持久发布的SCADA部署配置。</summary>
         internal static MRHScadaRuntimeGroup OpenFromEngineering(
@@ -121,7 +134,8 @@ namespace CxVisual.Runtime.Host
                 }
                 if(additionalApproval!=null&&!additionalApproval())
                     throw new InvalidOperationException("SCADA设备组准备期间部署版本漂移");
-                return new MRHScadaRuntimeGroup(prepared,deploymentVersion,additionalApproval);
+                return new MRHScadaRuntimeGroup(prepared,deploymentVersion,
+                    additionalApproval,projectPath,configRoot,configs);
             }
             catch
             {
@@ -135,11 +149,83 @@ namespace CxVisual.Runtime.Host
         internal int Count {get{return _devices.Count;}}
         internal bool IsDeploymentApproved {get{return !_disposed &&
             (_deploymentApproval==null||_deploymentApproval());}}
-        internal MRHScadaRuntime[] SnapshotDevices(){return _devices.ToArray();}
+        internal MRHScadaRuntime[] SnapshotDevices()
+        {
+            lock(_devicesGate)return _devices.Where(x=>x!=null).ToArray();
+        }
+        // 在只读Pipe读取当前MDS与设备身份时禁止并发卸载此设备。
+        // 不锁FC03采集热路径，也不持有第二份Current。
+        internal TResult ReadDevices<TResult>(Func<MRHScadaRuntime[],TResult> reader)
+        {
+            if(reader==null)throw new ArgumentNullException("reader");
+            lock(_devicesGate)
+                return reader(_devices.Where(x=>x!=null).ToArray());
+        }
+        internal int DetachFaulted(MRHScadaRuntime failed)
+        {
+            if(failed==null)throw new ArgumentNullException("failed");
+            int index;
+            lock(_devicesGate)
+            {
+                if(!_started||_stopped||_disposed)
+                    throw new InvalidOperationException("SCADA设备组已停止，不允许热恢复");
+                index=_devices.IndexOf(failed);
+                if(index<0||!failed.Completion.IsCompleted)
+                    throw new InvalidOperationException("只能卸载组内真实结束的故障世代");
+                _devices[index]=null; // Pipe发现期间设备暂时不可用，不复用旧Good。
+            }
+            failed.Dispose(); // 在读Pipe临界区之后释放旧MDS/Channel
+            return index;
+        }
+        internal async Task<MRHScadaRuntime> StartReplacementAsync(int index,
+            string oldGeneration,CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            MRHScadaDeviceLaunch launch;
+            lock(_devicesGate)
+            {
+                if(!_started||_stopped||_disposed||index<0||index>=_devices.Count||
+                    _devices[index]!=null)
+                    throw new InvalidOperationException("SCADA替换设备槽位尚未就绪");
+                launch=_launches[index];
+            }
+            if(!IsDeploymentApproved||!File.Exists(_projectPath)||
+                File.GetLastWriteTimeUtc(_projectPath)!=_projectStamp)
+                throw new InvalidOperationException("SCADA工程部署或保存时间变化，不能自动恢复");
+            MRHScadaRuntime fresh=MRHScadaRuntime.Open(_projectPath,_configRoot,
+                launch.DeviceNodeId,launch.ConnectorModuleId,launch.ScopeId,
+                launch.IntervalMs,launch.Contiguous,_deploymentApproval);
+            try
+            {
+                if(fresh.ConfigVersion!=_connectorVersions[index]||
+                    fresh.Device.ChannelId!=_channelIds[index])
+                    throw new InvalidOperationException(
+                        "SCADA Connector Effective或Channel身份变化，拒绝单设备恢复");
+                await fresh.StartAsync(cancellationToken).ConfigureAwait(false);
+                if(fresh.Generation==oldGeneration||!fresh.IsRunning||
+                    !fresh.IsStillApproved||!IsDeploymentApproved||
+                    File.GetLastWriteTimeUtc(_projectPath)!=_projectStamp)
+                    throw new InvalidOperationException(
+                        "SCADA新设备世代或正式工程配置尚未通过校验");
+                lock(_devicesGate)
+                {
+                    if(_stopped||_disposed||_devices[index]!=null)
+                        throw new InvalidOperationException("SCADA替换期间设备组已变化");
+                    _devices[index]=fresh;
+                }
+                return fresh;
+            }
+            catch
+            {
+                fresh.Dispose();
+                throw;
+            }
+        }
         internal MRHScadaRuntime Find(Guid deviceNodeId)
         {
             string key=deviceNodeId.ToString("N");
-            MRHScadaRuntime device=_devices.FirstOrDefault(x=>x.DeviceRef==key);
+            MRHScadaRuntime device;
+            lock(_devicesGate)device=_devices.FirstOrDefault(x=>x!=null&&x.DeviceRef==key);
             if(device==null)throw new KeyNotFoundException("SCADA工程设备不存在: "+key);
             return device;
         }
@@ -169,8 +255,9 @@ namespace CxVisual.Runtime.Host
             _stopped=true;
             List<Exception> failures=new List<Exception>();
             // 先对所有在途采集发停止，再释放，单个Device故障不阻断其余设备关闭。
-            for(int i=_devices.Count-1;i>=0;i--)
-                try{await _devices[i].StopAsync().ConfigureAwait(false);}
+            MRHScadaRuntime[] devices=SnapshotDevices();
+            for(int i=devices.Length-1;i>=0;i--)
+                try{await devices[i].StopAsync().ConfigureAwait(false);}
                 catch(Exception error){failures.Add(error);}
             if(failures.Count>0)
                 throw new AggregateException("SCADA设备组停止时存在故障",failures);
@@ -180,8 +267,9 @@ namespace CxVisual.Runtime.Host
             if(_disposed)return;
             _disposed=true;
             try{StopAsync().GetAwaiter().GetResult();}catch{}
-            for(int i=_devices.Count-1;i>=0;i--)
-                _devices[i].Dispose();
+            MRHScadaRuntime[] devices=SnapshotDevices();
+            for(int i=devices.Length-1;i>=0;i--)
+                devices[i].Dispose();
         }
         internal static int Serve(string projectPath,string configRoot,string readPipeName = null)
         {
@@ -244,7 +332,7 @@ namespace CxVisual.Runtime.Host
         }
         private static Task[] _devicesCompletion(MRHScadaRuntimeGroup group)
         {
-            return group._devices.Select(x=>x.Completion).ToArray();
+            return group.SnapshotDevices().Select(x=>x.Completion).ToArray();
         }
 
     }
