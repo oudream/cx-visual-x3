@@ -126,3 +126,10 @@ H5 “守护诊断”、运行总览和程序详情已补充“启动隔离（�
 新增本机只读 `GET /api/v1/resources`，复用当前 Go Monitor 与 gopsutil/v3 取得**整机 CPU、物理内存、工作目录所在文件系统磁盘**的真实采样。H5 侧边导航增加“资源性能”页面，按来源分别显示可用性、观察时间和单位，与原有受管程序 CPU/RSS 快照同页但不混淆。支持 Program ID/路径搜索、CPU 排序与详情跳转；无长期历史来源的 GPU/网络/趋势不虚构数据。
 
 配套 Go 与 Vue 正反测试、新版 [V2.0架构第30章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md) 和 [S01～S12矩阵第25章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。Codex 此前固定 SHA 的 G1 成果已经留档；此增量属于后续新提交，须按新 SHA 再运行完整 CI 与现场核验。
+
+
+## S03服务与模块：真实Owner观察阶段一（2026-10-30）
+
+已在原 `Mechanism/Core/Modules/Service/MLCServiceModuleBase.cs` 内实现不可变 `MLCServiceModuleObservation`：`Observe()` 返回当前 Service 模块真实身份、五态生命周期、UTC 采样时间与 `VerifiedReady=true/false/Unknown`。默认 Running **不等于**已核实的 Ready，只有真实专业 Service 自己报告请求处理器/依赖已核验才能标为 true。本期原 TestCenter 本地 Echo Service 提供真实请求处理槽的 Ready 核验并在 WPF 面板展示启动／停止状态；ArchitectureSmoke `--service-observe` 与 WPF UIA 追加正反测试，既有 Windows CI 按实际 Owner 目录触发。
+
+**实现范围是原 Service Owner 的进程内观察与 TestCenter 可视化，不是 Go Monitor 已经接入 C# 服务**。目前没有已核实的 Runtime.Host 服务实例跨进程只读发布合同，不能创建假服务列表或将 OS 进程 Running 解释为 ServiceReady。S03 H5 正式页面需待真实 Host Provider/观察通道接通后再上线。详见 [S03矩阵第26章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 和 [V2.0架构第31章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)；本轮新 SHA 的 CI/真实工控机验收须单独取得成功记录。
