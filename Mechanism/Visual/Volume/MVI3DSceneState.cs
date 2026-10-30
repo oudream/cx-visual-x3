@@ -296,6 +296,20 @@ namespace CxVisual.Mechanism.Visual
             if(scene==null)throw new ArgumentNullException("scene");
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
+            MPMAspect aspect=CreateAspect(scene,cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            engineering.Edit("提交三维Scene可视配置",expectedRevision,edit=>
+            {
+                edit.SetAspect(owner,aspect);
+                return true;
+            }).RequireValue();
+            return engineering.GetAddress(owner);
+        }
+
+        /// <summary>独立创建可加入现有MEM事务的Visual Aspect，供专业结果与布局原子提交。</summary>
+        public static MPMAspect CreateAspect(MVI3DSceneState scene,CancellationToken cancellation)
+        {
+            if(scene==null)throw new ArgumentNullException("scene");
             var snapshot=scene.Snapshot();
             if(snapshot.Count>256)throw new InvalidOperationException("Scene布局超过256引用预算。");
             byte[] payload;
@@ -320,13 +334,7 @@ namespace CxVisual.Mechanism.Visual
                 payload=memory.ToArray();
             }
             if(payload.Length>262144)throw new InvalidOperationException("场景Visual Aspect超过256KiB预算。");
-            cancellation.ThrowIfCancellationRequested();
-            engineering.Edit("提交三维Scene可视配置",expectedRevision,edit=>
-            {
-                edit.SetAspect(owner,new MPMAspect(MPMAspectKind.Visual,ProviderId,Schema,payload,true));
-                return true;
-            }).RequireValue();
-            return engineering.GetAddress(owner);
+            return new MPMAspect(MPMAspectKind.Visual,ProviderId,Schema,payload,true);
         }
 
         /// <summary>资源校验由实际Asset/Result Owner提供；任何未解析的Ref拒绝整体恢复。</summary>
