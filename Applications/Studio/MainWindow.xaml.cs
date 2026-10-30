@@ -27,6 +27,8 @@ namespace CxVisual.Studio
         private readonly StudioViewModel _viewModel;
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
+        // Once inspected, refresh on MRK trace timer ticks; never cache raw payloads.
+        private bool _flowResultInspectionEnabled;
         // Active MRK observation is bound to the exact MEM project/revision that launched it.
         // These are presentation identities, not a second engineering or runtime owner.
         private Guid _activeFlowProjectId;
@@ -1973,6 +1975,12 @@ namespace CxVisual.Studio
         }
         private void OnFlowInspectData(object sender,RoutedEventArgs args)
         {
+            _flowResultInspectionEnabled=true;
+            RefreshRequestedFlowResultInspection();
+        }
+        private void RefreshRequestedFlowResultInspection()
+        {
+            if(!_flowResultInspectionEnabled)return;
             if(_logicFlow!=null)
             {
                 if(!IsCurrentResultScope(_activeFlowProjectId,
@@ -2251,6 +2259,7 @@ namespace CxVisual.Studio
                     _preparedCpuRelease=null;
                 }
                 _lastRunResultSummary=null;
+                _flowResultInspectionEnabled=false;
                 FlowResultPreview.Text="新的MRK Flow尚未产生已提交结果";
                 _logicDebug=new MRKExecutionDebugController();
                 foreach(Guid id in _logicBreakpoints)
@@ -2292,6 +2301,8 @@ namespace CxVisual.Studio
                         FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
                         LogicInfo.Text="运行追踪丢失"+changes.LostCount+
                             "条事件，已用MRK当前Step快照校准；历史丢失事件不可恢复";
+                        // Missing trace is not evidence of missing committed data.
+                        RefreshRequestedFlowResultInspection();
                         return;
                     }
                     _logicOverlay.Apply(_logicFlow.FlowId,changes);
@@ -2304,6 +2315,7 @@ namespace CxVisual.Studio
                         releaseFingerprint,publicationRevision)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
+                    RefreshRequestedFlowResultInspection();
                 };
                 timer=new DispatcherTimer(DispatcherPriority.Background)
                 {Interval=TimeSpan.FromMilliseconds(150)};
