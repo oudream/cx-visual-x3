@@ -744,3 +744,43 @@ stateDiagram-v2
 **代码与测试**：internal/daemonc/daemon.go、cmd/daemon/workers.go、cmd/daemon/main.go；新增 MaxError/MaxCount 终止回调先于事件发布、同 ID 排队续接无重叠、闭锁跨恢复拒绝、取消/禁用队列、恢复提前跳过禁用和锁定等正反测试。独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 门禁核心隔离工程的 go test -count=30 -race ./... 已成功，但主仓库 Go CI/Windows/Linux/macOS/G1、真实 Daemon/受管进程 G2 还没有本轮通过记录。以 [12 大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)作为完成度唯一来源。
 
 **仍需实现**：上限锁的安全持久化与管理授权解锁、Worker 退出后的真实 OS PID 身份与进程树停止回执、受控远程操作认证审计、服务/设备真正 Ready 验证。
+
+
+## 19. 守护上限跨 Daemon 重启持久闭锁（2026-10-30）
+
+### 19.1 正式对象关系
+
+复用既有 cmd/daemon/programWorkerGate 作为唯一终止锁 Owner，并引入 **terminalLatchFile / readTerminalLatches / writeTerminalLatches**（cmd/daemon/terminal_store.go），它们是 Daemon 私有的轻量 JSON 持久化辅助，不是新一套 Program DB、OS Service、业务状态仓或网络协议。旧内部 Go 进程、原程序表与 EventMaxError/EventMaxCount 数值不变。
+
+~~~mermaid
+sequenceDiagram
+ participant Child as Managed Program
+ participant Worker as RunProgramContextWithTerminal
+ participant Gate as programWorkerGate
+ participant File as 本地终止锁日志
+ participant Main as 下一次Daemon启动
+ Child-->>Worker: 连续启动失败或超过阈值
+ Worker->>Gate: onTerminal(EventMaxError/MaxCount)
+ Gate->>Gate: 同步设置terminal并拒绝新增Worker
+ Gate->>File: 原子替换持久快照（同步落盘）
+ Worker-->>Main: 旧Program.Event终止告警
+ opt 正常重启Daemon
+ Main->>File: 严格校验版本/条目及加载
+ File-->>Main: ProgramId→锁定原因
+ Main->>Gate: enablePersistence(持久状态)
+ Main->>Gate: 自动恢复/重启请求
+ Gate-->>Main: 被锁定Program拒绝启动
+ end
+~~~
+
+**可靠性与正确性**：Daemon 首次启动受管程序前必须完成文件读取与一次写入检查。损坏/不支持的文件、权限错误引发 Daemon 初始化失败而不是自动清锁。程序运行中写入故障将 Gate 转为 storageFault 并拒绝后续 Worker 新启动；旧 Worker 不因该故障自动被终止。正向事件同步持久化减少状态与事件之间的竞态，但不能把磁盘不可写、断电时最后一次文件 Sync 或跨文件系统 Rename 当作完全无风险的持久承诺。
+
+### 19.2 可操作流程与后续边界
+
+- 文件位于 Daemon 工作目录的 supervision/daemon-terminal-latches.json；权限/备份由部署人员保证，需保留 64 位 Program ID 的十进制完整精度。
+- 只对 MaxError、MaxCount 两个既有终止原因持久化；非终止 EventExit 不落锁。周期恢复、配置启用与原 UDP 重启均不可自动清锁。
+- **没有新增未经认证的远程管理接口或自动解锁**。当前若确认修复已完成，必须先停止 Daemon，完整备份日志并留下现场操作记录，再离线审查修改对应 ID，之后重启验证。正式多用户权限、审计、幂等恢复、有效期/解锁凭证将由 S11 和后续可靠操作 Owner 开发。
+- 新增 terminal_store_test.go 的跨实例、坏日志、超大 ID 和磁盘失败测试；使用相同存储算法的独立 Go 1.23.2/Linux 镜像工程运行 go test -race -count=30 ./... 成功。这**不代替当前仓库正式构建、Windows/macOS/Linux CI 或现场 G2/G3**。
+- Daemon 历史 exitPidFiles 也已加 safeManagedPID 基础保护，但仍需要目标进程真实身份/代次、退出核验与进程树治理；目前仅可称发送 Kill 请求，不能称 OS 或业务层确认完成。
+
+详见 [12大功能域与实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第十四章。
