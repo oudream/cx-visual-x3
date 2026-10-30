@@ -76,9 +76,23 @@ namespace CxVisual.Runtime.Host
                 throw new InvalidOperationException("SCADA装载期间工程文件已变化");
             // 每次FC03发包前复核正式MHS Effective与MEM工程存盘时间。
             // 不是重建MHS版本管理器；只调用它提供的生效版本快照。
-            Func<bool> stillApproved=()=>!section.HasPendingApply &&
-                string.Equals(section.EffectiveVersion,version,StringComparison.Ordinal) &&
-                File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp;
+            // FCM/MHS版本可能由另一个Studio进程提交，不能仅检查本Host
+            // 已缓存section对象。每轮通过正式MHS OpenExisting重新读磁盘版本；
+            // 首批正确性优先，频繁批读的缓存/版本事件优化由MHS Owner裁决。
+            Func<bool> stillApproved=()=>
+            {
+                try
+                {
+                    MHSConfigSection<MCNConnectorConfiguration> live=
+                        new MHSConfigService(configRoot)
+                            .OpenExisting<MCNConnectorConfiguration>(new FCMConfigIdentity(
+                                "CxVisual.Module.Connector","module",connectorModuleId));
+                    return !live.HasPendingApply &&
+                        string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal) &&
+                        File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp;
+                }
+                catch { return false; }
+            };
             PADScadaDeviceSession session=new PADScadaDeviceSession(
                 deviceRef,scopeId,connectorModuleId,version,effective,
                 TimeSpan.FromMilliseconds(intervalMs),contiguous,
