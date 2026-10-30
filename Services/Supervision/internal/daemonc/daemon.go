@@ -1,6 +1,7 @@
 package daemonc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gogo/common/utilities"
@@ -9,14 +10,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
 const EnvName = "APP_ID"
 
-var (
-	DaemonRun = true
-)
+// DaemonRun preserves the legacy global stop switch without a data race.
+// Main now additionally supplies a cancellable context to each worker.
+var DaemonRun atomic.Bool
+
+func init() { DaemonRun.Store(true) }
 
 var (
 	_titleDaemon = utilities.NewLoggerTitles("DAEMON")
@@ -24,7 +28,14 @@ var (
 
 type FindProgramCallback func(id int64) (program.Program, error)
 
+// RunProgram retains the original entry point for legacy callers.
 func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string) {
+	RunProgramContext(context.Background(), a0, programEvent, fnFindProgram, logger, wd)
+}
+
+// RunProgramContext stops retry/backoff promptly when Daemon is shutting down.
+// The main process still owns termination of an already-running child process.
+func RunProgramContext(ctx context.Context, a0 program.Program, programEvent chan program.Event, fnFindProgram FindProgramCallback, logger *log.Logger, wd string) {
 	var status program.Status
 	a1 := a0
 
@@ -34,7 +45,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 	status.IsRun = false
 	status.StartCount = 0
 	status.ErrorCount = 0
-	for DaemonRun {
+	for DaemonRun.Load() && ctx.Err() == nil {
 		a2, err := fnFindProgram(a1.ID)
 		if err != nil {
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) Can Not Be Find. 退出: %v\n", a1.Path, a1.ID, err)
@@ -49,21 +60,22 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 
 		//daemon 信息描述
 		if status.ErrorCount > a1.MaxError {
-			programEvent <- program.Event{Event: program.EventMaxError, Status: status}
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxError, Status: status}) { return }
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 失败次数太多,退出\n", a1.Path, a1.ID)
 			break
 		}
 		if a1.MaxCount > 0 && status.StartCount > a1.MaxCount {
-			programEvent <- program.Event{Event: program.EventMaxCount, Status: status}
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventMaxCount, Status: status}) { return }
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 重启次数太多退出\n", a1.Path, a1.ID)
 			break
 		}
 
 		if status.StartCount > 0 && a1.StartWaitTime > 0 {
-			time.Sleep(time.Millisecond * time.Duration(a1.StartWaitTime))
+			if !waitForRestart(ctx, time.Millisecond * time.Duration(a1.StartWaitTime)) { return }
 			logger.Printf(_titleDaemon.Info+"进程[%s](%d) 异常退出后，启动时需要等待时间( %d 毫秒)\n", a1.Path, a1.ID, a1.StartWaitTime)
 		}
 
+		if !DaemonRun.Load() || ctx.Err() != nil { return }
 		// 启动时间戳
 		t = time.Now().Unix()
 
@@ -114,7 +126,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
-			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: err.Error()}
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: err.Error()}) { return }
 			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 启动子进程失败: %s\n", a1.Path, a1.ID, err)
 			continue
 		}
@@ -125,7 +137,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
-			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}
+			if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}) { return }
 			continue
 		}
 
@@ -133,7 +145,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 		status.Pid = cmd.Process.Pid
 		status.IsRun = true
 		status.LastRunTime = utilities.TimeGetCurrentMsepoch()
-		programEvent <- program.Event{Event: program.EventStart, Status: status}
+		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status}) { _ = cmd.Process.Kill(); _ = cmd.Wait(); return }
 
 		// 父进程的守护协程阻塞: 等待子进程退出
 		err = cmd.Wait()
@@ -151,8 +163,42 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 		// Keep the exited child's PID in the exit event for diagnosis.
 		// A failed subsequent start clears the stale PID before reporting.
 		//被守护的进程停止后，通过管道向守护进程发出消息
-		programEvent <- program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}
+		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}) { return }
 		logger.Printf(_titleDaemon.Error+"进程[%s](%d) pid(%d)退出, 共运行了%d秒: %s\n", a1.Path, a1.ID, cmd.ProcessState.Pid(), dat, err)
+	}
+}
+
+// waitForRestart uses a timer instead of an uninterruptible Sleep. The
+// legacy atomic switch is rechecked after the wait; the supplied context
+// provides prompt cancellation on the normal Daemon shutdown path.
+func waitForRestart(ctx context.Context, delay time.Duration) bool {
+	if !DaemonRun.Load() || ctx.Err() != nil {
+		return false
+	}
+	if delay <= 0 {
+		return true
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return DaemonRun.Load() && ctx.Err() == nil
+	}
+}
+
+// emitProgramEvent prevents workers from getting stuck sending an event after
+// the main Daemon loop has exited and stopped receiving on the event channel.
+func emitProgramEvent(ctx context.Context, out chan program.Event, value program.Event) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case out <- value:
+		return true
 	}
 }
 
