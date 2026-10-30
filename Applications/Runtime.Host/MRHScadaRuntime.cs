@@ -37,7 +37,7 @@ namespace CxVisual.Runtime.Host
 
         internal static MRHScadaRuntime Open(string projectPath,string configRoot,
             Guid deviceNodeId,string connectorModuleId,string scopeId,
-            int intervalMs,bool contiguous)
+            int intervalMs,bool contiguous,Func<bool> additionalApproval = null)
         {
             if(string.IsNullOrWhiteSpace(projectPath)||!File.Exists(projectPath))
                 throw new FileNotFoundException("SCADA需要由Studio正式保存的MEM工程");
@@ -89,7 +89,8 @@ namespace CxVisual.Runtime.Host
                                 "CxVisual.Module.Connector","module",connectorModuleId));
                     return !live.HasPendingApply &&
                         string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal) &&
-                        File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp;
+                        File.Exists(source) && File.GetLastWriteTimeUtc(source)==stamp &&
+                        (additionalApproval==null || additionalApproval());
                 }
                 catch { return false; }
             };
