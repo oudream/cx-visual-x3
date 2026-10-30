@@ -92,7 +92,8 @@ jobs:
             'B5 活跃运行结果跨工程版本与多Flow隔离真实WPF反例',
             'P0-4 Studio真实CPU候选按钮到MRK运行及跨根页面/过期拒绝',
             'S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环',
-            'S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界'
+            'S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界',
+            'S2 真正WPF按钮创建RAW专业流程并执行MRK真实Vision CPU'
           )) {
             if (-not @($passed | Where-Object { $_.Line.Contains($required) }).Count) {
               throw "Missing mandatory real Studio assertion: $required"
