@@ -164,7 +164,7 @@ func main() {
 		if a.FirstWaitTime > 0 && !waitForFirstStart(workerCtx, time.Second*time.Duration(a.FirstWaitTime)) {
 			break
 		}
-		go daemonc.RunProgramContext(workerCtx, a, cae, findProgramById, _logger, *_workDir)
+		launchProgramWorker(workerCtx, a, cae)
 		_logger.Println(_title.Info + "Run Program: " + a.Path)
 	}
 
@@ -280,7 +280,7 @@ func main() {
 									}
 								}
 								if bRun {
-									go daemonc.RunProgramContext(workerCtx, ad.Program, cae, findProgramById, _logger, *_workDir)
+									launchProgramWorker(workerCtx, ad.Program, cae)
 									_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
 								}
 							} else {
@@ -330,7 +330,7 @@ func main() {
 									bProgramHasRun = pid > 0
 								}
 								if !bProgramHasRun && ad.Enabled == program.ENABLE {
-									go daemonc.RunProgramContext(workerCtx, ad.Program, cae, findProgramById, _logger, *_workDir)
+									launchProgramWorker(workerCtx, ad.Program, cae)
 									_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
 								}
 							} else {
@@ -420,7 +420,7 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 			if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second*time.Duration(a.FirstWaitTime)) {
 				return
 			}
-			go daemonc.RunProgramContext(ctx, a, cae, findProgramById, _logger, *_workDir)
+			launchProgramWorker(ctx, a, cae)
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
 	}
