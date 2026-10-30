@@ -21,6 +21,7 @@ namespace CxVisual.Runtime.Host
             string expectedCertificateSha256)
         {
             if(string.IsNullOrWhiteSpace(keyId)||keyId.Length>128 ||
+                keyId.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(certificatePath) ||
                 string.IsNullOrWhiteSpace(expectedCertificateSha256) ||
                 expectedCertificateSha256.Length!=64 ||
@@ -56,7 +57,7 @@ namespace CxVisual.Runtime.Host
             MDCStaticCatalogSnapshot catalog,IMRKCapabilityResolver resolver)
         {
             if(string.IsNullOrWhiteSpace(scope)||scope.Length>256||
-                trustedKeys==null||authorizeReservation==null||
+                scope.Any(char.IsControl)||trustedKeys==null||authorizeReservation==null||
                 publisher==null||catalog==null||resolver==null)
                 throw new ArgumentException("mrh.release.host_settings_required");
 
@@ -82,6 +83,11 @@ namespace CxVisual.Runtime.Host
                     if(certificate.NotBefore.ToUniversalTime()>now ||
                         certificate.NotAfter.ToUniversalTime()<now)
                         throw new UnauthorizedAccessException("mrh.release.certificate_expired");
+                    X509KeyUsageExtension usage=certificate.Extensions
+                        .OfType<X509KeyUsageExtension>().FirstOrDefault();
+                    if(usage!=null &&
+                        (usage.KeyUsages & X509KeyUsageFlags.DigitalSignature)==0)
+                        throw new UnauthorizedAccessException("mrh.release.certificate_not_signing");
                     using(RSA rsa=certificate.GetRSAPublicKey())
                     {
                         if(rsa==null)
@@ -106,15 +112,16 @@ namespace CxVisual.Runtime.Host
             _catalog=catalog;_resolver=resolver;
         }
 
-        internal MRKPlanPublicationReceipt StageFile(string principal,string envelopeFile,
-            bool allowUnverifiedLegacyContracts=false)
+        internal MRKPlanPublicationReceipt StageFile(string principal,string envelopeFile)
         {
             if(string.IsNullOrWhiteSpace(envelopeFile))
                 throw new ArgumentException("mrh.release.envelope_path_required");
             byte[] package=ReadBounded(envelopeFile,MaxEnvelope);
             MOCSignedPlanRelease release=MOCSignedPlanRelease.Import(package);
+            // The production Host has no API for bypassing professional
+            // input/output contract validation, even for signed legacy files.
             return _trusted.VerifyAndStage(principal,release,_catalog,_resolver,
-                allowUnverifiedLegacyContracts);
+                allowUnverifiedLegacyContracts:false);
         }
 
         /// <summary>Explicit Host-controlled activation. StageFile never
