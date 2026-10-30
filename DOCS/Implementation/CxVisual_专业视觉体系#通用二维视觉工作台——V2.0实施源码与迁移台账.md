@@ -610,3 +610,9 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - `MVIImageOverlayTests` （`eba9d445`）：新增Begin/Update/Complete/Cancel、幂等、外部删除/锁定/替换优先的非WPF正反例。保留既有多形状图像计算及WPF TestCenter smoke；没有伪称整套指针UIA已通过。
 - 最新CI及进一步状态只认本次SHA的Windows Imaging/Studio/TestCenter工作流。参见总控7.7；IMG-01/02仍为InProgress。
 
+
+### IMG-02 WPF输入路由与公共编译接口修复（2026-10-30）
+
+- `TCTImageViewerSmoke.VerifyEscCancelsUncommittedLinePair`（`8d94fa0469bcce27fe0ab554582b5b31b3ba7511`）在真实已加载WPF控件中使用`Keyboard.PreviewKeyDownEvent`发送Esc，验证未完成两线测量的可见草稿被清除、重新从第一点开始、工具切换无遗留Store图元；这是受控WPF事件回归，不是人手UIA G5。
+- 跨专业编译阻塞`PADPlcPointBridge.cs` CS1061，经确认`IFTRChannel`合同不含状态事件，`IFTRChannelTransport`才包含；本轮最小修复`0a4cef4d01fe0df931acc67c0acb5cc988d37fef`沿用已有Connector做法，保持断线失效策略。
+- 固定SHA`eba9d445`的[MVI状态测试 #41007034955](https://github.com/oudream/cx-visual-x3/actions/runs/41007034955)成功；新版`8d94fa04` Windows全工程Imaging/TestCenter测试在登记时尚未完成，G3/G4需待固定结果，不迁移旧成功到新SHA。
