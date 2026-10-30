@@ -184,6 +184,20 @@ namespace CxVisual.TestCenter.UI
                 if(gl.ScenePointCloudCount!=0||gl.ScenePointCount!=0)
                     throw new InvalidOperationException("移除点云后仍有GPU显示资源。");
                 gl.BindScenePointClouds(null,null);
+                var roiMaskScene=new MVI3DSceneState();
+                Guid roiMesh=roiMaskScene.Add(MVI3DSceneKind.Roi,"ct3d:roi:hardware",1);
+                Guid maskMesh=roiMaskScene.Add(MVI3DSceneKind.Mask,"ct3d:mask:hardware",1);
+                gl.BindSceneMeshes(roiMaskScene,item=>projected);
+                if(gl.SceneMeshCount!=2)
+                    throw new InvalidOperationException("真实GPU三维ROI与Mask必须独立组合渲染。");
+                roiMaskScene.SetOpacity(roiMesh,.2);
+                roiMaskScene.SetVisibility(maskMesh,false);
+                if(gl.SceneMeshCount!=1)
+                    throw new InvalidOperationException("GPU ROI与Mask独立透明度及显隐失效。");
+                roiMaskScene.Remove(roiMesh);
+                if(gl.SceneMeshCount!=0)
+                    throw new InvalidOperationException("GPU ROI显示资源删除后未释放。");
+                gl.BindSceneMeshes(null,null);
                 string path=Environment.GetEnvironmentVariable("CXVISUAL_GPU_UI_SCREENSHOT");
                 if(string.IsNullOrEmpty(path))
                     path=Path.Combine(Path.GetTempPath(),"CxVisual-GPU-Hardware-Raymarch.png");
