@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -41,6 +42,8 @@ namespace CxVisual.Studio
         private MVIVolumeViewState _state;
         private CT3DAnalysisCase _current,_pending;
         private int _caseIndex=-1;
+        private CancellationTokenSource _roiCancellation;
+        private long _roiEpoch;
         private bool _updating,_disposed;
 
         public StudioCT3DDocument()
@@ -55,14 +58,30 @@ namespace CxVisual.Studio
             open.Click+=(s,e)=>OpenWithDialog();
             toolbar.Children.Add(open);
             _cases.SelectionChanged+=(s,e)=>{
-                if(!_updating&&_cases.SelectedIndex>=0)TryAction(()=>SelectCase(_cases.SelectedIndex));
+                if(_updating||_cases.SelectedIndex<0)return;
+                int requested=_cases.SelectedIndex;
+                try{SelectCase(requested);}
+                catch(Exception error)
+                {
+                    _updating=true;
+                    try{_cases.SelectedIndex=_caseIndex;}
+                    finally{_updating=false;}
+                    _status.Text="切换三维案例失败："+error.Message;
+                }
             };
             toolbar.Children.Add(_cases);
             toolbar.Children.Add(new TextBlock {Text="ROI法向偏移(mm)",VerticalAlignment=VerticalAlignment.Center});
             toolbar.Children.Add(_minimum);toolbar.Children.Add(_maximum);
             var analyze=Button("ROI重算","Studio.CT3D.AnalyzeRoi");
-            analyze.Click+=(s,e)=>TryAction(AnalyzeSelectedRoi);
+            analyze.Click+=async(s,e)=>{
+                try{await AnalyzeSelectedRoiAsync();}
+                catch(OperationCanceledException){_status.Text="ROI分析已取消，未提交过期结果。";}
+                catch(Exception error){_status.Text="ROI分析失败："+error.Message;}
+            };
             toolbar.Children.Add(analyze);
+            var cancel=Button("取消分析","Studio.CT3D.CancelRoi");
+            cancel.Click+=(s,e)=>CancelPendingAnalysis();
+            toolbar.Children.Add(cancel);
             var save=Button("保存专业结果","Studio.CT3D.Save");
             save.Click+=(s,e)=>TryAction(SavePendingResult);
             toolbar.Children.Add(save);
@@ -73,6 +92,7 @@ namespace CxVisual.Studio
                 ()=>_scene.ResetCamera(),steps=>_scene.Zoom(steps),
                 (dx,dy)=>_scene.Pan(dx,dy));
             _workbench.PhysicalRoiSelected+=roi=>{
+                CancelPendingAnalysis();
                 _pending=null;
                 _status.Text=String.Format(CultureInfo.InvariantCulture,
                     "{0} ROI: ({1:0.###},{2:0.###},{3:0.###}) mm → ({4:0.###},{5:0.###},{6:0.###}) mm",
@@ -101,6 +121,12 @@ namespace CxVisual.Studio
             return button;
         }
         public bool HasPendingAnalysis {get{return _pending!=null;}}
+        public bool IsAnalyzing {get{return _roiCancellation!=null;}}
+        public void CancelPendingAnalysis()
+        {
+            ++_roiEpoch;
+            if(_roiCancellation!=null)_roiCancellation.Cancel();
+        }
         public int CaseCount {get{return _owners==null?0:_owners.Length;}}
         public CT3DAnalysisCase CurrentAnalysis {get{return _pending??_current;}}
         public string ProjectPath {get{return _projectPath;}}
@@ -126,6 +152,8 @@ namespace CxVisual.Studio
         public void OpenProject(string projectFile)
         {
             if(_disposed)throw new ObjectDisposedException("StudioCT3DDocument");
+            if(IsAnalyzing)
+                throw new InvalidOperationException("当前ROI分析仍在运行，请先取消并完成退出。");
             if(HasPendingAnalysis)
                 throw new InvalidOperationException("当前ROI分析未保存，拒绝切换工程。");
             if(string.IsNullOrWhiteSpace(projectFile))throw new ArgumentException("工程文件路径为空。");
@@ -163,6 +191,8 @@ namespace CxVisual.Studio
         {
             if(_engineering==null||_owners==null)throw new InvalidOperationException("没有打开CT3D工程。");
             if(index<0||index>=_owners.Length)throw new ArgumentOutOfRangeException("index");
+            if(IsAnalyzing)
+                throw new InvalidOperationException("当前ROI分析未结束，禁止切换Case。");
             if(HasPendingAnalysis)
                 throw new InvalidOperationException("当前ROI分析未保存，不能切换专业Case。");
             CT3DAnalysisCase analysis=CT3DAnalysisPersistence.Open(_engineering,
@@ -332,6 +362,55 @@ namespace CxVisual.Studio
             RecomputeSelectedSliceRoi(minimum,maximum);
         }
 
+        private async Task AnalyzeSelectedRoiAsync()
+        {
+            double minimum,maximum;
+            if(!double.TryParse(_minimum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out minimum)||
+                !double.TryParse(_maximum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out maximum))
+                throw new ArgumentException("请输入有效的法向毫米上下限。");
+            await RecomputeSelectedSliceRoiAsync(minimum,maximum,CancellationToken.None);
+        }
+
+        /// <summary>大RAW在后台由同一专业API复算；取消、切换ROI与卸载均拒绝旧结果发布。</summary>
+        public async Task<CT3DAnalysisCase> RecomputeSelectedSliceRoiAsync(
+            double minimum,double maximum,CancellationToken cancellation)
+        {
+            if(_disposed||_current==null||_state==null||_state.SelectedSliceRectangle==null)
+                throw new InvalidOperationException("没有可复算的已打开专业案例和物理ROI。");
+            if(_current.Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("仅MeshPlane案例支持当前切片ROI拟合。");
+            if(_roiCancellation!=null)
+                throw new InvalidOperationException("已有专业ROI分析正在进行。");
+            CT3DAnalysisCase original=_current;
+            MVIVolumeViewState state=_state;
+            FVOPhysicalSliceRectangle roi=state.SelectedSliceRectangle;
+            int index=_caseIndex;
+            string root=_root;
+            long epoch=++_roiEpoch;
+            var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _roiCancellation=linked;
+            try
+            {
+                _status.Text="CT3D原值ROI分析运行中，可取消；旧结果不会覆盖当前选区。";
+                CT3DAnalysisCase result=await Task.Run(()=>
+                    original.RecomputeWithSliceRectangle(root,roi,minimum,maximum,linked.Token),
+                    linked.Token);
+                linked.Token.ThrowIfCancellationRequested();
+                if(_disposed||epoch!=_roiEpoch||!Object.ReferenceEquals(state,_state)||
+                    !Object.ReferenceEquals(original,_current)||
+                    !Object.ReferenceEquals(roi,_state.SelectedSliceRectangle)||
+                    index!=_caseIndex)
+                    throw new OperationCanceledException("专业会话/ROI已经变化，拒绝过期提交。");
+                PublishPendingResult(result);
+                return result;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_roiCancellation,linked))_roiCancellation=null;
+                linked.Dispose();
+            }
+        }
+
         /// <summary>Studio公开专业操作，和按钮共用同一CT3D原值分析及Scene状态。</summary>
         public CT3DAnalysisCase RecomputeSelectedSliceRoi(double minimum,double maximum)
         {
@@ -339,18 +418,26 @@ namespace CxVisual.Studio
                 throw new InvalidOperationException("请先选择二维物理ROI。");
             if(_current.Kind!=CT3DAnalysisKind.MeshPlane)
                 throw new InvalidOperationException("当前专业Case不是MeshPlane。");
+            if(IsAnalyzing)throw new InvalidOperationException("后台分析运行中，不能同时同步复算。");
             var result=_current.RecomputeWithSliceRectangle(_root,
                 _state.SelectedSliceRectangle,minimum,maximum,CancellationToken.None);
+            PublishPendingResult(result);
+            return result;
+        }
+
+        private void PublishPendingResult(CT3DAnalysisCase result)
+        {
             _pending=result;
             BuildSceneReferences(result,true);
             RefreshProfessionalOverlay();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
                 "待保存：平面{0}点、RMS={1:0.######} mm；未作工业不确定度认证。",
                 result.Plane.SampleCount,result.Plane.RmsResidualMm);
-            return result;
         }
         public void SavePendingResult()
         {
+            if(IsAnalyzing)
+                throw new InvalidOperationException("后台ROI分析尚未结束，禁止提交旧结果。");
             if(_pending==null||_engineering==null||_owners==null||_caseIndex<0)
                 throw new InvalidOperationException("当前没有待保存的专业编辑结果。");
             var visual=MVI3DSceneLayoutPersistence.CreateAspect(_state.Scene3D,CancellationToken.None);
@@ -362,6 +449,7 @@ namespace CxVisual.Studio
         }
         private void DisposeCurrent()
         {
+            CancelPendingAnalysis();
             if(_state!=null)
             {
                 _state.PropertyChanged-=OnVolumeStateChanged;
