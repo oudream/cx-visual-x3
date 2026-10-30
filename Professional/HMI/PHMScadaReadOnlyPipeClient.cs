@@ -102,7 +102,7 @@ namespace CxVisual.Professional.HMI
             Unit=point.Unit??"";Source=point.SourceId??"";
             Revision=point.Revision;RefreshUtc=point.HasValue?
                 refreshed.ToUniversalTime():default(DateTime);
-            Quality=quality;HasValue=point.HasValue;
+            Quality=quality;HostQuality=quality;HasValue=point.HasValue;
             Value=point.HasValue?ParseValue(point.Type,point.Value):null;
             Text=!HasValue?"—":Convert.ToString(Value,CultureInfo.InvariantCulture);
         }
@@ -113,10 +113,31 @@ namespace CxVisual.Professional.HMI
         public string Source {get;private set;}
         public long Revision {get;private set;}
         public DateTime RefreshUtc {get;private set;}
+        /// <summary>Host原始MDS品质；即使HMI本地超时判为Stale也保留原始证据。</summary>
+        public MDSVariableQuality HostQuality {get;private set;}
+        /// <summary>原始Snapshot的Quality为Host品质，Points()展示副本为有效展示品质。</summary>
         public MDSVariableQuality Quality {get;private set;}
         public bool HasValue {get;private set;}
         public object Value {get;private set;}
         public string Text {get;private set;}
+        /// <summary>同一条真实样本只做显示侧的时效降级，不回写MDS/Host。</summary>
+        public MDSVariableQuality EffectiveQuality(TimeSpan maximumAge,DateTime nowUtc)
+        {
+            if(maximumAge<TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException("maximumAge");
+            if(!HasValue)return MDSVariableQuality.Uncertain;
+            if(HostQuality!=MDSVariableQuality.Good)return HostQuality;
+            if(maximumAge==TimeSpan.Zero||RefreshUtc==default(DateTime)||
+               RefreshUtc>nowUtc||nowUtc-RefreshUtc>maximumAge)
+                return MDSVariableQuality.Stale;
+            return MDSVariableQuality.Good;
+        }
+        internal PHMScadaPointObservation ForDisplay(TimeSpan maximumAge,DateTime nowUtc)
+        {
+            PHMScadaPointObservation copy=(PHMScadaPointObservation)MemberwiseClone();
+            copy.Quality=EffectiveQuality(maximumAge,nowUtc);
+            return copy;
+        }
         private static object ParseValue(string type,string text)
         {
             if(text==null)throw new InvalidDataException("hmi.pipe.value_missing");

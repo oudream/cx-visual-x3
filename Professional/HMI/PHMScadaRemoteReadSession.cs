@@ -29,7 +29,7 @@ namespace CxVisual.Professional.HMI
         }
         private readonly object _gate=new object();
         private readonly PHMScadaReadOnlyPipeClient _client;
-        private readonly PHMScadaDeviceIdentity _identity;
+        private PHMScadaDeviceIdentity _identity;
         private readonly TimeSpan _maxAge;
         private Timer _timer;
         private PHMScadaDeviceSnapshot _latest;
@@ -48,7 +48,27 @@ namespace CxVisual.Professional.HMI
             if(maximumAge<TimeSpan.Zero)throw new ArgumentOutOfRangeException("maximumAge");
             _client=client;_identity=identity;_maxAge=maximumAge;
         }
-        public PHMScadaDeviceIdentity Identity{get{return _identity;}}
+        /// <summary>只读恢复后的有效Generation，版本不同则绝不自动切换。</summary>
+        public PHMScadaDeviceIdentity Identity{get{lock(_gate)return _identity;}}
+        public string LastError{get{lock(_gate)return _error;}}
+        private void ReDiscoverReadOnly(PHMScadaDeviceIdentity previous)
+        {
+            // 只有Host已明确拒绝旧Generation/设备恢复空档才发现。
+            // 同DeviceRef、Scope、Deployment和Connector Effective才允许只读重新绑定。
+            IReadOnlyList<PHMScadaDeviceIdentity> available=_client.Discover();
+            PHMScadaDeviceIdentity replacement=available.FirstOrDefault(candidate=>
+                candidate.Running && candidate.DeviceRef==previous.DeviceRef &&
+                string.Equals(candidate.ScopeId,previous.ScopeId,StringComparison.Ordinal) &&
+                string.Equals(candidate.ConfigVersion,previous.ConfigVersion,StringComparison.Ordinal) &&
+                string.Equals(candidate.DeploymentVersion,previous.DeploymentVersion,StringComparison.Ordinal) &&
+                !string.Equals(candidate.Generation,previous.Generation,StringComparison.Ordinal));
+            if(replacement==null)return; // 故障/配置漂移：拒绝并等待人工重新审批
+            lock(_gate)
+            {
+                if(!_disposed&&Object.ReferenceEquals(_identity,previous))
+                    _identity=replacement;
+            }
+        }
         public string LastObserverError
         {get{lock(_gate)return _lastObserverError;}}
         public void Start(int pollMilliseconds=1000)
@@ -67,13 +87,27 @@ namespace CxVisual.Professional.HMI
             if(Interlocked.CompareExchange(ref _inFlight,1,0)!=0)return;
             PHMScadaDeviceSnapshot next=null;
             string fault=null;
-            try{next=_client.Snapshot(_identity);}
+            PHMScadaDeviceIdentity expected;
+            lock(_gate)
+            {
+                if(_disposed){Interlocked.Exchange(ref _inFlight,0);return;}
+                expected=_identity;
+            }
+            try{next=_client.Snapshot(expected);}
             catch(Exception ex)
             {
-                // 已过授权Generation/版本或网络失败都必须清除上次Good帧。
-                fault=ex is PHMScadaPipeRejectedException
-                    ?((PHMScadaPipeRejectedException)ex).ErrorCode:
-                    ex.GetType().Name+": "+ex.Message;
+                // 先撤回旧Good，再尝试同Effective的只读重新发现。
+                // 此周期绝不复用旧快照或重发控制；新Generation下一轮才采样。
+                PHMScadaPipeRejectedException rejected=ex as PHMScadaPipeRejectedException;
+                fault=rejected!=null?rejected.ErrorCode:ex.GetType().Name+": "+ex.Message;
+                if(rejected!=null&&
+                    (rejected.ErrorCode=="DEVICE_NOT_FOUND"||
+                     rejected.ErrorCode=="SESSION_VERSION_MISMATCH"))
+                {
+                    try{ReDiscoverReadOnly(expected);}
+                    catch(Exception discoveryError)
+                    {fault+="; rediscover:"+discoveryError.GetType().Name;}
+                }
             }
             try
             {
@@ -113,7 +147,10 @@ namespace CxVisual.Professional.HMI
                 if(_latest==null)
                     throw new InvalidOperationException("hmi.pipe.unavailable:"+
                         (_error??"unknown"));
-                return _latest.Points;
+                // Host原值不变；派生当前显示副本，表格和MVI采用同一时效语义。
+                DateTime now=DateTime.UtcNow;
+                return Array.AsReadOnly(_latest.Points
+                    .Select(point=>point.ForDisplay(_maxAge,now)).ToArray());
             }
         }
         public object Resolve(MDSBindingSource source,string key,Type target)
@@ -128,11 +165,8 @@ namespace CxVisual.Professional.HMI
                 sample=_latest.Points.FirstOrDefault(x=>
                     x.StablePointId==key||x.VariableId==key);
             }
-            if(sample==null||!sample.HasValue||
-                sample.Quality!=MDSVariableQuality.Good||
-                _maxAge==TimeSpan.Zero||
-                sample.RefreshUtc==default(DateTime)||
-                DateTime.UtcNow-sample.RefreshUtc>_maxAge)
+            if(sample==null||
+                sample.EffectiveQuality(_maxAge,DateTime.UtcNow)!=MDSVariableQuality.Good)
                 return null;
             object value=sample.Value;
             if(target.IsInstanceOfType(value))return value;

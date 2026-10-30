@@ -82,6 +82,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 (ushort)sample.Points[0].Value==91 &&
                 sample.Points[0].Revision==4&&sample.Points[0].Source=="real-mds",
                 "Snapshot没有保真MDS UInt16/Revision/Source");
+            Check(sample.Points[0].HostQuality==
+                CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good &&
+                sample.Points[0].EffectiveQuality(TimeSpan.Zero,DateTime.UtcNow)==
+                    CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Stale &&
+                sample.Points[0].EffectiveQuality(TimeSpan.FromDays(1),DateTime.UtcNow)==
+                    CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good &&
+                sample.Points[0].EffectiveQuality(TimeSpan.FromDays(1),
+                    sample.Points[0].RefreshUtc.AddSeconds(-1))==
+                    CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Stale,
+                "同一Host Good原值应按本地时效统一降级且拒绝未来采样时间");
             bool denied=false;
             try{client.Snapshot(devices[0]);}
             catch(PHMScadaPipeRejectedException error)
@@ -107,6 +117,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "新Generation拒绝后必须立刻撤回旧Good运行帧");
             }
             Check(server.Wait(TimeSpan.FromSeconds(10)), "Pipe v1服务端契约夹具没有完成");
+            // A的--recover-device：旧Generation被拒绝后重新Discover，
+            // 只允许同设备/同Scope/同Effective的新Generation恢复只读展示。
+            string recoveringName="cxvisual-hmi-recover-"+Guid.NewGuid().ToString("N");
+            string recoverDevice=Guid.NewGuid().ToString("N");
+            string versionedDevice="\"DeviceRef\":\""+recoverDevice+
+                "\",\"ScopeId\":\"plc/recover\",\"ConfigVersion\":\"CFG1\",";
+            string discovered1="{\"SchemaVersion\":1,\"Status\":\"Ok\","+
+                "\"DeploymentVersion\":\"DEP1\",\"Devices\":[{"+
+                versionedDevice+"\"Generation\":\"GEN1\",\"Running\":true,\"Points\":[]}]}";
+            string discovered2=discovered1.Replace("GEN1","GEN2");
+            string secondPoint="{\"StablePointId\":\"word100\","+
+                "\"VariableId\":\"plc/recover/word100\",\"Type\":\"UInt16\","+
+                "\"Unit\":\"rpm\",\"Value\":\"92\",\"HasValue\":true,"+
+                "\"Quality\":\"Good\",\"RefreshUtc\":\""+
+                DateTime.UtcNow.ToString("O",CultureInfo.InvariantCulture)+
+                "\",\"SourceId\":\"plc-recovered\",\"Revision\":1}";
+            string sampled1=discovered1.Replace("\"Points\":[]",
+                "\"Points\":["+secondPoint.Replace("\"92\"","\"91\"")+"]");
+            string sampled2=discovered2.Replace("\"Points\":[]",
+                "\"Points\":["+secondPoint+"]");
+            string[] recoveredReplies={discovered1,sampled1,rejected,discovered2,sampled2};
+            Task recoveryHost=Task.Run(()=>
+            {
+                for(int index=0;index<recoveredReplies.Length;index++)
+                {
+                    using(NamedPipeServerStream endpoint=new NamedPipeServerStream(
+                        recoveringName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,
+                        PipeOptions.None))
+                    {
+                        endpoint.WaitForConnection();
+                        byte[] header=new byte[4];ReadAll(endpoint,header);
+                        int length=BitConverter.ToInt32(header,0);
+                        Check(length>0&&length<=4096,"恢复请求帧超限");
+                        byte[] frame=new byte[length];ReadAll(endpoint,frame);
+                        string request=Encoding.UTF8.GetString(frame);
+                        if(index==4)Check(request.Contains("\"ExpectedGeneration\":\"GEN2\""),
+                            "恢复后仍使用旧Generation请求PLC数值");
+                        byte[] data=Encoding.UTF8.GetBytes(recoveredReplies[index]);
+                        endpoint.Write(BitConverter.GetBytes(data.Length),0,4);
+                        endpoint.Write(data,0,data.Length);endpoint.Flush();
+                    }
+                }
+            });
+            PHMScadaReadOnlyPipeClient recoveringClient=
+                new PHMScadaReadOnlyPipeClient(recoveringName);
+            var initialDevices=recoveringClient.Discover();
+            Check(initialDevices.Count==1&&initialDevices[0].Generation=="GEN1",
+                "恢复演练旧设备身份错误");
+            using(PHMScadaRemoteReadSession recovering=new PHMScadaRemoteReadSession(
+                recoveringClient,initialDevices[0],TimeSpan.FromMinutes(1)))
+            using(ManualResetEventSlim observed=new ManualResetEventSlim(false))
+            using(ManualResetEventSlim cleared=new ManualResetEventSlim(false))
+            using(ManualResetEventSlim restored=new ManualResetEventSlim(false))
+            using(recovering.Subscribe(()=>
+            {
+                object value=recovering.Resolve(MDSBindingSource.Variable,
+                    "word100",typeof(double));
+                if(recovering.Identity.Generation=="GEN1"&&value is double&&(double)value==91d)
+                    observed.Set();
+                if(recovering.Identity.Generation=="GEN2"&&value==null)cleared.Set();
+                if(recovering.Identity.Generation=="GEN2"&&value is double&&(double)value==92d)
+                    restored.Set();
+            }))
+            {
+                recovering.Start(250);
+                Check(observed.Wait(TimeSpan.FromSeconds(5)),
+                    "恢复前真实Pipe的旧Generation没有采到数据");
+                Check(cleared.Wait(TimeSpan.FromSeconds(5)),
+                    "旧Generation拒绝时没有先撤销旧Good帧");
+                Check(restored.Wait(TimeSpan.FromSeconds(5))&&
+                    recovering.Identity.Generation=="GEN2",
+                    "同Effective新Generation恢复未成功或混用了旧身份");
+            }
+            Check(recoveryHost.Wait(TimeSpan.FromSeconds(10)),
+                "真实Pipe单设备换代测试服务端未收敛");
             // .NET Framework 4.8真实IPC超时反证：连接成功后Host不回包，
             // 客户端必须在IO截止关闭句柄，不允许HMI后台线程永久阻塞。
             string silentName="cxvisual-hmi-silent-"+Guid.NewGuid().ToString("N");

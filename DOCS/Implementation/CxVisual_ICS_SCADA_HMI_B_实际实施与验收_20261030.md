@@ -90,3 +90,10 @@
 - `MPWLiveSceneControl` 收到受信宿主`Unknown`或仍只是`Accepted`的状态后，关闭本画面的Widget点击权限，显示现场状态待核实，不能在旧上下文快速重复控制。没有自动清除门禁；需重新验证身份/设备真实状态后建立新的受信运行会话。
 - `HmiWpfTests` 新增真实WPF同一Button第二次Click的负面验证：首次Host回执Unknown以后，第二次不会再次调用受信宿主，且工程Revision不变。
 - 本门禁是HMI前端的辅助Fail-Closed；Host仍必须以自身认证、幂等操作号、版本和联锁最终裁决，不可将UI锁定冒充硬件安全或跨进程授权。
+
+## 2026-10-30 第八批：独立Host单工站换代自动只读恢复与品质唯一口径
+
+- `Professional/HMI/PHMScadaReadOnlyPipeClient.cs` 为Host Snapshot提供保留原始`HostQuality`的只读显示降级：Good超时/未来时间/零时效按本地展示策略降Stale，未采样降Uncertain；原MDS时间/Revision/Source不变。
+- `PHMScadaRemoteReadSession.Points()` 提供当前时刻的只读显示投影，`Resolve()`共用`EffectiveQuality`；Studio点表不再硬编码另一份5秒判定。
+- A的`--recover-device`旧Generation被拒绝时，只在真实Pipe再Discover发现同DeviceRef/Scope/DeploymentVersion/ConfigVersion、不同Generation的设备后重建**只读**观察。旧Good先撤销，新Generation下一轮才采样；版本漂移/跨设备不会自动采纳，不能恢复操作授权。
+- `HmiScadaPipeTests`增加Quality源值不变/时效降级/未来时间反证，以及真实Windows Pipe旧Generation拒绝→重新发现→新快照恢复G1测试。未实施跨进程认证控制或PLC G2/HIL G3。

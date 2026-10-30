@@ -89,9 +89,7 @@ namespace CxVisual.Studio
                     Name=point.StablePointId,
                     Value=point.Text+(point.Unit.Length>0?" "+point.Unit:""),
                     Unit=point.Unit,
-                    Quality=(DateTime.UtcNow-point.RefreshUtc>TimeSpan.FromSeconds(5)&&
-                             point.Quality==CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Good
-                             ?"Stale":point.Quality.ToString()),
+                    Quality=point.Quality.ToString(),
                     Source=point.Source,
                     Updated=point.RefreshUtc==default(DateTime)?"—":
                         point.RefreshUtc.ToString("O",CultureInfo.InvariantCulture)
