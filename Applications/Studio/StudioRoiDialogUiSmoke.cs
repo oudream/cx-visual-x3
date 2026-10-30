@@ -140,19 +140,48 @@ namespace CxVisual.Studio
         {
             AutomationElementCollection controls=dialog.FindAll(TreeScope.Descendants,
                 System.Windows.Automation.Condition.TrueCondition);
-            // Windows通用文件对话框的文件名框AutomationId通常为1148；
-            // 优先使用该稳定身份，其次使用其内部Edit（1001）。
-            foreach(string id in new[]{"1148","1001"})
-                foreach(AutomationElement element in controls)
+            // Windows 10/11通用文件框有时把1148作为ComboBox容器，
+            // 实际可写Edit的AutomationId随Windows语言和UIA Provider变化。
+            // 先精确匹配原身份，再检查编辑框语义；绝不使用搜索框/地址栏代替。
+            var namedEditors=new System.Collections.Generic.List<AutomationElement>();
+            var anonymousEditors=new System.Collections.Generic.List<AutomationElement>();
+            var diagnostics=new System.Collections.Generic.List<string>();
+            foreach(AutomationElement element in controls)
+            {
+                try
                 {
-                    if(element.Current.AutomationId!=id)continue;
+                    string id=element.Current.AutomationId??"";
+                    string name=element.Current.Name??"";
+                    ControlType type=element.Current.ControlType;
+                    if(type!=ControlType.Edit&&type!=ControlType.ComboBox)continue;
                     object pattern;
-                    if(element.TryGetCurrentPattern(ValuePattern.Pattern,out pattern) &&
-                       !((ValuePattern)pattern).Current.IsReadOnly)
+                    bool writable=element.TryGetCurrentPattern(ValuePattern.Pattern,
+                        out pattern)&&!((ValuePattern)pattern).Current.IsReadOnly;
+                    if(diagnostics.Count<24)
+                        diagnostics.Add("Type="+type.ProgrammaticName+
+                            " Id="+id+" Name="+name+" Writable="+writable);
+                    if(!writable)continue;
+                    if(id=="1148"||id=="1001"||id=="FileNameControlHost")
                         return element;
+                    if(type!=ControlType.Edit)continue;
+                    string semantic=name.ToLowerInvariant();
+                    if(semantic.Contains("file name")||semantic.Contains("filename")||
+                        semantic.Contains("文件名")||semantic.Contains("檔案名稱")||
+                        semantic.Contains("ファイル名"))
+                        namedEditors.Add(element);
+                    else
+                        anonymousEditors.Add(element);
                 }
+                catch(ElementNotAvailableException){}
+            }
+            if(namedEditors.Count==1)return namedEditors[0];
+            // 仅当整棵系统对话框恰有一个可写Edit时才可安全退化。
+            if(namedEditors.Count==0&&anonymousEditors.Count==1)
+                return anonymousEditors[0];
             throw new InvalidOperationException(
-                "IMG05_UIA 系统文件对话框没有可写文件名框（1148/1001）");
+                "IMG05_UIA 未能唯一识别可写文件名框，具名="+namedEditors.Count+
+                "，其他Edit="+anonymousEditors.Count+
+                "；原生UIA控件="+String.Join(" | ",diagnostics));
         }
 
         private static void ConfirmNativeFileDialog(string title,string file)
