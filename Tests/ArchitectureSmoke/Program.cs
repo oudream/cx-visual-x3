@@ -81,6 +81,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Console.WriteLine("PASS MDS RuntimeData lifecycle, storage, hardening and compiler");
                     return 0;
                 }
+                if (Array.IndexOf(args, "--automation-plc") >= 0) { AutomationPlcPointTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--variables") >= 0) { ModuleFoundationSmokeTests.RunVariableSuite(); return 0; }
                 if (Array.IndexOf(args, "--variable-benchmark") >= 0) { VariableThroughputBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
@@ -129,6 +130,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 InteractionStageOneTests.Run();
                 CommandCenterTests.Run();
                 MessageCenterTests.Run();
+                AutomationPlcPointTests.Run();
                 FVOVolumeTests.Run();
                 MVIVolumeViewTests.Run();
                 CT3DRenderingTests.Run();

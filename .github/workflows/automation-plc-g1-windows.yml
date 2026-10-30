@@ -1,0 +1,44 @@
+name: CxVisual Automation PLC Modbus G1 Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Professional/Automation/Plc/**'
+      - 'Professional/Automation/DeviceVariables/**'
+      - 'Professional/Automation/CxVisual.Professional.Automation.csproj'
+      - 'Mechanism/Connectivity/**'
+      - 'Mechanism/Data/Variables/**'
+      - 'Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
+      - '.github/workflows/automation-plc-g1-windows.yml'
+jobs:
+  plc-modbus-virtual-g1:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore existing WPF package dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'TestCenter Restore failed' }
+          & msbuild.exe Applications/Studio/CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'Studio Restore failed' }
+      - name: Build actual Automation and ArchitectureSmoke .NET48 x64
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'Automation G1 build failed' }
+      - name: Run real F17 virtual Modbus TCP protocol frames and Automation/MDS G1
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
+          if($LASTEXITCODE -ne 0) { throw 'Automation PLC protocol/readback smoke failed' }
+      - name: Record scope of verification
+        shell: pwsh
+        run: |
+          Write-Host 'PASS gate only if actual protocol bytes + MPA/MCN/MDS + authorization + readback tests exit 0'
+          Write-Host 'G1 virtual PLC: no actual hardware, radiation, motion, G2 or HIL validated'
