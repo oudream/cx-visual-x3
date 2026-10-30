@@ -99,6 +99,67 @@ namespace CxVisual.Studio
                             "调试无会话状态反馈不正确: "+item[0]);
                     }
                 });
+                CheckStep("B5 活跃MRK断点单步继续取消真实WPF交互", () =>
+                {
+                    window.OpenStudioDocument("doc.flow");
+                    var flags=System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic;
+                    var controllerField=typeof(MainWindow).GetField("_logicDebug",flags);
+                    var flowField=typeof(MainWindow).GetField("_logicFlow",flags);
+                    TextBlock status=window.FindName("LogicInfo") as TextBlock;
+                    Assert(controllerField!=null&&flowField!=null&&status!=null,
+                        "B5调试控制与可见状态组件缺失");
+                    Action<string> command=name=>{
+                        var handler=typeof(MainWindow).GetMethod(name,flags);
+                        Assert(handler!=null,"B5真实WPF命令未注册: "+name);
+                        handler.Invoke(window,new object[]{window,
+                            new RoutedEventArgs(Button.ClickEvent)});
+                    };
+                    int executions=0;
+                    var plan=new MRKExecutionPlan("studio.b5.live",new[]{
+                        new MRKExecutionStep("first",new string[0],(ctx,token)=>{
+                            System.Threading.Interlocked.Increment(ref executions);
+                            return Task.FromResult((object)1);
+                        }),
+                        new MRKExecutionStep("second",new[]{"first"},(ctx,token)=>{
+                            System.Threading.Interlocked.Increment(ref executions);
+                            return Task.FromResult((object)2);
+                        })
+                    });
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+                    var debug=new MRKExecutionDebugController();
+                    debug.AddBreakpoint("first");
+                    try
+                    {
+                        var flow=engine.StartFlowWithControl(plan,debug);
+                        controllerField.SetValue(window,debug);
+                        flowField.SetValue(window,flow);
+                        Assert(System.Threading.SpinWait.SpinUntil(
+                            ()=>debug.WaitingCount==1,3000)&&executions==0,
+                            "B5真实断点没有在首节点执行前暂停");
+                        command("OnFlowDebugStep");
+                        Assert(status.Text.Contains("已单步释放")&&
+                            System.Threading.SpinWait.SpinUntil(
+                                ()=>executions==1&&debug.WaitingCount==1,3000),
+                            "B5单步未推进恰好一个节点");
+                        command("OnFlowDebugResume");
+                        Assert(status.Text.Contains("已恢复MRK执行")&&
+                            flow.Completion.Wait(TimeSpan.FromSeconds(6))&&
+                            flow.Completion.Result.State==MRKFlowState.Completed&&
+                            executions==2,
+                            "B5继续执行未到达真实完成状态");
+                        command("OnFlowDebugCancel");
+                        Assert(status.Text.Contains("没有可取消的运行任务"),
+                            "B5已完成Flow错误接受取消");
+                    }
+                    finally
+                    {
+                        controllerField.SetValue(window,null);
+                        flowField.SetValue(window,null);
+                        debug.Resume();
+                        engine.StopAsync(true).GetAwaiter().GetResult();
+                    }
+                });
                 CheckStep("S1-03B 变量Studio工作台复用单一MDS Owner", () =>
                 {
                     window.OpenStudioDocument("doc.variables");
