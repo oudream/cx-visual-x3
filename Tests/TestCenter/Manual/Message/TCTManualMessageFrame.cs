@@ -11,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Foundation.Data.Messages;
 using CxVisual.Mechanism.Data.Messages;
+using CxVisual.Mechanism.Presentation.Wpf.Interaction;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -30,6 +31,7 @@ namespace CxVisual.TestCenter.UI
         }
 
         private readonly MNMMessageCenter _center = new MNMMessageCenter();
+        private readonly MPWMessageCenterControl _shared = new MPWMessageCenterControl();
         private readonly ObservableCollection<MessageRow> _rows = new ObservableCollection<MessageRow>();
         private readonly TextBox _topic = Field("/machine/1201/app/XRay/module/Camera/message/Captured");
         private readonly TextBox _filter = Field("/machine/1201/app/XRay/module/+/message/#");
@@ -114,6 +116,7 @@ namespace CxVisual.TestCenter.UI
             _dispatch.SelectedIndex = 0;
             _center.InterceptorError += ex => Append("DIAG", "", "", ex.Message);
             BuildView();
+            _shared.Bind(_center,true);
             _status.Text = "本地进程内 MessageCenter 已创建 · Session=" +
                 ManualSessionId.ToString("N").Substring(0,8) + " · 未连接外部MQTT Broker";
             RefreshMetrics();
@@ -247,6 +250,8 @@ namespace CxVisual.TestCenter.UI
             _status.SetResourceReference(TextBlock.ForegroundProperty, "MPWForegroundBrush");
             diagnostics.Children.Add(_metrics);
             diagnostics.Children.Add(_status);
+            diagnostics.Children.Add(new Expander {Header="共享公共消息中心控件（同一MNM实例）",
+                IsExpanded=false,Content=new Border {Child=_shared,Height=310}});
             Border diagnosticsCard = Card(diagnostics);
             Grid.SetRow(diagnosticsCard, 2);
             root.Children.Add(diagnosticsCard);
@@ -398,6 +403,7 @@ namespace CxVisual.TestCenter.UI
             if(_subscription!=null){_subscription.Dispose();_subscription=null;}
             _disposed=true;
             if(_responder!=null){_responder.Dispose();_responder=null;_responderTopic=null;}
+            _shared.Dispose();
             _center.Dispose();
             // 手工会话关闭仅释放订阅与进程内消息，不能声明现场设备停止。
         }
