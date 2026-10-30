@@ -405,6 +405,101 @@ namespace CxVisual.Runtime.Host
                         Check(deployment.ApplyPendingAtTaskBoundary(),
                             "漂移负例结束后必须正式发布新的部署供后续测试使用");
                 }
+                // 独立恢复正反例：PLC-A一笔真实FC03丢包，PLC-B必须
+                // 始终保有原来的Channel Generation并继续读取，而不是整组重启。
+                using(CancellationTokenSource isolatedStop=new CancellationTokenSource())
+                {
+                    string isolatedPipe="scada-isolated-"+Guid.NewGuid().ToString("N");
+                    MRHScadaIsolatedRecoverySupervisor isolated=
+                        new MRHScadaIsolatedRecoverySupervisor(
+                            project,configs,isolatedPipe,2,80);
+                    object generationsGate=new object();
+                    string firstA=null,firstB=null,recoveredA=null;
+                    Task isolatedTask=isolated.RunAsync(isolatedStop.Token,device=>
+                    {
+                        lock(generationsGate)
+                        {
+                            if(device.DeviceRef==a.ToString("N"))
+                            {
+                                if(firstA==null)firstA=device.Generation;
+                                else recoveredA=device.Generation;
+                            }
+                            else if(device.DeviceRef==b.ToString("N"))
+                            {
+                                if(firstB==null)firstB=device.Generation;
+                                else throw new InvalidOperationException(
+                                    "PLC-B健康设备不得被独立恢复监督器重启");
+                            }
+                        }
+                    });
+                    try
+                    {
+                        Check(SpinWait.SpinUntil(()=>
+                            isolated.ConnectedGenerations==2&&
+                            !isolatedTask.IsCompleted,8000),
+                            "单PLC隔离恢复初始两套真实会话未启动");
+                        MRHScadaPipeReply initial=MRHScadaReadOnlyPipe.ExchangeForSmoke(
+                            isolatedPipe,new MRHScadaPipeRequest{
+                                SchemaVersion=1,Operation="discover"});
+                        Check(initial.Status=="Ok"&&initial.Devices.Length==2,
+                            "独立恢复初始Pipe未发现两台真实PLC");
+                        string pinnedB=initial.Devices.Single(x=>
+                            x.DeviceRef==b.ToString("N")).Generation;
+                        string pinnedA=initial.Devices.Single(x=>
+                            x.DeviceRef==a.ToString("N")).Generation;
+                        Check(SpinWait.SpinUntil(()=>plcA.Reads>=3&&plcB.Reads>=3,8000),
+                            "独立恢复故障注入前真实FC03采样不完整");
+                        plcA.DropNextReplies(1);
+                        Check(SpinWait.SpinUntil(()=>
+                            isolated.RecoveryAttempts>=1||isolatedTask.IsCompleted,12000) &&
+                            !isolatedTask.IsCompleted,
+                            "PLC-A无回包没有触发独立有界恢复");
+                        int bBefore=plcB.Reads;
+                        Check(SpinWait.SpinUntil(()=>plcB.Reads>=bBefore+2,6000),
+                            "PLC-A恢复时PLC-B未继续独立周期采样");
+                        Check(SpinWait.SpinUntil(()=>
+                            isolated.ConnectedGenerations>=3||isolatedTask.IsCompleted,12000) &&
+                            !isolatedTask.IsCompleted,
+                            "PLC-A未独立重新建立SessionGeneration");
+                        MRHScadaPipeReply after=MRHScadaReadOnlyPipe.ExchangeForSmoke(
+                            isolatedPipe,new MRHScadaPipeRequest{
+                                SchemaVersion=1,Operation="discover"});
+                        Check(after.Status=="Ok"&&after.Devices.Length==2&&
+                            after.Devices.Single(x=>x.DeviceRef==b.ToString("N")).Generation==pinnedB&&
+                            after.Devices.Single(x=>x.DeviceRef==a.ToString("N")).Generation!=pinnedA&&
+                            isolated.AttemptsFor(a.ToString("N"))==1&&
+                            isolated.AttemptsFor(b.ToString("N"))==0,
+                            "独立恢复错误地重建健康PLC-B，或重连后没有替换PLC-A代次");
+                        lock(generationsGate)
+                            Check(firstA==pinnedA&&firstB==pinnedB&&
+                                recoveredA!=null&&recoveredA!=pinnedA,
+                                "独立恢复的设备订阅通知或原世代错误");
+                        MRHScadaPipeReply stale=MRHScadaReadOnlyPipe.ExchangeForSmoke(
+                            isolatedPipe,new MRHScadaPipeRequest{
+                                SchemaVersion=1,Operation="snapshot",DeviceRef=a.ToString("N"),
+                                ExpectedDeploymentVersion=after.DeploymentVersion,
+                                ExpectedConfigVersion=after.Devices.Single(x=>
+                                    x.DeviceRef==a.ToString("N")).ConfigVersion,
+                                ExpectedGeneration=pinnedA});
+                        Check(stale.Status=="Rejected"&&
+                            stale.ErrorCode=="SESSION_VERSION_MISMATCH",
+                            "旧HMI请求不能读取单PLC重新连接的新会话");
+                        Check(SpinWait.SpinUntil(()=>plcA.Reads>=4,6000)&&
+                            plcA.Writes==0&&plcB.Writes==0,
+                            "单PLC隔离恢复后没有真实FC03或发生了错误FC06重放");
+                    }
+                    finally
+                    {
+                        isolatedStop.Cancel();
+                        try{isolatedTask.GetAwaiter().GetResult();}
+                        catch(OperationCanceledException)
+                            when(isolatedStop.IsCancellationRequested){}
+                    }
+                    int endedA=plcA.Reads,endedB=plcB.Reads;
+                    Thread.Sleep(240);
+                    Check(plcA.Reads==endedA&&plcB.Reads==endedB,
+                        "独立恢复Supervisor Stop后仍有PLC请求遗留");
+                }
                 // 项目级Deployment的生效版本同样必须被每台PLC轮询守卫：
                 // 不允许Studio部署调整后旧Host继续采集或沿用原设备控制上下文。
                 using(MRHScadaRuntimeGroup pinned=MRHScadaRuntimeGroup.OpenFromEngineering(
