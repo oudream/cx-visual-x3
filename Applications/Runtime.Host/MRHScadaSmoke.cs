@@ -52,7 +52,12 @@ namespace CxVisual.Runtime.Host
                 _listener=new TcpListener(IPAddress.Loopback,0);
                 _listener.Start();
                 Port=((IPEndPoint)_listener.LocalEndpoint).Port;
-                _server=Task.Run((Action)Serve);
+                // TCP夹具是整个测试期间同步阻塞Accept/Read的OS socket服务，
+                // 不得占用默认线程池长期驻留，避免多PLC+FCR并行时饥饿。
+                // LongRunning只属于G1夹具，生产PLC周期仍复用正式FCR。
+                _server=Task.Factory.StartNew((Action)Serve,
+                    CancellationToken.None,TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
             }
             private static bool Read(NetworkStream stream,byte[] bytes)
             {
