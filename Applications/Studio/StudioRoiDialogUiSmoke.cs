@@ -361,6 +361,22 @@ namespace CxVisual.Studio
                     vm.ProjectSession.IsDirty,
                     "真实Studio ROI保存按钮必须在零Run状态复用已存配方提交MEM");
                 revision=vm.ProjectSession.Revision;
+                // 使用原MEM History验证一笔Data+Visual事务能原样撤销/重做，
+                // 不由MVI OverlayStore另建编辑历史。
+                vm.ProjectSession.Undo().RequireValue();
+                MEMPage undoPage=vm.ProjectSession.Find(pageId) as MEMPage;
+                Require(undoPage!=null &&
+                    CxVisionRoiEngineering.Open(vm.ProjectSession,
+                        vm.ProjectSession.GetAddress(undoPage.RootContent)).RoiId==roi.Id,
+                    "撤销必须原子恢复原ROI的Data与Visual身份");
+                vm.ProjectSession.Redo().RequireValue();
+                MEMPage redoPage=vm.ProjectSession.Find(pageId) as MEMPage;
+                Require(redoPage!=null &&
+                    CxVisionRoiEngineering.Open(vm.ProjectSession,
+                        vm.ProjectSession.GetAddress(redoPage.RootContent)).RoiId==newlyDrawnRoi &&
+                    vm.ProjectSession.Revision>revision,
+                    "重做必须原子恢复新ROI Data/Visual且产生有效Revision");
+                revision=vm.ProjectSession.Revision;
                 vm.SaveProject(project);
                 using(MEMEngineeringSession saved=MEMEngineering.Open(project))
                 {
