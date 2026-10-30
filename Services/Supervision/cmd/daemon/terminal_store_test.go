@@ -169,3 +169,26 @@ func TestTerminalSnapshotIsReadOnly(t *testing.T) {
 		t.Fatal("diagnostic view created an unauthorized terminal latch")
 	}
 }
+
+
+func TestTerminalLatchStoreRejectsOversizedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "too-large.json")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(terminalLatchMaxBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gate := newProgramWorkerGate()
+	if err := gate.enablePersistence(path); err == nil {
+		t.Fatal("oversized journal must block Daemon startup")
+	}
+	if gate.start(context.Background(), 9001, func() { t.Error("unexpected worker") }) {
+		t.Fatal("oversized journal must not be treated as empty")
+	}
+}
