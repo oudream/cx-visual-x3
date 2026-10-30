@@ -17,6 +17,8 @@ using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Foundation.Data.Configuration;
@@ -387,6 +389,8 @@ namespace CxVisual.Studio
                 });
                 CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环",
                     VerifyCpuVisionFileClosure);
+                CheckStep("R1-01 保存工程→带Stride RAW指纹重绑→MRK复算/显示/导出",
+                    VerifyStudioSavedRoiRebind);
                 CheckStep("S1-04 共用MPW主题及Dock视觉不修改工程", () =>
                 {
                     Assert(window.StudioDock.AnchorableHeaderTemplate != null &&
@@ -3446,11 +3450,143 @@ namespace CxVisual.Studio
             Results.Clear();
             bool ok=true;
             try { CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环",
-                VerifyCpuVisionFileClosure); }
+                VerifyCpuVisionFileClosure);
+                CheckStep("R1-01 保存工程→带Stride RAW指纹重绑→MRK复算/显示/导出",
+                    VerifyStudioSavedRoiRebind); }
             catch(Exception ex) { Results.Add("FAIL: "+ex);ok=false; }
             File.WriteAllLines(report,Results);
             return ok;
         }
+        /// <summary>
+        /// R1-01 Studio复用同一MEM配方和真实FIM RAW读入器；不运行另一个检测
+        /// 工程来冒充“重绑”。测试保留行填充、配置版本、RunId及可视结果。
+        /// </summary>
+        private static void VerifyStudioSavedRoiRebind()
+        {
+            string folder=Path.Combine(Path.GetTempPath(),
+                "cx-studio-roi-rebind-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string rawPath=Path.Combine(folder,"input-4x4-stride10.raw");
+            string wrongPath=Path.Combine(folder,"wrong-source.raw");
+            string projectPath=Path.Combine(folder,"rebind.cxproj");
+            string csvPath=Path.Combine(folder,"evidence.csv");
+            string exportRaw=Path.Combine(folder,"export.raw");
+            try
+            {
+                // Gray16 4×4，Stride=10；每行8字节像素+2字节填充。
+                byte[] bytes=new byte[40];
+                for(int y=0;y<4;y++)
+                {
+                    for(int x=0;x<4;x++)bytes[y*10+x*2]=210;
+                    bytes[y*10+8]=77;
+                    bytes[y*10+9]=88;
+                }
+                var image=new FIMImageBuffer(4,4,FIMPixelFormat.Gray16,bytes,10);
+                FIMRawImageWriter.SaveFile(rawPath,image,preserveStride:true);
+                var roi=new MVIImageOverlayItem(
+                    MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                    new FGERect2D(0,0,3.6,3.6),
+                    new[]{new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
+                        new FGEPoint2D(0,3.6)},"Studio R1三角形");
+                var options=new CxVisionInspectionOptions{
+                    PixelDepth=CxVisionPixelDepth.Bits16,
+                    GrayThreshold=200,MinDefectArea=1,MaxDefectArea=16,UseAi=false
+                };
+                MRIObjectAddress address;
+                using(var original=MEMEngineering.Create("Studio R1真实ROI重绑"))
+                {
+                    MEMContent content=original.AddPage("R1工程页").RootContent;
+                    int before=original.Revision;
+                    address=CxVisionRoiEngineering.Commit(original,content,before,
+                        image,"r1/studio/gray16",roi,options,43,CancellationToken.None);
+                    Assert(original.Revision==before+1,
+                        "ROI必须只使用一次MEM事务提交Data/Visual");
+                    original.SaveAs(projectPath);
+                    original.Close(true);
+                }
+                using(var reopened=MEMEngineering.Open(projectPath))
+                {
+                    try
+                    {
+                        int revision=reopened.Revision;
+                        var loaded=MainWindow.LoadStudioSavedRoiRaw(reopened,address,
+                            rawPath,10,CancellationToken.None);
+                        Assert(loaded.Width==4 && loaded.Height==4 &&
+                            loaded.Stride==10 &&
+                            loaded.PixelFormat==FIMPixelFormat.Gray16 &&
+                            loaded.GetGrayValue(0,0)==210 &&
+                            loaded.GetGrayValue(3,3)==210 &&
+                            reopened.Revision==revision && !reopened.IsDirty,
+                            "同Studio正式工程重开后无法按原像素/Stride重绑，或意外修改工程");
+
+                        bool badStride=false;
+                        try {MainWindow.LoadStudioSavedRoiRaw(reopened,address,
+                            rawPath,0,CancellationToken.None);}
+                        catch(InvalidDataException){badStride=true;}
+                        Assert(badStride,"未显式提供原Stride时不应猜测/截断RAW");
+
+                        byte[] changed=(byte[])bytes.Clone();
+                        changed[39]=89; // 即使只改Padding也必须与保存的完整原始帧Hash一致。
+                        File.WriteAllBytes(wrongPath,changed);
+                        bool wrongSource=false;
+                        try{MainWindow.LoadStudioSavedRoiRaw(reopened,address,
+                            wrongPath,10,CancellationToken.None);}
+                        catch(InvalidOperationException){wrongSource=true;}
+                        Assert(wrongSource,"同尺寸、同位深但像素/填充变化的旧来源不得绑定");
+
+                        using(var stop=new CancellationTokenSource())
+                        {
+                            stop.Cancel();
+                            bool cancelled=false;
+                            try{MainWindow.LoadStudioSavedRoiRaw(reopened,address,
+                                rawPath,10,stop.Token);}
+                            catch(OperationCanceledException){cancelled=true;}
+                            Assert(cancelled,"取消的RAW重绑不应创建可显示的原图");
+                        }
+                        Assert(reopened.Revision==revision && !reopened.IsDirty,
+                            "错误来源/取消修改了正式MEM工程");
+                        CxVisionRunSummary run=CxVisionRoiEngineering.RunSavedAsync(
+                            reopened,address,loaded,CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Assert(run.RunId!=Guid.Empty && run.SourceId=="r1/studio/gray16" &&
+                            run.ConfigRevision==43 &&
+                            run.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                                .IntegerValue==6 &&
+                            run.Items.Any(x=>x.Kind==CxVisionResultKind.Mask) &&
+                            run.Items.Any(x=>x.Kind==CxVisionResultKind.Region) &&
+                            !reopened.IsDirty && reopened.Revision==revision,
+                            "Studio重绑后MRK结果/版本/区域面积/工程Dirty不一致");
+
+                        var viewer=new MPWImageViewerControl();
+                        var items=new ListBox();
+                        var report=new MainWindow.StudioCpuVisionReport {
+                            FlowId=run.RunId,Evidence=run,SourceImage=loaded
+                        };
+                        MainWindow.PopulateStudioVisionResults(report,viewer,items);
+                        var mask=run.Items.Single(x=>x.Kind==CxVisionResultKind.Mask);
+                        MainWindow.SelectStudioVisionResult(run,loaded,viewer,mask);
+                        Assert(items.Items.Count==run.Items.Count &&
+                            Object.ReferenceEquals(viewer.Session.Original,loaded) &&
+                            Object.ReferenceEquals(viewer.Session.Result,mask.Image) &&
+                            mask.Image.GetGrayValue(3,3)==0,
+                            "Studio同一MPW图窗未正确显示MRK Mask或投影了错误来源");
+
+                        CxVisionRunCsvExporter.SaveFile(csvPath,run);
+                        FIMRawImageWriter.SaveFile(exportRaw,loaded,preserveStride:true);
+                        Assert(File.ReadAllText(csvPath).Contains(run.RunId.ToString("N")) &&
+                            File.ReadAllText(csvPath).Contains("AcceptedRegionPixelArea") &&
+                            File.ReadAllBytes(exportRaw).SequenceEqual(bytes),
+                            "重开后CSV/RAW导出未关联原Run或原始Stride字节发生改变");
+                    }
+                    finally{reopened.Close(true);}
+                }
+            }
+            finally
+            {
+                try{Directory.Delete(folder,true);}catch(IOException){}
+            }
+        }
+
         private static void VerifyCpuVisionFileClosure()
         {
                     string folder=Path.Combine(Path.GetTempPath(),
