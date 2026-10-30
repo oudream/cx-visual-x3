@@ -85,3 +85,24 @@ func TestGuardReportRequiresOrphanObservationTime(t *testing.T) {
 		t.Fatal("stale/invalid orphan observation without valid time must be unavailable")
 	}
 }
+
+
+func TestGuardReportRejectsSymlinkBeforeReading(t *testing.T) {
+	dir := t.TempDir()
+	fileDir := filepath.Join(dir, "supervision")
+	if err := os.MkdirAll(fileDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	realFile := filepath.Join(dir, "other.json")
+	if err := os.WriteFile(realFile, []byte(\`{"version":1,"terminal":{}}\`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(fileDir, "daemon-terminal-latches.json")
+	if err := os.Symlink(realFile, link); err != nil {
+		// On Windows, creating symlinks can require developer mode/admin.
+		t.Skipf("symlink unavailable in this test environment: %v", err)
+	}
+	if source := Read(dir).Terminal; source.Available {
+		t.Fatal("symlinked artifact was accepted despite out-of-directory target")
+	}
+}
