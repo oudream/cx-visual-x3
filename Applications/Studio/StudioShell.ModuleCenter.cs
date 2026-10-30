@@ -208,6 +208,19 @@ namespace CxVisual.Studio
         /// Studio与自测共用同一MPW真实图窗和PVC只读Run产物。
         /// 不通过显示文件二次读取RAW：原图必须来自同一次MRK执行字节快照。
         /// </summary>
+        /// <summary>
+        /// Studio一次有效图像绑定由对象身份和MVI原图代次共同确定。
+        /// 外部SDK可对相同Buffer实例再次SetOriginal；旧Run不能仅因引用相等而成为当前结果。
+        /// </summary>
+        internal static bool IsStudioVisionSourceCurrent(
+            MPWImageViewerControl viewer,FIMImageBuffer source,long generation)
+        {
+            if(viewer==null)throw new ArgumentNullException("viewer");
+            return source!=null &&
+                Object.ReferenceEquals(source,viewer.Session.Original) &&
+                viewer.Session.OriginalGeneration==generation;
+        }
+
         internal static void PopulateStudioVisionResults(
             StudioCpuVisionReport report,MPWImageViewerControl viewer,ListBox list)
         {
@@ -698,6 +711,7 @@ namespace CxVisual.Studio
                 "Studio.ModuleCenter.ResultPanel");
             CxVisionRunSummary displayedRun=null;
             FIMImageBuffer displayedOriginal=null;
+            long displayedOriginalGeneration=-1;
             Guid displayedProject=Guid.Empty;
             Guid displayedPage=Guid.Empty;
             int displayedRevision=-1;
@@ -708,6 +722,7 @@ namespace CxVisual.Studio
                 ++previewEpoch;
                 if(contourOperation!=null)contourOperation.Cancel();
                 displayedRun=null;displayedOriginal=null;
+                displayedOriginalGeneration=-1;
                 displayedProject=Guid.Empty;
                 displayedPage=Guid.Empty;displayedRevision=-1;
                 contourButton.IsEnabled=false;sourceButton.IsEnabled=false;
@@ -722,14 +737,16 @@ namespace CxVisual.Studio
                 displayedProject==_viewModel.ProjectSession.Project.Id &&
                 _viewModel.ActivePage!=null &&
                 displayedPage==_viewModel.ActivePage.Id &&
-                Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original);
+                IsStudioVisionSourceCurrent(resultPreview,displayedOriginal,
+                    displayedOriginalGeneration);
             Func<bool> hasCurrentRun=()=>displayedRun!=null &&
                 displayedProject==_viewModel.ProjectSession.Project.Id &&
                 _viewModel.ActivePage!=null &&
                 displayedPage==_viewModel.ActivePage.Id &&
                 displayedRevision==_viewModel.ProjectSession.Revision &&
                 (displayedOriginal==null ||
-                 Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original));
+                 IsStudioVisionSourceCurrent(resultPreview,displayedOriginal,
+                     displayedOriginalGeneration));
             // 正式工程重开后不需要先运行一条新的CPU流程；
             // 只绑定用户指定的RAW原像素，原工程Revision和Run证据保持不变。
             bindRoiButton.Click+=async (sender,args)=>{
@@ -779,6 +796,7 @@ namespace CxVisual.Studio
                     invalidatePreview();
                     resultPreview.ShowOriginal(restored);
                     displayedOriginal=restored;
+                    displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     displayedProject=projectId;
                     displayedPage=page.Id;
                     resultPreview.Visibility=Visibility.Visible;
@@ -891,6 +909,7 @@ namespace CxVisual.Studio
                     resultPreview.AddOverlay(recipe.Roi);
                     displayedRun=completed;
                     displayedOriginal=original;
+                    displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     displayedProject=projectId;
                     displayedPage=page.Id;
                     displayedRevision=expectedRevision;
@@ -1036,6 +1055,7 @@ namespace CxVisual.Studio
                     displayedRun=null;
                     PopulateStudioVisionResults(projection,resultPreview,resultList);
                     displayedRun=projected;
+                    displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     resultDetail.Text="已从本Run Mask提取"+contourCount+
                         "条只读轮廓；点击Contour项可在原图叠加孔洞/外环。";
                 }
@@ -1108,6 +1128,7 @@ namespace CxVisual.Studio
                     PopulateStudioVisionResults(report,resultPreview,resultList);
                     displayedRun=report.Evidence;
                     displayedOriginal=report.SourceImage;
+                    displayedOriginalGeneration=resultPreview.Session.OriginalGeneration;
                     displayedProject=_viewModel.ProjectSession.Project.Id;
                     displayedPage=report.PageId;
                     displayedRevision=_viewModel.ProjectSession.Revision;
