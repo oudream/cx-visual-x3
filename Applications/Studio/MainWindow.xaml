@@ -477,7 +477,36 @@
                                         ToolTip="先选择两个及以上有Done控制输出的分支；在原工程事务中连接到Judge节点的Start端口"/>
                                 <Button x:Name="FlowWireMode" Content="开始连线" Click="OnToggleWiring"/>
                                 <Button Content="验证工程编排" Click="OnValidateWiring"/>
-                                <Button Content="仿真执行并追踪" Click="OnRunLogicDemo"/>
+                                <Button Content="仿真 / 离线CPU执行追踪" Click="OnRunLogicDemo"
+                                        ToolTip="仿真使用原有模拟Provider；Vision使用真实Professional CPU和本地RAW快照；PLC写入一律要求独立Host授权"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="10,0,10,8">
+                                <TextBlock Text="离线RAW文件" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowRawPath" Width="240" Margin="5,0"
+                                         ToolTip="实际运行时重新读取并锁定字节，工程仅保存算法节点和参数；不持久化本地文件路径"/>
+                                <Button Content="浏览RAW" Click="OnBrowseFlowRaw"/>
+                                <TextBlock Text="宽" Margin="8,0,2,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowRawWidth" Width="48" Text="5"/>
+                                <TextBlock Text="高" Margin="8,0,2,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowRawHeight" Width="48" Text="3"/>
+                                <TextBlock Text="位深" Margin="8,0,2,0" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="FlowRawBits" Width="55" SelectedIndex="0">
+                                    <ComboBoxItem Content="8"/><ComboBoxItem Content="16"/>
+                                </ComboBox>
+                                <Button Content="插入真实RAW→Vision CPU节点" Margin="8,0,0,0"
+                                        Click="OnCreateProfessionalCpuFlow"
+                                        ToolTip="在空Content中一次MEM事务加入可保存可重开的RAW→真实阈值/四邻接专业算法及强类型端口"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="10,0,10,8">
+                                <TextBlock Text="CPU灰度阈值" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowCpuThreshold" Width="65" Text="200" Margin="5,0"/>
+                                <TextBlock Text="最小区域" Margin="7,0,2,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowCpuMinArea" Width="65" Text="2"/>
+                                <TextBlock Text="最大区域" Margin="7,0,2,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="FlowCpuMaxArea" Width="75" Text="100"/>
+                                <TextBlock Text="离线Vision仅CPU；PLC能力允许设计，但必须经Runtime.Host授权后执行"
+                                           Margin="12,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
                             </WrapPanel>
                             <WrapPanel Margin="10,0,10,8">
                                 <ComboBox x:Name="FlowPortPairs" Width="260" DisplayMemberPath="Label"/>
