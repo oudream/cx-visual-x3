@@ -357,6 +357,15 @@
 - **剩余**：真实双Pane手势拖动/失捕/鼠标焦点的全程UIA及工业大图仍需G5/G6；完整MPW字段收敛仍属IMG-01/02 InProgress。
 
 
+### 7.10 IMG-02 TestCenter WPF验收与Decision专业类型映射修复（2026-10-30）
+
+- **确认固定SHA**：[`8d94fa0469bcce27fe0ab554582b5b31b3ba7511`](https://github.com/oudream/cx-visual-x3/commit/8d94fa0469bcce27fe0ab554582b5b31b3ba7511) 的[TestCenter Windows #41010129932](https://github.com/oudream/cx-visual-x3/actions/runs/41010129932)实际`success`，对应自动WPF TestCenter代码及Esc路由正反例达到G3/G4（受控STA/自动运行），不代表真实人手UIA/生产G5/G6。
+- **同SHA Imaging失败真实原因**：[Imaging #41010129867](https://github.com/oudream/cx-visual-x3/actions/runs/41010129867)构建通过，但默认ArchitectureSmoke在`moc.bind.contract_unverified:vision.cpu.threshold.inspect:MDC_BIND_TYPE_UNKNOWN:OUTPUT:Inspection`失败。原因是后续新B2/B3独立Plan测试调用`MOCManifestRuntimeBinding.Bind`时未按Host职责提供`vision.cpu.inspection.result → CxVisionInspectionResult`的`professionalTypes`显式映射。同仓库MDC检查本就要求Unknown专业TypeId保持不可默许。
+- **修复不降安全门禁**：[`10e9b1f3`](https://github.com/oudream/cx-visual-x3/commit/10e9b1f30d97ef646dd5d0e474b17be5628b29d2)仅对真实独立Plan运行与版本漂移拒绝两条Host测试调用增加专业类型映射，**不修改Inspector、MOC/RMK授权及Unknown拒绝行为**；保留Plan升级必须拒绝的反例。
+- **补图层隐藏反证**：[`9944b63b`](https://github.com/oudream/cx-visual-x3/commit/9944b63b23b8ded0a6b9dc5da91ae03f1d524d24)在`MVIImageOverlayTests`增加隐藏层途中`TryUpdate`拒绝、不能再写入隐藏图元、重新显示后允许独立编辑。相应[Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)和[Unified Runtime #41010672735](https://github.com/oudream/cx-visual-x3/actions/runs/41010672735)触发时尚在执行，须更新实际结论。
+- **状态**：IMG-01/02 InProgress；自动WPF Esc路由当前确认TestCenter G4，完整主副Pane鼠标手势G5、最新全量Imaging/Runtime G4需继续闭环。
+
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
