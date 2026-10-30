@@ -11,6 +11,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Runtime.Commands;
+using CxVisual.Professional.Automation.Scada;
 
 namespace CxVisual.Runtime.Host
 {
@@ -160,15 +161,34 @@ namespace CxVisual.Runtime.Host
             {
                 string project=Path.Combine(root,"multi.cxproj");
                 string configs=Path.Combine(root,"multi-configs");
-                Guid a,b;
+                Guid a,b,projectId;
                 using(MEMEngineeringSession engineering=MEMEngineering.Create("双工站工业工程"))
                 {
+                    projectId=engineering.Project.Id;
                     a=engineering.AddPage("StationA").Id;
                     b=engineering.AddPage("StationB").Id;
                     engineering.SaveAs(project);
                 }
                 ConfigureDevice(configs,"connector-A","stationA","station-A-channel",plcA.Port);
                 ConfigureDevice(configs,"connector-B","stationB","station-B-channel",plcB.Port);
+                // 真正的部署入口只保存工程设备与已生效Connector引用，不存寄存器地址。
+                MHSConfigService deploymentStore=new MHSConfigService(configs);
+                var deployment=deploymentStore.ForProject(projectId.ToString("N"))
+                    .Open<PADScadaDeploymentConfiguration>();
+                var deployed=deployment.UpdateAsync(model=>
+                {
+                    model.Devices.Clear();
+                    model.Devices.Add(new PADScadaDeviceInstallation{
+                        DeviceNodeGuid=a.ToString("N"),ConnectorModuleId="connector-A",
+                        ScopeId="stationA",IntervalMs=85,Contiguous=true});
+                    model.Devices.Add(new PADScadaDeviceInstallation{
+                        DeviceNodeGuid=b.ToString("N"),ConnectorModuleId="connector-B",
+                        ScopeId="stationB",IntervalMs=85,Contiguous=true});
+                },"双工站正式SCADA部署",CancellationToken.None).GetAwaiter().GetResult();
+                Check(deployed.Success,"SCADA工程部署配置未能持久保存: "+deployed.ErrorCode);
+                if(deployment.HasPendingApply)
+                    Check(deployment.ApplyPendingAtTaskBoundary(),
+                        "SCADA双设备项目Effective未生效");
                 MRHScadaDeviceLaunch launchA=new MRHScadaDeviceLaunch(a,"connector-A",
                     "stationA",85,true);
                 MRHScadaDeviceLaunch launchB=new MRHScadaDeviceLaunch(b,"connector-B",
@@ -183,10 +203,11 @@ namespace CxVisual.Runtime.Host
                         new MRHScadaDeviceLaunch(b,"connector-A","stationB",85,true)}));
                 Check(plcA.Reads==0&&plcB.Reads==0,
                     "身份/Scope/Module冲突不得发任何TCP命令");
-                using(MRHScadaRuntimeGroup group=MRHScadaRuntimeGroup.Open(
-                    project,configs,new[]{launchA,launchB}))
+                using(MRHScadaRuntimeGroup group=MRHScadaRuntimeGroup.OpenFromEngineering(
+                    project,configs))
                 {
-                    Check(group.Count==2&&group.Find(a).DeviceRef!=group.Find(b).DeviceRef &&
+                    Check(group.DeploymentVersion==deployment.EffectiveVersion &&
+                        group.Count==2&&group.Find(a).DeviceRef!=group.Find(b).DeviceRef &&
                         group.Find(a).Device.DataTable.ScopeId=="stationA" &&
                         group.Find(b).Device.DataTable.ScopeId=="stationB" &&
                         group.Find(a).Device.ChannelId!=group.Find(b).Device.ChannelId,
