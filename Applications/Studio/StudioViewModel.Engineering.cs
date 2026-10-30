@@ -49,6 +49,12 @@ namespace CxVisual.Studio
             }
         }
         public bool IsResourceSource {get{return Mode=="资源";}}
+        // 不拥有第二套变量目录：由Studio注入当前可信MDS Scope的只读候选。
+        internal Func<IReadOnlyList<string>> VariableChoicesResolver;
+        public IReadOnlyList<string> VariableChoices
+        {get{return VariableChoicesResolver==null?new string[0]:VariableChoicesResolver();}}
+        public bool IsVariableSource {get{return Mode=="变量";}}
+        internal void NotifyVariableChoices(){Notify("VariableChoices");Notify("ValidationMessage");}
         public string DefaultDescription {get;internal set;}
         public bool CanRestoreDefault {get;internal set;}
         public string[] BindingModes
@@ -85,7 +91,7 @@ namespace CxVisual.Studio
                 // 从变量/资源切回布尔常量时让可见CheckBox与实际提交值保持一致。
                 bool parsed;
                 if(Kind==MPMValueKind.Boolean&&value=="常量"&&!bool.TryParse(Text,out parsed))Text="false";
-                Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("IsResourceSource");Notify("ValidationMessage");
+                Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("IsResourceSource");Notify("IsVariableSource");Notify("VariableChoices");Notify("ValidationMessage");
             }
         }
         public bool IsBooleanConstant {get{return Kind==MPMValueKind.Boolean&&Mode=="常量";}}
@@ -169,6 +175,12 @@ namespace CxVisual.Studio
         public string RenameText {get;set;}
         public string[] BindingModes {get{return new[]{"常量","变量","资源"};}}
         public IMEMResource BindingResource {get;set;}
+        // 外部点位只作为下拉候选，不参与MEM持久化/编辑时变量仓生命周期。
+        public Func<IReadOnlyList<string>> RuntimeVariableChoices {get;set;}
+        public void RefreshRuntimeVariableChoices()
+        {
+            foreach(StudioPropertyItem item in Properties)item.NotifyVariableChoices();
+        }
         public MEMPage ActivePage
         {get{return _editor==null||!_editor.CurrentPageId.HasValue?null:_editor.Document.Find(_editor.CurrentPageId.Value) as MEMPage;}set{if(value==null||_editor==null||IsRefreshing)return;_selected=null;_editor.SetPage(value.Id);NotifyScene();}}
         public IMEMResource SelectedResource
@@ -369,7 +381,8 @@ namespace CxVisual.Studio
                 if(descriptor.IsReadOnly)schemaLabel+=" · 只读";
             }
             else if(visual) schemaLabel+=" · 几何属性";
-            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null?(kind==MPMValueKind.Resource?"资源":"常量"):binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
+            return new StudioPropertyItem{VariableChoicesResolver=()=>RuntimeVariableChoices==null
+                ?new string[0]:RuntimeVariableChoices(),OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null?(kind==MPMValueKind.Resource?"资源":"常量"):binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
         public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids)
         {
             if(IsRefreshing)return;
