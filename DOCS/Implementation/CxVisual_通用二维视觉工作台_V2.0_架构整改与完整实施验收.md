@@ -409,6 +409,14 @@
 - **Windows门禁**：[99f66871](https://github.com/oudream/cx-visual-x3/commit/99f668713212429bf577a289f233ef81618dced6)新增独立`studio-roi-dialog-uia-windows.yml`，必须真实Windows .NET48 x64编译、实际窗口操作且报告**恰好一条IMG05 PASS / 零FAIL**才通过；当前固定SHA [ROI UIA #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)此前仍queued，**源码与自动化测试定义G2已提交，但新UIA的G3/G4/G5不能提前标成功**。既有Studio S1和CPU成功证据仅对应各自历史SHA。
 - **保留边界**：此次是受控真实UIA操作，而非用户手工鼠标拖动ROI、手工项目新建/资源定位全路径、人机截图审评、不同OS地区/语言适配或工业相机HIL；这些项目依旧待G5/G6验收。不可将UIA夹具闭环宣称260项全部完成。
 
+### 7.16 IMG-05 用户可操作ROI绘制、保存重开与真实系统鼠标验收（2026-10-30）
+
+- **确认的真实产品缺口**：原Studio模块中心只嵌入`MPWImageViewerControl`并提供“保存选中ROI”，但没有工具按钮可切换其`RectangleRoi/PolygonRoi/MoveOverlay/Navigate`，因此用户无法从该界面完整完成绘制→选中→提交；已存ROI重绑时原Visual也未投影，必须先MRK运行才可见，保存入口还无条件要求新的MHS Effective。
+- **恢复已有工具和Owner**：[4e49cd57](https://github.com/oudream/cx-visual-x3/commit/4e49cd5781f1cf91ec02eacd321535bd95ce4c15)在原模块中心加入四个有稳定AutomationId的工具按钮，仅切换既有MPW Viewer和MVI ToolMode。工具未绑定原图时显式拒绝，重绑和新Run时恢复Navigate，不建立第二套ROI几何或编辑History；[e4c9b512](https://github.com/oudream/cx-visual-x3/commit/e4c9b5129eaa45a30325a170310b3b6a8236c298)增加Studio真实STA按钮存在性、缺原图拒绝和MEM Revision不变反证；[e5a9abda](https://github.com/oudream/cx-visual-x3/commit/e5a9abdae6cbb6df3dee455fd09c36f96ee115d6)将四按钮UIAutomation操作接入独立Studio窗口测试。
+- **重新编辑已存配方**：[37ed18c8](https://github.com/oudream/cx-visual-x3/commit/37ed18c823be60dbd05854611a9447edd3d4a807)绑定完成后直接投影`CxVisionRoiRecipe.Roi`并自动选中，可无新Run编辑后显式提交。若MEM Content已有正式ROI，则验证绑定FIM原像素SHA-256并保留该配方SourceId、Options、ConfigurationRevision；若是新建ROI则仍必须通过当前Run和MHS Effective；提交始终使用`CxVisionRoiEngineering.Commit`单一MEM Data+Visual事务、旧Run立即失效，保留当前图窗来源供复算。[c49195d2](https://github.com/oudream/cx-visual-x3/commit/c49195d2022d5d4b4fc4f757275e3fbb0acbebfc)增加零Run状态UIA点击保存、Revision+1、保存工程文件再以MEM Open核对配置来源未漂移；[e1b24b9e](https://github.com/oudream/cx-visual-x3/commit/e1b24b9edc0bee6883907ec63b788d7227af4c87)加入独立测试中的原生Windows鼠标拖框，要求MVI唯一OverlayStore新建有效矩形，未保存时Revision不变，保存后新ROI Id进入MEM。此为已提交测试路径，**G5待实测，不得宣称已通过**。
+- **实际失败与修复**：早期[Studio ROI UIA #41031770555](https://github.com/oudream/cx-visual-x3/actions/runs/41031770555)在`d5ddf497` **failure**，原因是Studio编译`CS0104`：`System.Windows.Automation.Condition`与`System.Windows.Condition`引用歧义；GUI步骤未执行。已在[4327a2a9](https://github.com/oudream/cx-visual-x3/commit/4327a2a97c341d659e9fb00f42751623234ed91f)显式指定UIAutomation.Condition。此次编译修复与后续GUI代码须看后继固定SHA工作流；不能拿旧失败/旧绿证明最新UIA。
+- **仍待**：独立Windows UIA需固定SHA真正完成全解编译和原生打开/保存、鼠标绘制、Mask选择和Raw/CSV输出全流程，G5还需真实焦点/DPI/多语言和人工验证。当前R1/IMG-05不关闭，设备G6也不关闭。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
