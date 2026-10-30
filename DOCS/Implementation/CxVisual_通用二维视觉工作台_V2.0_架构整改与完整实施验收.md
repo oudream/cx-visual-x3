@@ -459,6 +459,13 @@
 - **真实文件名输入兼容**：[987d1a81](https://github.com/oudream/cx-visual-x3/commit/987d1a81f65c18ff377a1a437f089684f1fc21d5)保留1148/1001优先识别，并按Windows UIAutomation实际`Edit`控件的`Name`语义与`ValuePattern.IsReadOnly`发现唯一可写文件名输入；候选不唯一时拒绝猜测，并记录至多24个系统Edit/ComboBox控件的类型/名称/ID/可写性。
 - **验收界限**：最后固定[Windows ROI UIA #41053041715](https://github.com/oudream/cx-visual-x3/actions/runs/41053041715)仍pending；原生系统文件框的新ValuePattern路径尚未取得PASS，G5未关闭。仍须连续确认真实RAW绑定→鼠标ROI→MEM Undo/Redo→MRK复算→Mask/CSV/RAW→错源拒绝，不得因局部GUI通过宣布完整IMG-05通过。
 
+### 7.23 IMG-05 真实原生文件框UIA子树为空：进一步下探Win32子HWND（2026-10-30）
+
+- **固定失败升级为真值**：[Studio ROI UIA #41053041715](https://github.com/oudream/cx-visual-x3/actions/runs/41053041715)（`987d1a81`）在Windows .NET48 x64实际Studio依赖编译通过并成功打开Win32原生Dialog HWND=131498，随后`FindFileNameEditor`报告“具名=0，其他Edit=0，原生UIA控件=空”。证据是Dialog根UIA子树未暴露可写Edit/ComboBox，而非仅仅AutomationId 1148/1001不兼容；旧的猜测“通过更多名称匹配即可”已被实证否决。
+- **本轮源码**：[a62ff0d6](https://github.com/oudream/cx-visual-x3/commit/a62ff0d678d32d7d17099ff7b0115eda868a730a)在已确认的真正`#32770` HWND下枚举`EnumChildWindows`，输出类名、`GetDlgCtrlID`和上一级控件ID；当根UIA树不提供文件名控件时，只针对真正Win32`Edit/ComboBox`子HWND上符合1001或1148的控件再次`AutomationElement.FromHandle + ValuePattern`，不能唯一识别则输出完整诊断并失败，不会误将路径输入到搜索框；[de30df40](https://github.com/oudream/cx-visual-x3/commit/de30df40ae0b51a9eaea56e638195f4dc0ffcc04)对系统文件框确认/取消按钮也补Win32原生子HWND来源，UIA路径失败时异步`WM_CLOSE`取消真实模态窗口，避免只剩120秒进程超时，**不作为成功替代路径**。
+- **安全/架构边界**：只在独立`StudioRoiDialogUiSmoke`增加Win32测试诊断，真实Studio产品的`Microsoft.Win32.OpenFileDialog`及`CxVisionRoiEngineering`不变；不跳过真实文件框，不写入MEM假的ROI源，不接受未核实GUI结果；IMG-05仍`InProgress`。
+- **待验**：新[ROI UIA #41053855777](https://github.com/oudream/cx-visual-x3/actions/runs/41053855777)提交时`pending`，仍需确认从文件名ValuePattern继续到真正按确认按钮、RAW绑定/指纹校验、原生鼠标、MEM Undo/Redo及MRK/Mask/CSV全链，才能升级G5。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
