@@ -9,6 +9,8 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Professional.Automation.Scada;
+using CxVisual.Professional.Automation.DeviceVariables;
+using CxVisual.Mechanism.Runtime.Commands;
 
 namespace CxVisual.Runtime.Host
 {
@@ -39,8 +41,12 @@ namespace CxVisual.Runtime.Host
 
         internal static MRHScadaRuntime Open(string projectPath,string configRoot,
             Guid deviceNodeId,string connectorModuleId,string scopeId,
-            int intervalMs,bool contiguous,Func<bool> additionalApproval = null)
+            int intervalMs,bool contiguous,Func<bool> additionalApproval = null,
+            Func<string,PADDeviceVariableDefinition,bool> authorizeWrite = null)
         {
+            if(authorizeWrite!=null && additionalApproval==null)
+                throw new UnauthorizedAccessException(
+                    "scada.command.trusted_project_deployment_approval_required");
             if(string.IsNullOrWhiteSpace(projectPath)||!File.Exists(projectPath))
                 throw new FileNotFoundException("SCADA需要由Studio正式保存的MEM工程");
             if(deviceNodeId==Guid.Empty)
@@ -106,7 +112,7 @@ namespace CxVisual.Runtime.Host
             PADScadaDeviceSession session=new PADScadaDeviceSession(
                 deviceRef,scopeId,connectorModuleId,version,effective,
                 TimeSpan.FromMilliseconds(intervalMs),contiguous,
-                authorizeWrite:null,effectiveStillApproved:stillApproved);
+                authorizeWrite:authorizeWrite,effectiveStillApproved:stillApproved);
             return new MRHScadaRuntime(source,stamp,section,version,session,stillApproved);
         }
 
@@ -119,6 +125,19 @@ namespace CxVisual.Runtime.Host
         internal long CompletedCycles {get{return _device.CompletedCycles;}}
         internal long PartialCycles {get{return _device.PartialCycles;}}
         internal PADScadaDeviceSession Device {get{return _device;}}
+        /// <summary>
+        /// Only an already authenticated and deployment-approved Host may opt
+        /// into PLC commands before StartAsync. Default group/CLI/Smoke remain
+        /// read-only. The existing MRK center owns authentication and leases;
+        /// this method neither creates one nor opens a write IPC endpoint.
+        /// </summary>
+        internal IDisposable RegisterTrustedWriteCommands(MRKCommandCenter center,long commandId)
+        {
+            if(_stopped||!_stillApproved())
+                throw new InvalidOperationException(
+                    "scada.command.deployment_or_session_stale");
+            return _device.RegisterWriteCommands(center,commandId);
+        }
         internal Task Completion {get{return _device.Completion;}}
         internal Task StartAsync(CancellationToken cancellationToken)
         {
