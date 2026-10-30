@@ -126,8 +126,7 @@ namespace CxVisual.Professional.Automation.Plc
             {
                 throw new PADPlcAcquisitionUnavailableException("PLC连续采样超时，须新建会话", error);
             }
-            catch (IOException error) when (_maxConsecutiveFailedCycles > 0 &&
-                !(error is InvalidDataException))
+            catch (IOException error) when (_maxConsecutiveFailedCycles > 0)
             {
                 throw new PADPlcAcquisitionUnavailableException("PLC连续采样连接失效", error);
             }
