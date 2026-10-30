@@ -51,3 +51,11 @@
 `MRHScadaSmoke` 用原生TCP测试设备不返回真实FC03请求响应，验证旧世代超时、MDS质量不可信、新世代连接及后续成功采样，且全程无FC06；关闭Supervisor后不得遗留后台FC03。该夹具不是PLC硬件验证。
 
 **验收证据**：代码已提交，恢复专项待 <https://github.com/oudream/cx-visual-x3/actions/runs/41028001190> Windows G1实际结束后确认；本段不能提前标记软件G1通过，真实设备G2/HIL G3与无界长稳都尚未执行。Windows Service SCM安装、服务级守护/进程崩溃拉起，应与现有 `Services/Supervision` Owner联调，禁止在Automation再建守护服务。
+
+## 6. A1/A2 双设备独立Scope与原生TCP多工站装配（2026-10-30增量）
+
+新增 `Applications/Runtime.Host/MRHScadaRuntimeGroup.cs`，该Host装配对象不持有第二数据仓/协议或TaskEngine，仅复用 `MRHScadaRuntime.Open` 对每一条 `MRHScadaDeviceLaunch` 的MEM NodeGuid/MHS Connector Module/Scope/周期执行正式装配。最多32个实例；重复DeviceRef、MDS Scope、ModuleId或已经装配的F17 ChannelId必须FailClosed，未通过组预检前不打开任何设备网络。启动时若任一设备失败，调用现有 Stop/Dispose 对已启动实例回收；停止时尝试全部设备，不能因一台PLC故障遗留另一台后台采集。
+
+`MRHScadaSmoke.RunTwoDevices` 从一个真实保存的MEM工程加载两个持久工站资源，在MHS持久存两份Connector/MPA点表，连两个独立OS TCP端点分别读取值73和45。两个MDS Scope拥有各自Revision、Quality与Generation；停止PLC-A后Quality变Stale，PLC-B继续取得Good，完成组Stop以后两个端点不再收到采样报文；没有任何FC06。负例包括重复资源、Scope、Module、ChannelId。测试实际通过与否以新SHA的Windows工作流为准：<https://github.com/oudream/cx-visual-x3/actions/runs/41028585366>。
+
+**当前交付边界**：`MRHScadaRuntimeGroup` 是Host内的可编译装配与生命周期API，而不是Studio生成的正式部署编目/SCM服务；设备→ConnectorRef与采集组在MEM工程内的持久发布绑定尚待Owner进一步收敛。两设备各自拥有MDS Provider/Registry（按Scope隔离），不满足同一进程跨设备共享值一致性/同步快照或跨进程控制事务。不能以本机TCP夹具冒称现场PLC G2/G3。
