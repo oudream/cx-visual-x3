@@ -45,9 +45,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private Guid? _selectedOverlayId;
         private MVIImageOverlayItem _resizeStart;
         private MVIImageResizeHandle _resizeHandle;
-        private bool _resizing;
-        private bool _editingVertex;
-        private bool _rotatingOverlay;
         private MVIImageOverlayItem _rotationStart;
         private MVIImageOverlayItem _vertexEditStart;
         private int _vertexIndex;
@@ -219,7 +216,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             _overlayEdit.Cancel();
             if(_selecting)_region=null;
-            _dragging=_selecting=_moving=_resizing=_editingVertex=_rotatingOverlay=false;
+            _dragging=_selecting=_moving=false;
             _secondaryDragging=false;
             _movingOverlay=_resizeStart=_vertexEditStart=_rotationStart=null;
             _linePairGesture.Reset();
@@ -234,8 +231,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private bool HasTransientGesture()
         {
             return _overlayEdit.IsActive || _dragging || _selecting || _moving ||
-                _resizing || _editingVertex || _rotatingOverlay || _secondaryDragging ||
-                _polygonDraft.Count>0;
+                _secondaryDragging || _polygonDraft.Count>0;
         }
 
         private bool HasCapturedGesture()
@@ -243,7 +239,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             // 点选多边形/两线的草稿可以跨多次MouseDown存在，不属于捕获中的拖动。
             // 仅捕获操作异常丢失时才回滚；Esc仍由HasTransientGesture取消所有草稿。
             return _overlayEdit.IsActive || _dragging || _selecting || _moving ||
-                _resizing || _editingVertex || _rotatingOverlay || _secondaryDragging;
+                _secondaryDragging;
+        }
+
+        private bool IsOverlayEdit(MVIImageOverlayEditKind kind)
+        {
+            return _overlayEdit.IsActive && _overlayEdit.Kind==kind;
         }
 
         private void OnGestureLostMouseCapture(object sender,MouseEventArgs e)
@@ -449,8 +450,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _pendingFit = true;
             _region = null;
             _selectedOverlayId = null;
-            _resizeStart = null; _resizing = false;
-            _vertexEditStart = null; _editingVertex = false;
+            _resizeStart = null;
+            _vertexEditStart = null;
             _pixelSpacing = null; _rulerMillimeters = false;
             _displayState.Reset();
             _viewTransform.Reset();
@@ -513,8 +514,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             VerifyAccess();
             CancelTransientGesture();
             _region = null;
-            _selectedOverlayId = null; _resizeStart = null; _resizing = false;
-            _vertexEditStart = null; _editingVertex = false;
+            _selectedOverlayId = null; _resizeStart = null;
+            _vertexEditStart = null;
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
@@ -1565,7 +1566,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     if(!_overlayEdit.Begin(item,MVIImageOverlayEditKind.Rotate,
                         secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
                         return false;
-                    _rotationStart=item;_rotatingOverlay=true;
+                    _rotationStart=item;
                     return true;
                 }
             }
@@ -1581,7 +1582,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void UpdateRotation(Point pointer,MVIImageViewport viewport)
         {
-            if(!_rotatingOverlay || _rotationStart==null || ActiveImage==null)return;
+            if(!IsOverlayEdit(MVIImageOverlayEditKind.Rotate) ||
+               _rotationStart==null || ActiveImage==null)return;
             if(!CanContinueOverlayGesture(_rotationStart))
             {
                 CancelTransientGesture();
@@ -1713,7 +1715,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
                     return false;
                 _vertexEditStart=selected;_vertexIndex=index;
-                _editingVertex=true;
                 return true;
             }
             FGEPoint2D display=new FGEPoint2D(
@@ -1743,7 +1744,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void UpdatePolygonVertexEdit(Point pointer,MVIImageViewport viewport)
         {
-            if(!_editingVertex || _vertexEditStart==null || ActiveImage==null) return;
+            if(!IsOverlayEdit(MVIImageOverlayEditKind.PolygonVertex) ||
+               _vertexEditStart==null || ActiveImage==null)return;
             if(!CanContinueOverlayGesture(_vertexEditStart))
             {
                 CancelTransientGesture();
@@ -1798,7 +1800,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     secondary ? MVIImageGesturePane.Secondary : MVIImageGesturePane.Primary))
                     return false;
                 _resizeStart=selected; _resizeHandle=handle;
-                _resizing=true;
                 return true;
             }
             FGEPoint2D point = _viewTransform.DisplayToSource(new FGEPoint2D(
@@ -1824,7 +1825,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void UpdateResize(Point pointer,MVIImageViewport viewport)
         {
-            if (!_resizing || _resizeStart==null || ActiveImage==null) return;
+            if (!IsOverlayEdit(MVIImageOverlayEditKind.Resize) ||
+                _resizeStart==null || ActiveImage==null)return;
             FGEPoint2D source = _viewTransform.DisplayToSource(new FGEPoint2D(
                 viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
                 ActiveImage.Width,ActiveImage.Height);
@@ -2201,17 +2203,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Secondary))
             {
                 UpdateRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
-                _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
+                _rotationStart=null;RaiseSelectionChanged();
             }
             if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Secondary))
             {
                 UpdatePolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
-                _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
+                _vertexEditStart=null;RaiseSelectionChanged();
             }
             if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Secondary))
             {
                 UpdateResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
-                _resizing=false; _resizeStart=null;
+                _resizeStart=null;
                 RaiseSelectionChanged();
             }
             _secondaryDragging = false;
@@ -2386,17 +2388,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_overlayEdit.IsEditing(MVIImageOverlayEditKind.Rotate,MVIImageGesturePane.Primary))
             {
                 UpdateRotation(e.GetPosition(ViewportRoot),_viewport);
-                _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
+                _rotationStart=null;RaiseSelectionChanged();
             }
             if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.PolygonVertex,MVIImageGesturePane.Primary))
             {
                 UpdatePolygonVertexEdit(e.GetPosition(ViewportRoot),_viewport);
-                _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
+                _vertexEditStart=null;RaiseSelectionChanged();
             }
             if (_overlayEdit.IsEditing(MVIImageOverlayEditKind.Resize,MVIImageGesturePane.Primary))
             {
                 UpdateResize(e.GetPosition(ViewportRoot),_viewport);
-                _resizing=false; _resizeStart=null;
+                _resizeStart=null;
                 RaiseSelectionChanged();
             }
             if (_selecting)
@@ -2477,8 +2479,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseLeave(object sender, MouseEventArgs e)
         {
-            if (!_dragging && !_selecting && !_resizing && !_editingVertex &&
-                !_rotatingOverlay && ActiveImage != null)
+            if (!_dragging && !_selecting && !_moving && !_overlayEdit.IsActive &&
+                ActiveImage != null)
                 PixelStatus.Text = ActiveImage.Width + "×" + ActiveImage.Height +
                     " · " + ActiveImage.PixelFormat + " · " + _viewport.Scale.ToString("0.##") + "×";
         }
