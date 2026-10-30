@@ -172,9 +172,14 @@ namespace CxVisual.Professional.Automation.Scada
                     throw new UnauthorizedAccessException(
                         "SCADA未注入专业写入授权器，禁止注册设备命令");
                 // Host须创建具有真实身份授权的MRKCommandCenter；本层不创建第二个MRK。
+                // Command handler remains registered across the session lifetime;
+                // a closed/stale/replaced device must NEVER issue FC06 merely because
+                // the MHS Effective revision itself has not changed.
+                Func<bool> activeGenerationApproved=()=>IsRunning &&
+                    (_effectiveStillApproved==null||_effectiveStillApproved());
                 _commandsBinding=PADPlcMrkCommandRegistration.RegisterUInt16Write(
                     hostCenter,_provider,_deviceRef,commandId,_configVersion,
-                    _effectiveStillApproved);
+                    activeGenerationApproved);
                 return _commandsBinding;
             }
         }
