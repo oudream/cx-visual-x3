@@ -103,3 +103,17 @@ func TestLaunchEvidenceSymlinkCannotBeTrusted(t *testing.T) {
 	found,err:=Scan(dir)
 	if err!=nil || found[9]==""{t.Fatalf("must quarantine symlinked evidence: %+v %v",found,err)}
 }
+
+
+func TestLaunchEvidenceDirectorySymlinkRejected(t *testing.T) {
+	wd:=t.TempDir()
+	outside:=t.TempDir()
+	if err:=os.MkdirAll(filepath.Join(wd,"supervision"),0700);err!=nil{t.Fatal(err)}
+	if err:=os.Symlink(outside,recordDir(wd));err!=nil{
+		t.Skipf("directory symlink unavailable: %v",err)
+	}
+	j:=New(wd,104)
+	if err:=j.Begin(104,"/managed/child");err==nil{
+		t.Fatal("redirected evidence directory must refuse a new process launch")
+	}
+}
