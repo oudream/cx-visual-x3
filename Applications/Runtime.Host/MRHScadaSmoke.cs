@@ -29,6 +29,8 @@ namespace CxVisual.Runtime.Host
         private sealed class TcpPlcFixture : IDisposable
         {
             private readonly TcpListener _listener;
+            private readonly ushort _wordValue;
+            private readonly ushort _inputValue;
             private readonly Task _server;
             private volatile bool _stop;
             private TcpClient _active;
@@ -43,8 +45,9 @@ namespace CxVisual.Runtime.Host
                 if(count<1||count>8)throw new ArgumentOutOfRangeException("count");
                 Interlocked.Exchange(ref _dropReplies,count);
             }
-            public TcpPlcFixture()
+            public TcpPlcFixture(ushort wordValue = 73, ushort inputValue = 99)
             {
+                _wordValue=wordValue;_inputValue=inputValue;
                 _listener=new TcpListener(IPAddress.Loopback,0);
                 _listener.Start();
                 Port=((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -93,8 +96,8 @@ namespace CxVisual.Runtime.Host
                                 Array.Copy(mbap,0,response,0,7);
                                 response[4]=0;response[5]=7;
                                 response[7]=3;response[8]=4;
-                                response[9]=0;response[10]=73;
-                                response[11]=0;response[12]=99;
+                                response[9]=(byte)(_wordValue>>8);response[10]=(byte)_wordValue;
+                                response[11]=(byte)(_inputValue>>8);response[12]=(byte)_inputValue;
                                 Interlocked.Increment(ref _reads);
                                 if(Volatile.Read(ref _dropReplies)>0)
                                 {
