@@ -194,6 +194,32 @@ namespace CxVisual.Runtime.Host
                 if(deployment.HasPendingApply)
                     Check(deployment.ApplyPendingAtTaskBoundary(),
                         "SCADA双设备项目Effective未生效");
+                // A5无PLC IO工程预检：只从已保存MEM及MHS Effective装配，
+                // JSON不包含现场IP或认证材料，且不建立连接/发送FC03。
+                MRHScadaEngineeringInspection inspected=
+                    MRHScadaEngineeringPreflight.Inspect(project,configs);
+                Check(inspected.SchemaVersion==1 &&
+                    inspected.Status=="EngineeringValidated" &&
+                    !inspected.DeviceCommunicationValidated &&
+                    inspected.DeploymentVersion==deployment.EffectiveVersion &&
+                    inspected.Devices.Length==2 &&
+                    inspected.Devices.Any(x=>x.DeviceRef==a.ToString("N") &&
+                        x.ScopeId=="stationA" && x.ConnectorModuleId=="connector-A" &&
+                        x.ScanIntervalMs==85 && x.Contiguous &&
+                        x.Points.Length==2 &&
+                        x.Points.Any(p=>p.StablePointId=="word100" &&
+                            p.VariableAddress=="Station.Word" &&
+                            p.ValueType=="UInt16" && !p.WritableDefinition)) &&
+                    inspected.Devices.Any(x=>x.DeviceRef==b.ToString("N") &&
+                        x.ScopeId=="stationB" && x.ConnectorModuleId=="connector-B"),
+                    "工程预检必须来自真实MEM/MHS，包含双工站身份、点位与版本");
+                string deploymentJson=MRHScadaEngineeringPreflight.ToJson(inspected);
+                Check(deploymentJson.Contains("\"EngineeringValidated\"") &&
+                    deploymentJson.Contains("\"DeviceCommunicationValidated\":false") &&
+                    !deploymentJson.Contains("127.0.0.1") &&
+                    plcA.Reads==0 && plcB.Reads==0 &&
+                    plcA.Writes==0 && plcB.Writes==0,
+                    "SCADA离线工程预检不得连接设备或披露现场连接地址");
                 MRHScadaDeviceLaunch launchA=new MRHScadaDeviceLaunch(a,"connector-A",
                     "stationA",85,true);
                 MRHScadaDeviceLaunch launchB=new MRHScadaDeviceLaunch(b,"connector-B",
@@ -603,6 +629,11 @@ namespace CxVisual.Runtime.Host
                     Check(second.ApplyPendingAtTaskBoundary(),"Channel冲突变更未生效");
                 Reject<InvalidOperationException>(()=>MRHScadaRuntimeGroup.Open(
                     project,configs,new[]{launchA,launchB}));
+                int preflightReadsA=plcA.Reads,preflightReadsB=plcB.Reads;
+                Reject<InvalidOperationException>(()=>
+                    MRHScadaEngineeringPreflight.Inspect(project,configs));
+                Check(plcA.Reads==preflightReadsA&&plcB.Reads==preflightReadsB,
+                    "工程预检拒绝跨设备Channel冲突时不能发送任何FC03");
                 Check(plcA.Writes==0&&plcB.Writes==0,
                     "多设备错误装配不能发出写控制命令");
             }
