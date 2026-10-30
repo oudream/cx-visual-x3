@@ -684,3 +684,16 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R2-03-04 | 真实双Pane人手鼠标抢占/Esc/失捕、DPI和焦点切换多轮 | G5未执行；不得以合成事件或普通单测冒充 |
 | R2-03-05 | 固定SHA`8895b5a9`的Imaging #41013971612与Runtime #41013971625失败，Windows日志定位为Automation新Provider缺Decision工程引用的CS0246；`d57392e9`已补该ProjectReference | **当前代码含修复，但最新SHA G3/G4仍待实测；不得把跨专业编译失败记为MVI编辑测试失败** |
 
+
+### IMG-05 独立Studio原生文件弹框UIAutomation验收（2026-10-30）
+
+| ID | 测试路径与必须断言 | 现有证据 |
+|---|---|---|
+| R1-UIA-01 | Studio真实`--studio-roi-dialog-ui-self-test`：MEM创建工程ROI、SaveAs/Close/Open，当前Page/Revision不变；通过原生Windows OpenFileDialog选择Gray16 Stride10 RAW进行指纹重绑 | `StudioRoiDialogUiSmoke.RunAsync` 源码；G2 |
+| R1-UIA-02 | WPF `ValuePattern`设置Stride=-1、`InvokePattern`点击重绑，必须在弹出文件框之前拒绝，原图/工程不得污染 | `4ca1fd19` G2，Windows UIA待验 |
+| R1-UIA-03 | 实际WPF点击运行保存ROI：结果图窗与原图绑定、多类型ResultItem、MEM Revision稳定；重复运行有独立MRK Run身份 | `4ca1fd19` G2，Windows UIA待验 |
+| R1-UIA-04 | Windows真实SaveFileDialog导出`CxVisionRunCsvExporter`结构化CSV，真实`SelectionItemPattern`选择Mask，并保存原始像素RAW，长度等于Stride×Height | `d5ddf497`/ `47b5d5ef` G2，Windows UIA待验 |
+| R1-UIA-05 | 真实Windows OpenFileDialog重绑被更改有效像素的同尺寸RAW，必须拒绝且旧Run、原图、工程Revision保留 | `eedff33f` G2，Windows UIA待验 |
+| R1-UIA-06 | 独立CI `studio-roi-dialog-uia-windows.yml`：.NET48 x64全工程编译、实际GUI窗口、原生文件框控制、唯一PASS/零FAIL并归档报告 | [固定`4ca1fd19` UIA #41032180497](https://github.com/oudream/cx-visual-x3/actions/runs/41032180497) 提交时queued；不得宣布G3/G4/G5通过 |
+
+该用例的MEM测试夹具预先构造，不能当作用户通过鼠标绘制ROI的证据。UIA不替代人工DPI/焦点/文件弹框多语言复核、真实设备HIL、工业长稳G6。
