@@ -46,22 +46,31 @@ func Read(workDir string) Report {
 }
 
 type fileData struct {
-	Version     int            `json:"version"`
-	Terminal    map[string]int `json:"terminal"`
+	Version     int               `json:"version"`
+	Terminal    map[string]int    `json:"terminal"`
 	Quarantined map[string]string `json:"quarantined"`
-	ObservedAt  string         `json:"observedAt"`
+	ObservedAt  string            `json:"observedAt"`
 }
 
 func readSource(path string, orphan bool) Source {
 	result := Source{Items: make([]Item, 0)}
+	// Reject symlinks, directories and named pipes BEFORE Open. Opening a
+	// FIFO without a peer could otherwise block the Monitor HTTP handler.
+	info, err := os.Lstat(path)
+	if err != nil {
+		return unavailable(result, err)
+	}
+	if !info.Mode().IsRegular() {
+		return unavailable(result, errors.New("diagnostic file is not a regular file"))
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return unavailable(result, err)
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return unavailable(result, errors.New("diagnostic file is not a regular file"))
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return unavailable(result, errors.New("diagnostic file changed during open"))
 	}
 	if info.Size() < 1 || info.Size() > maxDiagnosticBytes {
 		return unavailable(result, errors.New("diagnostic file has invalid size"))
