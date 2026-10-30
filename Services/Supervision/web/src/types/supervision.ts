@@ -106,3 +106,34 @@ export interface StopHistoryEnvelope extends Envelope<StopHistory> {
   scope: 'local-only'
   kind: 'durable-stop-history'
 }
+
+/** Real host measurements, independent of managed Program CPU/RSS. */
+export interface HostCPU {
+  available: boolean
+  percent: number
+  sampledAt: string
+  error?: string
+}
+
+export interface HostStorage {
+  available: boolean
+  totalBytes: number
+  usedBytes: number
+  freeBytes: number
+  usedPercent: number
+  sampledAt: string
+  error?: string
+}
+
+export interface HostResourceReport {
+  scope: 'host'
+  diskScope: 'work-dir-filesystem'
+  cpu: HostCPU
+  memory: HostStorage
+  disk: HostStorage
+}
+
+export interface HostResourceEnvelope extends Envelope<HostResourceReport> {
+  scope: 'local-only'
+  kind: 'host-resource-snapshot'
+}
