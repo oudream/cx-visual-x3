@@ -113,7 +113,7 @@ func TestRecoveryProgramsSkipsReservedGuardian(t *testing.T) {
 	_programWorkers = newProgramWorkerGate()
 	_runProgramIds = map[int64]int{id: 0}
 	_programsMu.Lock()
-	_programs = []program.Program{{ID: id, FirstWaitTime: 3600}}
+	_programs = []program.Program{{ID: id, Enabled: program.ENABLE, FirstWaitTime: 3600}}
 	_programsMu.Unlock()
 	t.Cleanup(func() {
 		_programsMu.Lock()
