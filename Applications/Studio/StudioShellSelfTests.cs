@@ -151,6 +151,20 @@ namespace CxVisual.Studio
                         command("OnFlowDebugCancel");
                         Assert(status.Text.Contains("没有可取消的运行任务"),
                             "B5已完成Flow错误接受取消");
+                        var cancelDebug=new MRKExecutionDebugController();
+                        cancelDebug.AddBreakpoint("first");
+                        var cancelled=engine.StartFlowWithControl(plan,cancelDebug);
+                        controllerField.SetValue(window,cancelDebug);
+                        flowField.SetValue(window,cancelled);
+                        Assert(System.Threading.SpinWait.SpinUntil(
+                            ()=>cancelDebug.WaitingCount==1,3000),
+                            "B5取消前的真实运行断点未命中");
+                        command("OnFlowDebugCancel");
+                        Assert(status.Text.Contains("已向MRK发送取消请求")&&
+                            cancelled.Completion.Wait(TimeSpan.FromSeconds(6))&&
+                            cancelled.Completion.Result.State==MRKFlowState.Cancelled&&
+                            executions==2,
+                            "B5暂停Flow取消未释放等待者或错误执行后续算法");
                     }
                     finally
                     {
