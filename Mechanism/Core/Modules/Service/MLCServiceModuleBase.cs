@@ -70,7 +70,15 @@ namespace CxVisual.Mechanism.Lifecycle.Modules
             if (lifecycle == MLCServiceModuleState.Running)
             {
                 bool ready;
-                if (TryObserveReadiness(out ready)) verified = ready;
+                try
+                {
+                    if (TryObserveReadiness(out ready)) verified = ready;
+                }
+                catch (Exception)
+                {
+                    // Diagnostic failures must never mutate the Service state
+                    // or fabricate healthy readiness. Unknown remains null.
+                }
             }
             return new MLCServiceModuleObservation(Descriptor.Id, Descriptor.Name,
                 Descriptor.Version, lifecycle, verified, DateTime.UtcNow);
