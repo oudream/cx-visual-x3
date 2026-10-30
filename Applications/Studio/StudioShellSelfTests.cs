@@ -4006,11 +4006,17 @@ namespace CxVisual.Studio
                     simulation);
                 MOCCapabilityDescriptor inspector=scope.DescribeCapabilities()
                     .Single(x=>x.Id==CxVisionThresholdProvider.CapabilityId);
+                IReadOnlyDictionary<string,string> pinned=scope.DescribeSoftwareVersions();
+                Assert(pinned.ContainsKey("AI")&&pinned.ContainsKey("CV")&&
+                    pinned.ContainsKey(CxVisionThresholdProvider.CapabilityId)&&
+                    pinned.ContainsKey(StudioProfessionalFlowResolver.RawCapabilityId)&&
+                    !pinned.ContainsKey(
+                        CxVisual.Professional.Automation.Plc.PADPlcMrkWriteCapabilityProvider.CapabilityId),
+                    "Studio混合专业版本闭包遗失旧AI/CV或意外为PLC填入授权版本");
                 MainWindow.CreateProfessionalCpuFlow(session,content,inspector,5,3);
                 Assert(session.Revision==before+1,
                     "Studio CPU创建不是原MEM的单次事务");
                 session.SaveAs(saved);
-                using(var unused=new MemoryStream(pixels)) { } // RAW remains external.
                 MEMEngineeringSession reopened=MEMEngineering.Open(saved);
                 try
                 {
