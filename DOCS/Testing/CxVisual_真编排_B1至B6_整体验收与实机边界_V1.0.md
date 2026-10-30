@@ -73,6 +73,19 @@
 - Runtime `4d3f519e`增加Trace历史丢失后读取已提交结果的反例；[B6 Debug/Release双配置门禁提交`40fae6d0`](https://github.com/oudream/cx-visual-x3/commit/40fae6d0fb02d1a2fa1922768513a852461df171)在既有`unified-runtime-windows.yml`内增加Debug/x64全解决方案Build和真实`--orchestration-vertical`、`--orchestration-industrial`及默认回归。该新增门禁尚待对应SHA的Windows执行证据，不能以历史仅Release成功代替。
 - 结果投影只包含节点ID、受控类型/数值/长度、最多32项的Studio摘要；不把大图像、体数据、敏感原文或MRK Flow句柄存入历史UI缓存。
 
+### 3.3 B4/B5/B6 已转绿的固定SHA证据与新回归（2026-10-30）
+
+| 工作包及能力 | 固定源码SHA | Windows Actions | 严格结论 |
+|---|---|---|---|
+| B4 同一引擎的故障产品/正常产品结果隔离 | [`db6ac7b1`](https://github.com/oudream/cx-visual-x3/commit/db6ac7b1a862c259923d72d05c6054c339e6b497) | [Runtime #40998392632](https://github.com/oudream/cx-visual-x3/actions/runs/40998392632) **Success** | `ExecutionControlTests`所在真实工业专项、全量Release构建通过；不是设备实机 |
+| B5 跨工程暂停/单步保护、双Flow查看和WPF交互 | [`11e0553a`](https://github.com/oudream/cx-visual-x3/commit/11e0553a9acdcfdc40bbe8df53a2d821a25e6852) | [Studio #40998319052](https://github.com/oudream/cx-visual-x3/actions/runs/40998319052) **Success** | 该SHA的WPF STA及工程门禁通过 |
+| B5 Trace环形缓冲丢失后结果仍取真实MRK提交值 | [`4d3f519e`](https://github.com/oudream/cx-visual-x3/commit/4d3f519e4e0d9ef3e11f080093d75edc62920878) | [Runtime #40998548123](https://github.com/oudream/cx-visual-x3/actions/runs/40998548123) **Success** | 不能补造已丢Trace，但可重读MRK状态/安全摘要 |
+| B6 Debug/Release x64全量构建及工业执行回归 | [`40fae6d0`](https://github.com/oudream/cx-visual-x3/commit/40fae6d0fb02d1a2fa1922768513a852461df171) | [Runtime #40998705667](https://github.com/oudream/cx-visual-x3/actions/runs/40998705667) **Success** | Debug/Release双配置软件专项首次获得对应SHA绿灯 |
+| B6 并行变更引发的完整编译红灯及后续修复 | `7fa19df` → `86a35e79` | [Studio #40998899991](https://github.com/oudream/cx-visual-x3/actions/runs/40998899991) **Failure** → [Runtime #41004371334](https://github.com/oudream/cx-visual-x3/actions/runs/41004371334)、[Decision #41004371419](https://github.com/oudream/cx-visual-x3/actions/runs/41004371419)、[Engineering #41004371335](https://github.com/oudream/cx-visual-x3/actions/runs/41004371335) **Success** | 旧版本的`TCTVolumeViewerSmoke.cs:1236`存在`roiEditCommand`未定义编译错误；后续固定SHA完整软件构建通过。并非忽略旧红灯，也不等于所有晚于该SHA的代码均已验证 |
+| B5 查看后自动更新、空闲Tick节流、工程切换即时失效 | [`1c0a42a0`](https://github.com/oudream/cx-visual-x3/commit/1c0a42a08ce10124c9bd09f1f509014d4228c986)、[`3d7ede39`](https://github.com/oudream/cx-visual-x3/commit/3d7ede391dd80e391e52de1eacec0c92899dbe3f) | 新SHA Studio WPF S1及相关CI：**待确认** | 真实MRK、按钮、自动刷新和工程切换反例已经提交；Windows成功前不关闭 |
+
+**B5 代码边界：**`MainWindow.xaml.cs`仅缓存用户主动开启查看后的有界安全文本；增量更新仍取唯一MRK Trace/StepResult，空闲150ms Tick不扫描大量结果。工程Revision改变时，`RefreshScene`失效旧结果/Trace，旧Flow仍可安全取消、不制造外部设备已完成事实。应用测试为`StudioShellSelfTests`的两个B5真实MRK/WPF测试，不增建另一套调试引擎或数据中心。
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
