@@ -4,6 +4,8 @@ using System.IO;
 using System.Threading;
 using CxVisual.Mechanism.Core;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
+using System.Collections.Generic;
 using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -293,6 +295,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     catch(ArgumentOutOfRangeException){boundsRejected=true;}
                     Check(boundsRejected,"二维ROI超出可视像素域必须拒绝");
                 }
+                var originalCloudPoints=new List<FGEPoint3D>();
+                for(int i=0;i<10;i++)
+                    originalCloudPoints.Add(new FGEPoint3D(i+1,i==0?0:5,0));
+                var realCloud=new FGEPointCloud3D(originalCloudPoints);
+                originalCloudPoints[0]=new FGEPoint3D(999,999,999);
+                var displayIndices=realCloud.DisplaySampleIndices(3);
+                Check(realCloud.Count==10&&realCloud.Points[0].X==1&&
+                    displayIndices.Count==3&&displayIndices[0]==0&&
+                    displayIndices[1]==4&&displayIndices[2]==8,
+                    "FGE点云必须保留原始double点与稳定原值索引，显示LOD不得覆盖计量点");
+                FGEPointCloudRayHit cloudHit;
+                Check(realCloud.TryPickRay(new FGEPoint3D(0,0,0),
+                    new FGEVector3D(1,0,0),20,.2,out cloudHit)&&
+                    cloudHit.PointIndex==0&&Math.Abs(cloudHit.RayDistance-1)<1e-12&&
+                    cloudHit.RadialDistance<1e-12,
+                    "PointCloud毫米射线必须命中原值最近点并返回稳定原始点索引");
+                Check(!realCloud.TryPickRay(new FGEPoint3D(0,0,0),
+                    new FGEVector3D(-1,0,0),20,.2,out cloudHit)&&cloudHit==null,
+                    "背向点云射线不能返回假命中");
+                bool zeroCloudDirectionRejected=false,cancelledCloud=false;
+                try{realCloud.TryPickRay(new FGEPoint3D(0,0,0),
+                    new FGEVector3D(0,0,0),20,.2,out cloudHit);}
+                catch(ArgumentOutOfRangeException){zeroCloudDirectionRejected=true;}
+                try{realCloud.TryPickRay(new FGEPoint3D(0,0,0),
+                    new FGEVector3D(1,0,0),20,.2,out cloudHit,new CancellationToken(true));}
+                catch(OperationCanceledException){cancelledCloud=true;}
+                Check(zeroCloudDirectionRejected&&cancelledCloud,
+                    "无效点云方向及预取消不得产生专业选中结果");
                 using(FVOVolumeData uncalibrated=FVOVolumeData.CreateDemo(8,10,12))
                 {
                     bool rejected=false;
