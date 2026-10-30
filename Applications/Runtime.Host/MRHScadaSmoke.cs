@@ -383,7 +383,7 @@ namespace CxVisual.Runtime.Host
                             supervisor.ConnectedGenerations==1,8000),
                             "部署漂移负例无法启动原始双PLC组");
                         var changed=deployment.UpdateAsync(model=>
-                            model.Devices[0].IntervalMs=120,
+                            model.Devices[0].IntervalMs=125,
                             "多PLC组恢复部署漂移拒绝测试",CancellationToken.None)
                             .GetAwaiter().GetResult();
                         Check(changed.Success,"测试中MHS工程部署漂移提交失败");
