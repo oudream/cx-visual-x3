@@ -169,6 +169,17 @@ namespace CxVisual.Runtime.Host
                         using(MRKCommandCenter commands=new MRKCommandCenter())
                             Reject<UnauthorizedAccessException>(()=>
                                 scada.Device.RegisterWriteCommands(commands,3001));
+                        int observed=0;
+                        Reject<System.Collections.Generic.KeyNotFoundException>(()=>
+                            scada.Device.Subscribe(changes=>{},new[]{"foreign-point"}));
+                        using(IDisposable observation=scada.Device.Subscribe(
+                            changes =>
+                            {
+                                if(changes.Any(x=>x.VariableId=="word100" &&
+                                    x.Quality==MDSVariableQuality.Good))
+                                    Interlocked.Increment(ref observed);
+                            },new[]{"word100"}))
+                        {
                         scada.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
                         Check(SpinWait.SpinUntil(()=>scada.CompletedCycles>=2,8000),
                             "SCADA Headless未执行两轮真实FC03");
@@ -180,12 +191,15 @@ namespace CxVisual.Runtime.Host
                             input.Quality==MDSVariableQuality.Good &&
                             scada.CompletedCycles>=2 && plc.Reads>=2 && plc.Writes==0,
                             "SCADA TCP→MPA→PAD→MDS正式采样值或只读权限不符");
+                        Check(SpinWait.SpinUntil(()=>Volatile.Read(ref observed)>=1,3500),
+                            "真实MDS分发器未按StableId将Good采样通知给订阅者");
                         scada.StopAsync().GetAwaiter().GetResult();
                         Check(scada.Device.Inspect("word100").Quality==MDSVariableQuality.Stale,
                             "SCADA Stop后不得继续把PLC采样认定为Good");
                         int afterStop=plc.Reads;
                         Thread.Sleep(250);
                         Check(plc.Reads==afterStop,"SCADA Host停止后仍在发FC03");
+                        }
                     }
                     // 同一保存工程在Host重启后重新建立不同Generation，不能沿用旧运行态。
                     using(MRHScadaRuntime restarted=MRHScadaRuntime.Open(
