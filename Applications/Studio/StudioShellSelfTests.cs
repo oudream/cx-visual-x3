@@ -3670,6 +3670,69 @@ namespace CxVisual.Studio
                         try{Directory.Delete(folder,true);}catch(IOException){}
                     }
                 });
+                CheckStep("S2 真正WPF按钮创建RAW专业流程并执行MRK真实Vision CPU", () =>
+                {
+                    var vm=window.DataContext as StudioViewModel;
+                    Assert(vm!=null&&window.FlowInsertProfessionalCpu!=null&&
+                        window.FlowRunSoftware!=null,"Studio真实专业按钮没有接入WPF");
+                    MEMPage beforePage=vm.ActivePage;
+                    string folder=Path.Combine(Path.GetTempPath(),
+                        "CxStudio-S2-WPF-"+Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(folder);
+                    try
+                    {
+                        string raw=Path.Combine(folder,"five-by-three.raw");
+                        File.WriteAllBytes(raw,new byte[]{
+                            210,210,0,0,0,210,0,0,0,0,0,0,0,0,250});
+                        MEMPage page=vm.ProjectSession.AddPage("S2-WPF-真实专业按钮");
+                        vm.ActivePage=page;
+                        window.OpenStudioDocument("doc.flow");
+                        window.FlowUseEffectiveConfig.IsChecked=false;
+                        window.FlowRawPath.Text=raw;
+                        window.FlowRawWidth.Text="5";
+                        window.FlowRawHeight.Text="3";
+                        window.FlowRawBits.SelectedIndex=0;
+                        window.FlowCpuThreshold.Text="200";
+                        window.FlowCpuMinArea.Text="2";
+                        window.FlowCpuMaxArea.Text="100";
+                        int before=vm.ProjectSession.Revision;
+                        window.FlowInsertProfessionalCpu.RaiseEvent(
+                            new RoutedEventArgs(Button.ClickEvent));
+                        MEMNodeSnapshot edited=vm.ProjectSession.GetSnapshot()
+                            .Find(page.RootContent.Id);
+                        MOLWiringDefinition graph=MOLWiringCodec.Get(edited);
+                        Assert(vm.ProjectSession.Revision==before+1&&
+                            graph!=null&&graph.Blocks.Count==2&&
+                            graph.Links.Count(x=>x.Kind==MPCPortKind.Data)==1,
+                            "真实WPF CPU创建按钮未在原MEM一次事务生成双节点/端口连接");
+                        window.FlowRunSoftware.RaiseEvent(
+                            new RoutedEventArgs(Button.ClickEvent));
+                        var stopwatch=System.Diagnostics.Stopwatch.StartNew();
+                        while(stopwatch.Elapsed<TimeSpan.FromSeconds(16) &&
+                            !window.LogicInfo.Text.Contains("执行结束") &&
+                            !window.LogicInfo.Text.Contains("编排或运行失败"))
+                        {
+                            var frame=new System.Windows.Threading.DispatcherFrame();
+                            System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                                System.Windows.Threading.DispatcherPriority.Background,
+                                new Action(()=>frame.Continue=false));
+                            System.Windows.Threading.Dispatcher.PushFrame(frame);
+                            Thread.Sleep(15);
+                        }
+                        Assert(window.LogicInfo.Text.Contains("Completed")&&
+                            window.FlowResultPreview.Text.Contains("阈值像素=4")&&
+                            window.FlowResultPreview.Text.Contains("区域数=1")&&
+                            window.FlowTraceList.Items.Count>=2,
+                            "真正WPF运行按钮未完成原MRK Vision CPU与可见结果/Trace: "+
+                            window.LogicInfo.Text);
+                    }
+                    finally
+                    {
+                        if(beforePage!=null)vm.ActivePage=beforePage;
+                        window.OpenStudioDocument("doc.flow");
+                        try {Directory.Delete(folder,true);}catch(IOException) { }
+                    }
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
