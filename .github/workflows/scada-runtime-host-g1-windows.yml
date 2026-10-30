@@ -1,0 +1,38 @@
+name: CxVisual ICS SCADA Headless Runtime Host G1 Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Applications/Runtime.Host/**'
+      - 'Professional/Automation/**'
+      - 'Mechanism/Connectivity/**'
+      - 'Mechanism/Data/Variables/**'
+      - '.github/workflows/scada-runtime-host-g1-windows.yml'
+jobs:
+  scada-real-tcp-g1:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore existing .NET48 Host and dependent assemblies
+        shell: pwsh
+        run: |
+          & msbuild.exe Applications/Runtime.Host/CxVisual.Runtime.Host.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'SCADA Host Restore failed' }
+      - name: Build actual headless Runtime.Host Windows x64
+        shell: pwsh
+        run: |
+          & msbuild.exe Applications/Runtime.Host/CxVisual.Runtime.Host.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'SCADA Host build failed' }
+      - name: Execute real TCP PLC and MEM MHS SCADA lifecycle
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe scada-g1-smoke
+          if($LASTEXITCODE -ne 0) { throw 'SCADA G1 MEM/MHS TCP lifecycle smoke failed' }
+      - name: State validated scope
+        shell: pwsh
+        run: |
+          Write-Host 'PASS only if actual Windows .NET48 Host binary loaded saved MEM, persisted MHS Effective and sent real Modbus TCP FC03'
+          Write-Host 'G1 software socket fixture only; no physical PLC serial identity, actuator interlock, safety certification or G2/G3 validated'
