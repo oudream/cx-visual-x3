@@ -54,6 +54,9 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                     throw new InvalidOperationException("发送仍在运行，无法重设通道预算");
                 _sendCapacity=configuration.SendQueueCapacity;
                 _sendByteBudget=configuration.SendByteBudget;
+                // 非TCP/UDP等消息通道同样要真正使用既有FCM诊断载荷开关。
+                // 吞吐计数始终保留，只省略Payload证据拷贝。
+                _capturePayloadEvidence=configuration.CapturePayloadEvidence;
                 _boundedSend=true;
                 _pendingSendBytes=0;
             }
