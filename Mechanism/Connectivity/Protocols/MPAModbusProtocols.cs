@@ -46,7 +46,8 @@ namespace CxVisual.Mechanism.Connectivity
 
     // 已有 ReferTo 的 Modbus Frame/Station 原理直接收敛到 Protocol Owner，
     // 不重新引入 ReferTo IProtocol/CxChannel adapter。
-    public sealed class MPAModbusTcpProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup, IMPAProtocolRequester, IMPAProtocolPointAccess
+    public sealed class MPAModbusTcpProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup, IMPAProtocolRequester, IMPAProtocolPointAccess,
+        IMPAProtocolContiguousPointReader
     {
         private readonly object _gate = new object();
         private readonly Dictionary<string, List<byte>> _buffers =
@@ -212,6 +213,62 @@ namespace CxVisual.Mechanism.Connectivity
                 (!string.IsNullOrWhiteSpace(context.Configuration.ProtocolAddress) ?
                     context.Configuration.ProtocolAddress : "1");
             return new MPAProtocolAddress(address);
+        }
+
+        /// <summary>
+        /// 连续holding寄存器使用一个真实FC03请求。所有点必须属于同一站号、
+        /// 顺序连续、类型Int16/UInt16；不允许空洞、重复或跨地址溢出。
+        /// 本层仅返回已校验报文的值，由调用方核对Session及数据映射后发布MDS。
+        /// </summary>
+        public async Task<IReadOnlyList<object>> ReadContiguousPointsAsync(
+            IReadOnlyList<string> pointNames, MPAProtocolContext context, CancellationToken ct)
+        {
+            if (pointNames == null) throw new ArgumentNullException("pointNames");
+            if (pointNames.Count < 1 || pointNames.Count > 125)
+                throw new ArgumentOutOfRangeException("pointNames", "FC03一次必须读取1～125个寄存器");
+            if (context == null || context.Configuration == null)
+                throw new ArgumentException("FC03连续读取必须装配已批准的规约配置");
+            ct.ThrowIfCancellationRequested();
+
+            MPAPointDefinition[] points = new MPAPointDefinition[pointNames.Count];
+            ushort firstAddress = 0;
+            string unit = null;
+            for (int i = 0; i < points.Length; i++)
+            {
+                ushort address;
+                MPAPointDefinition point = ResolveHoldingPoint(
+                    pointNames[i], context, false, out address);
+                string currentUnit = PointUnit(point, context).Value;
+                if (i == 0)
+                {
+                    firstAddress = address;
+                    unit = currentUnit;
+                }
+                if (!string.Equals(unit, currentUnit, StringComparison.Ordinal) ||
+                    (int)firstAddress + i > ushort.MaxValue ||
+                    address != firstAddress + i)
+                    throw new ArgumentException(
+                        "FC03批读只允许同一站号且按地址严格连续的寄存器", "pointNames");
+                points[i] = point;
+            }
+
+            MPAProtocolOperationResult response = await RequestAsync(
+                new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                    new MPAProtocolAddress(unit),
+                    MPAModbusRegisterOperations.ReadHolding(firstAddress,
+                        (ushort)points.Length)), context, ct).ConfigureAwait(false);
+            byte[] pdu = response.Value as byte[];
+            if (pdu == null || pdu.Length != 2 + points.Length * 2 ||
+                pdu[0] != 3 || pdu[1] != points.Length * 2)
+                throw new InvalidDataException("FC03连续寄存器回包数量与请求不一致");
+            object[] values = new object[points.Length];
+            for (int i = 0; i < points.Length; i++)
+            {
+                ushort raw = (ushort)((pdu[2 + i * 2] << 8) | pdu[3 + i * 2]);
+                values[i] = points[i].ValueType == "Int16"
+                    ? (object)unchecked((short)raw) : raw;
+            }
+            return Array.AsReadOnly(values);
         }
 
         public async Task<object> ReadDevicePointAsync(
