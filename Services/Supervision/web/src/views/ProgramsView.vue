@@ -6,7 +6,7 @@ import { useMonitorStore } from '../stores/monitor'
 import { useGuardStore } from '../stores/guard'
 import { fetchProgram } from '../api/client'
 import type { Program } from '../types/supervision'
-import { guardVerdict, guardLabel, guardTagType } from '../utils/guard'
+import { guardVerdict, guardLabel, guardTagType, identityEvidenceLabel } from '../utils/guard'
 import { formatBytes, formatTime, formatHeartbeatAgeAtSnapshot, programName } from '../utils/format'
 
 const route = useRoute()
@@ -105,6 +105,9 @@ async function openDetail(row: Program): Promise<void> {
         </el-descriptions-item>
         <el-descriptions-item v-if="guardReport?.orphans.available" label="启动隔离／凭证原因">
           {{ guardReport?.orphans.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="guardReport?.orphans.available && guardReport.orphans.items.some(item => item.programId === detail?.id)" label="进程身份观察（非归属）">
+          {{ identityEvidenceLabel(guardReport.orphans.items.find(item => item.programId === detail?.id)?.reason || '') }}
         </el-descriptions-item>
         <el-descriptions-item label="CPU">{{ detail.cpuPercent.toFixed(1) }}%</el-descriptions-item>
         <el-descriptions-item label="RSS">{{ formatBytes(detail.memoryRssBytes) }}</el-descriptions-item>
