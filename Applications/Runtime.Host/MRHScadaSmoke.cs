@@ -16,6 +16,7 @@ using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Runtime.Commands;
 using CxVisual.Professional.Automation.Scada;
+using CxVisual.Professional.Automation.Plc;
 
 namespace CxVisual.Runtime.Host
 {
