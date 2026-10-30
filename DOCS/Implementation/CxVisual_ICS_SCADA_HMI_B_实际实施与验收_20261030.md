@@ -110,3 +110,8 @@
 - `Applications/Studio/StudioShell.Hmi.Preflight.cs`：在已有Studio、当前MEM保存路径及已设置MHS根上，调用用户明确选定的`CxVisual.Runtime.Host.exe scada-project-check`（无Shell、无PLC控制、15秒超时、ExitCode=0与解析双门禁）。项目Dirty、未保存、Root与Host不一致、工程Revision或工程身份切换时拒绝；预检结果表显示正式Scope、DeviceRef、PointId、变量地址、类型与可写定义。
 - `StudioShell.Hmi.cs`：原Page HMI右键菜单增加“工程/设备点表预检”入口，配置编辑仍由原MHS配置中心完成，预检不建立第二套工程模型/设备配置。
 - `HmiRuntimeTests`：正式A5协议JSON成功、冒充通信已验证、版本错误、重复点位反例；`StudioShellSelfTests.RunHmiOnly`检查真Page菜单存在正式预检入口。上述仅为软件协议与UI集成测试，真正Host运行、SCADA生效配置和Windows STA需固定SHA CI核实，实机G2/HIL G3不据此宣告。
+
+### 第十批补充：专业设备身份透明展示
+
+- Studio工程预检窗口可浏览选择已构建的正式Runtime.Host，增加ConnectorModuleId、ConnectorEffectiveVersion、ChannelId三列，支持查看设备与点表的实际装配身份；无Point的设备仍单独展示，不能因点表为空被隐藏。
+- 以上均使用A5正式预检返回值，不额外存储PLC凭据/地址表，不把WritableDefinition或配置有效误认为已登录或已授权。Windows STA和真实CLI联调仍按固定提交SHA验收。

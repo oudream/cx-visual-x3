@@ -86,6 +86,20 @@ namespace CxVisual.Studio
                     "CxVisual.Runtime.Host.exe"),Margin=new Thickness(0,2,0,7)
             };
             header.Children.Add(exe);
+            Button browse=new Button {
+                Content="选择已构建的Runtime.Host.exe",
+                HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,7)
+            };
+            browse.Click+=(sender,args)=>
+            {
+                Microsoft.Win32.OpenFileDialog chooser=new Microsoft.Win32.OpenFileDialog {
+                    Title="选择真实CxVisual.Runtime.Host.exe",
+                    FileName="CxVisual.Runtime.Host.exe",
+                    Filter="CxVisual Runtime Host|CxVisual.Runtime.Host.exe"
+                };
+                if(chooser.ShowDialog(dialog)==true)exe.Text=chooser.FileName;
+            };
+            header.Children.Add(browse);
             header.Children.Add(new TextBlock {Text="当前保存的MEM工程文件"});
             TextBox engineeringPath=new TextBox {
                 IsReadOnly=true,Text=original.Location??"(未保存)",
@@ -119,6 +133,12 @@ namespace CxVisual.Studio
                 DisplayMemberBinding=new Binding("Scope")});
             columns.Columns.Add(new GridViewColumn {Header="设备",Width=220,
                 DisplayMemberBinding=new Binding("Device")});
+            columns.Columns.Add(new GridViewColumn {Header="Connector",Width=110,
+                DisplayMemberBinding=new Binding("Connector")});
+            columns.Columns.Add(new GridViewColumn {Header="Effective版本",Width=115,
+                DisplayMemberBinding=new Binding("Effective")});
+            columns.Columns.Add(new GridViewColumn {Header="Channel",Width=110,
+                DisplayMemberBinding=new Binding("Channel")});
             columns.Columns.Add(new GridViewColumn {Header="PointId",Width=120,
                 DisplayMemberBinding=new Binding("Point")});
             columns.Columns.Add(new GridViewColumn {Header="地址",Width=140,
@@ -161,11 +181,20 @@ namespace CxVisual.Studio
                         if(!(original.Find(Guid.Parse(item.DeviceRef)) is IMEMResource))
                             throw new InvalidOperationException(
                                 "Host返回了不属于当前MEM工程的DeviceRef");
-                    var rows=result.Devices.SelectMany(d=>d.Points.Select(p=>new {
-                        Scope=d.ScopeId,Device=d.DeviceRef,Point=p.StablePointId,
-                        Address=p.VariableAddress,Type=p.ValueType,
-                        Writable=p.WritableDefinition?"是（未授权）":"否"
-                    })).Take(1000).ToArray();
+                    // Device即使没有Point也必须可见；真实Connector/Effective/Channel
+                    // 来自Host预检，不从Studio工程树猜测或持有第二张设备装配表。
+                    var rows=result.Devices.SelectMany(d=>
+                        (d.Points.Length==0 ? new PHMScadaEngineeringPoint[] {null} :
+                            d.Points).Select(p=>new {
+                                Scope=d.ScopeId,Device=d.DeviceRef,
+                                Connector=d.ConnectorModuleId,
+                                Effective=d.ConnectorEffectiveVersion,
+                                Channel=d.ChannelId,
+                                Point=p==null?"（无点位）":p.StablePointId,
+                                Address=p==null?"—":p.VariableAddress,
+                                Type=p==null?"—":p.ValueType,
+                                Writable=p==null?"—":p.WritableDefinition?"是（未授权）":"否"
+                            })).Take(1000).ToArray();
                     table.ItemsSource=rows;
                     status.Text="工程配置有效（未验证设备通信） · 部署版本 "+
                         result.DeploymentVersion+" · "+result.Devices.Length+
