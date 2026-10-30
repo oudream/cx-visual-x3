@@ -801,6 +801,7 @@ namespace CxVisual.Mechanism.Orchestration
             switch(id)
             {
                 case "bool":case "System.Boolean":return typeof(bool);
+                case "ushort":case "System.UInt16":return typeof(ushort);
                 case "int":case "System.Int32":return typeof(int);
                 case "long":case "System.Int64":return typeof(long);
                 case "double":case "System.Double":return typeof(double);
