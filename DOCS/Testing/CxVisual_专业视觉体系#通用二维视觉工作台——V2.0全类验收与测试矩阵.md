@@ -576,3 +576,19 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 - `CxVisionDataFlow.RunRoiInspectionPreviewAsync`的专业MRK计划现在显式接受保存时的`configRevision`；`CxVisionRoiEngineering.RunSavedAsync`从原Data Aspect传入该Revision，禁止重开后默默退回默认Revision=1。架构回归断言同工程两次重跑的`CxVisionRunSummary.ConfigRevision==21`。
 - `RunSavedAsync`在读取MEM定义前记录工程Revision，MRK完成后再次核对；若中途有其它MEM编辑，拒绝向用户发布过时ROI结果；Studio同时检查当前ProjectId、原图引用和图窗SourceVersion。
 - 代码与测试源码已提交，但本批固定master SHA对应Windows实际成功记录仍未取得，保留G3/G4/G5待验。
+
+
+## R1-01 Studio重绑源码门禁与待执行Windows验收（2026-10-30）
+
+关联：统筹IMG-03/05/12/18，V2D-02/05/08/21/22/23/24，CASE-01/02/07。**当前G2（已提交实现及测试代码），G3/G4/G5/G6仍待固定SHA实测。**
+
+| 测试编号 | 已提交可执行测试源码及预期 | 正反证据 | 执行状态 |
+|---|---|---|---|
+| R1-01-01 | `StudioShellSelfTests.VerifyStudioSavedRoiRebind`，4×4 Gray16、Stride10、三角ROI、MEM保存重开 | 反序列化保持Source、ROI/Revision=43，FIM RAW保留像素与步长，重绑不新建Run或脏工程 | 源码存在；Windows尚未确认 |
+| R1-01-02 | 同函数，`LoadStudioSavedRoiRaw` | 错Stride、同尺寸改像素Hash、预取消全部拒绝；Revision/Dirty不变 | 源码存在；Windows尚未确认 |
+| R1-01-03 | 同函数，`CxVisionRoiEngineering.RunSavedAsync`→`MPWImageViewerControl` | 新Run/6px²/Mask+Region+Measurement、原图+Mask选中投影、不能改原始像素 | 源码存在；Windows尚未确认 |
+| R1-01-04 | 同函数，`CxVisionRunCsvExporter.SaveFile`与`FIMRawImageWriter.SaveFile` | CSV保留RunId/面积；RAW逐字节与Stride保真 | 源码存在；Windows尚未确认 |
+| R1-01-05 | Studio S1 WPF UI控件断言 | 必须有`BindSavedRoiRaw`、`BindSavedRoiStride`、`ExportRunCsv`、`ExportRunRaw`、`RunSavedRoi`，但仅控件存在**不是弹框全路径G5** | 源码存在；Windows尚未确认 |
+| R1-01-06 | `module-center-cpu-windows.yml` | `--module-center-cpu-self-test` 需恰好2个独立PASS、0 FAIL（旧CPU + 新R1-01）；`--shell-self-test`保持旧STA门禁 | 已提交CI要求；实际结果待核 |
+
+**实测登记要求**：固定新HEAD SHA/Windows workflow run与Job、MSBuild Release/x64返回码、STA报告中两个PASS内容、Gray16数值、源文件Hash、失败截图/日志；并补一次从实际Studio启动→打开工程→点“重绑工程ROI原图”选择文件及Stride→执行→点击结果与导出的UIA/人工步骤。工业Device SDK/HIL/6144×3072性能不被此4×4样本代替。历史CI成功不能推断本轮成功。
