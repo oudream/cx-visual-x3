@@ -174,3 +174,57 @@ func TestEmitProgramEventDoesNotBlockAfterCancel(t *testing.T) {
 		t.Fatal("canceled worker must not send into an unconsumed channel")
 	}
 }
+
+
+// Exercise the real RunProgram -> os/exec -> Wait -> Event path, using only
+// the current test binary. A short-lived process intentionally fails the
+// configured minimum runtime, then the original MaxError policy stops retries.
+func TestRunProgramContextWithIsolatedChild(t *testing.T) {
+	dir := t.TempDir()
+	a := program.Program{
+		ID: 700, // below DefaultProgramIdUser: do not append the legacy -i flag
+		Path: os.Args[0],
+		Dir: dir,
+		ArgsString: "-test.run=^TestManagedChildHelper$",
+		EnvsString: "CX_SUPERVISION_TEST_CHILD=1",
+		Enabled: program.ENABLE,
+		MaxError: 1,
+		MaxCount: 20,
+		MinExitTime: 60,
+		StartWaitTime: 0,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	events := make(chan program.Event, 10)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		RunProgramContext(ctx, a, events, func(id int64) (program.Program, error) {
+			return a, nil
+		}, log.New(io.Discard, "", 0), dir)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatalf("supervisor did not finish bounded isolated restarts: %v", ctx.Err())
+	}
+	if len(events) != 5 {
+		t.Fatalf("want 2 starts + 2 exits + max-error, got %d", len(events))
+	}
+	for index := 1; index <= 2; index++ {
+		start := <-events
+		exit := <-events
+		if start.Event != program.EventStart || !start.Status.IsRun || start.Status.Pid <= 0 ||
+			start.Status.StartCount != index {
+			t.Fatalf("unexpected start %d: %+v", index, start)
+		}
+		if exit.Event != program.EventExit || exit.Status.IsRun || exit.Status.Pid != start.Status.Pid ||
+			exit.Status.ErrorCount != index {
+			t.Fatalf("unexpected exit %d: %+v", index, exit)
+		}
+	}
+	limit := <-events
+	if limit.Event != program.EventMaxError || limit.Status.ErrorCount != 2 {
+		t.Fatalf("error limit event must report actual failed runs, got %+v", limit)
+	}
+}
