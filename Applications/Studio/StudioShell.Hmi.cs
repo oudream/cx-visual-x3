@@ -19,10 +19,19 @@ namespace CxVisual.Studio
 
         private void RegisterStudioHmiWorkbench()
         {
-            _viewModel.RuntimeVariableChoices = () => _studioVariableScope == null
-                ? new string[0] : _studioVariableScope.Definitions()
-                    .Select(x => x.Name)
-                    .OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            _viewModel.RuntimeVariableChoices = () =>
+            {
+                if(_studioVariableScope!=null)
+                    return _studioVariableScope.Definitions()
+                        .Select(x=>x.Name).OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+                try
+                {
+                    return _studioRemoteHmi==null?new string[0]:
+                        _studioRemoteHmi.Points().Select(x=>x.StablePointId)
+                            .OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+                }
+                catch(InvalidOperationException){return new string[0];}
+            };
             RegisterStudioResourceViewer(HmiViewerId, "HMI实时运行观察",
                 CreateStudioHmiRuntimeView, false, "core.page");
             Closed+=(sender,args)=>ReleaseStudioScadaReadOnly();
@@ -99,8 +108,12 @@ namespace CxVisual.Studio
             MenuItem hmi=new MenuItem { Header="HMI：添加工业组件" };
             MDSVariableTable scope=_studioVariableScope;
             if(scope==null)
-                hmi.Items.Add(new MenuItem {
-                    Header="未连接MDS：变量组件需从受信Scope选择",IsEnabled=false});
+            {
+                if(_studioRemoteHmi!=null)
+                    AppendStudioHmiRemotePointItems(hmi,origin,pageId);
+                else hmi.Items.Add(new MenuItem {
+                    Header="未连接MDS/Runtime.Host：请选择受信运行来源",IsEnabled=false});
+            }
             else
             {
                 MDSVariableDefinition[] points=scope.Definitions()
@@ -166,14 +179,59 @@ namespace CxVisual.Studio
             menu.Items.Add(hmi);
         }
 
+        private void AppendStudioHmiRemotePointItems(MenuItem hmi,
+            MEMEngineeringSession origin,Guid pageId)
+        {
+            IReadOnlyList<PHMScadaPointObservation> points;
+            try{points=_studioRemoteHmi.Points();}
+            catch(InvalidOperationException)
+            {
+                hmi.Items.Add(new MenuItem {
+                    Header="等待Host首帧或需重新发现版本，暂不能选择点位",
+                    IsEnabled=false});
+                return;
+            }
+            foreach(PHMScadaPointObservation point in points.Take(100))
+            {
+                string id=point.StablePointId;
+                string type=point.ValueTypeName;
+                bool numeric=type=="UInt16"||type=="Int16"||type=="UInt32"||
+                    type=="Int32"||type=="Byte"||type=="SByte"||
+                    type=="Double"||type=="Single";
+                bool boolean=type=="Boolean";
+                if(!numeric&&!boolean)continue;
+                MenuItem item=new MenuItem {
+                    Header=id+" · "+type+" · "+point.Unit+"（远程只读）"};
+                if(numeric)
+                {
+                    item.Items.Add(CreateStudioHmiInsertItem("添加数值显示",
+                        origin,pageId,null,id,(x,y)=>
+                            PHMHmiScreenAuthoring.AddNumeric(origin,pageId,id,id,x,y)));
+                    item.Items.Add(CreateStudioHmiInsertItem("添加进度条（0～100）",
+                        origin,pageId,null,id,(x,y)=>
+                            PHMHmiScreenAuthoring.AddProgress(origin,pageId,id,id,x,y,0,100)));
+                }
+                if(boolean)
+                    item.Items.Add(CreateStudioHmiInsertItem("添加状态灯",
+                        origin,pageId,null,id,(x,y)=>
+                            PHMHmiScreenAuthoring.AddStatusLamp(origin,pageId,id,id,x,y)));
+                hmi.Items.Add(item);
+            }
+        }
+
         private MenuItem CreateStudioHmiInsertItem(string caption,
             MEMEngineeringSession origin,Guid pageId,MDSVariableTable expectedScope,
             string pointName,Func<double,double,Guid> creator)
         {
             var item=new MenuItem { Header=caption };
+            PHMScadaRemoteReadSession remoteAtMenu=expectedScope==null?_studioRemoteHmi:null;
             item.Click+=(sender,args)=>SafeStudioAction(()=>
             {
                 RequireStudioHmiTarget(origin,pageId,expectedScope,pointName);
+                if(remoteAtMenu!=null &&
+                    (!ReferenceEquals(remoteAtMenu,_studioRemoteHmi)||
+                     !remoteAtMenu.Points().Any(x=>x.StablePointId==pointName)))
+                    throw new InvalidOperationException("远程工站或点位已失效，重新选择");
                 MEMPage page=origin.Find(pageId) as MEMPage;
                 double x,y;NextStudioHmiPosition(page,out x,out y);
                 OpenStudioResourceEditor(pageId,"mem.visual");
