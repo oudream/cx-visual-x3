@@ -260,6 +260,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     savedReplay.SliceRoiRecipe.Signature==persistedEdited.SliceRoiRecipe.Signature&&
                     Math.Abs(savedReplay.Plane.PointMm.Z-persistedEdited.Plane.PointMm.Z)<1e-10,
                     "没有旧显示像素仍能原值重选ROI/毫米平面，ResultId更新但配方稳定");
+                var sameRecipe=persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    persistedEdited.Source,.49,.51);
+                Check(sameRecipe.Signature==persistedEdited.SliceRoiRecipe.Signature&&
+                    sameRecipe.SourceSignature==persistedEdited.Source.Signature,
+                    "保存ROI的相同毫米区间必须产生确定性相同配方身份");
                 var modifiedRecipe=persistedEdited.SliceRoiRecipe.WithNormalOffsets(
                     persistedEdited.Source,.48,.52);
                 var modifiedResult=persistedEdited.RecomputeWithSliceRoiRecipe(

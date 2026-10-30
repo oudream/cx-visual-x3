@@ -3532,6 +3532,18 @@ namespace CxVisual.Studio
                             x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement&&
                             workspace.Scene3D.SelectedId==hiddenMeasurement,
                             "Studio工程保存重开必须恢复原Measurement Scene身份及选择，不生成第二套实例");
+                        var finalized=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(
+                            .48,.52,CancellationToken.None));
+                        workspace.SavePendingResult();
+                        Guid finalizedId=finalized.Plane.ResultId;
+                        workspace.OpenProject(project);
+                        Assert(workspace.CurrentAnalysis.Plane.ResultId==finalizedId&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MinimumOffsetMm==.48&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MaximumOffsetMm==.52&&
+                            workspace.CurrentAnalysis.ParameterSignature==finalized.ParameterSignature&&
+                            workspace.CurrentAnalysis.RoiSignature==finalized.RoiSignature&&
+                            workspace.Scene3D.SelectedId==hiddenMeasurement,
+                            "修改已保存ROI毫米范围后，MEM落盘重开必须保留原体素选区、参数及Scene选择");
                         using(var engineering=MEMEngineering.Open(project))
                         {
                             var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
@@ -3539,7 +3551,7 @@ namespace CxVisual.Studio
                                     a.ProviderId==CT3DAnalysisPersistence.ProviderId));
                             var current=CT3DAnalysisPersistence.Open(engineering,
                                 engineering.GetAddress(owner),folder,CancellationToken.None);
-                            Assert(current.Plane.ResultId==editedId&&
+                            Assert(current.Plane.ResultId==finalizedId&&
                                 owner.Aspects.Any(a=>a.ProviderId==
                                     MVI3DSceneLayoutPersistence.ProviderId),
                                 "Studio保存必须同时提交CT3D Data及Scene Visual Aspect");

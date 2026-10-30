@@ -321,3 +321,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - CT3DSliceRoiRecipe.WithNormalOffsets只更新法向毫米区间，不更换原Voxel四角和资产Frame身份，使用已存在的配方构造合法性检查。
 - Studio“按已存ROI复算”按钮读取已有毫米输入框，使用专业RecomputeWithSliceRoiRecipe生成新的待保存Feature；原选中顶点相同也会更新ParameterSignature。无参数API仍支持完全按原配方重播。
 - StudioShellSelfTests增加毫米范围变化、ParameterSignature失效、原RoiSignature保持、放弃预览和逆序区间拒绝测试；最终验证以对应固定SHA Windows CI为准。
+
+
+### 10.23 B包：正式Studio已存ROI修改后保存重开专项回归（2026-10-30）
+
+- StudioShellSelfTests以真实CT3D RAW/MEM工程将已存原Voxel ROI的毫米厚度由0.49～0.51修改为0.48～0.52，经过正式保存、关闭重开，核实配方、Feature ResultId、参数签名、原ROI身份和MVI选中对象均恢复一致。
+- CT3DArchitectureSmoke增加相同毫米范围生成同一稳定配方签名的确定性反例；此前逆序范围/跨源修改拒绝保持。
+- 早期SHA因并行Automation及MVI Smoke编译错误被阻断。上述编译问题已独立修复；需以后续提交的固定SHA真实Windows CI重新验证，不能把历史失败或代码存在登记成通过。
