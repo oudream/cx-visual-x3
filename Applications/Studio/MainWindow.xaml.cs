@@ -1486,7 +1486,22 @@ namespace CxVisual.Studio
                 var entry=CurrentCatalog().Find(FlowInspectorCapability.Text.Trim());
                 if(entry==null)
                     throw new InvalidOperationException("能力合同尚未注册");
-                ApplyFlowProperty(b=>b.SetCapability(id,entry.Definition.Id),"节点能力ID已更新");
+                // Match the professional Owner's entire port schema in ONE
+                // MEM transaction. Never keep unrelated legacy ports under
+                // a newly selected provider or silently drop live links.
+                ApplyFlowProperty(b=>{
+                    var existing=b.GetPorts(id);
+                    foreach(var port in existing)
+                        if(!entry.Definition.Ports.Any(x=>x.MemberId==port.MemberId))
+                            b.RemovePort(id,port.MemberId);
+                    foreach(var port in entry.Definition.Ports)
+                    {
+                        if(b.GetPorts(id).Any(x=>x.MemberId==port.MemberId))
+                            b.ReplacePort(id,port);
+                        else b.AddPort(id,port);
+                    }
+                    b.SetCapability(id,entry.Definition.Id);
+                },"能力及真实专业Port合同已在同一MEM事务更新");
             }
             catch(Exception ex){LogicInfo.Text="能力修改拒绝："+ex.Message;}
         }
