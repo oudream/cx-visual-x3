@@ -370,6 +370,41 @@ namespace CxVisual.Runtime.Host
                     Check(plcA.Reads==stoppedA&&plcB.Reads==stoppedB,
                         "组恢复停止后仍存在遗留的PLC采集请求");
                 }
+                // 通信异常可有界恢复，但部署版本漂移绝不可当成通信故障
+                // 自动新建连接或继续公开旧PLC的Good事实。
+                using(CancellationTokenSource staleStop=new CancellationTokenSource())
+                {
+                    MRHScadaGroupRecoverySupervisor supervisor=
+                        new MRHScadaGroupRecoverySupervisor(project,configs,null,2,50);
+                    Task running=supervisor.RunAsync(staleStop.Token);
+                    try
+                    {
+                        Check(SpinWait.SpinUntil(()=>
+                            supervisor.ConnectedGenerations==1,8000),
+                            "部署漂移负例无法启动原始双PLC组");
+                        var changed=deployment.UpdateAsync(model=>
+                            model.Devices[0].IntervalMs=120,
+                            "多PLC组恢复部署漂移拒绝测试",CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        Check(changed.Success,"测试中MHS工程部署漂移提交失败");
+                        Check(SpinWait.SpinUntil(()=>running.IsCompleted,8000)&&
+                            running.IsFaulted&&supervisor.RecoveryAttempts==0,
+                            "组恢复不应自动批准变化的项目部署Effective");
+                        Check(plcA.Writes==0&&plcB.Writes==0,
+                            "项目部署漂移不能触发写入设备");
+                    }
+                    finally
+                    {
+                        staleStop.Cancel();
+                        try{running.GetAwaiter().GetResult();}
+                        catch(InvalidOperationException) when(running.IsFaulted){}
+                        catch(OperationCanceledException)
+                            when(staleStop.IsCancellationRequested){}
+                    }
+                    if(deployment.HasPendingApply)
+                        Check(deployment.ApplyPendingAtTaskBoundary(),
+                            "漂移负例结束后必须正式发布新的部署供后续测试使用");
+                }
                 // 项目级Deployment的生效版本同样必须被每台PLC轮询守卫：
                 // 不允许Studio部署调整后旧Host继续采集或沿用原设备控制上下文。
                 using(MRHScadaRuntimeGroup pinned=MRHScadaRuntimeGroup.OpenFromEngineering(
