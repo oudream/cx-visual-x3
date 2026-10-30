@@ -213,10 +213,21 @@ namespace CxVisual.Runtime.Host
                         group.Find(a).Device.ChannelId!=group.Find(b).Device.ChannelId,
                         "多设备Group没有独立Device/Scope/Channel所有权");
                     group.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
-                    Check(SpinWait.SpinUntil(()=>
+                    bool twoReady=SpinWait.SpinUntil(()=>
+                        (group.Find(a).CompletedCycles>=2 &&
+                         group.Find(b).CompletedCycles>=2) ||
+                        group.Find(a).Completion.IsCompleted ||
+                        group.Find(b).Completion.IsCompleted,10000);
+                    Check(twoReady &&
                         group.Find(a).CompletedCycles>=2 &&
-                        group.Find(b).CompletedCycles>=2,10000),
-                        "两个独立TCP工站没有同时完成至少2轮FC03");
+                        group.Find(b).CompletedCycles>=2,
+                        "两个独立TCP工站没有同时完成至少2轮FC03"+
+                        "; A reads="+plcA.Reads+" cycles="+group.Find(a).CompletedCycles+
+                        " fault="+(group.Find(a).Completion.Exception==null?"none":
+                            group.Find(a).Completion.Exception.ToString())+
+                        "; B reads="+plcB.Reads+" cycles="+group.Find(b).CompletedCycles+
+                        " fault="+(group.Find(b).Completion.Exception==null?"none":
+                            group.Find(b).Completion.Exception.ToString()));
                     IMDSVariableSnapshot sampleA=group.Find(a).Device.Inspect("word100");
                     IMDSVariableSnapshot sampleB=group.Find(b).Device.Inspect("word100");
                     Check((ushort)sampleA.CurrentObject==73 &&
