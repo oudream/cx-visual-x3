@@ -538,10 +538,10 @@ namespace CxVisual.Mechanism.Visual
                 }
                 if(aspect.SchemaVersion==MultiSelectionSchema)
                 {
-                    int count=r.ReadInt32();
-                    if(count<2||count>items.Count)
+                    int selectionCount=r.ReadInt32();
+                    if(selectionCount<2||selectionCount>items.Count)
                         throw new InvalidDataException("Scene组合选择长度无效。");
-                    for(int i=0;i<count;i++)
+                    for(int i=0;i<selectionCount;i++)
                     {
                         cancellation.ThrowIfCancellationRequested();
                         selectedIds.Add(new Guid(ReadExact(r,16)));
