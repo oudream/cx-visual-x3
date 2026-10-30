@@ -25,6 +25,17 @@ namespace CxVisual.Mechanism.Data.Variables
         public string PointId { get; private set; }
         public object Value { get { return MDSVariableValueRules.Copy(_value); } }
         public MDSVariableQuality Quality { get; private set; }
+        public bool IsQualityOnly { get; private set; }
+
+        /// <summary>质量通知不包含新的测量值；只允许标记已采样值不可信。</summary>
+        public static MDSVariableProviderSample QualityOnly(string pointId, MDSVariableQuality quality)
+        {
+            if (quality == MDSVariableQuality.Good || !Enum.IsDefined(typeof(MDSVariableQuality), quality))
+                throw new ArgumentOutOfRangeException("quality");
+            MDSVariableProviderSample sample = new MDSVariableProviderSample(pointId, null, quality);
+            sample.IsQualityOnly = true;
+            return sample;
+        }
     }
 
     public sealed class MDSVariableProviderBinding
@@ -216,7 +227,13 @@ namespace CxVisual.Mechanism.Data.Variables
             try
             {
                 // 真实变量对象可供只读业务定义从设备Provider刷新；不要求调用方把它改成Writable。
-                using (binding.Scope.Acquire()) binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source);
+                using (binding.Scope.Acquire())
+                {
+                    if (sample.IsQualityOnly)
+                        binding.Target.MarkProviderQualityBoxed(sample.Quality, source);
+                    else
+                        binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source);
+                }
                 Interlocked.Increment(ref _applied);
             }
             catch (Exception error)
