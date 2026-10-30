@@ -287,11 +287,20 @@ func main() {
 										}
 									}
 								}
+								// Only a real enabled-start configuration intent may queue
+								// behind a finishing worker; periodic recovery never queues.
+								if bKill && !bRun {
+									_programWorkers.clearPending(ad.ID)
+								}
 								if bRun {
-									if launchProgramWorker(workerCtx, ad.Program, cae) {
+									started, queued := requestProgramWorker(workerCtx, ad.Program, cae)
+									switch {
+									case started:
 										_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
-									} else {
-										_logger.Printf(_title.Info+"program diff-employ %s kept existing guardian program[%s](%d)", ad.Action, ad.Path, ad.ID)
+									case queued:
+										_logger.Printf(_title.Info+"program diff-employ %s queued after existing guardian program[%s](%d)", ad.Action, ad.Path, ad.ID)
+									default:
+										_logger.Printf(_title.Info+"program diff-employ %s refused by stop/terminal latch program[%s](%d)", ad.Action, ad.Path, ad.ID)
 									}
 								}
 							} else {
