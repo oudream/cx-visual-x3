@@ -183,6 +183,20 @@ namespace CxVisual.Professional.HMI
             PHMHmiOperationFeedback result = null;
             foreach (MVIVisualActionInvocation action in actions)
             {
+                // 一个Click可以声明多个动作。每次跨可信宿主边界前再次检查
+                // 会话/工程/取消；前一动作之后工程若已改变，不可执行剩余动作。
+                bool inactive;
+                lock (_gate) inactive = _disposed;
+                if (inactive || cancellation.IsCancellationRequested ||
+                    engineering.Project.Id != ProjectId ||
+                    engineering.Revision != ProjectRevision)
+                {
+                    return new PHMHmiOperationFeedback(
+                        result == null ? PHMHmiOperationState.Rejected :
+                            PHMHmiOperationState.Unknown,
+                        result == null ? "hmi.action_not_dispatched" :
+                            "hmi.partial_actions_outcome_unknown");
+                }
                 try
                 {
                     result = await trustedHost(action, cancellation).ConfigureAwait(false);
