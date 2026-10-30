@@ -80,8 +80,14 @@ namespace CxVisual.Mechanism.Lifecycle.Modules
                     // or fabricate healthy readiness. Unknown remains null.
                 }
             }
+            // A transition may happen while a provider checks its real
+            // dependencies. Read again without holding _stateGate across a
+            // professional callback (which could invert lock ordering).
+            MLCServiceModuleState finalState = State;
+            if (finalState != lifecycle)
+                verified = finalState == MLCServiceModuleState.Running ? (bool?)null : false;
             return new MLCServiceModuleObservation(Descriptor.Id, Descriptor.Name,
-                Descriptor.Version, lifecycle, verified, DateTime.UtcNow);
+                Descriptor.Version, finalState, verified, DateTime.UtcNow);
         }
 
         /// <summary>
