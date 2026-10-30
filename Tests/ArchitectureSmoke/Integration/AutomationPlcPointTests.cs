@@ -442,6 +442,73 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
                         "批读错误后只有新的完整真实回包才允许恢复Good");
 
+                    // 周期PLC采集复用FCRPeriodicJob + 已通过G1的MCN/MPA/MDS。
+                    // 只读工作不得重发FC06，Stop必须等待在途扫描，不留后台请求。
+                    int writesBeforePolling = plc.Writes;
+                    int readRequestsBeforePolling = plc.Requests;
+                    PADPlcPollingSession intervalPoll = new PADPlcPollingSession(
+                        bridge, new[] { "input", "word" },
+                        TimeSpan.FromMilliseconds(80));
+                    Reject<ArgumentException>(() => new PADPlcPollingSession(
+                        bridge, new[] { "word", "word" }, TimeSpan.FromMilliseconds(80)));
+                    Reject<ArgumentOutOfRangeException>(() => new PADPlcPollingSession(
+                        bridge, new[] { "word" }, TimeSpan.FromMilliseconds(1)));
+                    intervalPoll.Start();
+                    Reject<InvalidOperationException>(() => intervalPoll.Start());
+                    Check(SpinWait.SpinUntil(() => intervalPoll.CompletedCycles >= 2, 5000),
+                        "周期顺序轮询必须从真实PLC完成至少两轮FC03");
+                    intervalPoll.StopAsync().GetAwaiter().GetResult();
+                    int requestsAfterPollStop = plc.Requests;
+                    Check(intervalPoll.SuccessfulCycles >= 2 &&
+                        intervalPoll.PartialCycles == 0 &&
+                        requestsAfterPollStop >= readRequestsBeforePolling + 4 &&
+                        plc.Writes == writesBeforePolling &&
+                        !intervalPoll.Completion.IsFaulted,
+                        "周期采集必须复用只读链路与串行设备访问，不允许产生FC06");
+                    Thread.Sleep(230);
+                    Check(plc.Requests == requestsAfterPollStop,
+                        "StopAsync完成后不能遗留后台周期读取");
+                    Reject<InvalidOperationException>(() => intervalPoll.Start());
+
+                    // 连续点周期轮询应每轮仅发一个FC03双寄存器事务。
+                    int blockBeforePolling = plc.BlockReads;
+                    PADPlcPollingSession mergedPoll = new PADPlcPollingSession(
+                        bridge, new[] { "word", "input" },
+                        TimeSpan.FromMilliseconds(80), contiguous: true);
+                    mergedPoll.Start();
+                    Check(SpinWait.SpinUntil(() => mergedPoll.CompletedCycles >= 2, 5000),
+                        "周期连续批读必须真实完成至少两轮");
+                    mergedPoll.StopAsync().GetAwaiter().GetResult();
+                    Check(plc.BlockReads >= blockBeforePolling + 2 &&
+                        mergedPoll.SuccessfulCycles >= 2 &&
+                        plc.Writes == writesBeforePolling,
+                        "每轮连续扫描只允许正式Modbus FC03 count=2，不得写入设备");
+
+                    // 一点丢帧仅产生部分成功；之后真实采样恢复Good，周期任务不重入。
+                    plc.DropNextInputRead();
+                    PADPlcPollingSession partialPoll = new PADPlcPollingSession(
+                        bridge, new[] { "input", "word" },
+                        TimeSpan.FromMilliseconds(80));
+                    partialPoll.Start();
+                    Check(SpinWait.SpinUntil(() => partialPoll.PartialCycles >= 1, 5000),
+                        "单点超时必须记录本轮Partial，不伪报整轮成功");
+                    Check(SpinWait.SpinUntil(() => partialPoll.SuccessfulCycles >= 1, 5000),
+                        "周期后续真实采样应恢复失败点Good");
+                    partialPoll.StopAsync().GetAwaiter().GetResult();
+                    Check(table.Inspect("Station.Input").Quality == MDSVariableQuality.Good &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good &&
+                        plc.Writes == writesBeforePolling,
+                        "周期故障隔离及恢复不能修改PLC输出寄存器");
+
+                    // Host没有显式启动时，不允许调用网络；停止未启动的会话可安全清理。
+                    int beforeNeverStarted = plc.Requests;
+                    PADPlcPollingSession neverStarted = new PADPlcPollingSession(
+                        bridge, new[] { "word" }, TimeSpan.FromMilliseconds(200));
+                    neverStarted.StopAsync().GetAwaiter().GetResult();
+                    Check(plc.Requests == beforeNeverStarted,
+                        "没有Start的周期会话必须零网络副作用");
+                    Reject<InvalidOperationException>(() => neverStarted.Start());
+
                     // 连接一旦明确关闭，原Good不能继续用于现场控制；
                     // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
                     IMDSVariableSnapshot beforeClose = table.Inspect("Station.Word");
