@@ -61,3 +61,11 @@ Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
 5. 再推进真实 Motion、气动/真空、搬运与 X-Ray/Detector 的多设备专业动作，G2/G3依设备而定。
 
 **注意：文档 #09/#10 的206项类型是架构词汇，本包只新增必要的PLC桥接对象，没有批量生成候选类。**
+
+## 六、2026-10-30 Windows CI 复盘与修复
+
+首批提交 `fa907c14017b4281ff854d8b3ff2a4416f2c8953` 在 Windows 已成功编译 Automation、ArchitectureSmoke 与全解决方案，但三个依赖默认 ArchitectureSmoke 的 CI 因相同原因失败：`PROTOCOL_IO_MISMATCH：Modbus TCP 只能使用 TCP Channel`。问题出在 G1 把虚拟字节通道直接装配到 Modbus TCP Connector；这是测试装配错误，**不能削弱 MCN 的 TCP/Modbus 兼容性检验**。
+
+修订采用本机 `TcpListener` 的确定性单寄存器 PLC 测试端与正式 `FTRTcpClientChannel`，通过真实 OS socket 收发 MBAP/FC03/FC06 帧，保留 MPA Protocol、MCN Connector 和 MDS 的正式调用。测试覆盖虚拟通道不被非法装配、03读取、06回显、现场回读矛盾、读回超时 Unknown 与恢复；无任何实机 PLC/G2/HIL 证明。
+
+本节记录实际已观察的首批失败原因，修复后的 Windows CI 结论须读取修复提交 SHA 对应 Actions 才能填写，不预填 PASS。
