@@ -52,6 +52,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
             protected override Task OnStopAsync(CancellationToken ct) { Stops++; return Task.CompletedTask; }
         }
 
+        /// <summary>Focused real Service Owner observation regression.</summary>
+        public static void RunServiceObservation()
+        {
+            MFMModuleDescriptor descriptor = new MFMModuleDescriptor(
+                "service.g1.readonly", "Actual Service", MFMModuleKind.Service);
+            SimpleService service = new SimpleService(descriptor);
+            MLCServiceModuleObservation before = service.Observe();
+            Check(before.ModuleId == descriptor.Id && before.Name == descriptor.Name &&
+                before.Version == descriptor.Version &&
+                !before.LifecycleRunning &&
+                before.VerifiedReady.HasValue && !before.VerifiedReady.Value &&
+                before.ObservedAtUtc.Kind == DateTimeKind.Utc,
+                "Service stopped must have owner-derived negative observation");
+            service.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+            MLCServiceModuleObservation during = service.Observe();
+            Check(during.LifecycleRunning && during.State == MLCServiceModuleState.Running &&
+                !during.VerifiedReady.HasValue,
+                "Running without actual provider evidence must remain Unknown");
+            service.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            MLCServiceModuleObservation after = service.Observe();
+            Check(after.State == MLCServiceModuleState.Stopped &&
+                after.VerifiedReady.HasValue && !after.VerifiedReady.Value &&
+                during.State == MLCServiceModuleState.Running,
+                "Stopping must not mutate an earlier immutable service snapshot");
+            Console.WriteLine("SERVICE.OBSERVATION: PASS actual lifecycle vs unknown readiness");
+        }
+
         private static void ModbusTcpTransactionSmoke()
         {
             FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("mb-request", "mb-device");
