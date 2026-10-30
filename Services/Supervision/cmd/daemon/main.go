@@ -48,9 +48,13 @@ func exitPidFiles(programs []program.Program) {
 		}
 		name := utilities.FileSystemGetFileNameOnly(a.Path)
 		if pid := program.LoadProgramRunPid(*_workDir, name); safeManagedPID(pid) {
-			// This protects PID 0 and Daemon self from the legacy PID-file
-			// cleanup path. Executable identity and PID reuse still require
-			// stronger verification before an industrial stop receipt.
+			// The legacy PID file and name substring are not sufficient to
+			// identify a process. A mismatch or inaccessible executable must
+			// be skipped, never terminated.
+			if err := verifyManagedExecutablePID(pid, a.Path); err != nil {
+				_logger.Printf(_title.Error+"Skip stale PID cleanup for %s (%d): %v\n", a.Path, pid, err)
+				continue
+			}
 			err := program.KillProcess(pid)
 			if err != nil {
 				_logger.Printf(_title.Error+"Kill[ %s ] Fail. err= %s", name, err)
@@ -226,17 +230,29 @@ func main() {
 			cancelWorkers()
 			daemonc.DaemonRun.Store(false)
 			for ProgramId, pid := range _runProgramIds {
-				if safeManagedPID(pid) {
-					proc, err2 := os.FindProcess(pid)
-					if err2 == nil && proc != nil {
-						_ = proc.Kill()
-						a, err := findProgramById(ProgramId)
-						if err == nil {
-							program.DeleteProgramPidFile(*_workDir, a.GetFileName())
-						}
-						//time.Sleep(time.Millisecond * 100)
-					}
+				if !safeManagedPID(pid) {
+					continue
 				}
+				a, err := findProgramById(ProgramId)
+				if err != nil {
+					_logger.Printf(_title.Error+"Skip daemon shutdown PID %d: Program %d not found\n", pid, ProgramId)
+					continue
+				}
+				if err := verifyManagedExecutablePID(pid, a.Path); err != nil {
+					_logger.Printf(_title.Error+"Skip daemon shutdown stop Program %d PID %d: %v\n", ProgramId, pid, err)
+					continue
+				}
+				proc, err := os.FindProcess(pid)
+				if err != nil {
+					_logger.Printf(_title.Error+"Stop PID lookup Program %d PID %d failed: %v\n", ProgramId, pid, err)
+					continue
+				}
+				if err := proc.Kill(); err != nil {
+					_logger.Printf(_title.Error+"Stop request Program %d PID %d failed: %v\n", ProgramId, pid, err)
+					continue
+				}
+				_logger.Printf(_title.Info+"Stop request SENT Program %d PID %d (exit NOT verified)\n", ProgramId, pid)
+				program.DeleteProgramPidFile(*_workDir, a.GetFileName())
 			}
 			bRunning = false
 
