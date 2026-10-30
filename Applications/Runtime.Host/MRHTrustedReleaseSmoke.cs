@@ -20,9 +20,12 @@ namespace CxVisual.Runtime.Host
         {
             internal int Resolutions;
             internal int Executions;
+            internal int VersionChecks;
+            internal string Version="vision.gray16/ci:1";
             public bool TryGetCapabilityVersion(string id,out string version)
             {
-                version=id=="vision.gray16"?"vision.gray16/ci:1":null;
+                VersionChecks++;
+                version=id=="vision.gray16"?Version:null;
                 return version!=null;
             }
             public bool TryResolve(string id,out MRKResolvedCapability binding)
@@ -175,6 +178,24 @@ namespace CxVisual.Runtime.Host
                     publisher.PendingRevision==2&&capability.Resolutions==1&&
                     capability.Executions==0,
                     "real Host pinned certificate and signed Plan failed to Stage");
+                int beforeUnauthorized=capability.VersionChecks;
+                denied=false;
+                try {trusted.TryActivate("readonly");}
+                catch(UnauthorizedAccessException e)
+                {denied=e.Message=="mrh.release.activation_principal_denied";}
+                Check(denied && capability.VersionChecks==beforeUnauthorized &&
+                    publisher.ActiveRevision==1 && publisher.PendingRevision==2,
+                    "unprivileged activation must not query the professional Resolver");
+                capability.Version="vision.gray16/ci:2";
+                denied=false;
+                try {trusted.TryActivate("ci-release-officer");}
+                catch(InvalidOperationException e)
+                {denied=e.Message.StartsWith(
+                    "mrh.release.provider_version_changed:",StringComparison.Ordinal);}
+                Check(denied && publisher.ActiveRevision==1 &&
+                    publisher.PendingRevision==2 && capability.Executions==0,
+                    "professionally hot-swapped algorithm between Stage and Activate must fail closed");
+                capability.Version="vision.gray16/ci:1";
                 Check(!trusted.TryActivate("ci-release-officer")&&
                     publisher.ActiveRevision==1,
                     "release signature bypassed the real MRK Host safe point");

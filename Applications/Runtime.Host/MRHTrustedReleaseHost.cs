@@ -49,6 +49,13 @@ namespace CxVisual.Runtime.Host
         private readonly MRKExecutionPlanPublisher _publisher;
         private readonly MDCStaticCatalogSnapshot _catalog;
         private readonly IMRKCapabilityResolver _resolver;
+        private readonly IMRKVersionedCapabilityResolver _versionedResolver;
+        private readonly Func<string,bool> _authorizePrincipal;
+        private readonly object _releaseGate=new object();
+        // A staged signed package retains its own professional version pins.
+        // MRK itself is still the only owner of activation and PlanSlot.
+        private long? _signedPendingRevision;
+        private Dictionary<string,string> _signedPendingVersions;
 
         internal MRHTrustedReleaseHost(string scope,string ledgerPath,
             IEnumerable<MRHTrustedSigningKey> trustedKeys,
@@ -110,6 +117,8 @@ namespace CxVisual.Runtime.Host
                 new MOCPinnedRsaReleaseVerifier(keys),admission,publisher);
             _publisher=publisher;
             _catalog=catalog;_resolver=resolver;
+            _versionedResolver=resolver as IMRKVersionedCapabilityResolver;
+            _authorizePrincipal=authorizeReservation;
         }
 
         internal MRKPlanPublicationReceipt StageFile(string principal,string envelopeFile)
@@ -118,17 +127,58 @@ namespace CxVisual.Runtime.Host
                 throw new ArgumentException("mrh.release.envelope_path_required");
             byte[] package=ReadBounded(envelopeFile,MaxEnvelope);
             MOCSignedPlanRelease release=MOCSignedPlanRelease.Import(package);
-            // The production Host has no API for bypassing professional
-            // input/output contract validation, even for signed legacy files.
-            return _trusted.VerifyAndStage(principal,release,_catalog,_resolver,
-                allowUnverifiedLegacyContracts:false);
+            lock(_releaseGate)
+            {
+                // Production has no bypass for unverified professional contracts.
+                MRKPlanPublicationReceipt receipt=_trusted.VerifyAndStage(
+                    principal,release,_catalog,_resolver,
+                    allowUnverifiedLegacyContracts:false);
+                if(receipt.Accepted)
+                {
+                    if(_publisher.PendingRevision!=receipt.Revision)
+                        throw new InvalidOperationException("mrh.release.pending_revision_changed");
+                    _signedPendingRevision=receipt.Revision;
+                    _signedPendingVersions=release.CapabilityVersions.ToDictionary(
+                        x=>x.Key,x=>x.Value,StringComparer.Ordinal);
+                }
+                return receipt;
+            }
         }
 
-        /// <summary>Explicit Host-controlled activation. StageFile never
-        /// calls this method or bypasses the existing MRK safe point.</summary>
+        /// <summary>Explicit Host activation. Recheck professional versions
+        /// AFTER Stage and immediately BEFORE MRK's existing authorized
+        /// safety-point gate. This prevents an intervening hot swap from being
+        /// accepted as a signed plan. Physical device interlocks still belong
+        /// to the injected Host policy, not this software version fence.</summary>
         internal bool TryActivate(string principal)
         {
-            return _publisher.TryActivate(principal);
+            if(string.IsNullOrWhiteSpace(principal)||
+                !_authorizePrincipal(principal))
+                throw new UnauthorizedAccessException("mrh.release.activation_principal_denied");
+            lock(_releaseGate)
+            {
+                if(!_signedPendingRevision.HasValue)return false;
+                if(_publisher.PendingRevision!=_signedPendingRevision)
+                    throw new InvalidOperationException("mrh.release.pending_revision_changed");
+                if(_versionedResolver==null || _signedPendingVersions==null)
+                    throw new InvalidOperationException("mrh.release.versioned_resolver_required");
+                foreach(KeyValuePair<string,string> pin in _signedPendingVersions
+                    .OrderBy(x=>x.Key,StringComparer.Ordinal))
+                {
+                    string current;
+                    if(!_versionedResolver.TryGetCapabilityVersion(pin.Key,out current)||
+                        !StringComparer.Ordinal.Equals(current,pin.Value))
+                        throw new InvalidOperationException(
+                            "mrh.release.provider_version_changed:"+pin.Key);
+                }
+                bool activated=_publisher.TryActivate(principal);
+                if(activated)
+                {
+                    _signedPendingRevision=null;
+                    _signedPendingVersions=null;
+                }
+                return activated;
+            }
         }
 
         private static byte[] ReadBounded(string filename,int maxSize)
