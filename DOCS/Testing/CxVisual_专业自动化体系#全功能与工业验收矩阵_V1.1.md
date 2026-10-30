@@ -162,3 +162,16 @@ G2/G3 报告另记 `Model/SN/Firmware/ControllerSafeStatus/CalibrationId/SDKx64/
 - **可自动操作点位**：`TCT.Module.Page.connector-plc`、`TCT.Plc.Connect`、`TCT.Plc.PointNames`、`TCT.Plc.Read`、`TCT.Plc.Stop`、`TCT.Plc.ReadEvidence`、`TCT.Plc.Status`。
 - **真实UIA测试**：`TCTPlcReadOnlyUiSmoke` 在实际WPF窗口中从MHS保存生效Connector、通过TCP测试设备读取holding:100/101并验证90/99及UTC、仅一帧、非法反序不发包且清除旧结果、显式断链。原有Compute/Simulation/Service/Connector四项UIA仍要同时通过。固定运行时需上传五份同SHA报告。
 - **证据限制**：本次新增WPF UIA采用Windows TCP本机夹具，是软件G1而非真实PLC G2；现场设备身份/安全/固件及真实MDS Provider采样需另外核实。源码和UIA测试已提交，五项新工作流结论以新SHA的Actions为准；未完成前不得填PASS。
+
+### 20. AUT-PI-015 Host周期采样、故障传播与停止（2026-10-30）
+
+**专业代码**：`Professional/Automation/Plc/PADPlcPollingSession.cs`。组合唯一`Foundation.Infrastructure.Concurrency.FCRPeriodicJob`，不创建额外Timer/Worker或MDS数据仓，生命周期由显式Host控制。配置：1～64个唯一点、20ms～1h有效间隔，普通`ScanAsync`逐点或`ScanContiguousAsync`连续FC03，两者仍走真实MCN/MPA/F17/MDS ProviderHost。
+
+**G1自动验收点**：
+- `AUT-PI-015A`：80ms间隔轮询真实TCP Modbus两个寄存器不少于2轮，`SuccessfulCycles`与实物请求数一致，无主动写入FC06；
+- `AUT-PI-015B`：连续批读模式每轮单个FC03 Count=2，保留原协议地址/站号校验；
+- `AUT-PI-015C`：丢弃一次只读输入FC03回包，得到`PartialCycles>=1`且该点Stale，恢复后的下一轮真实设备采样才恢复Good；
+- `AUT-PI-015D`：重复启动、重复点、非法周期、未启动零网络副作用；`StopAsync`等待当前轮退出，超过周期后无剩余网络报文，旧会话不得重启；
+- `AUT-PI-015E`：运行期篡改点表地址，延后首轮在发包前Faulted、网络请求不增长、MDS旧值和RefreshUtc保持且Quality变Stale；修复后必须经真实FC03才能再得Good。
+
+**证据等级**：正式代码提交 `30cbba9f8e2fbbb34c5da319e76c53967fc6c3e8`，测试提交 `60e434fdb00085a4fefcc18ae16c7aa0789ac501` 与增强 `1815b07383bcc61eafc9d2aa26d1135e7b2e9af8`。对应Windows G1 [41020212133](https://github.com/oudream/cx-visual-x3/actions/runs/41020212133)；填写时尚为Queued，只有Actions明确success才能改成软件G1 PASS。Windows本机TCP夹具≠实机PLC、HIL、安全、实时抖动验证。
