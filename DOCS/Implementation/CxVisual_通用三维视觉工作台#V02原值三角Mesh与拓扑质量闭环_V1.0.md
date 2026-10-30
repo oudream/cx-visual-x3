@@ -389,3 +389,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **交互闭环**：StudioCT3DDocument新增面片临时选择集（StableId增删）、“选中面片重算”正式操作按钮、异步原值分析及取消/切Case清除。更换2D ROI或点击增删面片时撤销旧待提交分析，保存前比较面片选择代次与当前二维ROI实例，禁止旧Feature错存。不扩展MEM树，不将瞬时UI选择伪造为可持久子元素集。
 - **源码提交**：WPF控件 `7d910011c1703bd6d464165662ab9edb6767edc4`，Studio交互 `aed98c3ad18673f5da624465b41a6c5f1ffb1b48`，Studio真工程回归 `c5cf9e3ca0762c4b4846e293933e15bcdd8b6588`。新增回归验证12³显示射线→原Voxel→毫米射线的FGE原Mesh重新拾取、单面片3点重算、取消选择失效预览；WPF鼠标物理点击与任意LOD遮挡/GPU尚需独立真实操作验证。
 - **验收界限**：上一轮专业Mesh面片算法固定SHA `b378413d0d86598b7f713e232223674545195749` 的CT3D G1～G3 `41027934866` 与Imaging `41027934809` SUCCESS；本轮WPF/Studio增量固定SHA Studio `41034581734`、TestCenter `41034581843` 截至写入尚排队，不能冒充Windows通过。既有Studio全量S1另受并行MRK Vision CPU按钮/Trace失败阻断，须与CT3D本次功能区分。G4真实GPU、G5工业计量精度仍未关闭。
+
+
+### 10.33 B包：真实原Mesh面片选择的WPF高亮与相机交互（2026-10-30）
+
+- **显示与专业分界**：StudioCT3DDocument把当前CT3DMeshFaceReference中原值FGE毫米三角顶点通过原Volume Frame投影为MPW显示Mesh，独立于原Mesh LOD三角索引；MPWVolumeSliceSceneControl维护专用黄色Emissive/Diffuse高亮层，只承接可视表现，不作为专业拾取或毫米计量合同。最多512个面片显示，完整专业选择数仍可至30000。
+- **真实WPF交互**：选中/取消Ctrl+Shift面片后立即刷新高亮；视角变化时只更新可视微偏移防共面闪烁。高亮面再次被点击时仍进入FGE原Mesh射线重拾取，不使用WPF显示三角索引。隐藏Mesh、清除2D ROI、切Case、关闭工作台都会撤销或暂时清除高亮，已提交结果和MEM Owner保持不变。
+- **真实自测**：StudioShellSelfTests在既有12³双Case原RAW/MEM工程中增加单面选择时黄色面片计数=1、取消后=0、待保存结果被新面片选择撤销后高亮恢复等断言。对应源码SHA b4be1fe3f3f5c6c42f2c05941cbffcfa9ccfbeea（MPW）、422e030d89ba37a5ff0668916336ddb97a7ed2b7（Studio）、879b53dce814ded2841da6919dc00ff45fb49aae（WPF测试）。最后提交的Studio S1 41040779496、TestCenter 41040779613 仍排队，不登记为通过。
+- **当前限制**：面片选择集仍为Case会话中的临时引用，不能冒充永久工程子元素配方；多面片高亮实际WPF GPU/任意LOD/DPI性能需人工实测。G4 GPU真实渲染、G5工业计量不确定度未关闭。上一轮Studio/TestCenter 41034581734/41034581843 构建失败属于并行HMI/Runtime.Host引用与变量作用域错误，不能据此判定CT3D本身测试失败。
