@@ -285,9 +285,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 client.Received+=packet=>
                 {
                     byte[] body=packet.Data;
-                    Check(body.Length==bytes,"HTTP 4MiB响应长度不足");
-                    for(int i=0;i<body.Length;i+=4093)
-                        Check(body[i]==expected[i],"HTTP 4MiB响应校验/顺序错误："+i);
+                    Check(body.Length==bytes&&body.SequenceEqual(expected),
+                        "HTTP 4MiB响应每字节完整性/顺序不正确");
                     Interlocked.Increment(ref received);
                 };
                 try
