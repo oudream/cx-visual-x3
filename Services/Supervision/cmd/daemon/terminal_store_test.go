@@ -146,3 +146,26 @@ func TestTerminalLatchWriteFaultBlocksFutureWorkerStarts(t *testing.T) {
 		}
 	}
 }
+
+
+func TestTerminalSnapshotIsReadOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "terminal.json")
+	gate := newProgramWorkerGate()
+	if err := gate.enablePersistence(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.markTerminal(program.Event{
+		Event: program.EventMaxCount, Status: program.Status{Id: 65},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic := gate.terminalSnapshot()
+	delete(diagnostic, 65)
+	diagnostic[66] = program.EventMaxError
+	if reason, blocked := gate.blocked(65); !blocked || reason != program.EventMaxCount {
+		t.Fatal("diagnostic view modified real terminal latch")
+	}
+	if _, blocked := gate.blocked(66); blocked {
+		t.Fatal("diagnostic view created an unauthorized terminal latch")
+	}
+}
