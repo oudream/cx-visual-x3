@@ -113,6 +113,26 @@ namespace CxVisual.TestCenter.UI
                 viewer.FindName("DraftPolyline") as System.Windows.Shapes.Polyline;
             if(draft==null || draft.Visibility!=Visibility.Visible)
                 throw new InvalidOperationException("未完成线段草稿没有真实WPF图形反馈");
+            // MouseUp正常释放或切换Pane的捕获丢失，不能中止等待下一点击的草稿。
+            // 此事件测试与Esc使用同一真实WPF路由，但不伪造硬件鼠标。
+            FrameworkElement primary=viewer.FindName("ViewportRoot") as FrameworkElement;
+            FrameworkElement secondary=viewer.FindName("SecondaryViewportRoot") as FrameworkElement;
+            if(primary==null || secondary==null)
+                throw new InvalidOperationException("双Pane原始WPF视口不存在");
+            foreach(FrameworkElement pane in new[]{primary,secondary})
+            {
+                MouseEventArgs lost=new MouseEventArgs(Mouse.PrimaryDevice,Environment.TickCount);
+                lost.RoutedEvent=Mouse.LostMouseCaptureEvent;
+                pane.RaiseEvent(lost);
+                if(draft.Visibility!=Visibility.Visible ||
+                   viewer.Overlays.Items.Count!=count)
+                    throw new InvalidOperationException(
+                        "非拖动状态LostMouseCapture错误清除了未完成两线草稿");
+            }
+            if(viewer.AppendLinePairPoint(new FGEPoint2D(1.5,0.5))!=null ||
+               draft.Visibility!=Visibility.Visible)
+                throw new InvalidOperationException(
+                    "非拖动失捕之后两线测量必须继续接受第二点");
             KeyEventArgs key=new KeyEventArgs(Keyboard.PrimaryDevice,
                 PresentationSource.FromVisual(viewer),Environment.TickCount,Key.Escape);
             key.RoutedEvent=Keyboard.PreviewKeyDownEvent;
