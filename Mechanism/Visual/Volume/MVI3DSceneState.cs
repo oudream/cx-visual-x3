@@ -11,7 +11,9 @@ namespace CxVisual.Mechanism.Visual
     /// <summary>仅是可视引用类别，源资产/几何/工程定义仍由FVO/CT3D/MEM持有。</summary>
     public enum MVI3DSceneKind
     {
-        Volume, Surface, Mesh, Cad, Mask, Roi, Measurement, Defect
+        Volume, Surface, Mesh, Cad, Mask, Roi, Measurement, Defect,
+        // 只追加枚举成员，不改变已保存Schema1的旧Kind数值。
+        PointCloud
     }
 
     /// <summary>不可变可视引用，不包含原始体素、专业量值、GPU纹理或工程树。</summary>
