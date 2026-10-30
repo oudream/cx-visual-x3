@@ -119,3 +119,10 @@ H5 “守护诊断”、运行总览和程序详情已补充“启动隔离（�
 新增 `internal/stopjournal` 本地 `daemon-stop-operations.ndjson`：停止前先 Sync 持久 `requested`，后续同一 OperationID 追踪 refused、signal-failed、unknown 和原 Worker 的 wait-confirmed；重启后按 OperationID 合并，较晚 unknown 不覆盖已有 Wait 确认。原 Daemon/Monitor 与原事件协议不变，日志损坏/超限会拒绝新的受管软件停止，须受控离线恢复，绝非设备独立安全急停的替代品。
 
 新增本机只读 `GET /api/v1/stops/history` 与 H5 “停止历史”页面，支持未结清查询、OperationID/ProgramId/PID/时间/错误详情及跳转程序，绝不开放远程启停或解锁。相关 [V2.0架构第28章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)、[验收矩阵第23章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)和[部署归档说明](deploy/README.md)已同步。本轮新增源码与测试已提交，正式 Go 三平台/前端 CI 及设备 G1/G2/G3 仍以固定 SHA 的真实执行结果为准。
+
+
+## S05资源性能正式页面与真实采样（2026-10-30）
+
+新增本机只读 `GET /api/v1/resources`，复用当前 Go Monitor 与 gopsutil/v3 取得**整机 CPU、物理内存、工作目录所在文件系统磁盘**的真实采样。H5 侧边导航增加“资源性能”页面，按来源分别显示可用性、观察时间和单位，与原有受管程序 CPU/RSS 快照同页但不混淆。支持 Program ID/路径搜索、CPU 排序与详情跳转；无长期历史来源的 GPU/网络/趋势不虚构数据。
+
+配套 Go 与 Vue 正反测试、新版 [V2.0架构第30章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md) 和 [S01～S12矩阵第25章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。Codex 此前固定 SHA 的 G1 成果已经留档；此增量属于后续新提交，须按新 SHA 再运行完整 CI 与现场核验。
