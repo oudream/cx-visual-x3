@@ -46,6 +46,7 @@ namespace CxVisual.Professional.Automation.Plc
     public sealed class PADPlcPointBridge : IDisposable
     {
         private readonly MCNConnectorModule _connector;
+        private readonly IFTRChannelTransport _transport;
         private readonly PADDeviceVariableCatalog _catalog;
         private readonly FTRSubChannelAddress _destination;
         private readonly Dictionary<string, string> _bindings;
@@ -67,6 +68,9 @@ namespace CxVisual.Professional.Automation.Plc
                 throw new ArgumentException("MDS Scope与PLC绑定不能为空");
             if (connector.Protocol.Id != "modbus.tcp")
                 throw new NotSupportedException("当前闭环仅验证Modbus TCP Holding单寄存器");
+            _transport = connector.Channel as IFTRChannelTransport;
+            if (_transport == null)
+                throw new NotSupportedException("PLC回读与断线质量通知要求可执行IFTRChannelTransport");
             _scopeId = scopeId.Trim();
             string prefix = _scopeId + "/";
             _bindings = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -105,7 +109,7 @@ namespace CxVisual.Professional.Automation.Plc
                 _approvedSignatures.Add(binding.StableId, Signature(point, mappings));
             }
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
-            _connector.Channel.StateChanged += OnChannelStateChanged;
+            _transport.StateChanged += OnChannelStateChanged;
         }
 
         /// <summary>
@@ -135,7 +139,7 @@ namespace CxVisual.Professional.Automation.Plc
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            _connector.Channel.StateChanged -= OnChannelStateChanged;
+            _transport.StateChanged -= OnChannelStateChanged;
         }
 
         private void MarkStale(string stableId)
