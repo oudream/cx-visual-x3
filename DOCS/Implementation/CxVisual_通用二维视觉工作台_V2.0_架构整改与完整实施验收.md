@@ -466,6 +466,12 @@
 - **安全/架构边界**：只在独立`StudioRoiDialogUiSmoke`增加Win32测试诊断，真实Studio产品的`Microsoft.Win32.OpenFileDialog`及`CxVisionRoiEngineering`不变；不跳过真实文件框，不写入MEM假的ROI源，不接受未核实GUI结果；IMG-05仍`InProgress`。
 - **待验**：新[ROI UIA #41053855777](https://github.com/oudream/cx-visual-x3/actions/runs/41053855777)提交时`pending`，仍需确认从文件名ValuePattern继续到真正按确认按钮、RAW绑定/指纹校验、原生鼠标、MEM Undo/Redo及MRK/Mask/CSV全链，才能升级G5。
 
+### 7.24 IMG-05 根UIA子树缺失后的原生文件名Edit实证与修复（2026-10-30）
+
+- **实际Windows真值**：[Studio ROI UIA #41053770932](https://github.com/oudream/cx-visual-x3/actions/runs/41053770932) 对应`a62ff0d6`：Windows .NET48 x64 Studio成功编译，进入真正OpenFileDialog。根UIA查询仅4子节点，找不到任何可写Edit；Win32 `EnumChildWindows`已列出完整文件框，其中实际“文件名”控件为`ComboBoxEx32 (ID=1148) → ComboBox (ID=1148) → Edit (ID=1148，ParentId=1148)`，确认按钮是真实`Button (ID=1)`、取消按钮是`Button (ID=2)`。这证明根UIA树不可见时能从真实原生子HWND获取可靠身份。
+- **修复精确匹配**：[a1004028](https://github.com/oudream/cx-visual-x3/commit/a1004028cb32bbf06dc8ad2936088a31e3443ce7)不再因三个控件同为1148而判“存在多个文件名框”，只接受唯一内层`Edit`且其ID或父ID匹配1148/1001，再以`AutomationElement.FromHandle + ValuePattern.IsReadOnly`实际核验可写性；若Native Edit不支持ValuePattern，记录明确原因，不误填地址栏/搜索栏。[de30df40](https://github.com/oudream/cx-visual-x3/commit/de30df40ae0b51a9eaea56e638195f4dc0ffcc04)确认和取消按钮也仅对真实IDC=1/2进行Native HWND→UIA识别；失败时`WM_CLOSE`为测试失败清理，不算PASS。
+- **固定验收**：新[Studio ROI UIA #41054217425](https://github.com/oudream/cx-visual-x3/actions/runs/41054217425)对应`a1004028`登记时为pending；不宣称系统文件路径输入已成功，更不宣称ROI/G5闭环通过。继续依据新Windows逐步推进。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
