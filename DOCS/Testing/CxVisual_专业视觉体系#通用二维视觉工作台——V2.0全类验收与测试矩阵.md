@@ -603,3 +603,15 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | 可验收等级 | R1-01-01～04受控STA正反例可登记G3/G4；第05项只测自动化控件存在，不能替代弹框UIA G5；第06项对应CPU双PASS强制Job成功 |
 | 限制 | Windows Studio Shell整体与Imaging专项另查固定SHA Job；6144×3072大图、真实设备、长期Artifact、人机文件对话框尚未执行，不得填G5/G6 |
 
+
+### IMG-03/04 原图代次与Run来源证据反证（2026-10-30；源码G2）
+
+| 测试ID | 正反例目标 | 源码入口 | 当前级别 |
+|---|---|---|---|
+| R1-02-01 | MVI BeginOriginalLoad/SetOriginal/Clear增加原图代次；Select/SetResult/ClearResult/TrySetResult不增加；过期异步Result仍拒绝 | `MVIImageSessionTests.Run` | G2；Windows待验 |
+| R1-02-02 | 正式ROI经SHA与MEM Revision校验后Run包含`ValidatedSourceHash`、`DefinitionRoiId`、`DefinitionRevision`；重新运行RunId不同 | `RuntimeVisionArtifactsTests.SavedRoiDataVisualEngineering` | G2；Windows待验 |
+| R1-02-03 | 同Run的Contour只读派生保留来源证据，原Run的Items未更改 | `RuntimeVisionArtifactsTests.SavedRoiDataVisualEngineering` | G2；Windows待验 |
+| R1-02-04 | 普通MRK预览Run没有正式MEM来源字段，不填伪值 | `RuntimeVisionResultTests.RealMrkResultProjection` | G2；Windows待验 |
+| R1-02-05 | Studio真实保存重开ROI复算携带同源Hash、ROI身份及工程Revision | `StudioShellSelfTests.VerifyStudioSavedRoiRebind` | G2；Windows待验 |
+
+需固定各Windows工作流的SHA、结果、MSBuild/STA报告，更新为G3/G4；UIA全程与HIL继续单独G5/G6验收。
