@@ -125,3 +125,10 @@
 ### 第十一批补充：诊断回调必须与主画面隔离
 
 - MPWLiveSceneControl的可选DiagnosticsProvider异常只降级诊断文字，不得清空MDS主画面或中断WPF刷新；返回文字限定512字符。真实WPF回归仍须以固定SHA CI和测试执行日志为准。
+
+## 2026-10-30 第十二批：Studio从真实MRK注册目录配置HMI按钮
+
+- `Applications/Studio/StudioShell.Hmi.CommandEditor.cs`：只接受既有`MRKCommandRouter`及受信Host提供的ActionId映射；Studio原Page菜单“配置控制按钮：选择已注册MRK命令”在未注入目录时默认禁用。对当前MEM工程真实DeviceRef的正式A4`WriteUInt16`命令，严格筛选MRK Device kind、PermissionKey、SchemaVersion=1及StableId/Value/EffectiveVersion/SessionGeneration四个必填强类型字段，不接受旧版三参数命令当生产SCADA控制。
+- 工程师在原HMI Page选择现有Button、当前注册命令及当前运行数据源的UInt16 PointId，由`PHMHmiScreenAuthoring.AssignSavedAction`以**原MEM事务/Undo/Redo/Serializer**保存`MRCVisualEventAction.Click(ActionId,ParameterBindingId)`；ActionId由可信注册映射提供，不能靠手填字符串或预检配置臆造。选错资源、旧注册、旧点位、工程切换时事务前拒绝。这里仅保存绑定意图，未为用户输入的`Value`或受信双版本建立远程控制通道；不可宣称HMI按钮已具备PLC写执行。
+- `StudioHmiCommandAuthoringTests`使用真正MRK注册表+正式A4输入Schema（仅软件测试Handler，保证没有PLC副作用），验证原工程按钮的ActionId/PointId、MVI事件路由、错误点位零工程修改、MEM Undo/Redo；Studio STA在既有HMI G1进一步验证未注入受信目录时菜单默认禁用，以及完整MEM保存重开的原Click行为。
+- 本批前已修复共享Content/Symbol中心两处阻断C#编译的错误（Refresh可选参数委托、Thickness两参），独立提交`481dab83`；后续Windows CI需检查固定SHA，不能从提交成功推断G1通过。远程授权MRK写Host仍归A和安全Owner。

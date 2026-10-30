@@ -5012,6 +5012,11 @@ namespace CxVisual.Studio
                     engineering.Project.Children.OfType<MEMSymbol>().Any(x=>
                         x.Name=="HMI.Motor.Faceplate.v1"),
                     "Studio原Page菜单未原子放置共享电机Faceplate");
+                MenuItem offlineCommand=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="配置控制按钮：选择已注册MRK命令");
+                Assert(!offlineCommand.IsEnabled,
+                    "未注入受信MRK命令目录时必须禁用按钮命令配置入口");
+                Guid boundButton=StudioHmiCommandAuthoringTests.Run(window,engineering,page);
                 string key=window.OpenStudioHmiPage(page.Id);
                 Assert(key.Contains("hmi.scada.live") &&
                     window.GetStudioResourceDocumentIdentity(key)!=null,
@@ -5031,6 +5036,13 @@ namespace CxVisual.Studio
                         Assert(reloaded!=null&&reloaded.GetBinding("text")!=null&&
                             reloaded.GetBinding("text").SourceId=="word100",
                             "Studio真正保存重开丢失Page变量绑定");
+                        var savedAction=CxVisual.Mechanism.Core.MRCVisualAppearance.BehaviorOf(
+                            restored.Find(boundButton) as MRCVisualItem).EventActions
+                            .Single(action=>action.EventId=="Click");
+                        Assert(savedAction.ActionId.EndsWith("/WriteUInt16",
+                                StringComparison.Ordinal)&&
+                            savedAction.ParameterBindingId=="word100",
+                            "已注册MRK按钮ActionId/PointId保存重开不一致");
                         restored.Close(true);
                     }
                 }

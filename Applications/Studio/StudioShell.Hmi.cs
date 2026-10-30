@@ -208,6 +208,16 @@ namespace CxVisual.Studio
                 _viewModel.Select(id);
             });
             hmi.Items.Add(button);
+            var actionEditor=new MenuItem {
+                Header="配置控制按钮：选择已注册MRK命令",
+                IsEnabled=_studioHmiCommandCatalog!=null
+            };
+            actionEditor.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                OpenStudioHmiCommandEditor(origin,pageId);
+            });
+            hmi.Items.Add(actionEditor);
             menu.Items.Add(new Separator());
             menu.Items.Add(hmi);
         }
