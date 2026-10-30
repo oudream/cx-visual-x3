@@ -47,7 +47,10 @@ func exitPidFiles(programs []program.Program) {
 			continue
 		}
 		name := utilities.FileSystemGetFileNameOnly(a.Path)
-		if pid := program.LoadProgramRunPid(*_workDir, name); pid > 0 {
+		if pid := program.LoadProgramRunPid(*_workDir, name); safeManagedPID(pid) {
+			// This protects PID 0 and Daemon self from the legacy PID-file
+			// cleanup path. Executable identity and PID reuse still require
+			// stronger verification before an industrial stop receipt.
 			err := program.KillProcess(pid)
 			if err != nil {
 				_logger.Printf(_title.Error+"Kill[ %s ] Fail. err= %s", name, err)
