@@ -48,6 +48,7 @@ jobs:
           if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.UML_CORE_PASS' -or
               ($output -join "`n") -notmatch 'F17.SHARED_MEMORY_CROSS_PROCESS PASS' -or
               ($output -join "`n") -notmatch 'F17.MULTI_BUDGET_PASS' -or
+              ($output -join "`n") -notmatch 'F17.HTTP_LARGE_PASS bytes=4194304' -or
               ($output -join "`n") -notmatch 'F17.SHM_CRASH_PASS' -or
               ($output -join "`n") -notmatch 'F17.WS_ATOMIC_PASS') {
               throw "F17 UML core actual communication verification failed: $status"
@@ -66,6 +67,7 @@ jobs:
               $joined -notmatch 'F17.NOTIFICATION PASS' -or
               $joined -notmatch 'F17.RECONNECT_PASS' -or
               $joined -notmatch 'F17.MULTI_BUDGET_PASS' -or
+              $joined -notmatch 'F17.HTTP_LARGE_PASS bytes=4194304' -or
               $joined -notmatch 'F17.SHM_CRASH_PASS') {
               throw "F17 Channel expected acceptance evidence not present"
           }
