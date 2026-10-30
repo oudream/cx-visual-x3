@@ -10,6 +10,10 @@ on:
       - 'Applications/Studio/StudioShell.ModuleCenter.cs'
       - 'Mechanism/Presentation.Wpf/Modules/MPWModuleCenterControl.cs'
       - '.github/workflows/studio-roi-dialog-uia-windows.yml'
+# 仅验证同一分支的最新真实UIA源码；避免每次细小提交积压重复Windows GUI作业。
+concurrency:
+  group: cxvisual-studio-roi-native-uia-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   roi-native-dialog-uia:
     runs-on: windows-2022
