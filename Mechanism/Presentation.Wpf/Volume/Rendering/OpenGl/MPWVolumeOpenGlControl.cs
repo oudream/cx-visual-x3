@@ -39,6 +39,123 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         }
         private readonly Dictionary<Guid,CachedSceneMesh> _sceneMeshes=
             new Dictionary<Guid,CachedSceneMesh>();
+        private readonly Dictionary<Guid,CachedSceneMesh> _scenePointClouds=
+            new Dictionary<Guid,CachedSceneMesh>();
+        private MVI3DSceneState _pointCloudScene;
+        private Func<MVI3DSceneItem,IReadOnlyList<Vector3>> _pointCloudResolver;
+        private readonly Dictionary<Guid,string> _pointCloudKeys=new Dictionary<Guid,string>();
+        public int ScenePointCloudCount {get{return _scenePointClouds.Count;}}
+        public int ScenePointCount
+        {
+            get
+            {
+                int count=0;
+                foreach(CachedSceneMesh entry in _scenePointClouds.Values)
+                    count=checked(count+entry.Vertices.Length/3);
+                return count;
+            }
+        }
+        public int ScenePointCloudUploadCount {get;private set;}
+
+        /// <summary>GPU点云与Mesh共用WGL机制但分别记账；不重建专业点数据。</summary>
+        public void BindScenePointClouds(MVI3DSceneState scene,
+            Func<MVI3DSceneItem,IReadOnlyList<Vector3>> resolver)
+        {
+            if(scene!=null&&resolver==null)throw new ArgumentNullException("resolver");
+            if(_pointCloudScene!=null)_pointCloudScene.Changed-=OnPointCloudChanged;
+            foreach(Guid id in new List<Guid>(_pointCloudKeys.Keys))RemoveScenePointCloud(id);
+            _pointCloudKeys.Clear();
+            _pointCloudScene=scene;_pointCloudResolver=resolver;
+            if(scene!=null)
+            {
+                scene.Changed+=OnPointCloudChanged;
+                SynchronizePointClouds();
+            }
+        }
+        private void OnPointCloudChanged(object sender,EventArgs e)
+        {
+            if(Dispatcher.CheckAccess())SynchronizePointClouds();
+            else Dispatcher.BeginInvoke(new Action(SynchronizePointClouds));
+        }
+        private void SynchronizePointClouds()
+        {
+            if(_pointCloudScene==null)return;
+            var desired=new HashSet<Guid>();
+            foreach(MVI3DSceneItem item in _pointCloudScene.Snapshot())
+            {
+                if(item.Kind!=MVI3DSceneKind.PointCloud||!item.Visible)continue;
+                string key=item.SourceRef+":"+item.SourceRevision+":"+item.SpatialFrameRef;
+                string old;
+                if(_pointCloudKeys.TryGetValue(item.Id,out old)&&old==key)
+                {
+                    UpdatePointCloudOpacity(item.Id,item.Opacity);
+                    desired.Add(item.Id);
+                    continue;
+                }
+                IReadOnlyList<Vector3> points=_pointCloudResolver(item);
+                if(points==null)continue;
+                SetScenePointCloud(item.Id,points,item.Opacity);
+                _pointCloudKeys[item.Id]=key;
+                desired.Add(item.Id);
+            }
+            foreach(Guid id in new List<Guid>(_pointCloudKeys.Keys))
+            {
+                if(desired.Contains(id))continue;
+                RemoveScenePointCloud(id);
+                _pointCloudKeys.Remove(id);
+            }
+        }
+        private void UpdatePointCloudOpacity(Guid id,double opacity)
+        {
+            CachedSceneMesh item;
+            if(!_scenePointClouds.TryGetValue(id,out item)||item.Opacity==opacity)return;
+            item.Opacity=opacity;
+            RequestRender();
+        }
+        public void SetScenePointCloud(Guid id,IReadOnlyList<Vector3> points,double opacity=1)
+        {
+            if(id==Guid.Empty)throw new ArgumentException("PointCloud场景实例Id无效。","id");
+            if(points==null)throw new ArgumentNullException("points");
+            if(double.IsNaN(opacity)||double.IsInfinity(opacity)||opacity<0||opacity>1)
+                throw new ArgumentOutOfRangeException("opacity");
+            CachedSceneMesh existing;
+            _scenePointClouds.TryGetValue(id,out existing);
+            int old=existing==null?0:existing.Vertices.Length/3;
+            if(points.Count>12000||ScenePointCount-old+points.Count>12000)
+                throw new ArgumentOutOfRangeException("points","GPU点云显示总点预算超限。");
+            float[] vertices=new float[checked(points.Count*3)];
+            for(int i=0;i<points.Count;i++)
+            {
+                Vector3 p=points[i];
+                if(float.IsNaN(p.X)||float.IsNaN(p.Y)||float.IsNaN(p.Z)||
+                    float.IsInfinity(p.X)||float.IsInfinity(p.Y)||float.IsInfinity(p.Z)||
+                    Math.Abs(p.X)>.50001||Math.Abs(p.Y)>.50001||Math.Abs(p.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("points","GPU点云坐标不在标准化体空间。");
+                vertices[i*3]=p.X;vertices[i*3+1]=p.Y;vertices[i*3+2]=p.Z;
+            }
+            CachedSceneMesh target=existing??new CachedSceneMesh();
+            target.Vertices=vertices;target.Opacity=opacity;
+            _scenePointClouds[id]=target;
+            if(IsAvailable){MakeCurrent();UploadScenePointCloud(target);RequestRender();}
+        }
+        public void RemoveScenePointCloud(Guid id)
+        {
+            CachedSceneMesh item;
+            if(!_scenePointClouds.TryGetValue(id,out item))return;
+            if(IsAvailable){MakeCurrent();ReleaseSceneMesh(item);}
+            _scenePointClouds.Remove(id);
+            RequestRender();
+        }
+        public void ClearScenePointClouds()
+        {
+            foreach(Guid id in new List<Guid>(_scenePointClouds.Keys))RemoveScenePointCloud(id);
+        }
+        private void UploadScenePointCloud(CachedSceneMesh item)
+        {
+            UploadSceneMesh(item);
+            ScenePointCloudUploadCount++;
+        }
+
         private MVI3DSceneState _sceneMeshState;
         private Func<MVI3DSceneItem,MPWVolumeDisplayMesh> _sceneMeshResolver;
         private readonly Dictionary<Guid,string> _sceneMeshKeys=new Dictionary<Guid,string>();
@@ -617,6 +734,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
                 foreach(CachedSceneMesh item in _sceneMeshes.Values)UploadSceneMesh(item);
+                foreach(CachedSceneMesh item in _scenePointClouds.Values)UploadScenePointCloud(item);
                 // 旧版右下方的XYZ方向标：绘制在同一个真实GL framebuffer内。
                 // HwndHost存在Airspace限制，不能用WPF覆盖子窗口来冒充方向标。
                 _gl.GenVertexArrays(1,out _orientationVao);
@@ -660,6 +778,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             // 设备窗口销毁时解除MVI订阅，避免已释放WGL控件被会话事件保活。
             BindCamera(null);
             BindSceneMeshes(null,null);
+            BindScenePointClouds(null,null);
             _dragMode=0;
             if(_nativeInputInstalled && _window!=IntPtr.Zero)
             {
@@ -690,6 +809,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_surfaceVbo != 0) _gl.DeleteBuffers(1,ref _surfaceVbo);
                 if (_meshVbo != 0) _gl.DeleteBuffers(1,ref _meshVbo);
                 foreach(CachedSceneMesh item in _sceneMeshes.Values)ReleaseSceneMesh(item);
+                foreach(CachedSceneMesh item in _scenePointClouds.Values)ReleaseSceneMesh(item);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
                 if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
                 if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
@@ -936,7 +1056,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             // Raymarch合成体未提供逐像素深度，本阶段只保证几何叠加自身前后遮挡。
             if((_meshTriangles.Length!=0&&_meshVao!=0)||
                (_surfaceVertices.Length!=0&&_surfaceVao!=0)||
-               _sceneMeshes.Count!=0)
+               _sceneMeshes.Count!=0||_scenePointClouds.Count!=0)
             {
                 glEnable(0x0B71); // GL_DEPTH_TEST
                 try
@@ -971,6 +1091,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                             UniformF("overlayOpacity",(float)(item.Opacity*.86));
                             _gl.BindVertexArray(item.VertexArray);
                             _gl.DrawArrays(0x0004,0,item.Vertices.Length/3);
+                        }
+                    }
+                    if(_scenePointClouds.Count!=0)
+                    {
+                        UseShaderProgram(_lineShader);
+                        Matrix("mvp",mvp);
+                        Vec3("lineColor",.32f,.89f,.96f);
+                        glPointSize(4f);
+                        foreach(CachedSceneMesh item in _scenePointClouds.Values)
+                        {
+                            if(item.VertexArray==0||item.Vertices.Length==0)continue;
+                            UniformF("overlayOpacity",(float)(item.Opacity*.9));
+                            _gl.BindVertexArray(item.VertexArray);
+                            _gl.DrawArrays(0x0000,0,item.Vertices.Length/3); // GL_POINTS
                         }
                     }
                 }
