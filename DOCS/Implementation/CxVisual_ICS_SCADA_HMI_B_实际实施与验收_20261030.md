@@ -121,3 +121,7 @@
 - `PHMScadaReadOnlyPipeClient`消费原只读Pipe v1新增的`CompletedCycles/SuccessfulCycles/PartialCycles`三个可选字段；没有字段按0兼容，反常负数或成功/部分失败超出完成轮次的报文FailClosed。值来自Host当前SessionGeneration，不另建统计仓或跨代次累加。
 - `PHMScadaRemoteReadSession.CycleDiagnostics()`以当前快照显示Generation和FC03轮次；断线/旧Generation撤回时不继续显示上次正常统计。Studio原`MPWLiveSceneControl`通过只读诊断描述贡献展示，保留原SceneView/MDS数据/命令Owner和六参只读构造。
 - `HmiScadaPipeTests`用真实Windows NamedPipe合同夹具验证已存在样本的三个真实计数、GEN1旧计数5和GEN2新计数1不得跨Generation累加，未开真实PLC写入。PLC实际双设备G1/G2及HIL仍需A侧独立证据。
+
+### 第十一批补充：诊断回调必须与主画面隔离
+
+- MPWLiveSceneControl的可选DiagnosticsProvider异常只降级诊断文字，不得清空MDS主画面或中断WPF刷新；返回文字限定512字符。真实WPF回归仍须以固定SHA CI和测试执行日志为准。

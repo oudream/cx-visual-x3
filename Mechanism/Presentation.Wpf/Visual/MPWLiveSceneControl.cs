@@ -205,6 +205,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
             }
         }
+        private string ReadDiagnosticsSafely()
+        {
+            Func<string> provider=DiagnosticsProvider;
+            if(provider==null)return "";
+            try
+            {
+                string result=provider();
+                if(String.IsNullOrWhiteSpace(result))return "";
+                return " · "+(result.Length>512?result.Substring(0,512):result);
+            }
+            catch(Exception error)
+            {
+                // 诊断附加信息不能让正常的MDS画面被清空或中断WPF刷新。
+                return " · 诊断暂不可用："+error.GetType().Name;
+            }
+        }
         private void OnTick(object sender, EventArgs args) { Refresh(); }
         private void ScheduleRefresh()
         {
@@ -258,7 +274,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             "操作结果待核实，已禁止后续操作" :
                             "操作须经受信宿主逐次授权")) +
                     (string.IsNullOrEmpty(_actionMessage) ? "" : " · " + _actionMessage)+
-                    (DiagnosticsProvider==null ? "" : " · "+DiagnosticsProvider());
+                    ReadDiagnosticsSafely();
             }
             catch (Exception error)
             {
@@ -267,7 +283,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _scene.Opacity = 0.57;
                 _status.Text = "运行数据不可用：" + error.Message+
                     "（现场控制仍禁止）" +
-                    (DiagnosticsProvider==null ? "" : " · "+DiagnosticsProvider());
+                    ReadDiagnosticsSafely();
             }
         }
         public void Dispose()
