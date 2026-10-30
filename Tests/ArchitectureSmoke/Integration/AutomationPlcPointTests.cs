@@ -468,6 +468,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         finally{latestApproved=true;}
                     }
 
+                    // A4受信会话版本栅栏：即使Connector Effective不变，
+                    // F17 Open换代也必须拒绝旧HMI Command Generation。
+                    string activeGeneration=Guid.NewGuid().ToString("N");
+                    int generationWrites=plc.Writes;
+                    using(MRKCommandCenter generationCenter=new MRKCommandCenter(
+                        authorize:ctx=>ctx.Caller=="operator"))
+                    using(PADPlcMrkCommandRegistration.RegisterUInt16Write(
+                        generationCenter,provider,"plc-generation",970603,
+                        "approved-effective-v1",()=>true,()=>activeGeneration))
+                    {
+                        string target=PADPlcMrkCommandRegistration.TargetForDevice(
+                            "plc-generation");
+                        Func<string,MRKCommandResponse> send=expectedGeneration=>
+                            generationCenter.InvokeAsync(new MRKCommandRequest(target,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string,object>{
+                                    {"StableId","word"},{"Value",(ushort)91},
+                                    {"EffectiveVersion","approved-effective-v1"},
+                                    {"SessionGeneration",expectedGeneration}
+                                },caller:"operator",expectedSchemaVersion:1))
+                                .GetAwaiter().GetResult();
+                        MRKCommandResponse staleGeneration=send(Guid.NewGuid().ToString("N"));
+                        Check(staleGeneration.BusinessSuccess!=true &&
+                            plc.Writes==generationWrites,
+                            "同一Effective的旧会话Generation必须在真实FC06前拒绝");
+                        MRKCommandResponse correctGeneration=send(activeGeneration);
+                        Check(correctGeneration.BusinessSuccess==true &&
+                            correctGeneration.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
+                            plc.Writes==generationWrites+1,
+                            "MRK双版本匹配应有且仅有一笔FC06+FC03回读");
+                        string previousGeneration=activeGeneration;
+                        activeGeneration=Guid.NewGuid().ToString("N");
+                        MRKCommandResponse afterReconnection=send(previousGeneration);
+                        Check(afterReconnection.BusinessSuccess!=true &&
+                            plc.Writes==generationWrites+1,
+                            "旧Generation不得在新的F17连接代次执行写入");
+                    }
+
                     // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
                     // 一点失败不能伪装全成功，也不能覆盖上一笔MDS有效值。
                     PADPlcScanResult whole = bridge.ScanAsync(
