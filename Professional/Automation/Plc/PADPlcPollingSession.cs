@@ -134,9 +134,14 @@ namespace CxVisual.Professional.Automation.Plc
             // 仅保存运行计数，不复制上一轮采集值；数据唯一Owner始终为MDS。
             if (result.AllSucceeded) Interlocked.Increment(ref _successfulCycles);
             else Interlocked.Increment(ref _partialCycles);
-            int failures = result.SucceededCount == 0
-                ? Interlocked.Increment(ref _consecutiveFailedCycles)
-                : Interlocked.Exchange(ref _consecutiveFailedCycles, 0);
+            int failures;
+            if (result.SucceededCount == 0)
+                failures = Interlocked.Increment(ref _consecutiveFailedCycles);
+            else
+            {
+                Interlocked.Exchange(ref _consecutiveFailedCycles, 0);
+                failures = 0;
+            }
             if (_maxConsecutiveFailedCycles > 0 &&
                 (failures >= _maxConsecutiveFailedCycles || !_bridge.TransportOpen))
                 throw new PADPlcAcquisitionUnavailableException(
