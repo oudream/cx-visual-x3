@@ -340,6 +340,58 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         plc.IgnoreWrite = false;
                     }
 
+                    // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
+                    // 一点失败不能伪装全成功，也不能覆盖上一笔MDS有效值。
+                    PADPlcScanResult whole = bridge.ScanAsync(
+                        new[] { "input", "word" }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(whole.AllSucceeded && whole.Points.Count == 2 &&
+                        whole.SucceededCount == 2 && whole.FailedCount == 0 &&
+                        whole.Points[0].StableId == "input" &&
+                        (ushort)whole.Points[0].Value == 99 &&
+                        whole.Points[1].StableId == "word" &&
+                        (ushort)whole.Points[1].Value == 91 &&
+                        table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
+                        "两个PLC寄存器须按配置顺序实际读取并写回唯一MDS仓");
+
+                    int requestsBeforePreflight = plc.Requests;
+                    Reject<ArgumentException>(() => bridge.ScanAsync(
+                        new[] { "input", "input" }, CancellationToken.None).GetAwaiter().GetResult());
+                    Reject<ArgumentOutOfRangeException>(() => bridge.ScanAsync(
+                        new string[0], CancellationToken.None).GetAwaiter().GetResult());
+                    Reject<KeyNotFoundException>(() => bridge.ScanAsync(
+                        new[] { "input", "unknown-point" }, CancellationToken.None).GetAwaiter().GetResult());
+                    using (CancellationTokenSource cancelled = new CancellationTokenSource())
+                    {
+                        cancelled.Cancel();
+                        Reject<OperationCanceledException>(() => bridge.ScanAsync(
+                            new[] { "input", "word" }, cancelled.Token).GetAwaiter().GetResult());
+                    }
+                    Check(plc.Requests == requestsBeforePreflight,
+                        "非法、重复或取消的点集合必须在网络IO以前拒绝");
+
+                    IMDSVariableSnapshot inputBeforeDrop = table.Inspect("Station.Input");
+                    plc.DropNextInputRead();
+                    PADPlcScanResult partial = bridge.ScanAsync(
+                        new[] { "input", "word" }, CancellationToken.None).GetAwaiter().GetResult();
+                    IMDSVariableSnapshot inputAfterDrop = table.Inspect("Station.Input");
+                    Check(!partial.AllSucceeded && partial.SucceededCount == 1 &&
+                        partial.FailedCount == 1 && partial.Points.Count == 2 &&
+                        partial.Points[0].StableId == "input" &&
+                        !partial.Points[0].Succeeded && partial.Points[0].FailureCode == "Timeout" &&
+                        partial.Points[0].Value == null &&
+                        partial.Points[1].Succeeded && partial.Points[1].FailureCode == "" &&
+                        (ushort)partial.Points[1].Value == 91 &&
+                        inputAfterDrop.Quality == MDSVariableQuality.Stale &&
+                        inputAfterDrop.RefreshUtc == inputBeforeDrop.RefreshUtc &&
+                        object.Equals(inputAfterDrop.CurrentObject, inputBeforeDrop.CurrentObject) &&
+                        table.Inspect("Station.Word").Quality == MDSVariableQuality.Good,
+                        "单点超时只隔离该点并标Stale，仍可采集后续正常点");
+                    PADPlcScanResult rescanned = bridge.ScanAsync(
+                        new[] { "input" }, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(rescanned.AllSucceeded && rescanned.SucceededCount == 1 &&
+                        table.Inspect("Station.Input").Quality == MDSVariableQuality.Good,
+                        "只允许新的实际FC03成功采样将失败点恢复Good");
+
                     // 连接一旦明确关闭，原Good不能继续用于现场控制；
                     // 质量改变不等于新采样，必须保持最后真实样本的RefreshUtc。
                     IMDSVariableSnapshot beforeClose = table.Inspect("Station.Word");
@@ -376,6 +428,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             private int _writes;
             private volatile bool _ignoreWrite;
             private volatile bool _ignoreRead;
+            private int _dropInputReadOnce;
             private volatile bool _pauseRead;
             private readonly ManualResetEventSlim _readPaused = new ManualResetEventSlim(false);
             private readonly ManualResetEventSlim _releaseRead = new ManualResetEventSlim(false);
@@ -386,6 +439,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             public int Writes { get { return Volatile.Read(ref _writes); } }
             public bool IgnoreWrite { get { return _ignoreWrite; } set { _ignoreWrite = value; } }
             public bool IgnoreRead { get { return _ignoreRead; } set { _ignoreRead = value; } }
+            public void DropNextInputRead() { Interlocked.Exchange(ref _dropInputReadOnce, 1); }
             public void PauseNextRead()
             {
                 _readPaused.Reset(); _releaseRead.Reset(); _pauseRead = true;
@@ -437,6 +491,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                 throw new EndOfStreamException("Modbus请求PDU截断");
                             byte function = pdu[0];
                             if (function == 3 && IgnoreRead) continue;
+                            if (function == 3 && pdu.Length == 5 &&
+                                ((pdu[1] << 8) | pdu[2]) == 101 &&
+                                Interlocked.Exchange(ref _dropInputReadOnce, 0) == 1) continue;
                             if (function == 3 && _pauseRead)
                             {
                                 _pauseRead = false;
