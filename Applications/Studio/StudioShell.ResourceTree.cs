@@ -295,8 +295,9 @@ namespace CxVisual.Studio
                         if(ContainsLogicDefinition(content))
                             flows.Items.Add(CreateResourceLeaf(content.Name,content,true));
                     }
-                    else
+                    else if(resource is MEMAssetReference)
                         assets.Items.Add(CreateResourceLeaf(resource.Name,resource));
+                    // MEMProject.Resources也含MEMPage；已在Pages显示，不再误列静态资产。
                 }
                 projectRoot.Items.Add(pages);
                 projectRoot.Items.Add(contents);
