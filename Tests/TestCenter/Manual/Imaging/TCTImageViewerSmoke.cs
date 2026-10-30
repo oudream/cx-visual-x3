@@ -4,6 +4,7 @@ using System.Linq;
 using AvalonDock.Layout;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Automation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -92,6 +93,42 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("精简显示页后未保留完整工具选择控件");
             fit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Console.WriteLine("PASS TCT Imaging UI: 15+ one-row commands, dual five-tab panels, controls and action access");
+        }
+
+        /// <summary>
+        /// 实际WPF STA PreviewKeyDown路由：取消尚未完成的LinePair短命草稿。
+        /// 不模拟鼠标位置，也不把该路由测试冒充真实硬件键盘/人机UIA。
+        /// </summary>
+        private static void VerifyEscCancelsUncommittedLinePair(
+            TCTManualImageViewerFrame frame)
+        {
+            MPWImageViewerControl viewer=frame.Viewer;
+            if(PresentationSource.FromVisual(viewer)==null)
+                throw new InvalidOperationException("未加载的Viewer不能进行WPF Esc路由验收");
+            viewer.ToolMode=MVIImageToolMode.LinePair;
+            int count=viewer.Overlays.Items.Count;
+            if(viewer.AppendLinePairPoint(new FGEPoint2D(0.5,0.5))!=null)
+                throw new InvalidOperationException("首点不应直接创建完整测量对象");
+            System.Windows.Shapes.Polyline draft=
+                viewer.FindName("DraftPolyline") as System.Windows.Shapes.Polyline;
+            if(draft==null || draft.Visibility!=Visibility.Visible)
+                throw new InvalidOperationException("未完成线段草稿没有真实WPF图形反馈");
+            KeyEventArgs key=new KeyEventArgs(Keyboard.PrimaryDevice,
+                PresentationSource.FromVisual(viewer),Environment.TickCount,Key.Escape);
+            key.RoutedEvent=Keyboard.PreviewKeyDownEvent;
+            viewer.RaiseEvent(key);
+            if(!key.Handled || draft.Visibility!=Visibility.Collapsed ||
+                viewer.Overlays.Items.Count!=count ||
+                viewer.Session.Original==null)
+                throw new InvalidOperationException(
+                    "Esc路由未取消真实WPF草稿，或错误提交/清理原图及Store");
+            if(viewer.AppendLinePairPoint(new FGEPoint2D(0.5,0.5))!=null)
+                throw new InvalidOperationException("取消后应重新从第一点开始");
+            viewer.ToolMode=MVIImageToolMode.Navigate;
+            if(draft.Visibility!=Visibility.Collapsed ||
+                viewer.Overlays.Items.Count!=count)
+                throw new InvalidOperationException("切换工具未取消第二次未完成的草稿");
+            Console.WriteLine("PASS TCT Imaging gesture: WPF Esc PreviewKeyDown cancels unfinished line pair without committing Overlay");
         }
 
         private static T FindControl<T>(DependencyObject root,string id) where T : DependencyObject
@@ -289,6 +326,7 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                VerifyEscCancelsUncommittedLinePair(frame);
                 // 统计页切入时自动计算当前原始灰度，不需手动点击按钮。
                 TabControl autoStatsTabs=FindControl<TabControl>(frame,
                     "TCT.Imaging.SecondaryTabs");
