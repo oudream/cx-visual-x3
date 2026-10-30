@@ -964,6 +964,27 @@ namespace CxVisual.TestCenter.UI
                     Check(frame.Scene.AdditionalPointCloudCount==0&&
                         frame.Scene.AdditionalPointCount==0,
                         "移除PointCloud须释放WPF可视资源");
+                    int pointResolves=0;
+                    frame.Scene.BindAdditionalPointClouds(pointCloudScene,item=>
+                    {
+                        pointResolves++;
+                        return normalizedCloud;
+                    });
+                    Check(frame.Scene.AdditionalPointCloudCount==1&&pointResolves==1,
+                        "MVI点云Scene应加载独立WPF显示实例");
+                    pointCloudScene.SetOpacity(cloudId,.25);
+                    Check(frame.Scene.AdditionalPointCloudCount==1&&pointResolves==1,
+                        "点云透明度变化不能重复读取专业数据和构建显示几何");
+                    pointCloudScene.SetVisibility(cloudId,false);
+                    Check(frame.Scene.AdditionalPointCloudCount==0,
+                        "MVI隐藏PointCloud必须释放WPF显示对象");
+                    pointCloudScene.SetVisibility(cloudId,true);
+                    Check(frame.Scene.AdditionalPointCloudCount==1&&pointResolves==2,
+                        "重新显示时从专业点源恢复显示而不冒充保存的显存缓存");
+                    pointCloudScene.Remove(cloudId);
+                    Check(frame.Scene.AdditionalPointCloudCount==0,
+                        "MVI删除PointCloud应自动撤销WPF显示资源");
+                    frame.Scene.BindAdditionalPointClouds(null,null);
                     frame.Scene.BindSceneSelection(frame.ViewState.Scene3D);
 
                     FGEMeshRayHit picked;
