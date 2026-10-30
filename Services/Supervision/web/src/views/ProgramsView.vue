@@ -101,10 +101,10 @@ async function openDetail(row: Program): Promise<void> {
         <el-descriptions-item label="运行状态">{{ detail.running ? '运行中' : '未运行' }}</el-descriptions-item>
         <el-descriptions-item label="守护保护">{{ guardLabel(guardVerdict(guardReport, detail.id)) }}</el-descriptions-item>
         <el-descriptions-item v-if="guardReport?.terminal.available" label="终止闭锁原因">
-          {{ guardReport.terminal.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
+          {{ guardReport?.terminal.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
         </el-descriptions-item>
         <el-descriptions-item v-if="guardReport?.orphans.available" label="遗留进程隔离原因">
-          {{ guardReport.orphans.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
+          {{ guardReport?.orphans.items.find(item => item.programId === detail?.id)?.reason || '未记录' }}
         </el-descriptions-item>
         <el-descriptions-item label="CPU">{{ detail.cpuPercent.toFixed(1) }}%</el-descriptions-item>
         <el-descriptions-item label="RSS">{{ formatBytes(detail.memoryRssBytes) }}</el-descriptions-item>
