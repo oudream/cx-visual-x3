@@ -653,3 +653,12 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R2-02-03 | 旧跨项目CS1061：`IFTRChannel`不拥有`StateChanged`；桥接通过`IFTRChannelTransport`订阅并释放事件，不允许绕过断线质量通知 | `PADPlcPointBridge.cs` `0a4cef4d`，Windows全解决方案回归待验 |
 | R2-02-04 | 原MVI短手势Begin/Update/Complete/Cancel与外部修改安全测试不得退化 | `MVIImageOverlayTests` 在`eba9d445`的[Imaging #41007034955](https://github.com/oudream/cx-visual-x3/actions/runs/41007034955)成功；新SHA另验 |
 
+
+### IMG-02 最新固定SHA实测与图层隔离（2026-10-30）
+
+| 项 | 固定证据与边界 |
+|---|---|
+| R2-02-01～02 TestCenter Esc | `8d94fa04`的[Windows TestCenter #41010129932](https://github.com/oudream/cx-visual-x3/actions/runs/41010129932)已success，真实WPF STA合成`PreviewKeyDown`首点草稿清除及重启检查G3/G4；物理键盘/鼠标UIA G5仍待验 |
+| R2-02-05 MVI外部隐藏 | `9944b63b`新增隐藏ROI图层时旧Gesture不能向Store写入、恢复显示可重新Begin的反例；固定SHA [Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)结果待验 |
+| 跨工程默认Smoke | `8d94fa04`的Imaging #41010129867为failure，但失败堆栈是严格`MOCManifestRuntimeBinding`缺专业TypeId映射；`10e9b1f3`只补Host显式映射，未允许Unknown通行；新CI待验 |
+| 尚未验收 | Esc/鼠标失捕真用户手势、多Pane抢占、实际大图、工业设备HIL、当前最新master同SHA一揽子G4/G5/G6 |
