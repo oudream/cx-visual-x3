@@ -3965,6 +3965,79 @@ namespace CxVisual.Studio
                         try {Directory.Delete(folder,true);}catch(IOException) { }
                     }
                 });
+                CheckStep("CAT-03/04 Content与Symbol双管理中心、类型化创建、实例及资源包往返", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    if(session.FindType("studio.center.content")==null)
+                        session.RegisterTypes(new StudioSharedCenterTestTypes());
+                    int beforeOpen=session.Revision;
+                    window.OpenStudioSharedResourceCenter(false);
+                    window.OpenStudioSharedResourceCenter(true);
+                    Assert(window.GetStudioContentIds().Count(x=>x=="doc.content-center")==1 &&
+                        window.GetStudioContentIds().Count(x=>x=="doc.symbol-center")==1,
+                        "双管理中心未成为唯一可关闭AvalonDock正式文档");
+                    Assert(session.Revision==beforeOpen,
+                        "仅打开管理中心不允许修改工程Revision");
+                    Guid contentId=window.CreateStudioSharedDefinition(false,
+                        "共享Content案例","studio.center.content");
+                    Guid symbolId=window.CreateStudioSharedDefinition(true,
+                        "共享Symbol案例","studio.center.symbol");
+                    MEMContent content=session.Find(contentId) as MEMContent;
+                    MEMSymbol symbol=session.Find(symbolId) as MEMSymbol;
+                    Assert(content!=null&&symbol!=null&&content.Properties.Count==1&&
+                        symbol.Properties.Count==1&&symbol.RootGroup!=null,
+                        "注册类型创建未产生真实MEM属性或Symbol唯一RootGroup");
+                    AssertThrows(()=>window.CreateStudioSharedDefinition(true,
+                        "非法类型混用","studio.center.content"));
+                    MEMPage page=session.AddPage("双中心实例目标页面");
+                    Guid contentUse=window.PlaceStudioSharedDefinition(false,contentId,page.Id);
+                    Guid symbolUse=window.PlaceStudioSharedDefinition(true,symbolId,page.Id);
+                    Assert(session.FindReference(contentUse).TargetId==contentId &&
+                        session.FindReference(symbolUse).TargetId==symbolId &&
+                        contentId!=symbolId, "Page没有创建独立的Content/Symbol引用实例");
+                    int beforeCenterRefresh=session.Revision;
+                    window.OpenStudioSharedResourceCenter(false);
+                    Assert(window.GetStudioContentIds().Count(x=>x=="doc.content-center")==1 &&
+                        session.Revision==beforeCenterRefresh,
+                        "重复进入中心创建重复Tab或污染MEM工程");
+                    string contentPackage=Path.Combine(Path.GetTempPath(),
+                        "cx-center-content-"+Guid.NewGuid().ToString("N")+".cxproj");
+                    string symbolPackage=Path.Combine(Path.GetTempPath(),
+                        "cx-center-symbol-"+Guid.NewGuid().ToString("N")+".cxproj");
+                    try
+                    {
+                        MTITransferResult contentExport=session.ExportPackage(
+                            new[]{contentId},contentPackage);
+                        MTITransferResult symbolExport=session.ExportPackage(
+                            new[]{symbolId},symbolPackage);
+                        Guid copyContent=window.ImportStudioSharedDefinition(false,
+                            contentPackage,contentExport.IdMap[contentId]);
+                        Guid copySymbol=window.ImportStudioSharedDefinition(true,
+                            symbolPackage,symbolExport.IdMap[symbolId]);
+                        Assert(copyContent!=contentId&&copySymbol!=symbolId &&
+                            (session.Find(copyContent) as MEMContent)!=null &&
+                            (session.Find(copySymbol) as MEMSymbol)!=null &&
+                            ((MEMContent)session.Find(copyContent)).Properties.Count==1 &&
+                            ((MEMSymbol)session.Find(copySymbol)).Properties.Count==1,
+                            "独立资源包导出/导入未实现可复用定义与新身份映射");
+                        AssertThrows(()=>window.ImportStudioSharedDefinition(true,
+                            contentPackage,contentExport.IdMap[contentId]));
+                        MRIResourceImpactReport impact=session.AnalyzeResourceImpact(contentId);
+                        Assert(impact.ProjectId==session.Project.Id &&
+                            impact.RebuildResourceIds.Contains(contentId),
+                            "共享定义的依赖影响未由原MEM Owner查询");
+                    }
+                    finally
+                    {
+                        if(File.Exists(contentPackage))File.Delete(contentPackage);
+                        if(File.Exists(symbolPackage))File.Delete(symbolPackage);
+                    }
+                    Assert(window.TryCloseStudioDocument("doc.content-center") &&
+                        window.GetStudioContentIds().Contains("doc.symbol-center"),
+                        "关闭Content中心误销毁Symbol中心");
+                    window.CloseStudioDocument("doc.symbol-center");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
@@ -4036,6 +4109,19 @@ namespace CxVisual.Studio
                         new MPMPropertyDescriptor("Enabled",MPMValueKind.Boolean,false,true,
                             MPMBinding.Literal(MPMValue.Boolean(false)))
                     });
+            }
+        }
+
+        private sealed class StudioSharedCenterTestTypes : IMPMTypeProvider
+        {
+            public IEnumerable<MPMTypeDescriptor> DescribeTypes()
+            {
+                yield return new MPMTypeDescriptor("studio.center.content",1,MEMNodeKind.Content,
+                    new[]{new MPMPropertyDescriptor("Exposure",MPMValueKind.Number,false,true,
+                        MPMBinding.Literal(MPMValue.Number(15)),1,1000)});
+                yield return new MPMTypeDescriptor("studio.center.symbol",1,MEMNodeKind.Symbol,
+                    new[]{new MPMPropertyDescriptor("Caption",MPMValueKind.String,false,true,
+                        MPMBinding.Literal(MPMValue.String("测试组件")))});
             }
         }
 
