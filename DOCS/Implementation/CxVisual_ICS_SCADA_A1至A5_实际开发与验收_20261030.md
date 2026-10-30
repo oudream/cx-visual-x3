@@ -123,3 +123,10 @@
 - **该预检不启动F17 Channel或PLC轮询、没有FC03/FC06及设备物理身份验证**。项目缺失、待生效、点表映射异常、重复设备Scope/Channel、外部部署漂移等情况沿用正式装配异常，CLI由Host返回非零退出码，不能输出误导性的成功清单。它是供部署/Supervision审核的只读预检，不是另一个SCADA内核、许可服务、远程API或配置快照仓。
 - `MRHScadaSmoke.RunTwoDevices`在双PLC真实OS Socket开启后，先调用真实预检校验双站、Point、MHS版本和零报文；再在构造Channel冲突后验证预检拒绝且没有额外FC03（相关提交`4473e2e`、`f7f276e`、`fc3f6d8`、`0885994`、`f4b36a5`）。
 - 先前SCADA G1成功证据：SHA `784b5e9bc77289bd2849336ee48f46255509894a`，Run `41046444013` 的.NET48 Windows x64 Restore、Build、实际 `scada-g1-smoke` 全部PASS，日志为“PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift”。该记录只认证对应旧SHA；本预检增量需以新SHA Windows G1真实结果为准。
+
+
+## 15. 跨进程Pipe真实子进程G1与双工站Host（2026-10-30）
+- 在实际Windows .NET Framework 4.8 Host中新增`scada-pipe-probe <pipeName> discover`和`scada-pipe-probe <pipeName> snapshot <DeviceRef> <DeploymentEffective> <ConnectorEffective> <Generation>`。它仅是同Windows用户身份的本机只读检验客户端，实际使用既有NamedPipe v1长度前缀JSON协议；非法/缺版本参数拒绝，绝无写命令入口；成功stdout单条JSON且退出码0，协议Rejected输出JSON且退出码3。
+- 正式`MRHScadaSmoke.RunTwoDevices`在原OS TCP Modbus FC03真实双工站运行时，另起**独立Windows进程**调用同一Host二进制的Probe而不是使用测试进程内的Group或MDS；验证双设备发现、PLC-A的MDS Value=73/Quality=Good/Revision>0、错误Generation返回`SESSION_VERSION_MISMATCH`、双PLC零FC06。它证明Host真实跨进程读通道，**尚不能冒称已经运行HMI-B的真实WPF窗口或跨账户认证**。
+- 关联源码SHA：`c437a9ab`（受限只读Probe）、`e1b6b341`（CLI入口）、`ecca26c65`（双PLC真实子进程正反G1）。本新增测试需以当前固定SHA的Windows真实CI成功证据为准。
+- 前次A5预检已在`f4b36a540adc3e800ad877a076a33d1a9326e95c`的Run `41048486875`通过 Windows x64 Restore/Build/真实TCP`scada-g1-smoke`；该结果不自动覆盖此轮跨进程新增断言。HMI-B独立G1已在Run `41049097234`通过Windows WPF/MDS/Pipe模拟合同，但那一轮未与A实际双PLC进程联合运行。
