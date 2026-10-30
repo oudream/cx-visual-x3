@@ -361,6 +361,40 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     item.Value is byte[] ? ((byte[])item.Value).Clone() : item.Value);
             return new ReadOnlyDictionary<string, object>(snapshot);
         }
+        /// <summary>
+        /// B5: bounded, read-only debugger projection of actual committed StepResults.
+        /// Never clones large image/volume buffers or calls arbitrary object.ToString().
+        /// Text payloads and opaque professional objects expose type/length only.
+        /// </summary>
+        public IDictionary<string, string> ResultSummariesSnapshot(int maxEntries = 64)
+        {
+            if (maxEntries < 1 || maxEntries > 512)
+                throw new ArgumentOutOfRangeException("maxEntries");
+            var summary = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, object> item in
+                _results.OrderBy(x => x.Key, StringComparer.Ordinal).Take(maxEntries))
+            {
+                object value = item.Value is NullResult ? null : item.Value;
+                if (value == null) summary.Add(item.Key, "null");
+                else if (value is Array)
+                    summary.Add(item.Key, value.GetType().Name + " length=" +
+                        ((Array)value).LongLength.ToString(
+                            System.Globalization.CultureInfo.InvariantCulture));
+                else if (value is string)
+                    summary.Add(item.Key, "String length=" +
+                        ((string)value).Length.ToString(
+                            System.Globalization.CultureInfo.InvariantCulture));
+                else if (value is bool || value is byte || value is sbyte ||
+                    value is short || value is ushort || value is int ||
+                    value is uint || value is long || value is ulong ||
+                    value is float || value is double || value is decimal)
+                    summary.Add(item.Key, value.GetType().Name + " value=" +
+                        Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture));
+                else summary.Add(item.Key, value.GetType().Name);
+            }
+            return new ReadOnlyDictionary<string, string>(summary);
+        }
+
         internal string[] CompletedOrderSnapshot()
         { return _completedOrder.ToArray(); }
         internal void TrackWork(string stepId, FCRWorkHandle<object> handle)

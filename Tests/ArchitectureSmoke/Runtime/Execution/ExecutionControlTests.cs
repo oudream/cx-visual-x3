@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ConditionalBranchesAndBoundedLoops();
             DebugBreakpointStepAndResume();
+            ResultInspectionNeverCopiesRawBuffersOrLeaksText();
             QualifiedLoopIterationBreakpoint();
             CancellationUnblocksPausedFlow();
             CancelledBreakpointsAreRemovedImmediately();
@@ -68,6 +69,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 && trueCalls == 1 && falseCalls == 1 && loops == 6, "false branch/loop incorrect");
             Await(engine.StopAsync());
         }
+        private static void ResultInspectionNeverCopiesRawBuffersOrLeaksText()
+        {
+            var plan = new MRKExecutionPlan("b5.result-inspection", new[]
+            {
+                new MRKExecutionStep("raw", new string[0],
+                    (ctx,ct) => Task.FromResult((object)new byte[] { 1,2,3,4 })),
+                new MRKExecutionStep("secret", new[] { "raw" },
+                    (ctx,ct) => Task.FromResult((object)"PRIVATE-SDK-TOKEN"))
+            });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+            try
+            {
+                MRKFlowHandle flow = engine.StartFlow(plan);
+                MRKFlowResult result = Await(flow.Completion);
+                var view = flow.Context.ResultSummariesSnapshot();
+                Check(result.State == MRKFlowState.Completed &&
+                    view.ContainsKey("raw") && view["raw"].Contains("length=4") &&
+                    view.ContainsKey("secret") && view["secret"].Contains("length=17") &&
+                    !view.Values.Any(x => x.Contains("PRIVATE-SDK-TOKEN")),
+                    "B5调试摘要泄漏原始敏感文本或未显示真实数组长度");
+                bool immutable = false;
+                try { view.Add("hijack", "value"); }
+                catch (NotSupportedException) { immutable = true; }
+                Check(immutable, "B5调试结果快照可被外部写入");
+                bool bounds = false;
+                try { flow.Context.ResultSummariesSnapshot(513); }
+                catch (ArgumentOutOfRangeException) { bounds = true; }
+                Check(bounds, "B5调试结果数量没有硬上限");
+            }
+            finally { Await(engine.StopAsync(true)); }
+        }
+
         private static void DebugBreakpointStepAndResume()
         {
             int count = 0;
