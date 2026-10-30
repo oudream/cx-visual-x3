@@ -2116,7 +2116,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
-            if(HasTransientGesture() && _overlayEdit.IsActive)return;
+            // 两个Pane不能同时拥有拖动；多点Polygon/LinePair在未捕获时仍可继续点选。
+            if(_overlayEdit.IsActive || _dragging || _selecting || _secondaryDragging)return;
             Keyboard.Focus(SecondaryViewportRoot);
             if(_toolMode==MVIImageToolMode.LinePair)
             {
@@ -2233,7 +2234,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (ActiveImage == null) return;
-            if(HasTransientGesture() && _overlayEdit.IsActive)return;
+            // 两个Pane不能同时拥有拖动；多点Polygon/LinePair在未捕获时仍可继续点选。
+            if(_overlayEdit.IsActive || _dragging || _selecting || _secondaryDragging)return;
             Keyboard.Focus(ViewportRoot);
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
