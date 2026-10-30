@@ -22,6 +22,7 @@
     <Compile Include="StudioViewModel.Engineering.cs"/>
     <Compile Include="MOLRuntimeOverlay.cs"/>
     <Compile Include="StudioShell.cs"/>
+    <Compile Include="StudioCT3DDocument.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
     <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
@@ -74,6 +75,11 @@
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj">
       <Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project>
       <Name>CxVisual.Foundation.Imaging</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Volume\CxVisual.Foundation.Volume.csproj">
+      <Name>CxVisual.Foundation.Volume</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
