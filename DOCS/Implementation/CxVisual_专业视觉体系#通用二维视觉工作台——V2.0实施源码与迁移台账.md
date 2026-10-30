@@ -568,3 +568,13 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **本次仅G2源码已提交**：完整Windows .NET Framework4.8 Release/x64编译、ArchitectureSmoke --imaging/--vision-results、Studio --module-center-cpu-self-test及真实WPF操作日志尚无匹配固定SHA证据；没有宣布CASE-07整体通过。
 - 仍缺一项真正覆盖单一Studio工程的**R1全路径STA操作回归**：用户从启动Studio、打开源图、绘制ROI、明确提交、Undo/Redo、保存工程、关闭重开、重新装载源图、重新运行、CSV/RAW导出；还须明确脱离预览的长期Result Artifact引用、数据重绑定UI和多人版本冲突/授权、性能大图压力。AI明确后期。当前同一Content保存一个经确认的ROI配方，未来多ROI必须沿正式MEM的Content/Group组织扩展，不应改成私有列表。
 
+
+## R1-01 Studio工程重开原图重绑与结果双导出（2026-10-30，源码G2）
+
+按正式统筹文件 `DOCS/Implementation/CxVisual_通用二维视觉工作台_V2.0_架构整改与完整实施验收.md` 的IMG-03/05/12/18推进，**不改变四平面/唯一Owner**。
+
+- PVC：`CxVisionRoiEngineering.VerifySource`复用已有MEM ROI配方的原图指纹，供绑定前验证和RunSaved共同使用（提交 `b837f0a9`）。
+- Studio：`LoadStudioSavedRoiRaw`组合正式MEM配方、现有`FIMRawImageReader`与PVC校验；按钮 `Studio.ModuleCenter.BindSavedRoiRaw`/`BindSavedRoiStride`在重开工程后绑定Little-Endian Gray8/16/显式Stride的RAW，不额外创建Run或MEM页（`d6afefaf`）。
+- 同一结果面板：`RunSavedRoi`从现存MEM配方运行后真正展开MPW/ResultItem/CSV，并开放`Studio.ModuleCenter.ExportRunRaw`按Image/Mask或本Run原图输出FIM无损RAW（`c5a99f21`）；取消及异步晚到由已有MRK/MVI与Studio Epoch防护，`hasCurrentRun`纳入PageId和工程Revision（`1d90c683`）。
+- 新增Studio STA自动化代码：4×4 Gray16/Stride10→MEM提交/保存重开→重绑SHA验证→MRK（配置Revision43，面积6px²）→真实MPW结果选择→CSV+RAW；负例含错Stride、错像素、预取消，且检查工程Revision/Dirty不变（`9dd13754`、`94a8814e`、`89b11a5c`）。
+- CI：`module-center-cpu-windows.yml`改为原CPU路径与R1-01路径两条独立PASS、0 FAIL强制门禁（`a344b257`），Studio Shell原回归仍保留。**本条为已提交测试源码，不是Windows运行成功结论**；须以最终固定SHA CI、真实WPF输入/文件弹框UIA和场景复演升级G3/G4/G5。工业大图、设备Frame/HIL、长期Artifact仍待单独验收。
