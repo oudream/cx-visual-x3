@@ -1178,6 +1178,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             second.DefinitionRevision==stable &&
                             second.ValidatedSourceHash==recipe.SourceHash,
                             "正式ROI运行未随同Run留下已核验SourceHash/ROI身份/MEM Revision");
+                        var currentItem=first.Items.Single(x=>
+                            x.Kind==CxVisionResultKind.Measurement);
+                        Check(first.ExecutionState==MRKFlowState.Completed &&
+                            first.AssessItemValidity(currentItem,first.SourceId,
+                                recipe.SourceHash,stable)==CxVisionResultValidity.Valid &&
+                            first.AssessItemValidity(currentItem,first.SourceId,
+                                "0000000000000000000000000000000000000000000000000000000000000000",
+                                stable)==CxVisionResultValidity.Stale &&
+                            first.AssessItemValidity(currentItem,first.SourceId,
+                                recipe.SourceHash,stable+1)==CxVisionResultValidity.Stale &&
+                            first.AssessItemValidity(currentItem,first.SourceId)==
+                                CxVisionResultValidity.Stale,
+                            "正式Run结果必须按源SHA和MEM Revision进行上下文有效性验证");
                         var contoured=first.WithThresholdMaskContours();
                         Check(contoured.RunId==first.RunId &&
                             contoured.DefinitionRoiId==first.DefinitionRoiId &&
