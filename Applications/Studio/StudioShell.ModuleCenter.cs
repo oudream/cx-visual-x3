@@ -885,6 +885,11 @@ namespace CxVisual.Studio
                     resultDetail.Text="没有同源原图或仍有操作执行中，不能保存ROI。";
                     return;
                 }
+                if(resultPreview.Session.ActiveSlot!=MVIImageSlot.Original)
+                {
+                    resultDetail.Text="Mask/Result是本Run只读证据；请先显示原图再保存ROI。";
+                    return;
+                }
                 try
                 {
                     Guid? selectedId=resultPreview.SelectedOverlayId;
