@@ -2187,7 +2187,11 @@ namespace CxVisual.Studio
             foreach(var pair in values)
             {
                 object value;
-                if(flow.Context.TryGetAbsoluteResult(pair.Key,out value) &&
+                // ResultSummariesSnapshot does not clone RAW buffers. Only
+                // fetch the already classified small CPU result; asking MRK for
+                // every value would clone large byte[] and break the B5 budget.
+                if(pair.Value==nameof(CxVisionInspectionResult) &&
+                    flow.Context.TryGetAbsoluteResult(pair.Key,out value) &&
                     value is CxVisionInspectionResult)
                 {
                     CxVisionInspectionResult vision=(CxVisionInspectionResult)value;
