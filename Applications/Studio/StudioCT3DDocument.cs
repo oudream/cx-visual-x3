@@ -85,6 +85,9 @@ namespace CxVisual.Studio
             var save=Button("保存专业结果","Studio.CT3D.Save");
             save.Click+=(s,e)=>TryAction(SavePendingResult);
             toolbar.Children.Add(save);
+            var discard=Button("放弃未保存分析","Studio.CT3D.Discard");
+            discard.Click+=(s,e)=>TryAction(DiscardPendingAnalysis);
+            toolbar.Children.Add(discard);
             SetRow(toolbar,0);SetColumnSpan(toolbar,2);Children.Add(toolbar);
             var host=new Grid();
             host.Children.Add(_scene);
@@ -434,6 +437,20 @@ namespace CxVisual.Studio
                 "待保存：平面{0}点、RMS={1:0.######} mm；未作工业不确定度认证。",
                 result.Plane.SampleCount,result.Plane.RmsResidualMm);
         }
+        /// <summary>只撤销Studio尚未提交的分析预览，MEM工程Revision保持不变。</summary>
+        public void DiscardPendingAnalysis()
+        {
+            if(IsAnalyzing)CancelPendingAnalysis();
+            if(_pending==null)return;
+            _pending=null;
+            if(_state!=null&&_current!=null)
+            {
+                BuildSceneReferences(_current,true);
+                RefreshProfessionalOverlay();
+            }
+            _status.Text="未保存的专业预览已放弃；MEM工程未修改。";
+        }
+
         public void SavePendingResult()
         {
             if(IsAnalyzing)
