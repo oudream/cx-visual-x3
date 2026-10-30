@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -355,5 +358,74 @@ func TestProgramWorkerGateStopControllerHandoff(t *testing.T) {
 	waitWorkerReleased(t, gate, id)
 	if gate.stopController(id) != nil {
 		t.Fatal("finished worker retained stop authority")
+	}
+}
+
+
+func TestOwnedChildrenSleepHelper(t *testing.T) {
+	if os.Getenv("CX_SUPERVISION_UNCONSUMED_START_CHILD") != "1" {
+		return
+	}
+	time.Sleep(15 * time.Second)
+}
+
+func TestWorkerOwnedChildrenVisibleBeforeStartEventConsumption(t *testing.T) {
+	// The original Daemon _runProgramIds map is not populated until the main
+	// event loop reads EventStart. With an unbuffered, unread event channel,
+	// the guardian has started a real child but the old map would still be 0.
+	// Shutdown must discover it from its owned StopController.
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	const programID int64 = 126
+	a := program.Program{
+		ID: programID,
+		Path: exe,
+		Dir: dir,
+		ArgsString: "-test.run=^TestOwnedChildrenSleepHelper$",
+		EnvsString: "CX_SUPERVISION_UNCONSUMED_START_CHILD=1",
+		Enabled: program.ENABLE,
+		MaxError: 10,
+		MaxCount: 10,
+		MinExitTime: 60,
+	}
+	controller := daemonc.NewStopController(programID)
+	gate := newProgramWorkerGate()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	events := make(chan program.Event) // intentionally no receiver
+	if !gate.startWithStop(ctx, programID, func() {
+		daemonc.RunProgramContextWithStop(ctx, a, events,
+			func(id int64) (program.Program, error) { return a, nil },
+			log.New(io.Discard, "", 0), dir, nil, controller)
+	}, controller) {
+		t.Fatal("guardian not admitted")
+	}
+	var ownedPID int
+	deadline := time.After(4*time.Second)
+	for ownedPID == 0 {
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatal("real child was not attached before EventStart consumption")
+		default:
+		}
+		ownedPID = gate.ownedChildren()[programID]
+		if ownedPID == 0 {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if controller.ActivePID() != ownedPID {
+		t.Fatalf("shutdown snapshot PID and original child differ: %d vs %d",
+			ownedPID, controller.ActivePID())
+	}
+	// Cancel wakes the blocked EventStart emission; the existing Worker
+	// owns Kill + Wait on this early-cancel path.
+	cancel()
+	waitWorkerReleased(t, gate, programID)
+	if _, present := gate.ownedChildren()[programID]; present {
+		t.Fatal("exited guardian still exposes a stoppable child")
 	}
 }
