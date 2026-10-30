@@ -193,3 +193,10 @@ channel.Dispose();
 6. **Owner与兼容**：无新增项目、Provider、MPA协议和MRK队列，仍为原FTRChannelBase/FCM/Factory、Serial旧CLR类身份；Serial接收旧瞬时Message事件改为原池化交付，历史订阅者在原Received仍拿独立Data快照。新增TLS/认证继续暂缓，未移除已有SerialPort配置和底层通道输入保护。
 
 **证据状态**：本组新SHA Windows F17工作流受并行提交排队和合并取消影响。完成状态与日志必须核对最新非cancelled固定SHA；没有本地Windows/.NET48编译环境和实体串口，因此此处只记录源码提交与待验软件测试，不声称工业验收或24小时吞吐SLA。
+
+
+### Serial原生流控配套（2026-10-30）
+
+- `eed989ce`/`d163a951`：在现有FTRSerialChannelConfiguration FCM中增加Handshake，默认None，合法值None、XOnXOff、RequestToSend（RTS/CTS）、RequestToSendXOnXOff。FTRSerialChannel在SerialPort.Open前设置SerialPort.Handshake，不引入自造RS-485方向驱动/设备规约；旧配置缺少Handshake时继续默认None。
+- 短ReadTimeout如今按min(250ms, ReceiveIdleTimeoutMs)设置，空闲判断仍按接收字节后的单调时间；ReceiveIdleTimeoutMs=0仍表示禁用空闲故障。
+- 流控依赖串口设备与转接驱动的RTS/CTS或XON/XOFF支持，没有硬件时不能声称真正端到端阻止丢包；串口接收仍由唯一FTRReceiveBuffer池限额，协议留给MPA。
