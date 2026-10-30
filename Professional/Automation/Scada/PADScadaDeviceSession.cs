@@ -33,6 +33,7 @@ namespace CxVisual.Professional.Automation.Scada
         private readonly PADPlcPollingSession _polling;
         private readonly PADDeviceVariableProvider _provider;
         private readonly bool _writeAuthorizationConfigured;
+        private readonly Func<bool> _effectiveStillApproved;
         private readonly object _gate = new object();
         private IDisposable _commandsBinding;
         private bool _running;
@@ -55,6 +56,7 @@ namespace CxVisual.Professional.Automation.Scada
                 throw new NotSupportedException("当前首批只支持已生效的Modbus TCP/TCP Client装配");
             _deviceRef=deviceRef.Trim();
             _writeAuthorizationConfigured=authorizeWrite!=null;
+            _effectiveStillApproved=effectiveStillApproved;
             _scopeId=scopeId.Trim();
             _configVersion=configVersion.Trim();
             _catalog=new PADDeviceVariableCatalog("scada/"+_deviceRef);
@@ -147,7 +149,8 @@ namespace CxVisual.Professional.Automation.Scada
                         "SCADA未注入专业写入授权器，禁止注册设备命令");
                 // Host须创建具有真实身份授权的MRKCommandCenter；本层不创建第二个MRK。
                 _commandsBinding=PADPlcMrkCommandRegistration.RegisterUInt16Write(
-                    hostCenter,_provider,_deviceRef,commandId);
+                    hostCenter,_provider,_deviceRef,commandId,_configVersion,
+                    _effectiveStillApproved);
                 return _commandsBinding;
             }
         }
