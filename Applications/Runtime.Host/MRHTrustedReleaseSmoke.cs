@@ -9,6 +9,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Decision;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Foundation.Infrastructure.Concurrency;
 
 namespace CxVisual.Runtime.Host
 {
@@ -203,9 +204,28 @@ namespace CxVisual.Runtime.Host
                 Check(trusted.TryActivate("ci-release-officer")&&
                     publisher.ActiveRevision==2,
                     "real MRK Publisher failed safe activation");
+                // B6: Stage and Activate alone do not prove the signed
+                // archive can actually execute. Capture the live MRK PlanSlot
+                // lease and run its original provider delegate on the genuine
+                // F19-backed execution engine; no separate Host scheduler.
                 using(MRKExecutionPlanLease lease=slot.Capture())
+                {
                     Check(lease.Plan.Id!="boot"&&lease.Revision==2,
                         "MRK slot did not retain compiled signed Plan");
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+                    try
+                    {
+                        MRKFlowHandle flow=engine.StartFlow(lease.Plan);
+                        MRKFlowResult terminal=flow.Completion.GetAwaiter().GetResult();
+                        Check(terminal.State==MRKFlowState.Completed&&
+                            terminal.FlowId==flow.FlowId&&
+                            terminal.Results.Count==1&&
+                            terminal.Results.Values.Any(x=>x is int&&(int)x==9)&&
+                            capability.Executions==1,
+                            "B6 signed and activated MRK Plan did not execute the exact trusted provider");
+                    }
+                    finally {engine.StopAsync(true).GetAwaiter().GetResult();}
+                }
 
                 // New Host instance, process-equivalent reopen: the already
                 // reserved revision is still rejected by the file ledger.
