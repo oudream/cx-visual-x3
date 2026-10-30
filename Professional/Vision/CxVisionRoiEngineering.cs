@@ -204,7 +204,8 @@ namespace CxVisual.Professional.Vision
             return await CxVisionDataFlow.RunRoiInspectionPreviewAsync(
                 source,recipe.Options,recipe.SourceId,
                 new FIMPixelRegion(left,top,right,bottom),
-                (x,y)=>roi.ContainsRoiPixelCenter(x,y),cancellation).ConfigureAwait(false);
+                (x,y)=>roi.ContainsRoiPixelCenter(x,y),cancellation,
+                recipe.ConfigurationRevision).ConfigureAwait(false);
         }
 
         private static string HashImage(FIMImageBuffer image,CancellationToken cancellation)
