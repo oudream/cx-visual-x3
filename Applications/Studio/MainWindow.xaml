@@ -519,6 +519,8 @@
                                 <Button Content="调试暂停" Click="OnFlowDebugPause"/>
                                 <Button Content="调试继续" Click="OnFlowDebugResume"/>
                                 <Button Content="调试单步" Click="OnFlowDebugStep"/>
+                                <Button Content="查看运行数据" Click="OnFlowInspectData"
+                                        ToolTip="仅读当前MRK Flow的有界结果摘要，不复制大幅图像与体数据"/>
                                 <Button Content="终止调试" Click="OnFlowDebugCancel"/>
                                 <Button Content="准备CPU软件发布" Click="OnPrepareFlowSoftwareRelease"
                                         ToolTip="锁定MEM/MOL和模拟Provider能力版本；下次仿真运行需经过真实MOC→MRK软件Stage/Activate。不是现场设备发布。"/>
@@ -530,6 +532,11 @@
                                 <Button Content="定位关联画面" Click="OnFlowLocateVisual"/>
                                 <ComboBox x:Name="FlowTraceList" Width="220" DisplayMemberPath="Label"/>
                             </WrapPanel>
+                            <TextBox x:Name="FlowResultPreview" Margin="10,0,10,6"
+                                     Height="72" IsReadOnly="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     ToolTip="结果来自当前MRK Flow，非MEM工程数据或设备配置；文本负载不展示原文"
+                                     Text="尚未查看当前运行数据"/>
                             <Expander Header="节点参数与Port" Margin="10,0,10,7" IsExpanded="False">
                                 <StackPanel Margin="5">
                                     <WrapPanel Margin="0,3">

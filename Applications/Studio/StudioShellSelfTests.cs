@@ -142,12 +142,22 @@ namespace CxVisual.Studio
                             System.Threading.SpinWait.SpinUntil(
                                 ()=>executions==1&&debug.WaitingCount==1,3000),
                             "B5单步未推进恰好一个节点");
+                        TextBox preview=window.FindName("FlowResultPreview") as TextBox;
+                        Assert(preview!=null,"B5缺少真实Flow数据查看控件");
+                        command("OnFlowInspectData");
+                        Assert(preview.Text.Contains("first = Int32 value=1")&&
+                            !preview.Text.Contains("second ="),
+                            "B5单步后结果展示了未执行的第二节点或遗失已提交结果");
                         command("OnFlowDebugResume");
                         Assert(status.Text.Contains("已恢复MRK执行")&&
                             flow.Completion.Wait(TimeSpan.FromSeconds(6))&&
                             flow.Completion.Result.State==MRKFlowState.Completed&&
                             executions==2,
                             "B5继续执行未到达真实完成状态");
+                        command("OnFlowInspectData");
+                        Assert(preview.Text.Contains("second = Int32 value=2")&&
+                            preview.Text.Contains("Completed"),
+                            "B5最终结果查看没有绑定真实MRK Flow提交结果");
                         command("OnFlowDebugCancel");
                         Assert(status.Text.Contains("没有可取消的运行任务"),
                             "B5已完成Flow错误接受取消");

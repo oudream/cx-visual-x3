@@ -1897,6 +1897,23 @@ namespace CxVisual.Studio
             LogicInfo.Text=_logicDebug!=null&&_logicDebug.StepOnce()?
                 "已单步释放一个等待的MRK节点":"当前无可单步的等待节点";
         }
+        /// <summary>只呈现MRK已提交的有界StepResult摘要，不复制图像/体数据。</summary>
+        private void OnFlowInspectData(object sender,RoutedEventArgs args)
+        {
+            MRKFlowHandle flow=_logicFlow;
+            if(flow==null)
+            {
+                FlowResultPreview.Text="当前没有运行中的MRK Flow或可查看的结果";
+                return;
+            }
+            var values=flow.Context.ResultSummariesSnapshot(32);
+            string[] rows=values.Select(x=>x.Key+" = "+x.Value).ToArray();
+            FlowResultPreview.Text="Flow "+flow.FlowId.ToString("N")+
+                " / "+flow.GetSnapshot().State+
+                " / "+values.Count+" 条已提交StepResult"+Environment.NewLine+
+                (rows.Length==0?"暂无已提交StepResult":
+                    string.Join(Environment.NewLine,rows));
+        }
         private void OnFlowDebugCancel(object sender,RoutedEventArgs args)
         {
             if(_logicFlow!=null&&_logicFlow.RequestCancel())
