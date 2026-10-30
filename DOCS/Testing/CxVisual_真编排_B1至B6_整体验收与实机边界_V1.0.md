@@ -126,6 +126,14 @@
 - 固定`374390b986`：[Runtime #41016447194](https://github.com/oudream/cx-visual-x3/actions/runs/41016447194) **整条Job Success**，新增共享MRK设备租约下维护占用阻断写入、释放后恢复执行；其独立G1 #41016447172的结论需另查。
 - 不将不同SHA的“所有Success”拼装为某个未验证最新SHA的全绿；站点/G2/G3硬件证据仍应独立留档。
 
+### 3.8 B1～B6统一软件基线与Studio S2真实专业编排（2026-10-30）
+
+- **统一门禁已经实装**：`.github/workflows/orchestration-software-baseline-windows.yml`在同一固定SHA、同一Windows runner上跑全方案Release/Debug、`--orchestration-vertical`、`--orchestration-industrial`、`--automation-plc`、`--concurrency`、`--command-center`、工程组织/默认回归、MRK Host签名Plan、恢复、MDS 20k、Studio真实WPF STA和Owner依赖；固定`466fa2a0`的[统一CI #41020412054](https://github.com/oudream/cx-visual-x3/actions/runs/41020412054) **Success**。该SHA只覆盖门禁引入时的软件基线，**不覆盖后续Studio S2新增源码**。
+- **Studio S2已实装范围**：`Applications/Studio/StudioProfessionalFlowResolver.cs`复用五项真正Vision CPU Provider、专业RAW读取、SHA256文件输入指纹及原`MOC/MRK`；`PADPlcMrkWriteCapabilityProvider.DescribeOfflineContract()`供Studio发现PLC强类型端口但禁止本地执行；`MainWindow.xaml[.cs]`新增专业能力搜索、空Content原子创建RAW→Vision、Width/Height、离线文件绑定、8/16位深、临时软件参数及现有MHS Effective授权Provider选择、Port更换、原MRK调试、可信有界专业结果投影，并为活动主/子Content保留正确SourceMap。
+- **真实WPF S2单项运行证据**：[Studio #41021244126](https://github.com/oudream/cx-visual-x3/actions/runs/41021244126)在旧S2初版中打印`PASS: S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界`，但旧AI/CV软件发布候选兼容测试失败，所以**该Job是Failure**。随后`MainWindow.ResolverForFlow`改为仅对可达真实专业节点启用新Provider，模拟工程仍沿用原`SimulationResolver`；此修复的完整WPF以及同SHA基线CI必须以后续实际结果为准。
+- **严格边界**：MHS Effective仅通过现有Studio授权配置中心捕获，临时CPU阈值不得冒充机器Effective；PLC离线合同不得绕过Runtime.Host授权及实体安全链。本软件阶段没有现场PLC/探测器/运动安全验收。
+- 实施与使用记录：[`DOCS/Implementation/CxVisual_真编排_同SHA软件验收与Studio真实专业S2_实施说明_20261030.md`](../Implementation/CxVisual_真编排_同SHA软件验收与Studio真实专业S2_实施说明_20261030.md)。源码变化必须同步复核最新master的同SHA CI，不能拿旧绿灯关闭新事项。
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
