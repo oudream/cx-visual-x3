@@ -19,6 +19,10 @@ namespace CxVisual.Studio
 
         private void RegisterStudioHmiWorkbench()
         {
+            _viewModel.RuntimeVariableChoices = () => _studioVariableScope == null
+                ? new string[0] : _studioVariableScope.Definitions()
+                    .Select(x => x.Name)
+                    .OrderBy(x => x, StringComparer.Ordinal).ToArray();
             RegisterStudioResourceViewer(HmiViewerId, "HMI实时运行观察",
                 CreateStudioHmiRuntimeView, false, "core.page");
         }
