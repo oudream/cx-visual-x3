@@ -84,3 +84,11 @@ jobs:
           & $exe release-ledger-corrupt-check $ledger
           if ($LASTEXITCODE -ne 0) { throw 'Host release ledger accepted torn journal' }
           Write-Host 'PASS Host signed release: exclusive append journal, antirollback after restart, torn record fail-closed'
+      - name: Verify pinned Host certificate and real signed Plan publication
+        shell: pwsh
+        run: |
+          $exe = '.\\Output\\Release\\x64\\CxVisual.Runtime.Host.exe'
+          $root = Join-Path $env:RUNNER_TEMP ("CxTrustedRelease-" + [guid]::NewGuid().ToString("N"))
+          & $exe release-trusted-smoke $root
+          if ($LASTEXITCODE -ne 0) { throw 'Host pinned signing identity, real Plan Stage/Activate or durable ledger verification failed' }
+          Write-Host 'PASS Host: signed Plan verified using pinned public certificate; MRK Stage and safe Activate; corrupted key/replay denied'

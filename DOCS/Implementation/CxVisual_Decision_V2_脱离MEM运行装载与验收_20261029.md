@@ -53,3 +53,12 @@
 
 - 账本 SHA256 链仅用于发现损坏与意外断裂，不能替代 OS ACL、防删除保护、可信安全存储或外部签名；攻击者若拥有账本目录修改/删除权限，仍可伪造或重置记录。生产 Host 必须确保初始化、ACL、可信备份和恢复链。
 - 签名应用于纯 Plan 与声明版本；真实设备授权、安全联锁、资源生命周期、Worker/HIL 及工厂级灾难恢复仍须按专业工程分别验证。不把软件级 Success 误标为设备 HIL 完成。
+
+## 2026-10-30：正式 Runtime Host 的可信公钥与签名包装配
+
+- 新增 `Applications/Runtime.Host/MRHTrustedReleaseHost.cs`。由正式 Host 注入签名者公钥证书路径、单独受保护的 SHA-256 证书指纹、KeyId、部署 Scope、主体授权函数、已委托的专业 Resolver/目录和既有 `MRKExecutionPlanPublisher`。
+- 启动时仅接受与预置证书指纹一致、时间有效、RSA-2048+ 的公钥；发布包自带 KeyId 只能在该受信字典中查找，不能带入另一把公钥绕过 Host 信任。
+- `StageFile` 有界读取已签名的 Plan 包，调用唯一的 `MOCTrustedPlanPublisher.VerifyAndStage`。另提供**显式** `TryActivate` 并委托 MRK Host 安全点；`StageFile` 绝不自行激活。
+- `MRHFileTrustedReleaseAdmission` 仍要求部署前显式可信初始化，正常运行发现缺失、损坏账本直接拒绝，不会重置版本水位。
+- 同步加入 `release-trusted-smoke` 真实 Host 端到端测试入口和 Unified Runtime Windows CI：临时测试证书、真正 Decision Plan、已签名归档、专业 Resolver、MRK Stage/Activate、错误证书指纹、篡改、跨实例重放及账本撕裂反证；不使用生产私钥或外设。
+- 安全边界：**预置证书指纹与账本所在目录的 OS ACL / 文件删除保护，由运维部署提供**；单纯公钥指纹不保护可由攻击者任意修改的 Host 配置，SHA-256 链不具备抗特权攻击者篡改能力。还未具备机台设备联锁/真实 HIL 或无人值守产线发布许可。
