@@ -161,6 +161,29 @@ namespace CxVisual.TestCenter.UI
                 if(gl.SceneMeshCount!=0)
                     throw new InvalidOperationException("MVI删除Mesh应自动卸载对应GPU资源。");
                 gl.BindSceneMeshes(null,null);
+                var cloudScene=new MVI3DSceneState();
+                Guid cloudId=cloudScene.Add(MVI3DSceneKind.PointCloud,
+                    "ct3d:test:pointcloud",1,"frame:verified",.45);
+                var cloudPoints=new[]{new Vector3(-.1f,-.1f,-.1f),
+                    new Vector3(.1f,.1f,.1f),new Vector3(.2f,0,.1f)};
+                gl.BindScenePointClouds(cloudScene,item=>cloudPoints);
+                if(gl.ScenePointCloudCount!=1||gl.ScenePointCount!=3)
+                    throw new InvalidOperationException("真实GPU应上传独立点云VBO而非复用Surface点层。");
+                int originalCloudUploads=gl.ScenePointCloudUploadCount;
+                cloudScene.SetOpacity(cloudId,.65);
+                if(gl.ScenePointCloudUploadCount!=originalCloudUploads)
+                    throw new InvalidOperationException("GPU点云仅改透明度不得重传VBO。");
+                cloudScene.SetVisibility(cloudId,false);
+                if(gl.ScenePointCloudCount!=0)
+                    throw new InvalidOperationException("隐藏点云必须回收GPU VBO。");
+                cloudScene.SetVisibility(cloudId,true);
+                if(gl.ScenePointCloudCount!=1||
+                    gl.ScenePointCloudUploadCount<=originalCloudUploads)
+                    throw new InvalidOperationException("恢复可见点云时必须重新创建GPU VBO。");
+                cloudScene.Remove(cloudId);
+                if(gl.ScenePointCloudCount!=0||gl.ScenePointCount!=0)
+                    throw new InvalidOperationException("移除点云后仍有GPU显示资源。");
+                gl.BindScenePointClouds(null,null);
                 string path=Environment.GetEnvironmentVariable("CXVISUAL_GPU_UI_SCREENSHOT");
                 if(string.IsNullOrEmpty(path))
                     path=Path.Combine(Path.GetTempPath(),"CxVisual-GPU-Hardware-Raymarch.png");
