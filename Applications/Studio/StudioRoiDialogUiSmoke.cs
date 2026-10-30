@@ -243,11 +243,21 @@ namespace CxVisual.Studio
             throw new InvalidOperationException("IMG05_UIA 缺少模块面板："+id);
         }
 
+        private static void Trace(string report,string step)
+        {
+            File.AppendAllText(report,
+                "STEP: "+DateTime.UtcNow.ToString("O")+" "+step+
+                Environment.NewLine,new UTF8Encoding(false));
+        }
+
         public static async Task<bool> RunAsync(MainWindow window,string report)
         {
             string folder=Path.Combine(Path.GetTempPath(),
                 "CxVisual-IMG05-NativeUIA-"+Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
+            File.WriteAllText(report,
+                "START IMG05 Studio Windows native-dialog/ROI acceptance"+Environment.NewLine,
+                new UTF8Encoding(false));
             try
             {
                 string raw=Path.Combine(folder,"source-4x4-stride10.raw");
@@ -289,6 +299,7 @@ namespace CxVisual.Studio
                 Require(vm.ProjectSession.Project.Id==projectId &&
                     !vm.ProjectSession.IsDirty,"原MEM工程未真正保存关闭并重开");
                 vm.ActivePage=vm.Pages.Single(x=>x.Id==pageId);
+                Trace(report,"MEM工程已保存、关闭并重开");
                 int revision=vm.ProjectSession.Revision;
                 window.OpenStudioDocument("doc.modules");
                 LayoutDocument tab=window.StudioDock.Layout.ActiveContent as LayoutDocument;
@@ -322,6 +333,7 @@ namespace CxVisual.Studio
                     "WPF非法Stride输入必须在打开文件对话框前拒绝且不污染工程");
                 await Task.Run(()=>SetValue(hwnd,
                     "Studio.ModuleCenter.BindSavedRoiStride","10"));
+                Trace(report,"原生OpenFileDialog即将重绑已存ROI原像素");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
                     "重新绑定工程ROI原图",raw);
                 await Until(()=>status.Text.Contains("原图校验通过")||
@@ -349,7 +361,9 @@ namespace CxVisual.Studio
                     vm.ProjectSession.Revision==revision,
                     "真实Studio ROI工具切换应恢复导航且不写入MEM");
                 await Click(hwnd,"Studio.ModuleCenter.DrawRectangleRoi");
+                Trace(report,"原生Win32系统鼠标准备在现有MPW原图拖框");
                 Guid newlyDrawnRoi=await DrawRectangleWithNativeMouse(window,viewer,roi.Id);
+                Trace(report,"Win32系统鼠标已创建新ROI，尚未写MEM");
                 Require(vm.ProjectSession.Revision==revision,
                     "真实鼠标绘制仅应改变MVI临时Overlay，不能写入MEM Revision");
                 await Click(hwnd,"Studio.ModuleCenter.NavigateRoi");
@@ -363,6 +377,7 @@ namespace CxVisual.Studio
                 revision=vm.ProjectSession.Revision;
                 // 使用原MEM History验证一笔Data+Visual事务能原样撤销/重做，
                 // 不由MVI OverlayStore另建编辑历史。
+                Trace(report,"新ROI已提交MEM，正在从Studio原Ribbon点击撤销/重做");
                 await Click(hwnd,"Studio.Engineering.Undo");
                 MEMPage undoPage=vm.ProjectSession.Find(pageId) as MEMPage;
                 Require(undoPage!=null &&
@@ -392,6 +407,7 @@ namespace CxVisual.Studio
                         "ROI几何编辑不能重写已保存SourceId/MHS配置版本或丢失MEM身份");
                     saved.Close(true);
                 }
+                Trace(report,"MEM Undo/Redo与保存重开完成，即将点击MRK复算");
                 await Click(hwnd,"Studio.ModuleCenter.RunSavedRoi");
                 await Until(()=>details.Text.Contains("工程ROI复算完成")||
                     details.Text.Contains("失败"),"点击运行工程ROI");
@@ -400,6 +416,7 @@ namespace CxVisual.Studio
                     vm.ProjectSession.Revision==revision,
                     "WPF运行未发布真实MRK结果："+details.Text);
                 string firstRun=details.Text;
+                Trace(report,"MRK Run成功，正在原生SaveFileDialog导出CSV");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunCsv",
                     "导出本次视觉Run",csv);
                 Require(File.Exists(csv) && File.ReadAllText(csv).Contains("AcceptedRegionPixelArea"),
@@ -426,6 +443,7 @@ namespace CxVisual.Studio
                 FIMImageBuffer mask=viewer.Session.Result;
                 Require(mask.Width==4 && mask.Height==4,
                     "选中Mask后WPF图窗没有显示同尺寸的真实像素");
+                Trace(report,"UIA已选中Mask，正在原生SaveFileDialog导出RAW");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunRaw",
                     "导出本Run的无损原始像素",rawExport);
                 Require(File.Exists(rawExport) &&
@@ -438,11 +456,14 @@ namespace CxVisual.Studio
                 Require(results.Items.Count>=4 &&
                     vm.ProjectSession.Revision==revision,
                     "第二次真实工程复算丢失产物或修改了工程定义");
+                string resultBeforeRejectedBind=details.Text;
+                Trace(report,"重复MRK Run成功，开始错误原图RAW拒绝反证");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
                     "重新绑定工程ROI原图",wrong);
                 await Until(()=>status.Text.Contains("ROI原图重绑失败"),
                     "像素改变的RAW必须拒绝");
-                Require(details.Text.Contains("已导出Run") &&
+                Require(String.Equals(details.Text,resultBeforeRejectedBind,
+                    StringComparison.Ordinal) &&
                     results.Items.Count>=4 &&
                     vm.ProjectSession.Revision==revision &&
                     viewer.Session.Original.GetGrayValue(0,0)==210,
@@ -463,15 +484,15 @@ namespace CxVisual.Studio
                 Require(details.Text.Contains("原图来源失效") &&
                     vm.ProjectSession.Revision==revision,
                     "来源代次已变时用户重新点击工程ROI不得发布旧Run");
-                File.WriteAllText(report,
-                    "PASS: IMG05 Studio真实WPF按钮/Windows Open Save文件对话框/RAW重绑/MRK复算/CSV与错源拒绝\n"+
-                    "NOTE: 已有MEM ROI测试夹具；不冒充鼠标画ROI、硬件G6或人工桌面复核。\n",
+                File.AppendAllText(report,
+                    "PASS: IMG05 Studio真实WPF按钮/Windows Open Save文件对话框/RAW重绑/MRK复算/CSV与错源拒绝"+Environment.NewLine+
+                    "NOTE: 初始MEM ROI由夹具创建；随后原生Win32鼠标拖框新ROI、实际点击Studio Undo/Redo。非人工或工业HIL。"+Environment.NewLine,
                     new UTF8Encoding(false));
                 return true;
             }
             catch(Exception error)
             {
-                File.WriteAllText(report,"FAIL: "+error+Environment.NewLine,
+                File.AppendAllText(report,"FAIL: "+error+Environment.NewLine,
                     new UTF8Encoding(false));
                 return false;
             }
