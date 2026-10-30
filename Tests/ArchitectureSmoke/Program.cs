@@ -31,6 +31,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Array.IndexOf(args, "--config-performance-smoke") >= 0 ||
                     Array.IndexOf(args, "--config-performance-full") >= 0)
                     return ConfigFoundationSmokeRunner.Run(args);
+                if (Array.IndexOf(args, "--service-observe") >= 0) { ModuleFoundationSmokeTests.RunServiceObservation(); return 0; }
                 if (Array.IndexOf(args, "--interaction-stage1") >= 0) { InteractionStageOneTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--command-center") >= 0) { CommandCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--numerics-benchmark") >= 0) { FNUNumericsBenchmarks.Run(); return 0; }
