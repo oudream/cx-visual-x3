@@ -36,6 +36,7 @@ namespace CxVisual.Professional.Automation.Scada
         private readonly Func<bool> _effectiveStillApproved;
         private readonly object _gate = new object();
         private IDisposable _commandsBinding;
+        private MDSVariableChangeDispatcher _observations;
         private bool _running;
         private bool _started;
         private bool _disposed;
@@ -134,6 +135,28 @@ namespace CxVisual.Professional.Automation.Scada
             return _variables.Inspect(def.Address);
         }
         /// <summary>
+        /// HMI与专业观察者复用唯一MDS的有界LatestOnly派发器；
+        /// 按稳定VariableId过滤，不创建第二份Current，也不在PLC IO线程运行UI回调。
+        /// 回调并非WPF UI线程；用完必须Dispose订阅。
+        /// </summary>
+        public IDisposable Subscribe(Action<IReadOnlyList<MDSVariableChange>> onChanges,
+            IEnumerable<string> stablePointIds = null)
+        {
+            if(onChanges==null)throw new ArgumentNullException("onChanges");
+            string[] ids=stablePointIds==null?null:stablePointIds.ToArray();
+            if(ids!=null)
+                foreach(string id in ids)
+                    if(_catalog.FindById(id)==null)
+                        throw new KeyNotFoundException("SCADA订阅了未绑定的点: "+id);
+            lock(_gate)
+            {
+                if(_disposed)throw new ObjectDisposedException("PADScadaDeviceSession");
+                if(_observations==null)_observations=_variables.CreateDispatcher(1024);
+                return _observations.Subscribe(onChanges,ids);
+            }
+        }
+
+        /// <summary>
         /// HMI与专业服务只能向已配置可信授权器的MRK提交命令。空授权器没有降级入口。
         /// 本会话启动前才可注册控制；只读宿主永不创建此绑定。
         /// </summary>
@@ -217,6 +240,7 @@ namespace CxVisual.Professional.Automation.Scada
             finally
             {
                 _bridge.Dispose();
+                if(_observations!=null)_observations.Dispose();
                 _providerHost.Dispose();
                 if(_commandsBinding!=null)_commandsBinding.Dispose();
                 _registry.Remove(_scopeId);
