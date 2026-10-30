@@ -25,7 +25,7 @@ type programWorkerGate struct {
 
 func newProgramWorkerGate() *programWorkerGate {
 	return &programWorkerGate{
-		active:   make(map[int64]struct{}),
+		active:      make(map[int64]struct{}),
 		pending:     make(map[int64]func()),
 		pendingStop: make(map[int64]*daemonc.StopController),
 		activeStop:  make(map[int64]*daemonc.StopController),
