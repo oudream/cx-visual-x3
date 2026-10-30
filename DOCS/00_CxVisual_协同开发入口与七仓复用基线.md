@@ -331,3 +331,8 @@
 - **开发执行**：[Automation 实施与七仓成熟资产复用 V1.1](Implementation/CxVisual_专业自动化体系%23实施与成熟资产复用指南_V1.1.md)。开始任务前先对照现行 F17/MCN/MPA、MFM、MEM、MDS、M12/MRK 的唯一 Owner、ReferTo函数级来源和真实 .csproj，再挑垂直业务闭环。
 - **测试出口**：[Automation 全功能及工业HIL验收矩阵 V1.1](Testing/CxVisual_专业自动化体系%23全功能与工业验收矩阵_V1.1.md)，每个专业能力必须有正反例、实际窗口/API、现场设备证据和分级（G0～G3/T4）。
 - **待核**：当前 GitHub UTF-8 工具无法读取仓库内二进制 `DOCS/能力图/04Automation.png` 与 `DOCS/02～04` XLSX 原始Sheet，18项专业名称按已读V2.2冻结为审评输入，仍需对最新V4.9/V2.01/V6.4逐条校准P编号/FQN/Owner。此处不宣称软件实机已完成。
+
+## CxVisual Automation 全类架构与API设计入口（2026-10-30）
+1. [Automation #09 全类总体架构与UML](Architecture/CxVisual_专业自动化体系%2309全类总体架构UML与对象交互合同_V1.0.md)：完整五维、领域组合、四组核心UML、命令/采集时序。
+2. [Automation #10 完整类/接口/枚举字典](Architecture/CxVisual_专业自动化体系%2310完整类接口枚举字典与API合同_V1.0.md)：20项现有/公共类型引用+186项候选（18专业）；候选须经查重、Owner批准与实际业务验收才进入源码。
+3. 与 [Automation #00～#08 V1.1](Architecture/CxVisual_专业自动化体系%2300总体架构与设计总纲_V1.1.md)、[实施指南](Implementation/CxVisual_专业自动化体系%23实施与成熟资产复用指南_V1.1.md)、[测试矩阵](Testing/CxVisual_专业自动化体系%23全功能与工业验收矩阵_V1.1.md)一同使用；仍须将 DOCS/02～04 原始Excel和04Automation能力图按最新 Owner 逐项核准。
