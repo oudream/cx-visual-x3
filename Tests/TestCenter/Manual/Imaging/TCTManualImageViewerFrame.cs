@@ -62,6 +62,8 @@ namespace CxVisual.TestCenter.UI
         private string _cpuSourceId;
         private CxVisionRunSummary _cpuEvidence;
         private FIMImageBuffer _cpuDisplayedMask;
+        // 只有显式ROI专业Run监听ROI编辑/选择失效，普通全图Run不受影响。
+        private bool _cpuRoiBound;
         // 只记录本Run投影出的临时Contour标注，非MEM工程或第二套OverlayStore。
         private readonly Dictionary<string,Guid> _cpuContourOverlays =
             new Dictionary<string,Guid>(StringComparer.Ordinal);
@@ -170,6 +172,8 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.Overlays.Changed += (sender,args) =>
             {
+                if(_cpuRoiBound && !_publishingContours)
+                    InvalidateCpuVisionParameters();
                 // 手工修改ROI仍取消引用旧ROI的区域任务；唯独本操作正式
                 // 发布轮廓标注期间不得反过来取消同一轮廓任务。
                 if(!_publishingContours)CancelAnalysis();
@@ -226,6 +230,8 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.SelectionChanged += (s,e) =>
             {
+                if(_cpuRoiBound && !_publishingContours)
+                    InvalidateCpuVisionParameters();
                 if (_viewer.SelectedOverlayId.HasValue)
                     SelectOverlayRow(_viewer.SelectedOverlayId);
                 if(!_publishingContours)CancelAnalysis();
@@ -439,7 +445,12 @@ namespace CxVisual.TestCenter.UI
         /// </summary>
         private void InvalidateCpuVisionParameters()
         {
-            if (_cpuRunCancellation == null && _cpuEvidence == null) return;
+            if (_cpuRunCancellation == null && _cpuEvidence == null)
+            {
+                _cpuRoiBound=false;
+                return;
+            }
+            _cpuRoiBound=false;
             FIMImageBuffer ownedResult = _cpuDisplayedMask;
             CancelCpuVision();
             ClearCpuContourOverlays();
@@ -466,8 +477,9 @@ namespace CxVisual.TestCenter.UI
         /// </summary>
         private void RunCpuVision() { RunCpuVision(false); }
         private void RunCpuSeparatedVision() { RunCpuVision(true); }
+        private void RunCpuSelectedRoiVision() { RunCpuVision(true,true); }
 
-        private async void RunCpuVision(bool separated)
+        private async void RunCpuVision(bool separated,bool roiOnly=false)
         {
             CancellationTokenSource request = null;
             try
@@ -491,6 +503,35 @@ namespace CxVisual.TestCenter.UI
                 };
                 string issue = CxVisionInspectionOptions.Validate(options);
                 if (!string.IsNullOrEmpty(issue)) throw new ArgumentException(issue);
+                FIMPixelRegion roiRegion=default(FIMPixelRegion);
+                MVIImageOverlayItem roiShape=null;
+                if(roiOnly)
+                {
+                    FIMPixelRegion? selection=_viewer.SelectedRegion;
+                    if(_viewer.SelectedOverlayId.HasValue)
+                    {
+                        MVIImageOverlayItem selectedItem=_viewer.Overlays.Find(
+                            _viewer.SelectedOverlayId.Value);
+                        if(selectedItem==null || !selectedItem.IsAreaRoi ||
+                           !selectedItem.IsVisible ||
+                           !_viewer.Overlays.IsLayerVisible(selectedItem.Layer))
+                            throw new InvalidOperationException(
+                                "请选择可见的矩形、圆、椭圆、旋转矩形或多边形ROI");
+                        roiShape=selectedItem;
+                        int left=Math.Max(0,(int)Math.Floor(roiShape.Bounds.Left));
+                        int top=Math.Max(0,(int)Math.Floor(roiShape.Bounds.Top));
+                        int right=Math.Min(original.Width-1,
+                            (int)Math.Ceiling(roiShape.Bounds.Right)-1);
+                        int bottom=Math.Min(original.Height-1,
+                            (int)Math.Ceiling(roiShape.Bounds.Bottom)-1);
+                        if(left>right||top>bottom)
+                            throw new ArgumentException("所选ROI在原图没有有效像素");
+                        selection=new FIMPixelRegion(left,top,right,bottom);
+                    }
+                    if(!selection.HasValue)
+                        throw new InvalidOperationException("请先在原图选择有效ROI");
+                    roiRegion=selection.Value.ClipTo(original);
+                }
                 // 新Run不能在运行期间继续把上一次CPU Mask显示为本次结果。
                 FIMImageBuffer previousCpuResult = _cpuDisplayedMask;
                 CancelCpuVision();
@@ -503,15 +544,24 @@ namespace CxVisual.TestCenter.UI
                     _viewer.Session.ClearResult();
                 request = new CancellationTokenSource();
                 _cpuRunCancellation = request;
+                _cpuRoiBound=roiOnly;
                 string sourceId = _cpuSourceId;
                 long version = _viewer.Session.SourceVersion;
                 CancellationToken token = request.Token;
-                Show("正在使用现有MRK运行CPU视觉检测（真实处理图、阈值Mask与区域）…");
+                Show(roiOnly ?
+                    "正在以当前选中ROI真实像素生成Mask，并运行现有MRK区域/测量…" :
+                    "正在使用现有MRK运行CPU视觉检测（真实处理图、阈值Mask与区域）…");
                 // TestCenter只负责输入/当前Source验证与结果选择；MRK生命周期、
                 // 已提交产物、取消和测量语义归Professional统一无界面API。
                 int medianRadius=separated && _cpuMedianRadius.SelectedItem is int ?
                     (int)_cpuMedianRadius.SelectedItem : 0;
-                CxVisionRunSummary evidence = await Task.Run(() => separated ?
+                MVIImageOverlayItem shapeSnapshot=roiShape;
+                CxVisionRunSummary evidence = await Task.Run(() => roiOnly ?
+                    CxVisionDataFlow.RunRoiInspectionPreviewAsync(
+                        original,options,sourceId,roiRegion,
+                        shapeSnapshot==null ? (Func<int,int,bool>)null :
+                            (x,y)=>shapeSnapshot.ContainsRoiPixelCenter(x,y),token) :
+                    separated ?
                     CxVisionDataFlow.RunSeparatedProjectPreviewAsync(
                         original,options,sourceId,medianRadius,token) :
                     CxVisionDataFlow.RunCpuInspectionPreviewAsync(
@@ -532,7 +582,8 @@ namespace CxVisual.TestCenter.UI
                 _cpuEvidence = evidence;
                 PopulateCpuResultItems(evidence);
                 var accepted = evidence.Items.Where(i => i.Kind == CxVisionResultKind.Region).ToArray();
-                Show((separated?"拆分式MEM/MOC/MRK检测完成":"真实CPU检测完成")+
+                Show((roiOnly?"选中ROI的FIM→MRK检测完成" :
+                    separated?"拆分式MEM/MOC/MRK检测完成":"真实CPU检测完成")+
                     "：阈值命中=" +
                     evidence.Items.Single(i => i.Name == "阈值命中像素数").IntegerValue +
                     " px；面积规则保留=" + accepted.Length + "区域；Run=" +
