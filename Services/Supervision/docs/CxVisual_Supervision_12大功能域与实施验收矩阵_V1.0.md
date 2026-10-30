@@ -77,6 +77,8 @@
 
 ## 七、完整能力期望与验收深化（2026-10-30，设计增补 R1）
 
+> **配套架构与全类设计**：参阅 [Supervision 整体架构与全类 UML 设计 V2.0](CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)。本文件仍是 S01～S12 的需求/证据索引，V2.0 负责类级职责、依赖、接口、UML 及实施顺序；设计候选不代表已经实现。
+
 > **性质：目标规格与核查意见，并非新增功能已实现或测试已通过。** 本节延续前六节的五级监督、S01～S12、P0 当前事实及 A～D 分期，不替代 Go/Web 工程规范。依据：[整体架构](CxVisual_Supervision_整体架构与目录设计_V1.0.md)、[Go 规范](CxVisual_Supervision_Go编码与工程规范_V1.0.md)、[Web 规范](CxVisual_Supervision_Web前端架构与编码规范_V1.0.md)、[Service V1.1](../../../DOCS/Architecture/CxVisual_统一功能模块体系%235Service——服务模块完整设计与验收_V1.1.md)、[Automation 监控/边缘 V1.1](../../../DOCS/Architecture/CxVisual_专业自动化体系%2306工业监控与边缘系统_V1.1.md)、[device_communicator 资产档案](../../../DOCS/Codebases/02_device_communicator.md)、[统一交互 V1.5](../../../DOCS/Architecture/CxVisual_公共机制体系%23统一交互——四大能力与双层总线完整设计及验收_V1.5.md)、[命令中心 Owner 裁决](../../../DOCS/Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md)。开发前须结合当前 master、DOCS/02～04 的原表及真实源码复查所有新增类型/接口，不能从本节示例自动生成第二套公共框架。
 
 ### 7.1 定位与六项最终期望
