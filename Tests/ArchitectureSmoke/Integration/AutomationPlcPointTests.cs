@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 using System.Threading;
 using CxVisual.Foundation.Transport;
 using CxVisual.Mechanism.Connectivity;
@@ -12,7 +16,7 @@ using CxVisual.Professional.Automation.Plc;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
-    /// <summary>真实Modbus MBAP/FC03/FC06通过F17 VirtualChannel、MPA、MCN、MDS与Automation授权路径，
+    /// <summary>真实Modbus MBAP/FC03/FC06通过本机TCP回环、F17 TCP、MPA、MCN、MDS与Automation授权路径，
     /// 不使用伪造的Connector、SDK或“假通过”。G1；G2/G3需现场实机。</summary>
     internal static class AutomationPlcPointTests
     {
@@ -29,43 +33,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         public static void Run()
         {
-            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("aut-plc-channel", "aut-plc-device");
-            ushort actualRegister = 42;
-            int requests = 0;
-            int writes = 0;
-            bool ignoreWrite = false;
-            bool ignoreRead = false;
-            pair[1].Received += received =>
+            // 使用真实OS TCP Socket，而非绕过MCN Connector的Modbus TCP Channel类型约束。
+            // 模拟器只提供现场寄存器报文行为，不实现/替换正式F17、MCN或MPA。
+            using (TcpPlcLoopback plc = new TcpPlcLoopback())
             {
-                byte[] request = received.Data;
-                if (request.Length < 12) return;
-                byte function = request[7];
-                if (function == 3 && ignoreRead) return;
-                byte[] pdu;
-                if (function == 3)
-                {
-                    pdu = new byte[] { 3, 2, (byte)(actualRegister >> 8), (byte)actualRegister };
-                }
-                else if (function == 6)
-                {
-                    writes++;
-                    ushort requested = (ushort)((request[10] << 8) | request[11]);
-                    if (!ignoreWrite) actualRegister = requested;
-                    pdu = request.Skip(7).Take(5).ToArray();
-                }
-                else return;
-                requests++;
-                byte[] response = new byte[7 + pdu.Length];
-                response[0] = request[0]; response[1] = request[1];
-                response[5] = (byte)(1 + pdu.Length);
-                response[6] = request[6];
-                Buffer.BlockCopy(pdu, 0, response, 7, pdu.Length);
-                pair[1].SendAsync(response, new FTRSubChannelAddress("aut-plc-device"),
-                    CancellationToken.None).GetAwaiter().GetResult();
-            };
-
             MPAProtocolConfiguration protocolConfig = new MPAProtocolConfiguration("aut-modbus", "modbus.tcp");
-            protocolConfig.TimeoutMs = 80;
+            protocolConfig.TimeoutMs = 500;
             protocolConfig.Points.Add(new MPAPointDefinition("word100", "holding:100", typeof(ushort))
             {
                 StationAddress = "1", CanRead = true, CanWrite = true
@@ -82,12 +55,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             });
             MCNConnectorConfiguration connectorConfig = new MCNConnectorConfiguration {
                 DisplayName = "AUT-PLC Connector",
-                Channel = new FTRVirtualChannelConfiguration { Id = "aut-plc-channel", Kind = FTRChannelKind.Virtual },
+                Channel = new FTRTcpClientChannelConfiguration {
+                    Id = "aut-plc-channel", Kind = FTRChannelKind.TcpClient,
+                    Host = "127.0.0.1", Port = plc.Port, ConnectTimeoutMs = 2000
+                },
                 Protocol = protocolConfig
             };
+            Reject<ArgumentException>(() => new MCNConnectorConfiguration {
+                DisplayName = "禁用虚拟Modbus TCP Connector",
+                Channel = new FTRVirtualChannelConfiguration { Id = "invalid-virtual", Kind = FTRChannelKind.Virtual },
+                Protocol = protocolConfig
+            }.Validate());
             MCNConnectorModule connector = new MCNConnectorModule(
                 connectorConfig.Describe("aut-plc-connector", MFMModuleKind.Connector),
-                connectorConfig, pair[0], new MPAModbusTcpProtocol());
+                connectorConfig, new FTRTcpClientChannel(connectorConfig.Channel), new MPAModbusTcpProtocol());
 
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable table = new MDSVariableTable("plc");
@@ -114,7 +95,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 host.Register(provider);
                 catalog.Bind(host, "plc");
-                pair[1].Open();
                 connector.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
                 host.Start();
                 try
@@ -123,49 +103,148 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .GetAwaiter().GetResult();
                     Check(first is ushort && (ushort)first == 42 &&
                         table.Get<ushort>("Station.Word") == 42 &&
-                        requests == 1 && writes == 0,
+                        plc.Requests == 1 && plc.Writes == 0,
                         "F17/MPA/MCN真实03帧读取→MDS唯一变量");
 
                     Reject<UnauthorizedAccessException>(() => provider.WriteAsync("word", (ushort)60,
                         "guest", CancellationToken.None).GetAwaiter().GetResult());
                     Reject<InvalidCastException>(() => provider.WriteAsync("word", 60,
                         "operator", CancellationToken.None).GetAwaiter().GetResult());
-                    Check(writes == 0 && table.Get<ushort>("Station.Word") == 42,
+                    Check(plc.Writes == 0 && table.Get<ushort>("Station.Word") == 42,
                         "拒绝未授权/错误类型写入，禁止污染MDS");
 
                     Check(provider.WriteAsync("word", (ushort)55, "operator",
                         CancellationToken.None).GetAwaiter().GetResult() &&
-                        writes == 1 && actualRegister == 55 &&
+                        plc.Writes == 1 && plc.ActualRegister == 55 &&
                         table.Get<ushort>("Station.Word") == 55,
                         "授权06写命令+协议回显+真实03设备回读一致才报告成功");
-                    ignoreWrite = true;
+                    plc.IgnoreWrite = true;
                     Reject<PADPlcOutcomeUnknownException>(() => provider.WriteAsync("word", (ushort)77,
                         "operator", CancellationToken.None).GetAwaiter().GetResult());
-                    Check(actualRegister == 55 && table.Get<ushort>("Station.Word") == 55 &&
-                        writes == 2, "ACK但硬件寄存器未变必须返回Unknown，不自动重发");
+                    Check(plc.ActualRegister == 55 && table.Get<ushort>("Station.Word") == 55 &&
+                        plc.Writes == 2, "ACK但硬件寄存器未变必须返回Unknown，不自动重发");
 
-                    ignoreWrite = false; ignoreRead = true;
+                    plc.IgnoreWrite = false; plc.IgnoreRead = true;
                     Reject<PADPlcOutcomeUnknownException>(() => provider.WriteAsync("word", (ushort)88,
                         "operator", CancellationToken.None).GetAwaiter().GetResult());
-                    Check(writes == 3 && actualRegister == 88 &&
+                    Check(plc.Writes == 3 && plc.ActualRegister == 88 &&
                         table.Get<ushort>("Station.Word") == 55,
                         "写ACK后读回超时属于Unknown，不能伪造最新MDS成功样本");
-                    ignoreRead = false;
+                    plc.IgnoreRead = false;
                     object recovered = bridge.ReadAndMapAsync("word", CancellationToken.None)
                         .GetAwaiter().GetResult();
                     Check((ushort)recovered == 88 && table.Get<ushort>("Station.Word") == 88,
                         "控制链恢复后须重新从现场读取事实");
-                    Console.WriteLine("PASS Automation PLC Modbus 03/06 -> MDS / authorized readback / Unknown");
+                    Console.WriteLine("PASS Automation PLC real TCP loopback Modbus 03/06 -> MDS / authorized readback / Unknown");
                 }
                 finally
                 {
                     host.Stop();
                     connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
-                    pair[1].Close();
                 }
             }
             Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word", CancellationToken.None)
                 .GetAwaiter().GetResult());
+            }
+        }
+
+        private sealed class TcpPlcLoopback : IDisposable
+        {
+            private readonly TcpListener _listener;
+            private readonly Task _server;
+            private int _register = 42;
+            private int _requests;
+            private int _writes;
+            private volatile bool _ignoreWrite;
+            private volatile bool _ignoreRead;
+            private Exception _failure;
+            public int Port { get; private set; }
+            public ushort ActualRegister { get { return (ushort)Volatile.Read(ref _register); } }
+            public int Requests { get { return Volatile.Read(ref _requests); } }
+            public int Writes { get { return Volatile.Read(ref _writes); } }
+            public bool IgnoreWrite { get { return _ignoreWrite; } set { _ignoreWrite = value; } }
+            public bool IgnoreRead { get { return _ignoreRead; } set { _ignoreRead = value; } }
+
+            public TcpPlcLoopback()
+            {
+                _listener = new TcpListener(IPAddress.Loopback, 0);
+                _listener.Start();
+                Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+                _server = Task.Run((Action)Serve);
+            }
+
+            private static bool ReadExactly(NetworkStream stream, byte[] bytes)
+            {
+                int offset = 0;
+                while (offset != bytes.Length)
+                {
+                    int read = stream.Read(bytes, offset, bytes.Length - offset);
+                    if (read == 0)
+                    {
+                        if (offset == 0) return false;
+                        throw new EndOfStreamException("Modbus TCP MBAP半帧截断");
+                    }
+                    offset += read;
+                }
+                return true;
+            }
+
+            private void Serve()
+            {
+                try
+                {
+                    using (TcpClient peer = _listener.AcceptTcpClient())
+                    using (NetworkStream stream = peer.GetStream())
+                    {
+                        peer.NoDelay = true;
+                        while (true)
+                        {
+                            byte[] mbap = new byte[7];
+                            if (!ReadExactly(stream, mbap)) break;
+                            int length = (mbap[4] << 8) | mbap[5];
+                            if (length < 2 || length > 254)
+                                throw new InvalidDataException("Modbus TCP请求MBAP长度不合法");
+                            byte[] pdu = new byte[length - 1];
+                            if (!ReadExactly(stream, pdu))
+                                throw new EndOfStreamException("Modbus请求PDU截断");
+                            byte function = pdu[0];
+                            if (function == 3 && IgnoreRead) continue;
+                            byte[] reply;
+                            if (function == 3)
+                            {
+                                ushort value = ActualRegister;
+                                reply = new byte[] { 3, 2, (byte)(value >> 8), (byte)value };
+                            }
+                            else if (function == 6 && pdu.Length == 5)
+                            {
+                                Interlocked.Increment(ref _writes);
+                                ushort value = (ushort)((pdu[3] << 8) | pdu[4]);
+                                if (!IgnoreWrite) Volatile.Write(ref _register, value);
+                                reply = (byte[])pdu.Clone();
+                            }
+                            else throw new InvalidDataException("不支持的Modbus测试功能码");
+                            Interlocked.Increment(ref _requests);
+                            byte[] frame = new byte[7 + reply.Length];
+                            Buffer.BlockCopy(mbap, 0, frame, 0, 7);
+                            frame[4] = 0;
+                            frame[5] = (byte)(reply.Length + 1);
+                            Buffer.BlockCopy(reply, 0, frame, 7, reply.Length);
+                            stream.Write(frame, 0, frame.Length);
+                        }
+                    }
+                }
+                catch (SocketException error) { _failure = error; }
+                catch (IOException error) { _failure = error; }
+                catch (ObjectDisposedException) { }
+            }
+            public void Dispose()
+            {
+                _listener.Stop();
+                if (!_server.Wait(3000))
+                    throw new TimeoutException("PLC TCP回环服务器未退出");
+                if (_failure != null && !( _failure is IOException || _failure is SocketException ))
+                    throw new InvalidOperationException("PLC TCP模拟端意外失败", _failure);
+            }
         }
     }
 }
