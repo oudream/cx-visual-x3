@@ -317,3 +317,16 @@ go build -o /tmp/daemon ./cmd/daemon
 - 原 `device_communicator` 生产经验应继续尊重，但迁入 CxVisual 的功能完整性需在新部署环境重验。
 
 **版本控制**：本文 V1.0 自提交之日起作为新代码与有实质改动代码的默认审查标准；需要改变公共协议、进程边界、语言最低版本、授权模型或数据模型时，先通过 CxVisual Owner/ADR 裁决并升级本文版本。
+
+## 本期实装勘误：Daemon Context、atomic 与隔离回归（2026-10-30）
+## 本期实装勘误：Daemon Context、atomic 与隔离回归（2026-10-30）
+
+规范中关于原 DaemonRun 全局普通 bool、不可取消 Sleep 和无真实子进程测试的文字属于**初始基线历史审计**；最新源码已经增量完成以下改进，但 **G1/G2 仍需要真实测试日志**：
+
+- 旧 RunProgram 签名保留，新增 RunProgramContext(ctx,...)；现有 Daemon main/recovery/重启分支使用同一 workerCtx。DaemonRun 是 Go 1.19 的 atomic.Bool，main 的 Store(false) 与各 Worker Load 不再读写普通 bool。
+- 子进程短运行后的 StartWaitTime 使用可取消 Timer；首次 FirstWaitTime 使用可取消 Timer；退出信号先取消，防止事件通道失去消费者时 Worker 永久阻塞。对**已运行**子进程仍由原 Daemon PID/OS 调用负责停止，不能将 Context 取消等同实际杀进程成功。
+- startProc 防止空路径崩溃、启动后关闭父进程 stdout/stderr 日志句柄；启动失败先更新计数，再通过原 program.Event 上报；退出记录保持真实 PID。cmd/daemon 的退出时长按毫秒换算为秒。
+- 原 MonC 初次失败时保存 IP/Port 供后续 CheckChannel 重连。它没有替代 F17/MPA，也未证明网络断线后可安全持续恢复。
+- 隔离测试实际使用测试二进制作为真实被管理子进程，验证标准输出、短运行/Wait/错误上限等；测试位于 internal/daemonc/daemon_test.go、internal/monitorc/monc_test.go、cmd/daemon/main_test.go。没有运行现场生产软件及受管程序。
+
+**未解决**：_runProgramIds 的异步重复启动、进程树回收、UDP 接收 goroutine 的 Close/丢消息、真实 OS service 退出及长稳、认证授权与审计。不要因新增 Context 和测试代码冒称整个 V1 规范的治理项目已完成。最低 Go 模块仍是 go 1.19；CI 工具链仍按现有工作流。详细追溯以 12 大功能矩阵第十一章和 V2.0 架构第十六章为准。
