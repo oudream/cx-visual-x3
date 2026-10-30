@@ -99,6 +99,12 @@
 - **本轮增强（后续固定SHA软件CI已成功）：** `OrganizationLogicIntegrationTests.G06ArchivedPlanExecutesRealCpuProvider`采用真实`CxVisionThresholdProvider`执行灰度阈值与连通区域运算，复用唯一MDS具名`Pixels`端口和MRK结果；MEM关闭后重新读取静态Plan归档，检验像素真值、SourceMap及升级后的专业版本拒绝。[源码`c2e2bd95`](https://github.com/oudream/cx-visual-x3/commit/c2e2bd95aeb53f09049133731bfd7e42ca7aae14)，并由[`da403dab`](https://github.com/oudream/cx-visual-x3/commit/da403dab441227ff5aae92eb6fdd3fe2ef78887b)增强为真实临时Plan文件Write/Read/清理；首批对应[Engineering #41008186529](https://github.com/oudream/cx-visual-x3/actions/runs/41008186529)、[Decision #41008186541](https://github.com/oudream/cx-visual-x3/actions/runs/41008186541)、[Runtime #41008186566](https://github.com/oudream/cx-visual-x3/actions/runs/41008186566) 最终**Failure（Automation PLC在先的编译问题）**；后续固定`d4710675`的[Engineering #41011050353](https://github.com/oudream/cx-visual-x3/actions/runs/41011050353)、[Decision #41011050368](https://github.com/oudream/cx-visual-x3/actions/runs/41011050368)、[Runtime #41011050377](https://github.com/oudream/cx-visual-x3/actions/runs/41011050377) 均**Success**，包括`--orchestration-vertical`的真实Plan落盘/专业CPU执行和完整架构回归。
 - **尚未关闭：** 跨Vision以外专业的严格CLR合同/版本闭包、真正Host进程加载此归档并实施发布授权、真实PLC/MES/采图及设备操作确认；单一软件CPU案例不能冒充以上覆盖。
 
+### 3.5 B6 可信签名Plan激活后的真实MRK执行（2026-10-30）
+
+- **原有已验证**：`Applications/Runtime.Host/MRHTrustedReleaseSmoke.cs`通过真实Host受信证书Pin、RSA签名、损坏Envelope拒绝、原有MRK Publisher的Stage/Activate/安全点、独立新Host实例打开持久Ledger时防重放与损坏记录拒绝；此前只检查激活后的PlanSlot，不等于已执行签名Plan。
+- **本轮新增（待当前提交CI）**：[`bd622abf`](https://github.com/oudream/cx-visual-x3/commit/bd622abf4d38fcbae82948de7590deca2ea3172e)在相同测试的安全激活之后，获取`MRKExecutionPlanSlot.Capture()`的正式Lease，启动真实`MRKExecutionEngine`（F19 Worker），验证MRK FlowId、Completed、可信专业Capability的输出`9`且只执行一次；[`04f994eb`](https://github.com/oudream/cx-visual-x3/commit/04f994ebf141074735783dfee54c5085da4497eb)加入12秒运行门禁及超时安全取消，避免软件验收无界等待。这是明确测试用的确定性`CiCapability`，不伪称真实工业检测算法，真实Vision CPU测试由3.4提供。
+- 此批`unified-runtime-windows.yml`的`Verify pinned Host certificate and real signed Plan publication`必须在对应SHA成功后才能登记通过；查看[Runtime #41011469736](https://github.com/oudream/cx-visual-x3/actions/runs/41011469736)为最初代码提交，其后带有超时限制的新SHA须另核对。**即使软件成功，依旧不等于对真实PLC/运动控制器/X-Ray安全链验证通过。**
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
