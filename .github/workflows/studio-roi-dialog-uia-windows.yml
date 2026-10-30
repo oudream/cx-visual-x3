@@ -13,7 +13,8 @@ on:
 # 仅验证同一分支的最新真实UIA源码；避免每次细小提交积压重复Windows GUI作业。
 concurrency:
   group: cxvisual-studio-roi-native-uia-${{ github.ref }}
-  cancel-in-progress: true
+  # 已获得Windows桌面的真实UIA进程不能被其他并行提交杀死；只折叠待运行项。
+  cancel-in-progress: false
 jobs:
   roi-native-dialog-uia:
     runs-on: windows-2022
