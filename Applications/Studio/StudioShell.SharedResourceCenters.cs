@@ -210,7 +210,7 @@ namespace CxVisual.Studio
                 AddAction(tools, "导入选中", ImportSelected);
                 AddAction(tools, "导出所选", ExportSelected);
                 AddAction(tools, "依赖影响", ShowImpact);
-                AddAction(tools, "刷新", Refresh);
+                AddAction(tools, "刷新", () => Refresh());
                 SetDock(tools, Dock.Top); Children.Add(tools);
                 var placeBar = new WrapPanel { Margin = new Thickness(4) };
                 placeBar.Children.Add(new TextBlock { Text = "将共享定义加入页面", VerticalAlignment = VerticalAlignment.Center });
@@ -250,7 +250,7 @@ namespace CxVisual.Studio
             private static void AddAction(Panel panel, string label, Action action)
             {
                 var button = new Button {
-                    Content = label, Padding = new Thickness(9, 5), Margin = new Thickness(3)
+                    Content = label, Padding = new Thickness(9, 5, 9, 5), Margin = new Thickness(3)
                 };
                 button.Click += (s,e) => {
                     try { action(); }
