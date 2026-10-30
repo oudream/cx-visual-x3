@@ -17,7 +17,9 @@ namespace CxVisual.Studio
                 StringComparer.OrdinalIgnoreCase);
             bool roiUi = e.Args.Contains("--studio-roi-dialog-ui-self-test",
                 StringComparer.OrdinalIgnoreCase);
-            bool testing = cpuOnly || roiUi ||
+            bool hmiUi = e.Args.Contains("--hmi-studio-smoke",
+                StringComparer.OrdinalIgnoreCase);
+            bool testing = cpuOnly || roiUi || hmiUi ||
                 e.Args.Contains("--shell-self-test", StringComparer.OrdinalIgnoreCase);
             if (!testing) { window.Show(); return; }
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -39,6 +41,7 @@ namespace CxVisual.Studio
                 string report = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "StudioShellSelfTest.txt");
                 bool success = cpuOnly?
                     StudioShellSelfTests.RunCpuVisionOnly(report):
+                    hmiUi ? StudioShellSelfTests.RunHmiOnly(window,report) :
                     StudioShellSelfTests.Run(window, report);
                 if(cpuOnly)
                 {
