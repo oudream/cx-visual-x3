@@ -445,6 +445,13 @@
 - [5f26f5d5](https://github.com/oudream/cx-visual-x3/commit/5f26f5d5841e6ece0d0c172b7707e344499fd2af)修复真正Win32系统鼠标拖框测试的异常清理：`mouse_event(MouseLeftDown)`之后由`try/finally`保证正常完成、OS指针移动失败或GUI测试异常时均发送`MouseLeftUp`，避免鼠标左键持续按下干扰后续Open/Save对话框及其他Windows UIA。只涉及测试边界，不引入新的WPF模拟事件或异步工作器。
 - 截至登记，Windows专项[ROI UIA #41047082984](https://github.com/oudream/cx-visual-x3/actions/runs/41047082984)于`5f26f5d5`仍pending，没有真实G3/G4/G5成功证据。保留已触发运行的诊断输出，不将排队作业视为通过；继续由固定SHA实际日志裁决IMG-05是否可关闭。
 
+### 7.21 IMG-05 首次执行到真实GUI的OpenFileDialog失败与窗口发现修复（2026-10-30）
+
+- **第一条真正GUI执行证据**：[ROI UIA #41046725138](https://github.com/oudream/cx-visual-x3/actions/runs/41046725138)（`dac1e806`）Windows日志确认`CxVisual.Studio.csproj` .NET Framework 4.8 x64 **build success**，随后实际Studio进程创建MEM工程、SaveAs/Close/Open均到达测试`STEP`，在首个`BindSavedRoiRaw`原生`OpenFileDialog`出现检测阶段等待14秒后明确失败`IMG05_UIA:系统文件对话框未出现`。**失败原因暂时只能定位“弹窗未被现有UIA发现”**；不应未经证据宣称OS弹框确实未创建、按钮未触发或ROI算法错误。
+- **改进实际诊断**：[4d526bf4](https://github.com/oudream/cx-visual-x3/commit/4d526bf4f06dddf83f1baceb9ef80d606b83c5e9)根据本进程原生Win32`#32770`窗口类和标题联合查找，未发现时报告UIAutomation可见窗口名/类/HWND/Enabled；UIA`InvokePattern`若已失败则优先传播真实点击异常而不被另一个14秒查窗Task掩盖。[cf5c19f4](https://github.com/oudream/cx-visual-x3/commit/cf5c19f4097f36c978bd24c8153164d24dd534d4)首个弹框失败时持久化Studio`rawStatus`和`resultDetail`，将源配方未找到、非法Stride或业务主动拒绝与OS窗口不可见明确区分。
+- **实际原生窗口发现补强**：[2d8ea9f7](https://github.com/oudream/cx-visual-x3/commit/2d8ea9f7f265471d2d06f754045bef1a823ea77c)在UIAutomation桌面根查询之外，使用同进程Win32`EnumWindows/GetWindowThreadProcessId/GetClassName`查找真正的`#32770`原生文件框HWND，再以`AutomationElement.FromHandle`操作真实文件名框及确定按钮；不使用Helper跳过文件选择，也不伪造G5结果。
+- **验收边界**：最新固定[ROI UIA #41048969722](https://github.com/oudream/cx-visual-x3/actions/runs/41048969722)提交时为pending，以上改进仅为G2源码与真实日志推断；须等新SHA运行确认原生文件框发现、鼠标拖框、真实Ribbon Undo/Redo、Mask/RAW/CSV和旧Run防串线全流程。旧GUI实际失败保留，不被源码提交抹去。IMG-05/G5仍不关闭。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
