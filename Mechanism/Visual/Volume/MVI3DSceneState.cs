@@ -206,6 +206,11 @@ namespace CxVisual.Mechanism.Visual
             CancellationToken cancellation=default(CancellationToken))
         {
             if(resolve==null)throw new ArgumentNullException("resolve");
+            if(!(direction.Length>1e-12)||double.IsInfinity(direction.Length)||
+                double.IsNaN(maximumDistance)||double.IsInfinity(maximumDistance)||
+                maximumDistance<=0||double.IsNaN(radius)||double.IsInfinity(radius)||radius<=0)
+                throw new ArgumentOutOfRangeException("direction",
+                    "场景点云拾取射线和物理半径必须有效。");
             sceneId=Guid.Empty;pointHit=null;
             long revision=Revision;
             foreach(MVI3DSceneItem item in Snapshot())
