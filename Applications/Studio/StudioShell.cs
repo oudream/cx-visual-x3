@@ -94,7 +94,7 @@ namespace CxVisual.Studio
             new List<StudioRibbonVisualGroup>();
         private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
-            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables", "doc.runtime-data", "doc.modules" };
+            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables", "doc.runtime-data", "doc.modules", "doc.ct3d" };
         private static readonly string[] KnownTools =
             { "tool.resources", "tool.toolbox", "tool.graphics", "tool.properties", "tool.output" };
 
@@ -282,9 +282,10 @@ namespace CxVisual.Studio
                 if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
                 object view;
                 // MHS WPF控件在Unloaded时释放草稿/订阅，重新打开不能复用已释放的View。
-                if (id=="doc.config" || id=="doc.variables" || id=="doc.runtime-data" || id=="doc.modules" || !_studioViews.TryGetValue(id, out view))
+                if (id=="doc.config" || id=="doc.variables" || id=="doc.runtime-data" || id=="doc.modules" || id=="doc.ct3d" || !_studioViews.TryGetValue(id, out view))
                 {
-                    view = id=="doc.variables" ? CreateStudioVariableDocument() :
+                    view = id=="doc.ct3d" ? (object)new StudioCT3DDocument() :
+                        id=="doc.variables" ? CreateStudioVariableDocument() :
                         id=="doc.runtime-data" ? CreateStudioRuntimeDataDocument() :
                         id=="doc.modules" ? CreateStudioModuleCenterDocument() :
                         CreateConfigurationDocument();
@@ -297,6 +298,11 @@ namespace CxVisual.Studio
                 if(id=="doc.runtime-data")
                     doc.Closed+=(sender,args)=>ReleaseStudioRuntimeDataDocument();
                 if(id=="doc.modules") doc.Closed+=(sender,args)=>_studioViews.Remove("doc.modules");
+                if(id=="doc.ct3d") doc.Closed+=(sender,args)=>{
+                    var current=doc.Content as StudioCT3DDocument;
+                    if(current!=null)current.Dispose();
+                    _studioViews.Remove("doc.ct3d");
+                };
                 if(id=="doc.config")
                     doc.Closing+=(sender,args)=>{
                         if(!_studioConfigForceDiscard && HasStudioUnsavedConfiguration())
@@ -366,6 +372,7 @@ namespace CxVisual.Studio
                 case "doc.variables": return "运行变量 · Watch / Provider";
                 case "doc.runtime-data": return "运行数据 · 五维生命周期";
                 case "doc.modules": return "功能模块中心";
+                case "doc.ct3d": return "CT3D · 通用三维视觉工作台";
                 default: return id;
             }
         }
@@ -1084,6 +1091,7 @@ namespace CxVisual.Studio
             else if (group == "视图")
             {
                 AddRibbonButton("功能模块中心",null,(s,e)=>OpenStudioDocument("doc.modules"));
+                AddRibbonButton("三维视觉工作台",null,(s,e)=>OpenStudioDocument("doc.ct3d"));
                 AddRibbonButton("运行数据生命周期",null,(s,e)=>OpenStudioDocument("doc.runtime-data"));
                 AddRibbonButton("资源树", null, (s,e)=>ShowStudioTool("tool.resources"));
                 AddRibbonButton("属性", null, (s,e)=>ShowStudioTool("tool.properties"));
