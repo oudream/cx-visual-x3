@@ -117,7 +117,7 @@ async function openDetail(row: Program): Promise<void> {
         <el-descriptions-item label="启动次数">{{ detail.startCount }} / {{ detail.maxCount }}</el-descriptions-item>
         <el-descriptions-item label="失败次数">{{ detail.errorCount }} / {{ detail.maxError }}</el-descriptions-item>
       </el-descriptions>
-      <p class="muted detail-foot">进程统计来自 Monitor，守护记录来自 Daemon 本地文件，更新时间可能不同；不代表当前服务 Ready。<RouterLink to="/guard" class="subtle-link">查看守护诊断</RouterLink>。启停、重启和解锁尚未授权开放。</p>
+      <p class="muted detail-foot">进程统计来自 Monitor，守护记录来自 Daemon 本地文件，更新时间可能不同；不代表当前服务 Ready。<RouterLink to="/guard" class="subtle-link">查看守护诊断</RouterLink> · <RouterLink to="/stops" class="subtle-link">查看停止历史</RouterLink>。启停、重启和解锁尚未授权开放。</p>
     </div>
   </el-drawer>
 </template>
