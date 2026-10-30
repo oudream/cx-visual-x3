@@ -216,6 +216,12 @@ namespace CxVisual.Runtime.Host
                     try
                     {
                         MRKFlowHandle flow=engine.StartFlow(lease.Plan);
+                        if(!flow.Completion.Wait(TimeSpan.FromSeconds(12)))
+                        {
+                            flow.RequestCancel();
+                            throw new TimeoutException(
+                                "B6 trusted signed Plan MRK execution exceeded the software gate");
+                        }
                         MRKFlowResult terminal=flow.Completion.GetAwaiter().GetResult();
                         Check(terminal.State==MRKFlowState.Completed&&
                             terminal.FlowId==flow.FlowId&&
