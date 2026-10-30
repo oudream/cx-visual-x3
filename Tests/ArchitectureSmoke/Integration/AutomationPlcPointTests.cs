@@ -345,6 +345,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             ()=>plc.ActualRegister,enabled=>plc.IgnoreWrite=enabled);
                     }
 
+                    // SCADA/HMI旧配置版本的写请求须在FC06发送前FailClosed。
+                    bool latestApproved=true;
+                    int beforePinned=plc.Writes;
+                    using (MRKCommandCenter versionedCenter=new MRKCommandCenter(
+                        authorize:ctx=>ctx.Caller=="operator"))
+                    using (PADPlcMrkCommandRegistration.RegisterUInt16Write(
+                        versionedCenter,provider,"plc-versioned",970602,
+                        "approved-effective-v1",()=>latestApproved))
+                    {
+                        string target=PADPlcMrkCommandRegistration.TargetForDevice("plc-versioned");
+                        MRKCommandResponse stale=versionedCenter.InvokeAsync(
+                            new MRKCommandRequest(target,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string,object>{
+                                    {"StableId","word"},{"Value",(ushort)91},
+                                    {"EffectiveVersion","old-effective-v0"}
+                                },caller:"operator")).GetAwaiter().GetResult();
+                        Check(stale.State!=MRKCommandState.Completed ||
+                            stale.BusinessSuccess!=true,
+                            "旧Effective版本不能被登记成设备成功");
+                        Check(plc.Writes==beforePinned,
+                            "旧HMI设备版本不得发送任何FC06");
+                        latestApproved=false;
+                        MRKCommandResponse drift=versionedCenter.InvokeAsync(
+                            new MRKCommandRequest(target,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string,object>{
+                                    {"StableId","word"},{"Value",(ushort)91},
+                                    {"EffectiveVersion","approved-effective-v1"}
+                                },caller:"operator")).GetAwaiter().GetResult();
+                        Check((drift.State!=MRKCommandState.Completed ||
+                            drift.BusinessSuccess!=true) && plc.Writes==beforePinned,
+                            "配置已经变化，即使客户端提交旧审批版本也须拒绝发FC06");
+                        latestApproved=true;
+                        MRKCommandResponse current=versionedCenter.InvokeAsync(
+                            new MRKCommandRequest(target,
+                                PADPlcMrkCommandRegistration.WriteUInt16Code,
+                                new Dictionary<string,object>{
+                                    {"StableId","word"},{"Value",(ushort)91},
+                                    {"EffectiveVersion","approved-effective-v1"}
+                                },caller:"operator")).GetAwaiter().GetResult();
+                        Check(current.BusinessSuccess==true &&
+                            current.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
+                            plc.Writes==beforePinned+1,
+                            "当前Effective版本且有可信MRK/PAD授权才执行FC06+FC03");
+                    }
+
                     // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
                     // 一点失败不能伪装全成功，也不能覆盖上一笔MDS有效值。
                     PADPlcScanResult whole = bridge.ScanAsync(
