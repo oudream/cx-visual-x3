@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：142 项（S/R 源码存在或复用 65 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 142 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：145 项（S/R 源码存在或复用 68 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 145 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -129,8 +129,11 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go cmd/daemon | ownedStopOutcome / queueOwnedStop | 主循环异步收集原 Worker 停止回执 | 无新增 HTTP/UDP 控制协议 |
 | S | Go cmd/daemon | terminalLatchFile / readTerminalLatches / writeTerminalLatches | 原 Daemon 内守护上限闭锁本地持久化 | 不修改 Program SQLite 表 |
 | S | Go cmd/daemon | orphanObservationFile / writeOrphanObservation | 启动隔离结果带时间戳原子投影，供 Monitor 本机只读展示 | 不是活跃隔离真源或安全许可 |
+| S | Go cmd/daemon | scanUnreconciledPrograms [函数] | 合并旧 PID 与未结清启动意图 | 错误拒启，不按裸 PID Kill |
 | S | Go cmd/daemon | verifyManagedExecutablePID [函数] | 无活跃 Worker 的旧 PID 文件最小身份校验 | 不消除 PID 复用竞态 |
 | S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
+| S | Go internal/launchjournal | Journal / Record / Scan | 持久化启动意图、观察 PID、原 Wait 后清算 | 仅重启恢复证据，非 OS 进程真源 |
+| S | Go internal/daemonc | LaunchRecorder / RunProgramContextWithLaunchEvidence | 原守护 Worker Start/Wait 两端记录启动凭证 | 保留原签名与 UDP Event |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
 | S | Go cmd/daemon | recoveryPrograms [函数] | 旧程序恢复装配入口 | 保留旧守护兼容 |
 
@@ -1034,3 +1037,43 @@ sequenceDiagram
 4. 历史 Worker `Start` 成功到 PID/代次凭证持久化的遗漏窗口仍未关闭；S11 登录/授权/审计、安全解锁及正式停止回执、服务/专业 Ready、跨节点监控仍是未完成内容。
 
 以 [12大功能域实施验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第20章为交付证据索引。
+
+
+## 26. 启动凭证与崩溃恢复（2026-10-30）
+
+### 26.1 实施对象与唯一归属
+
+新增 Go 内部 launchjournal.Journal/Record/Scan 与 daemonc.LaunchRecorder（可选依赖合同），均服务原 Daemon Worker，不另建调度器、程序数据库、OS 进程所有权或远程控制端点。每个 Program 的凭证位于 supervision/launch-attempts/<ProgramId>.json，记录版本、字符串 ProgramId、随机 AttemptID、启动阶段、PID 和 UTC 时间。
+
+~~~mermaid
+sequenceDiagram
+ participant Gate as programWorkerGate
+ participant Worker as 原守护Worker
+ participant Journal as launchjournal
+ participant OS as exec.Cmd子进程
+ Gate->>Worker: 唯一Program代次
+ Worker->>Journal: Begin(ProgramId,路径)
+ Journal-->>Worker: stage=intent 已同步落盘
+ Worker->>OS: startProc/Start
+ OS-->>Worker: 原Process与PID
+ Worker->>Journal: Started(PID)同步持久化
+ Worker-->>Gate: 原EventStart（旧协议不变）
+ OS-->>Worker: 子进程退出
+ Worker->>Worker: 原始cmd.Wait
+ Worker->>Journal: Finished核对AttemptID后清算
+ opt 任一步骤Daemon遭SIGKILL
+ Gate->>Journal: 下次启动前Scan未结清凭证
+ Journal-->>Gate: intent或started，可PID=0
+ Gate->>Gate: 原orphaned门禁隔离，拒绝自动启动
+ end
+~~~
+
+前置意图只有成功落盘后才会执行 Start；启动后同步持久化观察 PID，不能以旧 EventStart 已被主循环处理为前提。启动失败且无子进程，或原 Worker Wait 完成，才清算同代次文件。任何持久化读写或清算失败，通知原 programWorkerGate.failStorage，阻止新的 Worker 入场；启动后写 PID 失败时尝试停止并回收原始 exec.Cmd，保留未清算凭证供后续离线核查。
+
+Daemon 首次启动前通过 scanUnreconciledPrograms 合并旧 PID 文件与新启动凭证；若无旧 PID 文件但存在未清算 intent，仍要隔离 Program。未知文件名无法归属时拒绝所有启动；隔离原因经既有 daemon-orphan-observation.json 和 GET /api/v1/guard 展示在现有 H5“守护诊断”、运行总览与程序详情中，不增设未经授权的解锁按钮。
+
+### 26.2 验证与风险
+
+已提交 journal_test.go、launch_evidence_test.go、orphan_guard_test.go 与 workers_test.go 回归：启动前崩溃意图、OS Start 后但 EventStart 未消费、坏文件、无旧 PID、Wait 清算、跨代阻止重复启动、写盘故障拒启；Linux Go Race CI 覆盖相应测试。正式仓库三平台 CI 的通过记录及工业 G2/G3 证据当前仍未取得，不能声称 G1 已通过。
+
+AttemptID 是 Daemon 生成的启动尝试标识，**不是 OS PID 创建代次证明**。此阶段针对 Daemon 进程 SIGKILL 的遗漏窗口进行保守封堵，不证明突然断电的文件系统持久性、完整进程树退出、停止操作持久审计或业务 Ready。S11 登录、权限、审计和受控解锁仍需后续正式开发。旧章节中“启动意图待实现”是当时状态，此处为最新源码进展。
