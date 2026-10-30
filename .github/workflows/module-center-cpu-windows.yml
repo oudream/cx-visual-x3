@@ -41,9 +41,11 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "CPU closed-loop process failed: $($p.ExitCode)" }
           $passed = @(Select-String -Path $report -Pattern '^PASS:')
           $failed = @(Select-String -Path $report -Pattern '^FAIL:')
-          if ($passed.Count -ne 1 -or $failed.Count -ne 0 -or
-              -not $passed[0].Line.Contains('S1-03D RAW真实文件')) {
-            throw 'Expected exactly one real CPU RAW -> MEM -> MOC -> MRK result/Trace PASS'
+          # R1-01新增正式MEM工程RAW重绑+MRK复算，必须和旧CPU链同时通过。
+          if ($passed.Count -ne 2 -or $failed.Count -ne 0 -or
+              -not @($passed | Where-Object { $_.Line.Contains('S1-03D RAW真实文件') }).Count -or
+              -not @($passed | Where-Object { $_.Line.Contains('R1-01 保存工程') }).Count) {
+            throw "Expected both CPU RAW and saved ROI rebind real STA PASS; actual $($passed.Count) PASS / $($failed.Count) FAIL"
           }
       - name: Archive real CPU closure evidence
         if: always()
