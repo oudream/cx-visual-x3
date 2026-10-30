@@ -184,6 +184,8 @@ namespace CxVisual.TestCenter.UI
             {
                 using(var engineering=MEMEngineering.Open(full))
                 {
+                    try
+                    {
                     if(engineering.StoreToken!=expectedToken)
                         throw new MEMStoreConflictException(full);
                     var owners=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
@@ -206,6 +208,8 @@ namespace CxVisual.TestCenter.UI
                     cancellation.ThrowIfCancellationRequested();
                     engineering.SaveAsAsync(full,cancellation).GetAwaiter().GetResult();
                     newToken=engineering.StoreToken;
+                    }
+                    finally { engineering.Close(true); }
                 }
             },cancellation);
             bool sameVolume=Object.ReferenceEquals(_volume,capturedVolume)&&
