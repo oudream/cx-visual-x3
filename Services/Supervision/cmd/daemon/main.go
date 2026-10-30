@@ -267,7 +267,7 @@ func main() {
 								}
 								// sync to daemonc
 								if bKill {
-									if pid, ok := _runProgramIds[ad.ID]; ok {
+									if pid, ok := _runProgramIds[ad.ID]; ok && pid > 0 {
 										proc, err := os.FindProcess(pid)
 										if err == nil && proc != nil {
 											_ = proc.Kill()
@@ -280,8 +280,11 @@ func main() {
 									}
 								}
 								if bRun {
-									launchProgramWorker(workerCtx, ad.Program, cae)
-									_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
+									if launchProgramWorker(workerCtx, ad.Program, cae) {
+										_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
+									} else {
+										_logger.Printf(_title.Info+"program diff-employ %s kept existing guardian program[%s](%d)", ad.Action, ad.Path, ad.ID)
+									}
 								}
 							} else {
 								_logger.Printf(_title.Info+"program diff-employ fail, json unmarshal err: ", err)
@@ -320,7 +323,7 @@ func main() {
 							if err == nil {
 								_logger.Printf(_title.Info+"daemon restart program req, program[%s](%d)", ad.Path, ad.ID)
 								bProgramHasRun := false
-								if pid, ok := _runProgramIds[ad.ID]; ok {
+								if pid, ok := _runProgramIds[ad.ID]; ok && pid > 0 {
 									proc, err := os.FindProcess(pid)
 									if err == nil && proc != nil {
 										_ = proc.Kill()
@@ -330,8 +333,11 @@ func main() {
 									bProgramHasRun = pid > 0
 								}
 								if !bProgramHasRun && ad.Enabled == program.ENABLE {
-									launchProgramWorker(workerCtx, ad.Program, cae)
-									_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
+									if launchProgramWorker(workerCtx, ad.Program, cae) {
+										_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
+									} else {
+										_logger.Printf(_title.Info+"daemon restart program req, existing guardian retained program[%s](%d)", ad.Path, ad.ID)
+									}
 								}
 							} else {
 								_logger.Printf(_title.Info+"daemon kill req fail, json unmarshal err: ", err)
@@ -415,12 +421,15 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 		if pid, ok := _runProgramIds[a.ID]; ok {
 			bProgramHasRun = pid > 0
 		}
-		// run program
-		if !bProgramHasRun {
-			if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second*time.Duration(a.FirstWaitTime)) {
-				return
-			}
-			launchProgramWorker(ctx, a, cae)
+		// PID=0 is not proof that a guardian has finished: it may be
+		// starting, in backoff, or waiting for its child to exit.
+		if bProgramHasRun || _programWorkers.has(a.ID) {
+			continue
+		}
+		if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second*time.Duration(a.FirstWaitTime)) {
+			return
+		}
+		if launchProgramWorker(ctx, a, cae) {
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
 	}
