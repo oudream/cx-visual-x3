@@ -125,9 +125,15 @@ namespace CxVisual.Runtime.Host
         internal static MRHScadaPipeReply Respond(MRHScadaRuntimeGroup group,MRHScadaPipeRequest req)
         {
             if(group==null)throw new ArgumentNullException("group");
+            // 设备槽位重建时，必须原子地确认身份并读取唯一MDS。
+            // 防止从旧设备快照读取到一半时被Dispose。
+            return group.ReadDevices(devices=>RespondCore(group,req,devices));
+        }
+        private static MRHScadaPipeReply RespondCore(MRHScadaRuntimeGroup group,
+            MRHScadaPipeRequest req,MRHScadaRuntime[] devices)
+        {
             if(req==null||req.SchemaVersion!=1)return Reject("SCHEMA_UNSUPPORTED");
             if(!group.IsDeploymentApproved)return Reject("DEPLOYMENT_STALE");
-            MRHScadaRuntime[] devices=group.SnapshotDevices();
             if(req.Operation=="discover")
                 return new MRHScadaPipeReply{SchemaVersion=1,Status="Ok",
                     DeploymentVersion=group.DeploymentVersion,
