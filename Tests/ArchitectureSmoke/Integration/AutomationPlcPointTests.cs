@@ -130,6 +130,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         plc.Requests == 1 && plc.Writes == 0,
                         "F17/MPA/MCN真实03帧读取→MDS唯一变量");
 
+                    // 运行态点表发生跨目标或地址漂移时，必须在发送报文前拒绝。
+                    protocolConfig.Mappings.Add(illicitCommand);
+                    Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word",
+                        CancellationToken.None).GetAwaiter().GetResult());
+                    protocolConfig.Mappings.Remove(illicitCommand);
+                    MPAPointDefinition livePoint = protocolConfig.Points[0];
+                    string originalAddress = livePoint.Address;
+                    livePoint.Address = "holding:101";
+                    Reject<InvalidOperationException>(() => bridge.ReadAndMapAsync("word",
+                        CancellationToken.None).GetAwaiter().GetResult());
+                    livePoint.Address = originalAddress;
+                    Check(plc.Requests == 1 && plc.Writes == 0 &&
+                        table.Get<ushort>("Station.Word") == 42,
+                        "运行态点表漂移应先拒绝，不能触发未授权硬件报文");
+
                     Reject<UnauthorizedAccessException>(() => provider.WriteAsync("word", (ushort)60,
                         "guest", CancellationToken.None).GetAwaiter().GetResult());
                     Reject<InvalidCastException>(() => provider.WriteAsync("word", 60,
