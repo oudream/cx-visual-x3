@@ -124,7 +124,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 };
                 _kinds.Children.Add(button);
             }
-            head.Children.Add(_kinds);head.Children.Add(_header);
+            head.Children.Add(_kinds);
+            // 模块头部包含RAW输入、Run结果及MPW图窗，不能让其无限撑高
+            // DockPanel使真实鼠标无法到达底部Viewer。只治理WPF布局，不改变
+            // HeaderContent的外部对象合同或MEM/Module Owner。
+            var headerScroll=new ScrollViewer {
+                Content=_header,MaxHeight=420,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,
+                CanContentScroll=false
+            };
+            AutomationProperties.SetAutomationId(headerScroll,"MPW.ModuleCenter.HeaderScroll");
+            head.Children.Add(headerScroll);
             DockPanel.SetDock(head,Dock.Top);root.Children.Add(head);
             var grid=new Grid();
             grid.ColumnDefinitions.Add(_catalogColumn);
