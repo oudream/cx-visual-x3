@@ -16,6 +16,7 @@ using System.Windows.Media;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Runtime.Commands;
+using CxVisual.Mechanism.Presentation.Wpf.Interaction;
 using Microsoft.Win32;
 
 namespace CxVisual.TestCenter.UI
@@ -36,6 +37,7 @@ namespace CxVisual.TestCenter.UI
         }
 
         private readonly MRKCommandCenter _local = new MRKCommandCenter();
+        private readonly MPWCommandCenterControl _shared = new MPWCommandCenterControl();
         private readonly MRKCommandDescriptor _childContract = PublishedChildContract();
         private Process _childHost;
         private readonly MDSVariableTable _variables = new MDSVariableTable("TestCenter.Command.Manual");
@@ -149,6 +151,7 @@ namespace CxVisual.TestCenter.UI
             _transport.SelectionChanged += (s, e) => Changed();
             BuildView();
             RegisterDemo();
+            _shared.Bind(_local,true);
             Show("已注册当前会话的本地算法演示命令。远程模式需要外部Host；本页不启动伪造设备。");
         }
 
@@ -218,6 +221,7 @@ namespace CxVisual.TestCenter.UI
                 GridLinesVisibility = DataGridGridLinesVisibility.Horizontal };
             AutomationProperties.SetAutomationId(historyGrid, "TCT.Command.History");
             tabs.Items.Add(Tab("人工会话证据", historyGrid));
+            tabs.Items.Add(Tab("共享公共命令中心（同一MRK）", _shared));
             StackPanel formal = new StackPanel { Margin = new Thickness(14) };
             formal.Children.Add(new TextBlock { Text = "命令中心正式TCT自动测试",
                 FontSize = 19, FontWeight = FontWeights.SemiBold });
@@ -786,6 +790,7 @@ namespace CxVisual.TestCenter.UI
             if (_remote != null) _remote.Dispose();
             StopChildHost();
             _binding.Dispose();
+            _shared.Dispose();
             _local.Dispose();
         }
 
