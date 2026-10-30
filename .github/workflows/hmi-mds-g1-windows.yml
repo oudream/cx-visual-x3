@@ -1,0 +1,38 @@
+name: CxVisual HMI MDS G1 Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Professional/HMI/**'
+      - 'Tests/ArchitectureSmoke/Integration/HmiRuntimeTests.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
+      - '.github/workflows/hmi-mds-g1-windows.yml'
+jobs:
+  hmi-mds-g1:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore project dependencies
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'HMI restore failed' }
+      - name: Build HMI and ArchitectureSmoke .NET Framework 4.8 x64
+        shell: pwsh
+        run: |
+          & msbuild.exe Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+          if($LASTEXITCODE -ne 0) { throw 'HMI build failed' }
+      - name: Run real MDS value and quality regression
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --hmi
+          if($LASTEXITCODE -ne 0) { throw 'HMI G1 failed' }
+      - name: Report verification boundary
+        shell: pwsh
+        run: |
+          Write-Host 'Only in-process MDS/Visual compatibility and fail-closed HMI contract are tested.'
+          Write-Host 'No authenticated remote IPC, physical PLC, G2 or HIL is claimed.'
