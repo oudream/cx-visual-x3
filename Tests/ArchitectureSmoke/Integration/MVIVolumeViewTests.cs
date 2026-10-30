@@ -323,6 +323,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(OperationCanceledException){cancelledCloud=true;}
                 Check(zeroCloudDirectionRejected&&cancelledCloud,
                     "无效点云方向及预取消不得产生专业选中结果");
+                var cloudSceneState=new MVI3DSceneState();
+                Guid nearCloudId=cloudSceneState.Add(MVI3DSceneKind.PointCloud,
+                    "ct3d:cloud:near",1,"physical-frame");
+                Guid farCloudId=cloudSceneState.Add(MVI3DSceneKind.PointCloud,
+                    "ct3d:cloud:far",1,"physical-frame");
+                var nearCloud=new FGEPointCloud3D(new[]{new FGEPoint3D(1,0,0)});
+                var farCloud=new FGEPointCloud3D(new[]{new FGEPoint3D(2,0,0)});
+                Guid pickedCloud;FGEPointCloudRayHit selectedPoint;
+                Func<MVI3DSceneItem,FGEPointCloud3D> clouds=
+                    item=>item.Id==nearCloudId?nearCloud:farCloud;
+                Check(cloudSceneState.TryPickPointCloudRay(
+                    new FGEPoint3D(0,0,0),new FGEVector3D(1,0,0),10,.15,
+                    clouds,out pickedCloud,out selectedPoint)&&
+                    pickedCloud==nearCloudId&&selectedPoint.PointIndex==0&&
+                    cloudSceneState.SelectedId==nearCloudId,
+                    "多PointCloud对象拾取必须选择真正物理最近实例和原始double点号");
+                cloudSceneState.SetVisibility(nearCloudId,false);
+                Check(cloudSceneState.TryPickPointCloudRay(
+                    new FGEPoint3D(0,0,0),new FGEVector3D(1,0,0),10,.15,
+                    clouds,out pickedCloud,out selectedPoint)&&
+                    pickedCloud==farCloudId&&cloudSceneState.SelectedId==farCloudId,
+                    "隐藏最近点云后应拾取下一个可见真实对象");
+                cloudSceneState.SetVisibility(farCloudId,false);
+                Check(!cloudSceneState.TryPickPointCloudRay(
+                    new FGEPoint3D(0,0,0),new FGEVector3D(1,0,0),10,.15,
+                    clouds,out pickedCloud,out selectedPoint)&&
+                    pickedCloud==Guid.Empty&&selectedPoint==null,
+                    "所有点云不可见时不能继续返回旧专业结果");
+                bool badSceneRay=false;
+                try{cloudSceneState.TryPickPointCloudRay(
+                    new FGEPoint3D(0,0,0),new FGEVector3D(0,0,0),10,.15,
+                    clouds,out pickedCloud,out selectedPoint);}
+                catch(ArgumentOutOfRangeException){badSceneRay=true;}
+                Check(badSceneRay,"无效点云射线即使没有可见对象也必须拒绝");
                 using(FVOVolumeData uncalibrated=FVOVolumeData.CreateDemo(8,10,12))
                 {
                     bool rejected=false;
