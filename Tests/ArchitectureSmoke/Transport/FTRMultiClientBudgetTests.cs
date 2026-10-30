@@ -166,7 +166,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "小响应预算/额度释放/真实Rx计数不正确");
                     bool over=false;
                     try{client.Send(new byte[]{3});}
-                    catch(FTRBudgetExceededException){over=true;}
+                    catch(InvalidOperationException){over=true;}
                     Check(over&&requests==3&&responses==2&&
                         client.Diagnostics.BufferedPayloadBytes==0&&
                         client.Diagnostics.RejectedPayloadBuffers>0,
