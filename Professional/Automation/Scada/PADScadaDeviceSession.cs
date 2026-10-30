@@ -117,6 +117,7 @@ namespace CxVisual.Professional.Automation.Scada
         }
 
         public string DeviceRef {get{return _deviceRef;}}
+        public string ChannelId {get{return _connector.Channel.Id;}}
         public string ScopeId {get{return _scopeId;}}
         public string ConfigVersion {get{return _configVersion;}}
         public string SessionGeneration {get{return _connector.Channel.SessionId.ToString("N");}}
