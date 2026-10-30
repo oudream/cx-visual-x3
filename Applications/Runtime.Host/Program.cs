@@ -27,17 +27,20 @@ namespace CxVisual.Runtime.Host
                     return MRHUnifiedRuntimeHost.Serve(args[1]);
                 if (verb == "scada-g1-smoke" && args.Length == 1)
                     return MRHScadaSmoke.Run();
-                if (verb == "scada-serve" && args.Length >= 7 && args.Length <= 9)
+                if (verb == "scada-serve" && args.Length >= 7 && args.Length <= 10)
                 {
-                    bool contiguous=false,serviceMode=false;
+                    bool contiguous=false,serviceMode=false,recover=false;
                     for(int i=7;i<args.Length;i++)
                     {
                         if(args[i]=="--contiguous"&&!contiguous)contiguous=true;
                         else if(args[i]=="--service"&&!serviceMode)serviceMode=true;
+                        else if(args[i]=="--recover"&&!recover)recover=true;
                         else throw new ArgumentException("未知或重复的SCADA运行选项: "+args[i]);
                     }
+                    if(recover&&!serviceMode)
+                        throw new ArgumentException("--recover必须搭配--service");
                     return MRHScadaRuntime.Serve(args[1],args[2],args[3],
-                        args[4],args[5],args[6],contiguous,serviceMode);
+                        args[4],args[5],args[6],contiguous,serviceMode,recover);
                 }
                 if (verb == "release-trusted-smoke" && args.Length == 2)
                     return MRHTrustedReleaseSmoke.Run(args[1]);
@@ -85,7 +88,7 @@ namespace CxVisual.Runtime.Host
                     Show(MVISceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
                 return 2;
             }
             catch (Exception ex)
