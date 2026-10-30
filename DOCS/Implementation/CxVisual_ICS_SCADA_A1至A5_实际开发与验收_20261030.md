@@ -143,3 +143,12 @@
 - **A3跨进程运行数据PASS**：SHA `ecca26c65c04d10a192e1c1467e04bbb7f16571b`，Windows G1 Run `41052078725`；.NET48 Windows x64编译及真实本机TCP双PLC + 独立子进程Pipe discover/snapshot + MDS Good/Revision + 旧Generation拒绝均通过。
 - **A5独立工程预检PASS**：SHA `edd3c74d5f28075a32799922ba164a5bdd2e87ac`，Windows G1 Run `41052386270`；.NET48 Windows x64 Restore/Build、真实独立`Runtime.Host.exe scada-project-check`的保存工程/Effective双设备JSON、预检期间零FC03/FC06、Channel冲突拒绝且无成功JSON均通过。
 - 以上是对应固定SHA实际Windows软件G1，不能扩张为已通过现场PLC G2/G3、硬件联锁、远程跨账户身份授权、受信MRK跨进程控制或正式SCM服务安装。A与HMI-B各自的G1成功尚未等同于真实WPF连接本次双PLC Host的同一次联合用例。
+
+
+## 18. A4 正式PLC受控命令与独立Host软件贯通（2026-10-30）
+- **正式命令双版本**：`Professional/Automation/Plc/PADPlcMrkWriteCapabilityProvider.cs`增可选`commandEffectiveVersion`，明确与Plan专业`capabilityVersion`分离；当Host配置了版本锁时在实际`MRKCommandRequest`中增加`EffectiveVersion`必填，不再只发`StableId/Value`。旧无版本注册兼容但不可冒充新的安全工程命令入口（SHA `0ead2604`）。
+- **真实TCP/MRK测试**：`Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs`直接经正式`MRKExecutionEngine`与`PADPlcMrkWriteCapabilityProvider`执行设备已批准的MRK UInt16写入，真实FC06和FC03读回成功；旧Effective、缺失Effective、项目配置漂移三组负例均要求无FC06、Flow失败，保留旧非幂等Unknown单次写入测试（SHA `7ee0bcdf`）。Automation PLC G1 Windows Run `41053709279`实际完成`success`；按该SHA认证测试，不替代实机HIL。
+- **受信Host装配**：`MRHScadaRuntime.Open`可显式接收`authorizeWrite`专业委托，仅当提供正式项目部署的`additionalApproval`才允许此模式；`RegisterTrustedWriteCommands(MRKCommandCenter,long)`在Start之前复用唯一MRK命令中心，调用方负责真实认证Caller、专业点权限和硬件联锁，**不建立新CommandCenter/授权仓/命令Pipe**。默认CLI及工程预检继续`authorizeWrite:null`，禁止HMI远程直接写（SHA `bcd338d3`）。
+- **会话失效禁写**：`PADScadaDeviceSession.RegisterWriteCommands`在Handler已有MHS Effective检查上增加`IsRunning`，Stop/旧Session不可能凭旧审批版本继续FC06（SHA `58662b7e`）。
+- **Host G1实际写回读**：`MRHScadaSmoke`的真实OS TCP夹具增加可选FC06回显/忽略写入后FC03旧值，用正式MEM保存/MHS项目部署/Connector Effective装配可写Session及MRK，断言Guest拒绝、过期版拒绝、一次写回读/MDS更新、同OperationId去重、ACK后读回不符Unknown、Stop后拒写且MDS Stale。测试仅在显式受信装配中激活，原只读夹具无额外写入口（SHA `2d0bacd6`/ `7f6f8108`）。**此Host新增用例必须等待对应SHA Windows CI实际通过才能标为G1成功**。
+- **工业边界**：G1只确认本机OS Socket、软件身份策略、寄存器写/回读；未证明物理执行器到位、现场Interlock、Windows SCM长期服务、跨账户安全认证、远程受信命令Pipe或断电Journal完整恢复；本轮未做危险设备指令开放。
