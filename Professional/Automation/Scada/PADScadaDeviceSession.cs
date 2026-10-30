@@ -207,7 +207,10 @@ namespace CxVisual.Professional.Automation.Scada
                 if(_disposed)return;
                 _disposed=true;
             }
+            // 运行故障已由Completion向Host暴露；Dispose要负责彻底释放资源，
+            // 不能因重复抛出既有故障而跳过Provider/Scope注销。
             try {StopAsync().GetAwaiter().GetResult();}
+            catch (Exception) { /* 轮询故障由Completion保留，清理继续 */ }
             finally
             {
                 _bridge.Dispose();
