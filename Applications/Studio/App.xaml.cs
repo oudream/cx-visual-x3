@@ -15,11 +15,25 @@ namespace CxVisual.Studio
             MainWindow = window;
             bool cpuOnly = e.Args.Contains("--module-center-cpu-self-test",
                 StringComparer.OrdinalIgnoreCase);
-            bool testing = cpuOnly ||
+            bool roiUi = e.Args.Contains("--studio-roi-dialog-ui-self-test",
+                StringComparer.OrdinalIgnoreCase);
+            bool testing = cpuOnly || roiUi ||
                 e.Args.Contains("--shell-self-test", StringComparer.OrdinalIgnoreCase);
             if (!testing) { window.Show(); return; }
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             window.Show();
+            if(roiUi)
+            {
+                window.Dispatcher.BeginInvoke(new Action(async () =>
+                {
+                    string report=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                        "StudioRoiDialogUiReport.txt");
+                    bool success=await StudioRoiDialogUiSmoke.RunAsync(window,report);
+                    window.Close();
+                    Shutdown(success?0:1);
+                }),DispatcherPriority.ApplicationIdle);
+                return;
+            }
             window.Dispatcher.BeginInvoke(new Action(() =>
             {
                 string report = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "StudioShellSelfTest.txt");
