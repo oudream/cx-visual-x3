@@ -60,6 +60,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ProjectBackedSeparatedNodes();
             SeparatedGray16AndInputSafety();
             SeparatedMemoryImagePreview();
+            RoiFIMMaskToMrkInspection();
             SavedMemoryVisionR1RoundTrip();
             Gray16MedianEnhancement();
             MviImageMaskProjection();
@@ -1035,6 +1036,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             finally {if(File.Exists(projectFile))File.Delete(projectFile);}
+        }
+
+        /// <summary>
+        /// CASE-01/02：FIM精确ROI阈值→MRK专业连通域/面积；
+        /// 不允许ROI外孤立缺陷穿透，或伪装成屏幕灰度/坏来源的合法结果。
+        /// </summary>
+        private static void RoiFIMMaskToMrkInspection()
+        {
+            byte[] source={210,210,0,0,0,210,0,0,0,0,0,0,0,0,250};
+            var image=new FIMImageBuffer(5,3,FIMPixelFormat.Gray8,source);
+            var rules=Options(CxVisionPixelDepth.Bits8,200);
+            var region=new FIMPixelRegion(0,0,4,2);
+            // 精确自由ROI允许左侧三连通域，拒绝右下角孤立255。
+            Func<int,int,bool> shape=(x,y)=>x<2 && y<2;
+            var result=CxVisionDataFlow.RunRoiInspectionPreviewAsync(
+                image,rules,"r1/roi/ellipse-like",region,shape,
+                CancellationToken.None).GetAwaiter().GetResult();
+            FIMImageBuffer mask=result.Items.Single(x=>
+                x.Kind==CxVisionResultKind.Mask).Image;
+            Check(result.RunId!=Guid.Empty &&
+                result.SourceId=="r1/roi/ellipse-like" &&
+                result.Items.Single(x=>x.Name=="阈值命中像素数").IntegerValue==3 &&
+                result.Items.Single(x=>x.Kind==CxVisionResultKind.Region)
+                    .Region.PixelArea==3 &&
+                result.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
+                    .IntegerValue==3 &&
+                mask.GetGrayValue(0,0)==255 && mask.GetGrayValue(1,0)==255 &&
+                mask.GetGrayValue(0,1)==255 && mask.GetGrayValue(4,2)==0 &&
+                image.GetGrayValue(4,2)==250 &&
+                image.CopyPixels().SequenceEqual(source) &&
+                result.Items.Select(x=>x.RunId).Distinct().Single()==result.RunId,
+                "FIM ROI→MRK必须保留三命中、3px²和原图不变，禁止ROI外孤立像素");
+            var contour=result.WithThresholdMaskContours().Items.Single(x=>
+                x.Kind==CxVisionResultKind.Contour);
+            Check(Math.Abs(contour.Contour.SignedAreaPixels-3)<1e-9,
+                "ROI掩码轮廓只应覆盖真实选定像素");
+            Reject<ArgumentException>(()=>
+                CxVisionDataFlow.RunRoiInspectionPreviewAsync(image,
+                    Options(CxVisionPixelDepth.Bits16,400),"roi",region,shape,
+                    CancellationToken.None).GetAwaiter().GetResult(),
+                "ROI专业位深不匹配不得悄然转换");
+            Reject<ArgumentException>(()=>
+                CxVisionDataFlow.RunRoiInspectionPreviewAsync(image,rules," ",
+                    region,shape,CancellationToken.None).GetAwaiter().GetResult(),
+                "ROI专业结果不能缺少源身份");
+            Reject<ArgumentOutOfRangeException>(()=>
+                CxVisionDataFlow.RunRoiInspectionPreviewAsync(image,rules,"roi",
+                    new FIMPixelRegion(10,10,12,12),shape,
+                    CancellationToken.None).GetAwaiter().GetResult(),
+                "图外ROI不能变成全图检测");
+            using(var stop=new CancellationTokenSource())
+            {
+                stop.Cancel();
+                Reject<OperationCanceledException>(()=>
+                    CxVisionDataFlow.RunRoiInspectionPreviewAsync(image,rules,
+                        "roi",region,shape,stop.Token).GetAwaiter().GetResult(),
+                    "ROI异步操作预取消必须拒绝");
+            }
+            Check(image.CopyPixels().SequenceEqual(source),
+                "非法ROI/取消不能修改共享原始FIM像素");
         }
 
         /// <summary>相同四节点真实算法以Gray16小端RAW执行，不得降到8位。</summary>
