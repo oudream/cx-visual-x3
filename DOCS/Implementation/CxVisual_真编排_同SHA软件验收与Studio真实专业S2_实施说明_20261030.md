@@ -54,7 +54,9 @@
 - 已取得的首批实际单项执行证据：固定旧S2初稿的[Studio #41021244126](https://github.com/oudream/cx-visual-x3/actions/runs/41021244126)出现该S2测试`PASS`，但整条Job仍因旧模拟发布兼容性失败，所以**不能计为全绿**。
 - 已修复旧模拟兼容：`MainWindow.ResolverForFlow`只在真实专业节点的可达Content中切换Resolver；原AI/CV软件候选、Studio模拟Provider及MRK调试接口必须维持历史行为，直到完整WPF STA验证成功。
 - Stage1综合门禁历史成功例：[B1～B6统一软件CI #41020412054](https://github.com/oudream/cx-visual-x3/actions/runs/41020412054)固定`466fa2a0` **Success**，只是软件基线工作流初版（不覆盖后续S2源码）。
-- **当前master的完整S2、同SHA统一门禁结论以Actions实际运行结果为准；未取得成功前保持“待CI”**。
+- **第一轮完整Studio WPF S2绿灯**：固定[`e7ea28a4`](https://github.com/oudream/cx-visual-x3/commit/e7ea28a4732170b90520d738438a1d74dd5614f0)的[Studio #41021976116](https://github.com/oudream/cx-visual-x3/actions/runs/41021976116) **整条Job Success**。原WPF STA日志确有`PASS: S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界`与旧P0-4模拟发布/运行断言PASS。
+- **本轮随后增强（单独验收）**：活动独立Content的真正WPF按钮编辑/执行、原MRK结果安全标量投影、MHS Effective配置捕获与变更拒绝、强类型非法非有限参数负例及相关WPF强制门禁，均为晚于`e7ea28a4`的提交；固定对应SHA的整个Studio和B1～B6同SHA工作流仍应根据实际Actions结论登记，**不能复用旧绿灯声称最新master已通过**。
+- 新的`S2 真正WPF按钮创建RAW专业流程并执行MRK真实Vision CPU`回归在实际WPF STA上触发绑定按钮、同一MEM一次事务、原MOC编译、正式MRK异步执行及结果/Trace，不仅是直接调用辅助方法；在对应Windows CI成功以前标记“待验”。
 
 ## 4. 不属于本轮完成的内容
 
