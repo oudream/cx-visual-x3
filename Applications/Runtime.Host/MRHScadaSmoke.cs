@@ -256,11 +256,11 @@ namespace CxVisual.Runtime.Host
                                 ExpectedDeploymentVersion=group.DeploymentVersion,
                                 ExpectedConfigVersion=group.Find(b).ConfigVersion,
                                 ExpectedGeneration=group.Find(b).Generation};
-                            MRHScadaPipeReply second=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,other);
-                            Check(second.Status=="Ok"&&second.Devices.Length==1&&
-                                second.Devices[0].ScopeId=="stationB"&&
-                                second.Devices[0].Generation!=snapshot.Devices[0].Generation&&
-                                second.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
+                            MRHScadaPipeReply stationBReply=MRHScadaReadOnlyPipe.ExchangeForSmoke(pipeName,other);
+                            Check(stationBReply.Status=="Ok"&&stationBReply.Devices.Length==1&&
+                                stationBReply.Devices[0].ScopeId=="stationB"&&
+                                stationBReply.Devices[0].Generation!=snapshot.Devices[0].Generation&&
+                                stationBReply.Devices[0].Points.Any(x=>x.StablePointId=="word100"&&
                                     x.HasValue&&x.Value=="45"&&x.Quality=="Good"),
                                 "本机Pipe跨设备Scope/值/会话串台");
                             query.ExpectedDeploymentVersion="stale-project-effective";
