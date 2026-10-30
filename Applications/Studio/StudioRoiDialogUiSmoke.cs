@@ -363,13 +363,13 @@ namespace CxVisual.Studio
                 revision=vm.ProjectSession.Revision;
                 // 使用原MEM History验证一笔Data+Visual事务能原样撤销/重做，
                 // 不由MVI OverlayStore另建编辑历史。
-                vm.ProjectSession.Undo().RequireValue();
+                await Click(hwnd,"Studio.Engineering.Undo");
                 MEMPage undoPage=vm.ProjectSession.Find(pageId) as MEMPage;
                 Require(undoPage!=null &&
                     CxVisionRoiEngineering.Open(vm.ProjectSession,
                         vm.ProjectSession.GetAddress(undoPage.RootContent)).RoiId==roi.Id,
                     "撤销必须原子恢复原ROI的Data与Visual身份");
-                vm.ProjectSession.Redo().RequireValue();
+                await Click(hwnd,"Studio.Engineering.Redo");
                 MEMPage redoPage=vm.ProjectSession.Find(pageId) as MEMPage;
                 Require(redoPage!=null &&
                     CxVisionRoiEngineering.Open(vm.ProjectSession,
