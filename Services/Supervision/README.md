@@ -108,3 +108,12 @@ H5 “守护诊断”、运行总览和程序详情已补充“启动隔离（�
 启动凭证在 `Started(PID)` 时尝试补记 OS 创建时间 `processStartMs`；Daemon 异常重启时使用同一已有 `launchjournal.Scan` 只读观察当前 PID 创建时间及真实可执行文件是否吻合，核验结果合并到隔离原因，并通过原 `GET /api/v1/guard` 呈现在“守护诊断”和“程序详情”。新增的是诊断能力，不是进程归属或远程权限。即使同一 PID、OS 创建时间及程序文件都观察一致，也不得自动 Kill、自动清账或自动解除守护隔离；无法获取 OS 证据时状态仍为未知。
 
 实现与验收详情：[全类架构第27章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)及[S01-S12验收矩阵第22章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。正式 Go/Windows/macOS CI 和现场 PID 重用验收尚需固定 SHA 结果。
+
+
+## 停止操作持久化对账与新H5页面（2026-10-30）
+
+本轮先修复启动凭证的两个安全问题：`Begin` 改为按 Program ID 的 `O_EXCL` 独占创建，`Started`/`Finished` 校验 AttemptID/ProgramId/Stage/PID，防止同一程序并发创建或不同守护代次覆盖/清除凭证。新增并发/篡改/删除回归测试。
+
+新增 `internal/stopjournal` 本地 `daemon-stop-operations.ndjson`：停止前先 Sync 持久 `requested`，后续同一 OperationID 追踪 refused、signal-failed、unknown 和原 Worker 的 wait-confirmed；重启后按 OperationID 合并，较晚 unknown 不覆盖已有 Wait 确认。原 Daemon/Monitor 与原事件协议不变，日志损坏/超限会拒绝新的受管软件停止，须受控离线恢复，绝非设备独立安全急停的替代品。
+
+新增本机只读 `GET /api/v1/stops/history` 与 H5 “停止历史”页面，支持未结清查询、OperationID/ProgramId/PID/时间/错误详情及跳转程序，绝不开放远程启停或解锁。相关 [V2.0架构第28章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)、[验收矩阵第23章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)和[部署归档说明](deploy/README.md)已同步。本轮新增源码与测试已提交，正式 Go 三平台/前端 CI 及设备 G1/G2/G3 仍以固定 SHA 的真实执行结果为准。
