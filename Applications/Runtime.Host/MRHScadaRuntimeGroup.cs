@@ -49,6 +49,7 @@ namespace CxVisual.Runtime.Host
         private readonly string[] _connectorVersions, _channelIds;
         private readonly object _devicesGate = new object();
         private bool _started, _stopped, _disposed;
+        private Task _stopTask;
 
         private MRHScadaRuntimeGroup(List<MRHScadaRuntime> devices,string deploymentVersion,
             Func<bool> approval,string projectPath,string configRoot,
@@ -236,9 +237,12 @@ namespace CxVisual.Runtime.Host
         }
         internal async Task StartAsync(CancellationToken cancellationToken)
         {
-            if(_started||_stopped||_disposed)
-                throw new InvalidOperationException("SCADA设备组不可重复启动");
-            _started=true;
+            lock(_devicesGate)
+            {
+                if(_started||_stopped||_disposed)
+                    throw new InvalidOperationException("SCADA设备组不可重复启动");
+                _started=true;
+            }
             try
             {
                 foreach(MRHScadaRuntime device in _devices)
@@ -254,13 +258,20 @@ namespace CxVisual.Runtime.Host
             }
         }
 
-        internal async Task StopAsync()
+        internal Task StopAsync()
         {
-            if(_stopped)return;
-            _stopped=true;
+            lock(_devicesGate)
+            {
+                // 多线程同一Stop共享完成任务，不能让第二个Caller在IO结束前返回。
+                if(_stopTask!=null)return _stopTask;
+                _stopped=true;
+                _stopTask=StopCoreAsync(_devices.Where(x=>x!=null).ToArray());
+                return _stopTask;
+            }
+        }
+        private static async Task StopCoreAsync(MRHScadaRuntime[] devices)
+        {
             List<Exception> failures=new List<Exception>();
-            // 先对所有在途采集发停止，再释放，单个Device故障不阻断其余设备关闭。
-            MRHScadaRuntime[] devices=SnapshotDevices();
             for(int i=devices.Length-1;i>=0;i--)
                 try{await devices[i].StopAsync().ConfigureAwait(false);}
                 catch(Exception error){failures.Add(error);}
@@ -269,8 +280,11 @@ namespace CxVisual.Runtime.Host
         }
         public void Dispose()
         {
-            if(_disposed)return;
-            _disposed=true;
+            lock(_devicesGate)
+            {
+                if(_disposed)return;
+                _disposed=true;
+            }
             try{StopAsync().GetAwaiter().GetResult();}catch{}
             MRHScadaRuntime[] devices=SnapshotDevices();
             for(int i=devices.Length-1;i>=0;i--)
