@@ -26,6 +26,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SharedBudgetLease();
             HttpClientSegmentedPost();
+            HttpClientBoundedResponseAndReentrantSend();
             HttpConcurrentResponses();
             HttpAggregateOverload();
             WebSocketTwoClientsRouted();
@@ -98,6 +99,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(requests==2 && responses==2 && receivedRequest.SequenceEqual(first) &&
                         receivedResponse.SequenceEqual(new byte[]{99}),
                         "HTTP Client同步/异步不得建两套独立传输或误分裂请求");
+                }
+                finally
+                {
+                    if(client.State!=FTRChannelState.Closed)client.Close();
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
+            }
+        }
+
+        /// <summary>
+        /// HTTP Client单次响应的内存峰值和重入发送：真正HttpListener回环。
+        /// 不创建第二套HTTP传输，不将协议收到的200当成远端业务ACK。
+        /// </summary>
+        private static void HttpClientBoundedResponseAndReentrantSend()
+        {
+            int port=Port();
+            string url="http://localhost:"+port+"/budget-client/";
+            var serverConfig=new FTRHttpServerChannelConfiguration {
+                Id="f17-http-client-budget-server",Prefix=url,MaxClients=2,
+                MaxRequestBytes=16,MaxResponseBytes=256,TotalBufferedBytes=4096,
+                ReceiveBufferBytes=16,ResponseTimeoutMs=5000
+            };
+            var clientConfig=new FTRHttpClientChannelConfiguration {
+                Id="f17-http-client-budget",Url=url,RequestTimeoutMs=5000,
+                MaxResponseBytes=256,ReceiveBufferBytes=16,ReceiveByteBudget=512,
+                StopTimeoutMs=5000
+            };
+            using(var server=new FTRHttpServerChannel(serverConfig))
+            using(var client=new FTRHttpClientChannel(clientConfig))
+            {
+                int requests=0,responses=0;
+                server.Received+=packet=>
+                {
+                    byte[] payload=packet.Data;
+                    Interlocked.Increment(ref requests);
+                    byte[] reply=payload[0]==1?new byte[]{11}:
+                        payload[0]==2?new byte[]{22}:new byte[256];
+                    server.ReplyAsync(packet,reply,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                };
+                client.Received+=packet=>
+                {
+                    byte[] payload=packet.Data;
+                    Interlocked.Increment(ref responses);
+                    if(payload.Length==1&&payload[0]==11)
+                    {
+                        // 旧客户端持有_sendGate调用接收订阅，回调内同步Send会自锁。
+                        client.Send(new byte[]{2});
+                    }
+                };
+                try
+                {
+                    server.Open();client.Open();
+                    // 用真实进程内HTTP OS回环，若死锁则整个CI有外层超时门禁。
+                    Task echo=Task.Run(()=>client.Send(new byte[]{1}));
+                    Check(echo.Wait(6000),
+                        "HTTP接收回调内继续同步Send发生自锁");
+                    echo.GetAwaiter().GetResult();
+                    Check(requests==2&&responses==2,
+                        "HTTP第二次请求未通过同一Send核心且没有正确交付响应");
+                    var before=client.Diagnostics;
+                    Check(before.BufferedPayloadBytes==0&&
+                        before.PayloadBufferByteBudget==512&&
+                        before.ReceivedBytes==2,
+                        "小响应预算/额度释放/真实Rx计数不正确");
+                    bool over=false;
+                    try{client.Send(new byte[]{3});}
+                    catch(FTRBudgetExceededException){over=true;}
+                    Check(over&&requests==3&&responses==2&&
+                        client.Diagnostics.BufferedPayloadBytes==0&&
+                        client.Diagnostics.RejectedPayloadBuffers>0,
+                        "大响应不得在未取得内存/快照额度时隐式分配或继续交付");
+                    // 拒绝大消息不污染父连接，同一Channel仍可继续正常请求。
+                    client.Send(new byte[]{2});
+                    Check(requests==4&&responses==3&&
+                        client.State==FTRChannelState.Open,
+                        "一次响应超预算不应杀死后续健康HTTP会话");
                 }
                 finally
                 {
