@@ -64,7 +64,7 @@ namespace CxVisual.Studio
             analyze.Click+=(s,e)=>TryAction(AnalyzeSelectedRoi);
             toolbar.Children.Add(analyze);
             var save=Button("保存专业结果","Studio.CT3D.Save");
-            save.Click+=(s,e)=>TryAction(SaveResult);
+            save.Click+=(s,e)=>TryAction(SavePendingResult);
             toolbar.Children.Add(save);
             SetRow(toolbar,0);SetColumnSpan(toolbar,2);Children.Add(toolbar);
             var host=new Grid();
@@ -325,6 +325,16 @@ namespace CxVisual.Studio
             if(!double.TryParse(_minimum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out minimum)||
                 !double.TryParse(_maximum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out maximum))
                 throw new ArgumentException("请输入有效的法向毫米上下限。");
+            RecomputeSelectedSliceRoi(minimum,maximum);
+        }
+
+        /// <summary>Studio公开专业操作，和按钮共用同一CT3D原值分析及Scene状态。</summary>
+        public CT3DAnalysisCase RecomputeSelectedSliceRoi(double minimum,double maximum)
+        {
+            if(_current==null||_state==null||_state.SelectedSliceRectangle==null)
+                throw new InvalidOperationException("请先选择二维物理ROI。");
+            if(_current.Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("当前专业Case不是MeshPlane。");
             var result=_current.RecomputeWithSliceRectangle(_root,
                 _state.SelectedSliceRectangle,minimum,maximum,CancellationToken.None);
             _pending=result;
@@ -333,8 +343,9 @@ namespace CxVisual.Studio
             _status.Text=String.Format(CultureInfo.InvariantCulture,
                 "待保存：平面{0}点、RMS={1:0.######} mm；未作工业不确定度认证。",
                 result.Plane.SampleCount,result.Plane.RmsResidualMm);
+            return result;
         }
-        private void SaveResult()
+        public void SavePendingResult()
         {
             if(_pending==null||_engineering==null||_owners==null||_caseIndex<0)
                 throw new InvalidOperationException("当前没有待保存的专业编辑结果。");
