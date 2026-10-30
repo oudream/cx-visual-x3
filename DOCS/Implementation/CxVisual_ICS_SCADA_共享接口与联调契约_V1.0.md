@@ -87,6 +87,10 @@ CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceG
 
 **新有界恢复合同（A侧新增，B不需要改驱动代码）**：只有 `--service --recover` 会自动重建只读Session。原有 FCR 采集连续全失败3轮或Network超时后，A关闭旧Channel/Provider/MDS Scope，再验证原MEM工程与MHS Effective未漂移，建立不同 `SessionGeneration`；最多3次退避重连。B必须认为旧Generation上的订阅/操作上下文全部失效，重新授权并拿到新Snapshot。配置版本漂移/无效协议报文/写回读Unknown均不得作为自动重连或自动重发依据。该功能的G1仍以对应新CI证据为准；不是安全复位、不是SCM进程守护。
 
+**新增正式多设备部署合同**：`Professional.Automation.Scada.PADScadaDeploymentConfiguration` 标注 `[FCMConfigSection("CxVisual.Automation.ScadaDeployment",SchemaVersion=1)]`。唯一配置身份为 `new FCMConfigIdentity("CxVisual.Automation.ScadaDeployment","project",MEMProject.Id.ToString("N"))`，使用现有 `MHSConfigService.ForProject(projectId).Open<PADScadaDeploymentConfiguration>()` 保存并生效；B可复用自己的通用配置编辑器，不需要复制数据表。每条 `PADScadaDeviceInstallation` 包含 `DeviceNodeGuid`、`ConnectorModuleId`、`ScopeId`、`IntervalMs`、`Contiguous`、`Enabled`，**不包含PLC地址/点值**。Host统一校验DeviceRef、Scope、Module及ChannelId互不重复，部署Effective在每轮采集前重新核验。
+
+`Runtime.Host.exe scada-group-serve <saved.cxproj> <mhsRoot>` 是多设备只读独立进程入口：从MEM ProjectId读取真正已生效的SCADA部署，再按各Module读取MCN/MPA点表及各自MDS Scope。一个工站Stop/断线不会共享另一工站的Channel/Current。首批多设备Group默认单点设备不自动重连、单个不可恢复设备故障会使长驻Host退出要求外部监督；工业多设备运行恢复与工位控制仍待下一阶段。B不要在Studio内维护私有设备运行表。
+
 ## 5. B负责的UI接入及共同联调门禁
 
 | 消费需求 | A交付的事实/接口 | B可立即做的工作 |
