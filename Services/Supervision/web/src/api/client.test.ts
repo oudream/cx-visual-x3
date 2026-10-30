@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchOverview, fetchPrograms } from './client'
+import { fetchGuardReport, fetchOverview, fetchPrograms } from './client'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -33,5 +33,31 @@ describe('supervision API security boundary', () => {
       json: async () => result,
     }))
     await expect(fetchOverview()).resolves.toEqual(result)
+  })
+})
+
+describe('read-only guard diagnostics', () => {
+  it('uses the same local-only API without cache', async () => {
+    const envelope = {
+      data: {
+        terminal: { available: false, error: 'not readable', items: [] },
+        orphans: { available: true, observedAt: '2026-10-30T08:00:00Z',
+          items: [{ programId: '9007199254740995', reason: 'unverified child' }] },
+      },
+      scope: 'local-only', kind: 'local-daemon-artifact-observation',
+      generatedAt: '2026-10-30T08:01:00Z',
+    }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => envelope,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchGuardReport()).resolves.toEqual(envelope)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/guard',
+      expect.objectContaining({ cache: 'no-store' }))
+  })
+
+  it('does not silently reinterpret a blocked remote guard query as no issues', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(fetchGuardReport()).rejects.toThrow('仅允许在 Monitor 本机查询')
   })
 })
