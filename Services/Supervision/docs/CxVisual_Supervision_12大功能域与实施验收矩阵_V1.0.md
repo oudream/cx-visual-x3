@@ -490,3 +490,16 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **证据等级与验收**：历史 Codex 固定 `5760a30d` 的 Go 三平台、Web 25 测试及浏览器 G1 已有正式记录；**该成果早于本节 S05 新代码，不能将它的 CI 成功挪作本轮新 SHA 的成功证据**。本轮新增文件目前确认在 master（S），新增后的全量 Go Build/Test/Vet/Race 与 Web Typecheck/Vitest/Build 仍待按新固定 SHA 核查。未来 G2/G3 需真实工控机负载、磁盘权限/多盘部署和长期资源采样；不能把单机软件快照称为容量告警、硬件安全或完整健康。
 
 **后续 S05 差距**：持久多时间窗趋势、采样窗口/时间同步质量、GPU/网络/磁盘 IO、阈值告警、负载容量、进程树统计和真实设备/专业性能观测，待有对应来源与实施验收后逐步加入，不预置虚假数据。
+
+
+## 26. S03 服务Owner只读快照与Ready证据三态（2026-10-30）
+
+**已落地的最小真实能力（S）**：`Mechanism/Core/Modules/Service/MLCServiceModuleBase.cs` 增加 `MLCServiceModuleObservation` 和 `Observe()`，从现有真实 `MFMModuleDescriptor`、`MLCServiceModuleState` 读取模块 Id/Name/Version、Stopped/Starting/Running/Stopping/Faulted 与 UTC 观察时间。不创建另一个持久运行状态仓、ServiceRegistry、Go Service 生命周期或伪装的本机 HTTP 服务。
+
+**最关键的真假约束**：现有 `MLCServiceModuleBase.IsReady` 仅由 Running 计算，在依赖、专业 Provider、实际请求处理器尚未核实前**不足以判定真实 ServiceReady**。新快照 `VerifiedReady` 明确区分 `null=无验证/未知`、`false=真实非就绪`、`true=当前服务Provider实际核验就绪`。Provider 可覆写 `TryObserveReadiness(out bool)`；默认无证据，观察异常亦不转成健康。非 Running 一律非 Ready。状态切换期间二次读生命周期以降低旧状态与新健康值错配风险，仍不作强一致事务/永久存活证明。
+
+**实际本地Service验证**：`Tests/TestCenter/Manual/Module/TCTServiceRequestPanel.cs` 中现有 `TCTLocalEchoService` 使用真实本地请求处理器注册、接入槽和停止状态覆写观察；无外部依赖时启动后提供 Ready 证据、停止后返回非 Ready；有尚未验证的依赖时 Unknown。现有 WPF 面板显示三态结果，`CurrentObservation` 提供真实只读快照。`Tests/TestCenter/Verification/TCTServiceRequestUiSmoke.cs` 新增 UIA 正反断言。`Tests/ArchitectureSmoke/Integration/ModuleFoundationSmokeTests.cs` 新增 `RunServiceObservation`，`Program.cs` 暴露 `--service-observe`；`supervision-migration.yml` 的 Windows Job 构建后运行专项测试，现有 TestCenter Windows UIA 工作流补正确 Core Service 路径触发。
+
+**验收分界**：源码、测试、UI更新、CI配置已提交（S），但这组新提交的固定 SHA Windows 编译、ArchitectureSmoke CLI 和真实 WPF UIA 尚未取得成功日志，G1 必须待新结果。S03 的跨进程只读观察还需从**实际装载服务实例的 Runtime.Host/专业 Host**发布权威 ServiceId/InstanceId、版本、依赖、来源时间、Generation、Ready 证据、Scope；Go Monitor 只聚合并报告 Stale/Unknown，H5 只消费确认有真实数据的接口。无可靠 Host 发布时服务页面不应显示任何“正常”数据，也不能用 Program Running 或 ProcessAlive 推出 ServiceReady。工业 G2/G3 未验。
+
+**下一工作包**：核实 Host 实际 Service 实例所有者、部署模式及原有 IPC/只读通道，复用现有 Transport/Service/Host 的正式 Owner 实现 L1 权威快照到 Go Monitor 的真正端到端接通；在真实生产/测试 Host 可发布后才开放正式 S03 Web 页面与诊断。不要另造模拟生产服务。
