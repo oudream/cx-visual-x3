@@ -78,12 +78,14 @@ MRKCommandResponse response = await hostCommandCenter.InvokeAsync(request);
 独立运行（正式CLI，不依赖Studio或HMI窗口）：
 
 ```powershell
-CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service]
+CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover]
 ```
 
 `MHS` 是持久配置/Effective真源；`MEM` 是工程身份真源。周期每轮前复核现存正式生效配置（跨Studio进程重开MHS），若版本变化或工程文件变化便FailClosed、MDS Stale、等待宿主明确重装。旧Session **不得自动重连并回放写命令**。新Session必须建立新Channel SessionId和新的MDS Provider Generation，重装期间HMI旧命令必须拒绝。
 
 **运行方式提醒**：`--service` 为真正不依赖stdin的独立控制台长驻模式，Ctrl+C触发协作Stop；未指定`--service`时支持`status/point/stop`本地命令。这还不是已经安装到SCM的Windows Service，部署守护/受信IPC仍需后续实施。
+
+**新有界恢复合同（A侧新增，B不需要改驱动代码）**：只有 `--service --recover` 会自动重建只读Session。原有 FCR 采集连续全失败3轮或Network超时后，A关闭旧Channel/Provider/MDS Scope，再验证原MEM工程与MHS Effective未漂移，建立不同 `SessionGeneration`；最多3次退避重连。B必须认为旧Generation上的订阅/操作上下文全部失效，重新授权并拿到新Snapshot。配置版本漂移/无效协议报文/写回读Unknown均不得作为自动重连或自动重发依据。该功能的G1仍以对应新CI证据为准；不是安全复位、不是SCM进程守护。
 
 ## 5. B负责的UI接入及共同联调门禁
 
