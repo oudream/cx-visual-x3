@@ -545,6 +545,8 @@ namespace CxVisual.Studio
                     Assert(window.TryCloseStudioDocument("doc.modules"),"模块中心关闭失败");
                     Assert(window.StudioEngineeringRevision==revision,"只读中心不应修改MEM");
                 });
+                CheckStep("S2 真实专业WPF能力目录、RAW强类型MEM编辑和授权边界",
+                    () => VerifyProfessionalFlowWorkspace(window));
                 CheckStep("S1-03D RAW真实文件→MEM/MOC/MRK→缺陷结果及Trace闭环",
                     VerifyCpuVisionFileClosure);
                 CheckStep("R1-01 保存工程→带Stride RAW指纹重绑→MRK复算/显示/导出",
@@ -3938,6 +3940,136 @@ namespace CxVisual.Studio
             {
                 try{Directory.Delete(folder,true);}catch(IOException){}
             }
+        }
+
+        /// <summary>
+        /// S2: the actual Studio WPF controls and authoritative MOC catalog,
+        /// one original MEM edit, file persistence, real Vision CPU/MRK and
+        /// fail-closed offline PLC without physical IO or a mock algorithm.
+        /// </summary>
+        private static void VerifyProfessionalFlowWorkspace(MainWindow window)
+        {
+            int studioRevision=window.StudioEngineeringRevision;
+            Assert(window.FindName("FlowRawPath") is TextBox &&
+                window.FindName("FlowRawWidth") is TextBox &&
+                window.FindName("FlowRawHeight") is TextBox &&
+                window.FindName("FlowRawBits") is ComboBox &&
+                window.FindName("FlowCpuThreshold") is TextBox,
+                "Studio缺少真实CPU文件绑定及配置控件");
+            var catalogMethod=typeof(MainWindow).GetMethod("CurrentCatalog",
+                System.Reflection.BindingFlags.NonPublic|
+                System.Reflection.BindingFlags.Instance);
+            Assert(catalogMethod!=null,"Studio未接入MOC实时专业能力目录");
+            MOCCapabilityCatalog catalog=
+                (MOCCapabilityCatalog)catalogMethod.Invoke(window,null);
+            Assert(catalog.Find("AI")!=null&&catalog.Find("AI").RuntimeAvailable,
+                "现有模拟专业目录被真实CPU模式破坏");
+            Assert(catalog.Find(CxVisionThresholdProvider.CapabilityId)!=null &&
+                catalog.Find(CxVisionThresholdProvider.CapabilityId).RuntimeAvailable,
+                "真实Vision CPU算法未由Studio统一能力目录发现");
+            Assert(catalog.Find(StudioProfessionalFlowResolver.RawCapabilityId)!=null &&
+                !catalog.Find(StudioProfessionalFlowResolver.RawCapabilityId).RuntimeAvailable,
+                "未显式选择RAW文件时不得声称采集Provider可运行");
+            Assert(catalog.Find(
+                CxVisual.Professional.Automation.Plc.PADPlcMrkWriteCapabilityProvider.CapabilityId)!=null &&
+                !catalog.Find(
+                    CxVisual.Professional.Automation.Plc.PADPlcMrkWriteCapabilityProvider.CapabilityId)
+                    .RuntimeAvailable,
+                "Studio不得以离线PLC端口合同冒充已授权的设备执行能力");
+
+            string root=Path.Combine(Path.GetTempPath(),
+                "CxVisual-Studio-S2-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var pixels=new byte[]{210,210,0,0,0,210,0,0,0,0,0,0,0,0,250};
+            string rawFile=Path.Combine(root,"pixels.raw");
+            string saved=Path.Combine(root,"professional.cxproj");
+            File.WriteAllBytes(rawFile,pixels);
+            var options=new CxVisionInspectionOptions{
+                PixelDepth=CxVisionPixelDepth.Bits8,GrayThreshold=200,
+                MinDefectArea=2,MaxDefectArea=100,UseAi=false};
+            var simulationField=typeof(MainWindow).GetField("_simulation",
+                System.Reflection.BindingFlags.NonPublic|
+                System.Reflection.BindingFlags.Instance);
+            Assert(simulationField!=null,"原Studio模拟Provider身份丢失");
+            var simulation=(IMRKVersionedCapabilityResolver)simulationField.GetValue(window);
+            MEMEngineeringSession session=MEMEngineering.Create("真实专业工作流STA");
+            try
+            {
+                MEMContent content=session.AddPage("Professional-CPU").RootContent;
+                int before=session.Revision;
+                var scope=new StudioProfessionalFlowResolver(options,
+                    StudioProfessionalFlowResolver.ComputeSoftwareRevision(options),
+                    CxVisionRawCpuRunner.ReadRaw(rawFile,5,3,
+                        CxVisionPixelDepth.Bits8,CancellationToken.None),
+                    simulation);
+                MOCCapabilityDescriptor inspector=scope.DescribeCapabilities()
+                    .Single(x=>x.Id==CxVisionThresholdProvider.CapabilityId);
+                MainWindow.CreateProfessionalCpuFlow(session,content,inspector,5,3);
+                Assert(session.Revision==before+1,
+                    "Studio CPU创建不是原MEM的单次事务");
+                session.SaveAs(saved);
+                using(var unused=new MemoryStream(pixels)) { } // RAW remains external.
+                MEMEngineeringSession reopened=MEMEngineering.Open(saved);
+                try
+                {
+                    MEMNodeSnapshot source=reopened.GetSnapshot().Find(content.Id);
+                    MOLWiringDefinition wiring=MOLWiringCodec.Get(source);
+                    Assert(wiring!=null&&wiring.Blocks.Count==2&&
+                        wiring.Links.Count(x=>x.Kind==MPCPortKind.Data)==1,
+                        "保存重开后真实RAW/CPU端口与连接丢失");
+                    var compiled=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        content.Id,scope);
+                    Assert(compiled.Succeeded,
+                        "同一重开MEM工程未能编译真实专业CPU: "+
+                        string.Join(",",compiled.Diagnostics.Select(x=>x.Code)));
+                    Guid cpuBlock=wiring.Blocks.Single(x=>
+                        x.CapabilityId==CxVisionThresholdProvider.CapabilityId).Id;
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+                    try
+                    {
+                        MRKFlowHandle flow=engine.StartFlow(compiled.Plan.Plan,
+                            compiled.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                        Assert(flow.Completion.Wait(TimeSpan.FromSeconds(12)),
+                            "Studio重开工程真实MRK CPU执行超时");
+                        MRKFlowResult result=flow.Completion.GetAwaiter().GetResult();
+                        string key="w"+cpuBlock.ToString("N");
+                        CxVisionInspectionResult measured=result.Results.ContainsKey(key)?
+                            result.Results[key] as CxVisionInspectionResult:null;
+                        Assert(result.State==MRKFlowState.Completed&&measured!=null&&
+                            measured.ThresholdPixelCount==4&&
+                            measured.Regions.Count==1&&measured.Regions[0].PixelArea==3&&
+                            compiled.Plan.ReadTrace(flow,0).Events.Any(x=>
+                                x.Origin.BlockId==cpuBlock&&
+                                x.Transition.State==MRKStepState.Completed),
+                            "Studio真实MEM→MOC→MRK→Vision CPU结果及SourceMap失败");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+
+                    var noRaw=new StudioProfessionalFlowResolver(options,
+                        StudioProfessionalFlowResolver.ComputeSoftwareRevision(options),
+                        null,simulation);
+                    Assert(!new MOCBuildService().Build(reopened.GetSnapshot(),
+                        content.Id,noRaw).Succeeded,
+                        "未选择RAW文件仍可执行已保存真实采图节点");
+                    int previous=reopened.Revision;
+                    var offlinePlc=catalog.Find(
+                        CxVisual.Professional.Automation.Plc.PADPlcMrkWriteCapabilityProvider.CapabilityId);
+                    MOCFlowBuilder.Edit(reopened,reopened.Find(content.Id) as MEMContent,
+                        b=>b.Step(offlinePlc.Definition));
+                    Assert(reopened.Revision==previous+1 &&
+                        !new MOCBuildService().Build(reopened.GetSnapshot(),
+                            content.Id,scope).Succeeded,
+                        "Studio离线PLC合同被误认作可直接执行的设备Provider");
+                }
+                finally{reopened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                try{Directory.Delete(root,true);}catch(IOException){ }
+            }
+            Assert(window.StudioEngineeringRevision==studioRevision,
+                "隔离专业CPU工作流验收污染了当前Studio工程");
         }
 
         private static void VerifyCpuVisionFileClosure()
