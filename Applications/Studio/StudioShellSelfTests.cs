@@ -4726,6 +4726,36 @@ namespace CxVisual.Studio
                 Assert(value.GetBinding("text")!=null&&
                     value.GetBinding("text").SourceId=="word100",
                     "Studio真实点位选择没有保存变量绑定");
+                // 原Studio属性编辑真正修改Widget量程，错误量程必须被MEM事务拒绝。
+                menu=window.CreateStudioResourceEditorMenu(page);
+                hmi=menu.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="HMI：添加工业组件");
+                numeric=hmi.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header).StartsWith("word100",StringComparison.Ordinal));
+                numeric.Items.OfType<MenuItem>().Single(x=>
+                    Convert.ToString(x.Header)=="添加进度条（0～100）")
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                MRCWidgetElement progress=page.RootContent.DescendantsAndSelf()
+                    .OfType<MRCWidgetElement>().Single(x=>x.TypeId=="core.widget.progressbar");
+                vm.Select(progress.Id);
+                StudioPropertyItem maximum=vm.Properties.Single(x=>x.Member=="maximum");
+                Assert(vm.Properties.Any(x=>x.Member=="minimum")&&
+                    vm.Properties.Any(x=>x.Member=="enabled")&&
+                    vm.Properties.Any(x=>x.Member=="content"),
+                    "Studio未向原MPM属性面板投影Widget Settings");
+                maximum.Text="250";
+                before=engineering.Revision;
+                vm.ApplyPropertyCommand.Execute(maximum);
+                Assert(engineering.Revision==before+1&&
+                    progress.GetBinding("maximum").Value.AsNumber()==250,
+                    "Studio不能实际编辑并保存进度条量程");
+                maximum=vm.Properties.Single(x=>x.Member=="maximum");
+                maximum.Text="0";
+                before=engineering.Revision;
+                vm.ApplyPropertyCommand.Execute(maximum);
+                Assert(engineering.Revision==before &&
+                    progress.GetBinding("maximum").Value.AsNumber()==250,
+                    "最大值等于最小值未被拒绝或污染了工程Revision");
                 // 状态灯在同一次事务添加图元与标签。
                 menu=window.CreateStudioResourceEditorMenu(page);
                 hmi=menu.Items.OfType<MenuItem>().Single(x=>
