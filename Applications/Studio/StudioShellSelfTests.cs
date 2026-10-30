@@ -4044,6 +4044,16 @@ namespace CxVisual.Studio
                                 x.Origin.BlockId==cpuBlock&&
                                 x.Transition.State==MRKStepState.Completed),
                             "Studio真实MEM→MOC→MRK→Vision CPU结果及SourceMap失败");
+                        var safeSummary=typeof(MainWindow).GetMethod(
+                            "FormatFlowResultSummary",
+                            System.Reflection.BindingFlags.NonPublic|
+                            System.Reflection.BindingFlags.Static);
+                        Assert(safeSummary!=null,"Studio真实专业结果文本投影入口缺失");
+                        string preview=(string)safeSummary.Invoke(null,new object[]{flow});
+                        Assert(preview.Contains("阈值像素=4")&&
+                            preview.Contains("区域数=1")&&
+                            !preview.Contains("210,210"),
+                            "真实Vision结果预览未显示可信标量或泄露RAW负载");
                     }
                     finally{engine.StopAsync(true).GetAwaiter().GetResult();}
 
