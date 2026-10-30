@@ -71,6 +71,41 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             return new MPWVolumeDisplayMesh(vertices,new List<int>(mesh.TriangleIndices));
         }
 
+        /// <summary>把真实二维物理ROI与毫米法向范围转换为可见3D棱柱。
+        /// 只创建显示Mesh，真实ROI来源/参数仍由MVI及CT3D保存。</summary>
+        public static MPWVolumeDisplayMesh ProjectSliceRoiPrism(
+            FVOPhysicalSliceRectangle roi,double minimumOffsetMm,double maximumOffsetMm,
+            FVOVolumeSpatialFrame frame,int width,int height,int depth)
+        {
+            if(roi==null)throw new ArgumentNullException("roi");
+            if(frame==null)throw new ArgumentNullException("frame");
+            if(double.IsNaN(minimumOffsetMm)||double.IsInfinity(minimumOffsetMm)||
+                double.IsNaN(maximumOffsetMm)||double.IsInfinity(maximumOffsetMm)||
+                maximumOffsetMm<=minimumOffsetMm)
+                throw new ArgumentOutOfRangeException("maximumOffsetMm");
+            FVOPhysicalPoint3D a=roi.TopLeft,b=roi.TopRight,c=roi.BottomRight,d=roi.BottomLeft;
+            double ux=b.X-a.X,uy=b.Y-a.Y,uz=b.Z-a.Z;
+            double vx=d.X-a.X,vy=d.Y-a.Y,vz=d.Z-a.Z;
+            double nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+            double length=Math.Sqrt(nx*nx+ny*ny+nz*nz);
+            if(!(length>1e-12)||double.IsInfinity(length))
+                throw new InvalidOperationException("二维ROI物理角点退化，无法形成三维棱柱。");
+            nx/=length;ny/=length;nz/=length;
+            FVOPhysicalPoint3D[] corners={a,b,c,d};
+            var vertices=new List<FGEPoint3D>(8);
+            foreach(double offset in new[]{minimumOffsetMm,maximumOffsetMm})
+                foreach(FVOPhysicalPoint3D p in corners)
+                    vertices.Add(new FGEPoint3D(
+                        p.X+nx*offset,p.Y+ny*offset,p.Z+nz*offset));
+            var triangles=new int[]{
+                0,2,1, 0,3,2, 4,5,6, 4,6,7,
+                0,1,5, 0,5,4, 1,2,6, 1,6,5,
+                2,3,7, 2,7,6, 3,0,4, 3,4,7
+            };
+            return ProjectMesh(new FGETriangleMesh3D(vertices,triangles),
+                frame,width,height,depth,12);
+        }
+
         /// <summary>仅预览级三角抽样LOD：按稳定面片步长选取，原始FGE Mesh不改变。
         /// 可能出现开放边界，不得用于拓扑、表面积、体积或工业计量。</summary>
         public static MPWVolumeDisplayMesh ProjectMeshPreviewLod(
