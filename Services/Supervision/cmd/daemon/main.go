@@ -32,6 +32,14 @@ const (
 	minute5 = 5 * 60 * 1000
 )
 
+// safeManagedPID prevents accidental signals to PID 0/process groups,
+// negative identifiers, or the supervising Daemon itself. A positive PID is
+// still only a candidate: the process ownership/identity must be verified
+// before any future remote-control feature is enabled.
+func safeManagedPID(pid int) bool {
+	return pid > 0 && pid != os.Getpid()
+}
+
 func exitPidFiles(programs []program.Program) {
 	for i := 0; i < len(programs); i++ {
 		a := &programs[i]
@@ -202,7 +210,7 @@ func main() {
 			cancelWorkers()
 			daemonc.DaemonRun.Store(false)
 			for ProgramId, pid := range _runProgramIds {
-				if pid > 0 {
+				if safeManagedPID(pid) {
 					proc, err2 := os.FindProcess(pid)
 					if err2 == nil && proc != nil {
 						_ = proc.Kill()
@@ -267,7 +275,7 @@ func main() {
 								}
 								// sync to daemonc
 								if bKill {
-									if pid, ok := _runProgramIds[ad.ID]; ok && pid > 0 {
+									if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
 										proc, err := os.FindProcess(pid)
 										if err == nil && proc != nil {
 											_ = proc.Kill()
@@ -323,7 +331,7 @@ func main() {
 							if err == nil {
 								_logger.Printf(_title.Info+"daemon restart program req, program[%s](%d)", ad.Path, ad.ID)
 								bProgramHasRun := false
-								if pid, ok := _runProgramIds[ad.ID]; ok && pid > 0 {
+								if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
 									proc, err := os.FindProcess(pid)
 									if err == nil && proc != nil {
 										_ = proc.Kill()
