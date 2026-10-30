@@ -123,3 +123,12 @@ CxVisual.Runtime.Host.exe scada-serve <saved.cxproj> <mhsConfigRoot> <MEMDeviceG
 HMI-B可按以上合同用Windows NamedPipeClientStream连接本机同账户Host并做受控只读Snapshot；运行Generation或Effective改变后必须重新discover，不复用旧控制上下文。该功能不提供可靠持续订阅、跨账户身份/角色、命令、告警历史或远程控制，后续需由现有公共Owner实施。Windows G1使用双PLC真实本机TCP FC03、MDS Good/Revision，再经真实Pipe验证设备发现、Snapshot、旧Generation拒绝与零FC06；CI及硬件级别必须按实际固定SHA分别登记。
 
 **Owner后续收敛点**：F17 已存在 NamedPipe Channel，但当前 F17 Server 配置尚无可显式审查的同账户 ACL 注入合同；本版只读Pipe属于 Host 的受限本机观察控制面，不用于现场 PLC/设备连接，也不注册通用 Channel。正式跨账户/远程和流式订阅接入前，须由 F17/安全 Owner 审查是否将 ACL、身份/流控及消息封装归一到现有 Transport，禁止在 SCADA 扩展第二套通用通信框架。
+
+
+## 8. HMI-B实际客户端联调差异（2026-10-30，非越权改代码）
+
+只读核查聊天B新提交的 Professional/HMI/PHMScadaReadOnlyPipeClient.cs 后，A侧将两个必须遵守的v1协议条件记录为正式联调阻断，而不是修改B的源码：
+1. .NET Framework 4.8 的 PipeStream 不能依赖继承的 Stream.ReadTimeout / Stream.WriteTimeout 属性（默认 CanTimeout=false）。B的 Exchange 内目前设置了这两个属性；应由B Owner用3秒连接/单次操作截止、CancellationToken注册关闭NamedPipeClientStream句柄的方式处理，不在同步读写上直接设置Timeout属性。A的Host服务端已使用 CancelAfter + Dispose 关闭阻塞读取，避免坏客户端占用监听。
+2. MDS首次尚未获得PLC真实FC03采样时 HasValue=false；A的v1 Point.Value、Point.RefreshUtc、Point.ChangeUtc可为null，Quality初始可能Uncertain；B的 PHMScadaPointObservation 目前无条件 DateTime.TryParse(RefreshUtc)，应先检查 HasValue，仅在存在真实采样时解析非空UTC时间。不能把DateTime.MinValue或当前系统时间冒充设备采样时间。
+
+已有真实采样时A提供ISO8601 RefreshUtc/ChangeUtc；MDS质量降级为Stale仍保留上一笔真实采样时间。以上是 **A与B接口语义对齐要求**，不表示B代码已修复或完成联合Windows CI。其他共享点：SchemaVersion=1、同Windows用户ACL、三重版本锁、无远程写命令均不变。
