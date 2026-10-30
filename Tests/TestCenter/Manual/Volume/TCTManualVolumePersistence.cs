@@ -105,10 +105,10 @@ namespace CxVisual.TestCenter.UI
                             throw new InvalidDataException("当前三维Case索引在已保存工程中不存在。");
                         owner=owners[capturedCaseIndex];
                     }
-                    CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,root,analysis,cancellation);
                     savedLayout=BuildSavedSceneLayout(analysis,capturedVisuals,capturedSelection);
-                    MVI3DSceneLayoutPersistence.Commit(engineering,owner,engineering.Revision,
-                        savedLayout,cancellation);
+                    var sceneAspect=MVI3DSceneLayoutPersistence.CreateAspect(savedLayout,cancellation);
+                    CT3DAnalysisPersistence.Commit(engineering,owner,engineering.Revision,
+                        root,analysis,sceneAspect,cancellation);
                     cancellation.ThrowIfCancellationRequested();
                     engineering.SaveAsAsync(full,cancellation).GetAwaiter().GetResult();
                     savedToken=engineering.StoreToken;
