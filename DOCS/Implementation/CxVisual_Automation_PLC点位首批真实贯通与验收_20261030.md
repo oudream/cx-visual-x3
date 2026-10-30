@@ -78,3 +78,24 @@ Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
 - **保留风险**：这一层是“操作开始前的配置一致性”守卫，不是对运行期可变配置的原子版本冻结；Connector与MPA真实请求过程中的并发配置变更，仍需在公共配置/运行Owner实施不可变Session快照和安全切换，不应由Automation另建一套配置系统。跨实例设备资源仲裁仍须正式M12/MRK租约。
 
 本批新的Windows G1以及完整回归结果，必须关联修订提交SHA审查；未见结论前不得改为PASS。
+
+## 八、WP02：运行态可信读回与质量恢复（持续开发）
+
+本批继续修改真实代码，区分 **协议响应到达** 与 **允许将值发布到 MDS**：
+
+1. `PADPlcPointBridge.ReadConfirmedAsync` 先将 FC03 入站映射写到单次请求局部的 `StagedReadAccess`，核验连接 `SessionId`、点表签名、映射结果和值类型后，才通过现有 `IMPADataTargetAccess.WriteAsync` 提交 MDS。不新建持久Current仓。
+2. 在测试 TCP 服务器中暂停已收到的 FC03 请求，并在设备回包前修改工程点表地址，检查失败请求没有改变 MDS 值与 Revision；随后恢复原地址并重新采样。该测试是实际 TCP 往返，不模拟 MPA/MCN 的成功结果。
+3. MDS 增加 Provider Host 专用的 QualityOnly 样本；仅 `Bad/Uncertain/Stale` 可无值更新质量，绝不允许凭无值质量事件恢复 `Good`。已有采样值/RefreshUtc/ChangeUtc 必须保留；没有初始采样时不制造值。
+4. `PADDeviceVariableProvider.EmitQuality` 使用 Host 原有 ProviderId/PointId/Scope/Generation 绑定。PLC读回超时/写请求结果不明时标记已知样本为 Stale；只有新的真实读回才能恢复 Good。
+5. `PADPlcPointBridge` 订阅 F17 `StateChanged`：关闭、Faulted、Opening、Closing时把已采样 PLC 点标为 Stale，`Dispose` 解除订阅；不新建状态轮询线程和第二份设备健康仓。
+
+**工业边界**：Stale 是“该源的最后数据不再可用”的质量告警，不是机器设备已经安全停止的证据；PLC写FC06＋读FC03仍只是寄存器回读，不是Motion/Fluid/XRay等动作PhysicalDone。配置校验不是跨线程原子冻结，完整执行资源互锁仍由 M12/MRK 正式机制承接。
+
+### 回归证据与状态
+
+- `bcf6f3342d13639ada81412e42404af197085dd5`：临时读值暂存/双重会话校验的 Windows G1 **通过**。
+- `60da269d5cfa26eb748442ae0b16912350806bea`：在途 FC03 回包点表漂移的 Windows G1 及 Config L1 **通过**。
+- 后续质量Only、断线Stale以及最新测试的 G1：**按对应 GitHub Actions SHA 确认，尚不可预填 PASS**。
+- 真实 PLC 设备固件、异常断网和工位安全系统的 G2/G3：**未执行**。
+
+下一步优先：①M12/MRK真实资源租约与操作身份上下文；②PLC多测点/批量扫描与Bad/Stale分级；③Studio/TestCenter真实PLC点表和调试面板；④真正现场设备G2/HIL。
