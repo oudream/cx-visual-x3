@@ -555,3 +555,16 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - **严格边界**：当前**ROI→MRK是同会话预览能力**，不是已持久化的MEM ROI工程，不具备跨保存重开可追溯ROI形状快照或正式发布授权；输出精度为像素面积，不是校准物理面积。用户要求的R1全流程CASE-07（ROI提交、Undo/Redo、保存重开再执行）仍待基于既有MEM Visual/Data Aspect实现，不得把本预览冒称CASE-07闭环。
 - **证据等级**：这轮只有GitHub真实源码、.NET48正式项目既有编译项和测试源码（G2）；未取得匹配SHA的Windows全量构建、WPF STA真实执行和设备HIL结果。CI未知不得报告通过。
 
+## 34. R1 CASE-07：二维面积ROI正式MEM Data/Visual同事务与保存重开复算（2026-10-30）
+
+### 34.1 本批已实现的真实合同
+- **精确承接已有Owner**：`MVIImageOverlayItem`拥有当前图像坐标、形状ROI、顶点、样式和`ContainsRoiPixelCenter`；`MEMEngineeringSession/MTCEditSession.SetAspect`拥有工程事务、Revision、Undo/Redo和Store；`FIMRawImageWriter`拥有逐行无损像素流；`CxVisionDataFlow.RunRoiInspectionPreviewAsync`继续使用FIM阈值+MRK专业计算，不重复写一套几何命中或图像分割算法。
+- **专业实现**：`Professional/Vision/CxVisionRoiEngineering.cs`新增正式`Commit`、`Open`、`RunSavedAsync`和小型只读使用的`CxVisionRoiRecipe`投影合同；明确SourceId、原图尺寸/PixelFormat、内容SHA-256指纹、MHS配置Revision及阈值/Min-Max面积/ROI稳定Guid。写入**同一个MEMContent**的`MPMAspectKind.Data`（源/参数）与`MPMAspectKind.Visual`（MVI原始坐标几何及显示属性），`engineering.Edit(...expectedRevision...)`**一次正式事务**提交，不额外添加工程/图仓/私有Undo栈。单ROI顶点最多1024，两个Aspect分别受MEM 4MiB上限，源字节不写入工程Blob；Hash使用FIM无损Writer流到SHA-256，不复制额外整帧。读回校验ROI几何身份一致、Schema、来源格式/参数及预算。
+- **执行路径**：`RunSavedAsync`从正式Aspect重建原`MVIImageOverlayItem`，先对重新输入的`FIMImageBuffer`校验尺寸、像素格式和逐行像素SHA-256，再调用现有FIM→MRK同源ROI分析。相同工程重新运行生成新的RunId，旧结果不被覆盖；不同像素但相同宽高的图像明确拒绝。**仅证明Headless/Studio专业预览可重复，不是设备发布、持久Run Artifact或AI运行授权**。
+- **Studio可操作入口**：原ModuleCenter真实MPW图窗结果面板新增`Studio.ModuleCenter.CommitSelectedRoi`及`Studio.ModuleCenter.RunSavedRoi`。用户选中面积ROI后显式确认，写入当前ActivePage.RootContent的Data/Visual双Aspect，可继续使用既有Studio Undo/Redo及Save/SaveAs。再次运行从当前工程读取ROI、验证当前已重新绑定的原图及ProjectRevision，并将结果回投同一MPW和MVI；仅临时恢复ROI显示，不对临时叠加Store建立持久状态。工程文件并不嵌入RAW图像，重新打开须显式重新装载同源像素。
+- **测试**：`RuntimeVisionArtifactsTests.SavedRoiDataVisualEngineering`真正使用4×4 Gray8与三角ROI、正常阈值200，验证同Revision增1、Data/Visual两Aspect、Guid/顶点、MEM Undo/Redo、SaveAs/Close/Open、同源重跑不同RunId及6px²、相同尺寸异像素Hash拒绝、取消与Stale Revision拒绝，工程不因运行而Dirty；Studio Shell真实UI测试检查两个按钮已安装于共用结果面板。
+- **提交**：[专业Data/Visual和Hash运行](https://github.com/oudream/cx-visual-x3/commit/a8b0007c9ca14baeab53ee789c835dc782634d3a)、[正式工程编译引用](https://github.com/oudream/cx-visual-x3/commit/2d3e4f8831e110243c6d6eed5fc191fe71580dc7)、[MEM持久化与MRK真实回归](https://github.com/oudream/cx-visual-x3/commit/a40d49c41d2b0481dc7eb5e53950371a74eafc90)、[Studio用户操作入口](https://github.com/oudream/cx-visual-x3/commit/44cb049d5ffe273d0653d7176f66b7dfd3057fd5)、[Studio UI自测](https://github.com/oudream/cx-visual-x3/commit/4b63b35e16d7539c6e7f0bbf63d25baec613e9ce)。
+### 34.2 后续收口
+- **本次仅G2源码已提交**：完整Windows .NET Framework4.8 Release/x64编译、ArchitectureSmoke --imaging/--vision-results、Studio --module-center-cpu-self-test及真实WPF操作日志尚无匹配固定SHA证据；没有宣布CASE-07整体通过。
+- 仍缺一项真正覆盖单一Studio工程的**R1全路径STA操作回归**：用户从启动Studio、打开源图、绘制ROI、明确提交、Undo/Redo、保存工程、关闭重开、重新装载源图、重新运行、CSV/RAW导出；还须明确脱离预览的长期Result Artifact引用、数据重绑定UI和多人版本冲突/授权、性能大图压力。AI明确后期。当前同一Content保存一个经确认的ROI配方，未来多ROI必须沿正式MEM的Content/Group组织扩展，不应改成私有列表。
+
