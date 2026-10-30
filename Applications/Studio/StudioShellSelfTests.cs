@@ -4795,6 +4795,17 @@ namespace CxVisual.Studio
                     window.OpenStudioDocument("doc.config");
                     Assert(window.GetStudioContentIds().Contains("doc.config"),
                         "SCADA项目部署未复用既有MHS配置文档");
+                    LayoutDocument config=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<DependencyObject,bool> hasScada=null;
+                    hasScada=element=>
+                        element is MPWConfigEditorControl<
+                            CxVisual.Professional.Automation.Scada.PADScadaDeploymentConfiguration>||
+                        System.Windows.LogicalTreeHelper.GetChildren(element)
+                            .OfType<DependencyObject>().Any(child=>hasScada(child));
+                    Assert(config.Content is DependencyObject &&
+                        hasScada((DependencyObject)config.Content),
+                        "SCADA部署仍未复用真正MHS Schema动态配置Editor");
                     AssertThrows(()=>window.SetStudioConfigurationRoot(mhsRoot));
                     Assert(window.TryCloseStudioDocument("doc.config",true),
                         "MHS项目配置文档没有正常释放");
