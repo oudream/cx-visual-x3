@@ -86,16 +86,24 @@ namespace CxVisual.Runtime.Host
             }
             deployment.Validate();
             // 重新OpenExisting而不是读取缓存Section：另一个Studio进程提交也必须在发包前拒绝。
+            // MHSConfigStorage.Initialize使用独占write.lock，即使只读OpenExisting亦如此。
+            // 多PLC的FCR周期回调会同时检查同一项目级Deployment；若不串行化，
+            // 互相抢占同一FileShare.None锁并把暂时的IOException误认为版本漂移。
+            // 只串行化这一项目Effective核验，不锁设备扫描、协议或MDS Current。
+            object deploymentReadGate=new object();
             Func<bool> approved=()=>
             {
-                try
+                lock(deploymentReadGate)
                 {
-                    var live=new MHSConfigService(configRoot)
-                        .OpenExisting<PADScadaDeploymentConfiguration>(identity);
-                    return !live.HasPendingApply &&
-                        string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal);
+                    try
+                    {
+                        var live=new MHSConfigService(configRoot)
+                            .OpenExisting<PADScadaDeploymentConfiguration>(identity);
+                        return !live.HasPendingApply &&
+                            string.Equals(live.EffectiveVersion,version,StringComparison.Ordinal);
+                    }
+                    catch {return false;}
                 }
-                catch {return false;}
             };
             MRHScadaDeviceLaunch[] items=deployment.Devices.Where(x=>x.Enabled)
                 .Select(x=>new MRHScadaDeviceLaunch(Guid.Parse(x.DeviceNodeGuid),
