@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +28,14 @@ namespace CxVisual.Studio
     /// </summary>
     internal static class StudioRoiDialogUiSmoke
     {
+        [DllImport("user32.dll",SetLastError=true)]
+        private static extern bool SetCursorPos(int x,int y);
+        [DllImport("user32.dll")]
+        private static extern void mouse_event(uint flags,uint x,uint y,uint data,
+            UIntPtr extraInfo);
+        private const uint MouseLeftDown=0x0002;
+        private const uint MouseLeftUp=0x0004;
+
         private static void Require(bool passed,string message)
         {
             if(!passed)throw new InvalidOperationException("IMG05_UIA: "+message);
@@ -167,6 +176,54 @@ namespace CxVisual.Studio
             throw new TimeoutException("IMG05_UIA 等待失败："+reason);
         }
 
+        /// <summary>真实Windows系统指针拖动；不能把路由合成事件冒充鼠标输入。</summary>
+        private static async Task<Guid> DrawRectangleWithNativeMouse(
+            MainWindow window,MPWImageViewerControl viewer,Guid oldRoiId)
+        {
+            FrameworkElement viewport=viewer.FindName("ViewportRoot") as FrameworkElement;
+            Require(viewport!=null,"MPW原图ViewportRoot未找到");
+            viewer.BringIntoView();
+            window.Activate();
+            window.UpdateLayout();
+            Require(viewport.IsVisible && viewport.ActualWidth>=80 &&
+                viewport.ActualHeight>=80,"当前Studio ROI图窗未在有效可绘制区域显示");
+            double step=Math.Min(viewport.ActualWidth,viewport.ActualHeight)*0.23;
+            Point center=new Point(viewport.ActualWidth/2.0,viewport.ActualHeight/2.0);
+            Point from=viewport.PointToScreen(new Point(center.X-step,center.Y-step));
+            Point to=viewport.PointToScreen(new Point(center.X+step,center.Y+step));
+            Point windowTop=window.PointToScreen(new Point(0,0));
+            Point windowBottom=window.PointToScreen(new Point(
+                window.ActualWidth,window.ActualHeight));
+            Require(from.X>=windowTop.X && to.X<=windowBottom.X &&
+                from.Y>=windowTop.Y && to.Y<=windowBottom.Y,
+                "原图视口当前被Studio宿主裁剪，真实鼠标不能触达");
+            await Task.Run(()=>{
+                int x0=(int)Math.Round(from.X),y0=(int)Math.Round(from.Y);
+                int x1=(int)Math.Round(to.X),y1=(int)Math.Round(to.Y);
+                Require(SetCursorPos(x0,y0),"无法移动Windows系统指针到图窗");
+                Thread.Sleep(100);
+                mouse_event(MouseLeftDown,0,0,0,UIntPtr.Zero);
+                for(int i=1;i<=8;i++)
+                {
+                    Require(SetCursorPos(x0+(x1-x0)*i/8,y0+(y1-y0)*i/8),
+                        "真实拖框过程中Windows指针移动失败");
+                    Thread.Sleep(35);
+                }
+                mouse_event(MouseLeftUp,0,0,0,UIntPtr.Zero);
+            });
+            await Until(()=>viewer.SelectedOverlayId.HasValue &&
+                viewer.SelectedOverlayId.Value!=oldRoiId &&
+                viewer.Overlays.Find(viewer.SelectedOverlayId.Value)!=null,
+                "真实Windows鼠标拖动后ROI没有进入唯一MVI OverlayStore");
+            MVIImageOverlayItem created=viewer.Overlays.Find(
+                viewer.SelectedOverlayId.Value);
+            Require(created.Kind==MVIImageOverlayKind.RectangleRoi &&
+                created.IsAreaRoi && created.Bounds.Width>0 &&
+                created.Bounds.Height>0,
+                "实际Windows鼠标没有形成有效面积矩形ROI");
+            return created.Id;
+        }
+
         private static T HeaderControl<T>(StackPanel header,string id) where T:FrameworkElement
         {
             foreach(UIElement child in header.Children)
@@ -291,6 +348,11 @@ namespace CxVisual.Studio
                 Require(viewer.ToolMode==MVIImageToolMode.Navigate &&
                     vm.ProjectSession.Revision==revision,
                     "真实Studio ROI工具切换应恢复导航且不写入MEM");
+                await Click(hwnd,"Studio.ModuleCenter.DrawRectangleRoi");
+                Guid newlyDrawnRoi=await DrawRectangleWithNativeMouse(window,viewer,roi.Id);
+                Require(vm.ProjectSession.Revision==revision,
+                    "真实鼠标绘制仅应改变MVI临时Overlay，不能写入MEM Revision");
+                await Click(hwnd,"Studio.ModuleCenter.NavigateRoi");
                 // 旧工程ROI重绑后，无需先执行MRK也无需重读MHS，即可显式
                 // 将已选择的有效ROI几何通过原MEM单事务再次提交。
                 await Click(hwnd,"Studio.ModuleCenter.CommitSelectedRoi");
@@ -306,7 +368,8 @@ namespace CxVisual.Studio
                     Require(fromDisk!=null,"已保存工程中ROI Page身份丢失");
                     CxVisionRoiRecipe recipe=CxVisionRoiEngineering.Open(saved,
                         saved.GetAddress(fromDisk.RootContent));
-                    Require(recipe.RoiId==roi.Id &&
+                    Require(recipe.RoiId==newlyDrawnRoi &&
+                        recipe.Roi.Kind==MVIImageOverlayKind.RectangleRoi &&
                         recipe.ConfigurationRevision==43 &&
                         recipe.SourceId=="img05/native/file" &&
                         !saved.IsDirty,
