@@ -528,6 +528,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 !hiddenGesture.IsActive && !hiddenGesture.Cancel() &&
                 Object.ReferenceEquals(hiddenStore.Find(hiddenRoi.Id),hiddenRoi),
                 "外部隐藏图层后应取消后续草稿更新且不产生额外Store写入");
+            // 隐藏图层甚至不能开始新编辑，避免不可见图元被脚本拖动。
+            Ensure(!hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Move) &&
+                !hiddenGesture.IsActive,
+                "隐藏层ROI不得开始新的Move手势");
             hiddenStore.SetLayerVisible(MVIImageOverlayLayer.Roi,true);
             Ensure(hiddenGesture.Begin(hiddenRoi,MVIImageOverlayEditKind.Move) &&
                 hiddenGesture.Complete(),
