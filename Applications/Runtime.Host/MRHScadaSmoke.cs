@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.Serialization.Json;
+using System.Text;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -27,6 +31,52 @@ namespace CxVisual.Runtime.Host
             catch(TException){return;}
             throw new InvalidOperationException("SCADA-G1 expected "+typeof(TException).Name);
         }
+        // 用真实Windows子进程调用同一Host exe的只读Probe。
+        // 主测试进程持续提供OS TCP PLC和Pipe服务，子进程不持有MDS/Connector对象。
+        private static MRHScadaPipeReply ProbeFromProcess(int expectedExitCode,
+            params string[] arguments)
+        {
+            if(arguments==null||arguments.Length==0)
+                throw new ArgumentException("缺少SCADA Pipe子进程参数");
+            List<string> tokens=new List<string>();
+            tokens.Add("scada-pipe-probe");
+            foreach(string item in arguments)
+            {
+                // 此测试只使用ASCII Pipe名、GUID、vN；禁止通过参数插入额外CLI操作。
+                if(String.IsNullOrEmpty(item)||item.Any(ch=>!Char.IsLetterOrDigit(ch)&&
+                    ch!='-'&&ch!='_'&&ch!='.'))
+                    throw new InvalidOperationException("SCADA G1 子进程参数不合法");
+                tokens.Add(item);
+            }
+            string exe=Process.GetCurrentProcess().MainModule.FileName;
+            ProcessStartInfo start=new ProcessStartInfo(exe,String.Join(" ",tokens));
+            start.UseShellExecute=false;
+            start.CreateNoWindow=true;
+            start.RedirectStandardOutput=true;
+            start.RedirectStandardError=true;
+            using(Process child=Process.Start(start))
+            {
+                if(child==null)throw new InvalidOperationException("SCADA G1无法启动真实子进程");
+                Task<string> output=child.StandardOutput.ReadToEndAsync();
+                Task<string> error=child.StandardError.ReadToEndAsync();
+                if(!child.WaitForExit(10000))
+                {
+                    try{child.Kill();}catch(InvalidOperationException){}
+                    child.WaitForExit(3000);
+                    throw new TimeoutException("SCADA Pipe真实子进程10秒内未结束");
+                }
+                Task.WhenAll(output,error).GetAwaiter().GetResult();
+                Check(child.ExitCode==expectedExitCode,
+                    "跨进程Pipe探针退出码异常: expected="+expectedExitCode+
+                    " actual="+child.ExitCode+" stderr="+error.Result);
+                byte[] bytes=Encoding.UTF8.GetBytes(output.Result.Trim());
+                using(MemoryStream stream=new MemoryStream(bytes,false))
+                    return (MRHScadaPipeReply)
+                        new DataContractJsonSerializer(typeof(MRHScadaPipeReply))
+                            .ReadObject(stream);
+            }
+        }
+
         private sealed class TcpPlcFixture : IDisposable
         {
             private readonly TcpListener _listener;
@@ -302,6 +352,32 @@ namespace CxVisual.Runtime.Host
                                     x.Running && x.CompletedCycles>=2 &&
                                     x.SuccessfulCycles>=2 && x.PartialCycles==0),
                                 "本机Pipe发现必须包含独立真实FC03成功周期与零部分失败诊断");
+                            // 与HMI跨进程结构一致：另一真正Windows进程通过Pipe
+                            // 发现这两台由当前Host管理的PLC，不共享任何进程内对象。
+                            MRHScadaPipeReply processDiscovery=ProbeFromProcess(0,
+                                pipeName,"discover");
+                            Check(processDiscovery.Status=="Ok" &&
+                                processDiscovery.DeploymentVersion==group.DeploymentVersion &&
+                                processDiscovery.Devices.Length==2 &&
+                                processDiscovery.Devices.All(x=>x.Running&&
+                                    x.SuccessfulCycles>=2),
+                                "跨进程Pipe discover未获得真实双PLC运行状态");
+                            MRHScadaPipeReply processSnapshot=ProbeFromProcess(0,
+                                pipeName,"snapshot",a.ToString("N"),group.DeploymentVersion,
+                                group.Find(a).ConfigVersion,group.Find(a).Generation);
+                            Check(processSnapshot.Status=="Ok" &&
+                                processSnapshot.Devices.Length==1 &&
+                                processSnapshot.Devices[0].Points.Any(x=>
+                                    x.StablePointId=="word100"&&x.HasValue&&x.Value=="73"&&
+                                    x.Quality=="Good"&&x.Revision>0),
+                                "跨进程Pipe没有读取PLC-A真实MDS数值、质量或Revision");
+                            MRHScadaPipeReply processRejected=ProbeFromProcess(3,
+                                pipeName,"snapshot",a.ToString("N"),group.DeploymentVersion,
+                                group.Find(a).ConfigVersion,Guid.NewGuid().ToString("N"));
+                            Check(processRejected.Status=="Rejected"&&
+                                processRejected.ErrorCode=="SESSION_VERSION_MISMATCH" &&
+                                plcA.Writes==0&&plcB.Writes==0,
+                                "跨进程旧Generation未FailClosed或产生未授权FC06");
                             MRHScadaPipeRequest query=new MRHScadaPipeRequest{
                                 SchemaVersion=1,Operation="snapshot",DeviceRef=a.ToString("N"),
                                 ExpectedDeploymentVersion=group.DeploymentVersion,
