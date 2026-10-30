@@ -69,6 +69,8 @@
 - 调试暂停/继续/单步拒绝操纵当前工程Revision之外的活跃Flow；**取消**仍允许安全终止原会话，不能为了防串账阻止危险流程的停止。
 - 两条真实MRK Flow在同一WPF视图间切换时，结果只显示所选FlowId及对应提交节点；一个产品的异常节点不能暴露为已提交结果，也不能污染正常产品摘要。
 - 新回归源码与CI强制检查已经提交；其**最新固定SHA自动化成功证据未确认前，ORCH-04/05/06不能按新保护关闭**。若Windows出现编译/STA/Runtime失败，必须先在master修复、重新运行并登记。
+- [Studio S1 #40998299316](https://github.com/oudream/cx-visual-x3/actions/runs/40998299316) 在固定`b1e22574`已成功：全量Release/x64 Build、真实WPF STA（含跨工程版本/多Flow查看断言）、Owner依赖门禁；不覆盖之后`11e0553a`增加的跨工程单步拒绝反例。
+- Runtime `4d3f519e`增加Trace历史丢失后读取已提交结果的反例；[B6 Debug/Release双配置门禁提交`40fae6d0`](https://github.com/oudream/cx-visual-x3/commit/40fae6d0fb02d1a2fa1922768513a852461df171)在既有`unified-runtime-windows.yml`内增加Debug/x64全解决方案Build和真实`--orchestration-vertical`、`--orchestration-industrial`及默认回归。该新增门禁尚待对应SHA的Windows执行证据，不能以历史仅Release成功代替。
 - 结果投影只包含节点ID、受控类型/数值/长度、最多32项的Studio摘要；不把大图像、体数据、敏感原文或MRK Flow句柄存入历史UI缓存。
 
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
