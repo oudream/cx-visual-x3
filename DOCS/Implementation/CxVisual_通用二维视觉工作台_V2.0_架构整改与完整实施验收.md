@@ -384,6 +384,14 @@
 - **固定SHA全量回归补充事实**：`8895b5a9`的[Imaging #41013971612](https://github.com/oudream/cx-visual-x3/actions/runs/41013971612)和[Runtime #41013971625](https://github.com/oudream/cx-visual-x3/actions/runs/41013971625)后来均在全解决方案编译阶段失败，日志为`Professional/Automation/Plc/PADPlcMrkWriteCapabilityProvider.cs`的`IMOCCapabilityProvider/MOCCapabilityDescriptor` CS0246；根因是该固定SHA的Automation .csproj尚未引用它已使用的`Mechanism.Decision`程序集。并行Owner在[`d57392e9`](https://github.com/oudream/cx-visual-x3/commit/d57392e921825f6da474429be0c82922670e4af7)已补合法ProjectReference（当前master证实存在），**不能据此前两项失败宣称MVI手势反例失败，也不能据引用修复声称新HEAD已编译成功**。需后续同一SHA Windows CI复验。
 - **结论**：IMG-01/02仍`InProgress`；本次只收敛捕获/草稿与公共Session切图/图层可见性三处状态边界。完整双Pane真鼠标UIA、窗口焦点/多DPI、厂内大图及持续性能仍需G5/G6，既有公开API未破坏、无新增工程/NuGet/DLL。
 
+### 7.13 IMG-02/03/05 同实例源代次与Studio旧Run防串线（2026-10-30）
+
+- **事实缺口**：现有MVI Session的`OriginalGeneration`在`SetOriginal`时更新，即使传入原来的`FIMImageBuffer`实例。旧MPW `RefreshDisplay`只用`ReferenceEquals`判定原图身份，SDK重复设置同实例后旧ROI和未完成LinePair仍可能留下；Studio结果面板原先只检查Project/Page/Revision和原图引用，未将原图代次一起纳入旧Run有效性判断。
+- **MPW修复**：[bcac0217](https://github.com/oudream/cx-visual-x3/commit/bcac02174e336cab5bd9b3dc40ee230ee7b71f3e)加入`_overlayOriginalGeneration`并在`RefreshDisplay`按原图引用+代次联合失效；`ShowOriginal`、`UpdateOriginalFrame`、`Clear`等Viewer显式入口提前登记其预期同步代次，保留连续帧更新入口既有图元语义，不增加Store或跨线程Owner。
+- **真实WPF反证**：[2132d56b](https://github.com/oudream/cx-visual-x3/commit/2132d56be6f72a7a283dcb0eee8906f4d0b2f8f0)扩展既有`TCTImageViewerSmoke`：连续帧`UpdateOriginalFrame`保留ROI、外部`Session.SetOriginal(同一实例)`必须清除ROI/两线草稿；`OriginalGeneration`增加。对应[Imaging Windows #41020132319](https://github.com/oudream/cx-visual-x3/actions/runs/41020132319)在该固定SHA整条**success**，含全工程.NET48 x64编译、DAG、真实WPF ImageViewer/PNG回归、FIM/MVI与默认Smoke，可登记**该SHA G3/G4**，不是G5物理交互。
+- **Studio来源守卫**：[2083d1f4](https://github.com/oudream/cx-visual-x3/commit/2083d1f410bb3f06a3181de9c6333e85c4b71f8f)在既有`StudioShell.ModuleCenter`增加组合判断`IsStudioVisionSourceCurrent`，Bind、正式ROI Run、Contour派生与普通RAW Run均记录本次`OriginalGeneration`；页面/版本/对象身份检查保持不变，源会话代次变化不能再导出或投影旧Run为当前结果。[97b5677e](https://github.com/oudream/cx-visual-x3/commit/97b5677ef947f85e5f7bd8804ffb4a2ee69528a6)补已有Studio R1-01正式重绑测试中“切换Original/Result槽不失效，同实例SetOriginal必须失效”的正反例。
+- **验收边界**：截至本条登记，Studio新代码对应[Studio S1 #41020562945](https://github.com/oudream/cx-visual-x3/actions/runs/41020562945)、[Module Center CPU #41020562903](https://github.com/oudream/cx-visual-x3/actions/runs/41020562903)已触发，尚未核定成功；IMG-02/03/05维持`InProgress`。完整Studio真实文件弹窗/人工UIA（G5）、双Pane人手鼠标、设备HIL及工业大图（G6）尚未验收。严禁用本次已有G4代替G5/G6。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
