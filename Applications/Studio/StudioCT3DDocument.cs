@@ -175,7 +175,11 @@ namespace CxVisual.Studio
             FVOVolumeData volume=analysis.Source.LoadVolume(_root,CancellationToken.None);
             try
             {
-                if(_state!=null)_state.PropertyChanged-=OnVolumeStateChanged;
+                if(_state!=null)
+                {
+                    _state.PropertyChanged-=OnVolumeStateChanged;
+                    _state.Scene3D.Changed-=OnSceneChanged;
+                }
                 _workbench.Bind(null,null);
                 _objects.Bind(null);
                 _scene.Clear();
