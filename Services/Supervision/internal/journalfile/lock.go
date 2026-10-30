@@ -4,8 +4,10 @@ package journalfile
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -42,7 +44,16 @@ func CheckDir(dir string) error {
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("unsafe journal directory")
+			// macOS itself redirects /var and /tmp to /private. Go's
+			// t.TempDir and normal deployments may legitimately use them.
+			// Only these exact root-owned aliases and targets are allowed;
+			// links within the supervision/work directory remain forbidden.
+			if runtime.GOOS == "darwin" && (current == "/var" || current == "/tmp") {
+				if target, err := filepath.EvalSymlinks(current); err == nil && target == "/private"+current {
+					continue
+				}
+			}
+			return fmt.Errorf("unsafe journal directory: %s", current)
 		}
 		if filepath.Dir(current) == current {
 			return nil

@@ -150,18 +150,41 @@ func (a *MonA) respProgramHeartbeat() {
 
 func (a *MonA) dealProgramDaemonEvent(data []byte) {
 	var event program.Event
-	_ = json.Unmarshal(data, &event)
+	if err := json.Unmarshal(data, &event); err != nil || !validDaemonStatus(event.Status) ||
+		event.Event < program.EventStart || event.Event > program.EventMaxCount {
+		logger.Printf(_titleMons.Error+"Rejected invalid Daemon event JSON/status: %v", err)
+		return
+	}
 	dealProgramDaemonEvent(&event)
 }
 
 func (a *MonA) dealProgramStatusResp(data []byte) {
 	var statuses []program.Status
-	_ = json.Unmarshal(data, &statuses)
+	if err := json.Unmarshal(data, &statuses); err != nil || statuses == nil {
+		logger.Printf(_titleMons.Error+"Rejected invalid Daemon status JSON: %v", err)
+		return
+	}
+	seen := make(map[int64]struct{}, len(statuses))
+	for _, status := range statuses {
+		_, duplicate := seen[status.Id]
+		if !validDaemonStatus(status) || duplicate {
+			logger.Printf(_titleMons.Error+"Rejected invalid/duplicate Daemon status Program=%d", status.Id)
+			return
+		}
+		seen[status.Id] = struct{}{}
+	}
 	_programStatusRespTime = utilities.TimeGetCurrentTimestamp()
 	if updateDaemonStatuses(statuses) > 0 {
 		thisQueue.Push(monitorc.CodeMessage{Code: monitorc.CCodeProgramStatusResp})
 	}
 	logger.Println(_title.Info + "monS dealProgramStatusResp()")
+}
+
+// A syntactically damaged or contradictory response must not make retained
+// snapshots appear freshly observed. The existing wire fields remain intact.
+func validDaemonStatus(status program.Status) bool {
+	return status.Id > 0 && status.Pid >= 0 && (!status.IsRun || status.Pid > 0) &&
+		status.StartCount >= 0 && status.StartFailCount >= 0 && status.ErrorCount >= 0 && status.LastRunTime >= 0
 }
 
 // channel

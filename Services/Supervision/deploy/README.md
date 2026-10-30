@@ -96,6 +96,6 @@ Daemon 启动会合并扫描旧 PID 文件和未清算意图，即使无旧 PID 
 
 新版本使用 `supervision/.stop.lock` 和 `supervision/launch-attempts/.launch.lock` 协调证据文件。锁文件长期保留，异常退出由 OS 自动释放锁；**不可在进程运行时删除、改名或替换锁文件/父目录**，否则合作进程会锁定不同文件。Monitor 读取停止历史也需要打开协调锁文件的权限，不会追加操作记录；请为同一受控账户配置必要 ACL。旧版本不遵守此锁协议，Monitor/Daemon 应配套升级，升级和离线归档先停止两者。
 
-目录及祖先链接被拒绝；不要把 supervision 或 launch-attempts 重定向至符号链接/目录联接。新停止请求为已有 requested/unknown 预留后续回执空间，可能在达到4MiB前拒绝新请求；应提前观察容量并按上述离线流程归档。持久化证据不是防恶意篡改的审计库；相同文件权限的外部程序与突然断电仍属独立验收边界。
+目录及祖先链接被拒绝；macOS根目录标准 `/var`、`/tmp` 到各自 `/private/...` 的系统映射除外。不要把 supervision 或 launch-attempts 重定向至符号链接/目录联接。新停止请求为已有 requested/unknown 预留后续回执空间，可能在达到4MiB前拒绝新请求；应提前观察容量并按上述离线流程归档。持久化证据不是防恶意篡改的审计库；相同文件权限的外部程序与突然断电仍属独立验收边界。
 
 本机编译、并发、SQLite和六页面实证见[修复与真实验收](../docs/CxVisual_Supervision_修复与真实验收_20261030.md)。
