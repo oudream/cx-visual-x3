@@ -477,3 +477,16 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 详见[固定基线、失败根因、命令与边界](CxVisual_Supervision_修复与真实验收_20261030.md)。S02/S08/S09新增：跨进程追加和并发读取、进程被强制终止后OS释放锁、同实例启动凭证并发操作、完整身份索引（超出UI200条仍校验）、回执容量预留。反例均保留损坏/来源不可用状态，不伪报健康。
 
 本机实际结果：Windows Go 1.26.10 + CGO 构建/全包测试/vet通过，全包race及关键用例10次重复通过；真实SQLite初始化与int64往返通过；H5 npm ci/typecheck/25项测试/build通过；真实Monitor六页面、双主题、390px及错误恢复通过。新提交三平台CI另行登记；S03/S04/S06/S07/S11/S12的统一接入和现场能力仍待实施或验收，不因本次P0通过而标记完成。
+
+
+## 25. S05 真实资源性能采样与H5展示（2026-10-30）
+
+**源码（S）**：`internal/resourceview/resource.go` 复用已有 Go gopsutil 采集整机 CPU、物理内存以及 Monitor 工作目录所在文件系统的容量和使用量；CPU 为约 200ms 真实采样。`internal/httpapi/resources.go` 注册本机只读 `GET /api/v1/resources`，由 `cmd/monitor/web.go` 注入工作目录。原 `supervision.Program` CPU/RSS、UDP/SQLite、Daemon 子进程所有权及其它 Owner 不变。`resourceview.Report` 将采样范围明确标为 `host` 和 `work-dir-filesystem`，每项带 `available / sampledAt / error`，缺权限、超界、无配置或路径不存在均不得当作资源使用率 0。错误不向接口返回敏感 OS 原始路径。
+
+**界面（S）**：`web/src/views/ResourcesView.vue` 已加入“资源性能”正式导航，展示真实主机 CPU、主机物理内存和工作目录所在磁盘，独立展示 Monitor 管理的各程序 CPU/RSS，可排序、搜索 Program ID/路径和跳转已有程序详情。`stores/resources.ts` 查询失败保留旧值但标注可能过期。Dashboard 原“监控进程 RSS”更正为“受管程序 RSS 合计”，避免与主机内存混淆。没有长期数据，**不补历史趋势、不合成 GPU/网络读数、不由 ProcessAlive 推断业务/设备 Ready**。
+
+**正反测试源码**：`resourceview/resource_test.go` 覆盖 CPU 数值 NaN/Inf/负数、矛盾容量、时间、真实临时工作目录、未配置与不存在工作目录；`httpapi/resources_test.go` 覆盖外部 IP/伪造 Host/Forwarded 403、不调用未授权采样 Provider、本地 JSON 和禁止 POST。`web/src/api/client.test.ts`、`stores/resources.test.ts` 覆盖来源不可用、403、64位 ID 风险边界之外的真实数值、离线错误和旧快照保留。
+
+**证据等级与验收**：历史 Codex 固定 `5760a30d` 的 Go 三平台、Web 25 测试及浏览器 G1 已有正式记录；**该成果早于本节 S05 新代码，不能将它的 CI 成功挪作本轮新 SHA 的成功证据**。本轮新增文件目前确认在 master（S），新增后的全量 Go Build/Test/Vet/Race 与 Web Typecheck/Vitest/Build 仍待按新固定 SHA 核查。未来 G2/G3 需真实工控机负载、磁盘权限/多盘部署和长期资源采样；不能把单机软件快照称为容量告警、硬件安全或完整健康。
+
+**后续 S05 差距**：持久多时间窗趋势、采样窗口/时间同步质量、GPU/网络/磁盘 IO、阈值告警、负载容量、进程树统计和真实设备/专业性能观测，待有对应来源与实施验收后逐步加入，不预置虚假数据。
