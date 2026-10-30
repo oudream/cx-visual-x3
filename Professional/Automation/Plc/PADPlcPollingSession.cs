@@ -20,13 +20,15 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly string[] _stableIds;
         private readonly TimeSpan _interval;
         private readonly bool _contiguous;
+        private readonly Func<bool> _effectiveStillApproved;
         private FCRPeriodicJob _job;
         private bool _stopped;
         private long _successfulCycles;
         private long _partialCycles;
 
         public PADPlcPollingSession(PADPlcPointBridge bridge, IEnumerable<string> stableIds,
-            TimeSpan interval, bool contiguous = false)
+            TimeSpan interval, bool contiguous = false,
+            Func<bool> effectiveStillApproved = null)
         {
             if (bridge == null) throw new ArgumentNullException("bridge");
             if (stableIds == null) throw new ArgumentNullException("stableIds");
@@ -42,6 +44,7 @@ namespace CxVisual.Professional.Automation.Plc
             _stableIds = (string[])points.Clone();
             _interval = interval;
             _contiguous = contiguous;
+            _effectiveStillApproved = effectiveStillApproved;
         }
 
         public TimeSpan Interval { get { return _interval; } }
@@ -92,6 +95,9 @@ namespace CxVisual.Professional.Automation.Plc
 
         private async Task ScanCycleAsync(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_effectiveStillApproved != null && !_effectiveStillApproved())
+                throw new InvalidOperationException("SCADA生效工程配置已变更，停止轮询并要求重新装配");
             PADPlcScanResult result = _contiguous
                 ? await _bridge.ScanContiguousAsync(_stableIds, cancellationToken).ConfigureAwait(false)
                 : await _bridge.ScanAsync(_stableIds, cancellationToken).ConfigureAwait(false);
