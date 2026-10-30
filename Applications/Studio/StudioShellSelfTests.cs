@@ -3787,6 +3787,34 @@ namespace CxVisual.Studio
                             workspace.SelectedMeshFaceCount==8&&
                             workspace.VisibleMeshFaceHighlightCount==8,
                             "放弃V5重算预览不得更改正式MEM Result和高亮。");
+                        // 重开后直接编辑已存的专业面片集：去掉一片再原值拟合、保存并二次重开。
+                        CT3DMeshFaceReference removedFace=
+                            workspace.CurrentAnalysis.FaceRoiRecipe.Faces[0];
+                        workspace.ToggleMeshFaceSelection(removedFace);
+                        Assert(workspace.SelectedMeshFaceCount==7&&
+                            workspace.VisibleMeshFaceHighlightCount==7&&
+                            workspace.CurrentAnalysis.Plane.ResultId==savedFaceId,
+                            "重开后的V5面片应允许原值子元素编辑，不能立即污染已存Feature。");
+                        var changedFaces=AwaitStudioTask(
+                            workspace.RecomputeSelectedMeshFacesAsync(CancellationToken.None));
+                        Assert(changedFaces.FaceRoiRecipe!=null&&
+                            changedFaces.FaceRoiRecipe.Faces.Count==7&&
+                            changedFaces.FaceRoiRecipe.Signature!=savedFaceCase.FaceRoiRecipe.Signature&&
+                            changedFaces.ParameterSignature!=savedFaceCase.ParameterSignature&&
+                            changedFaces.Plane.ResultId!=savedFaceId,
+                            "七面片新配方必须独立于八面片原配方生成新的参数和Feature身份。");
+                        workspace.SavePendingResult();
+                        Guid changedFaceResultId=changedFaces.Plane.ResultId;
+                        workspace.OpenProject(project);
+                        Assert(!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==changedFaceResultId&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe!=null&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe.Faces.Count==7&&
+                            workspace.CurrentAnalysis.FaceRoiRecipe.Signature==
+                                changedFaces.FaceRoiRecipe.Signature&&
+                            workspace.SelectedMeshFaceCount==7&&
+                            workspace.VisibleMeshFaceHighlightCount==7,
+                            "V5编辑配方再保存/重开应恢复七片专业面与高亮，不能误恢复上一版本八片。");
                         Assert(window.StudioEngineeringRevision==originalRevision,
                             "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
                         window.CloseStudioDocument("doc.ct3d");
