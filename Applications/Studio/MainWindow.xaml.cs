@@ -2030,6 +2030,22 @@ namespace CxVisual.Studio
             }
             FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
         }
+        private void ShowFlowCompletionStatus(MRKFlowResult result,
+            Guid projectId,int engineeringRevision)
+        {
+            if(result==null)throw new ArgumentNullException("result");
+            if(!IsCurrentResultScope(projectId,engineeringRevision))
+            {
+                // The terminal event is real, but belongs to the former MEM
+                // version. Neither FlowId nor provider exception content may
+                // leak into a different project's visible Studio status.
+                LogicInfo.Text="旧工程MRK运行已结束，当前工程不显示其运行详情";
+                return;
+            }
+            LogicInfo.Text="仿真执行结束: "+result.State+
+                "；FlowId="+result.FlowId.ToString("N")+
+                (result.Error==null?"":"；错误: "+result.Error.Message);
+        }
         private void OnFlowDebugCancel(object sender,RoutedEventArgs args)
         {
             if(_logicFlow!=null&&_logicFlow.RequestCancel())
@@ -2366,11 +2382,16 @@ namespace CxVisual.Studio
                 update();
                 CaptureCompletedFlowPreview(_logicFlow,
                     runSnapshot.ProjectId,runSnapshot.Revision);
-                LogicInfo.Text="仿真执行结束: "+result.State+
-                    "；FlowId="+result.FlowId.ToString("N")+
-                    (result.Error==null?"":"；错误: "+result.Error.Message);
+                ShowFlowCompletionStatus(result,runSnapshot.ProjectId,runSnapshot.Revision);
             }
-            catch(Exception ex){LogicInfo.Text="编排或运行失败: "+ex.Message;}
+            catch(Exception ex)
+            {
+                LogicInfo.Text=_activeFlowProjectId!=Guid.Empty&&
+                    !IsCurrentResultScope(_activeFlowProjectId,
+                        _activeFlowEngineeringRevision)?
+                    "旧工程MRK运行发生异常，当前工程不显示其详情":
+                    "编排或运行失败: "+ex.Message;
+            }
             finally
             {
                 if(timer!=null)timer.Stop();
