@@ -121,6 +121,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     flow.Connect(capture,"Pixels",inspectBlock,"RawPixels",MPCPortKind.Data);
                     flow.Connect(inspectBlock,"Done",plcBlock,"Start");
                 });
+                // UInt16 parameters are validated by the sole MEM/MOL
+                // contract. Neither overflow nor negative values may revise
+                // the saved project or reach a device command.
+                int beforeInvalid=session.Revision;
+                foreach(string invalidValue in new[]{"65536","-1","abc"})
+                {
+                    bool invalidRejected=false;
+                    try
+                    {
+                        MOCFlowBuilder.Edit(session,root,flow=>
+                            flow.SetParameter(plcBlock,"Value",invalidValue));
+                    }
+                    catch(InvalidOperationException ex)
+                    { invalidRejected=ex.Message=="wiring.parameter_type"; }
+                    Check(invalidRejected&&session.Revision==beforeInvalid,
+                        "UInt16 illegal literal changed MEM revision or passed validation");
+                }
                 plan=new MDCDeclarativePlanCompiler().Compile(
                     session.GetSnapshot(),root.Id,catalog);
             }
