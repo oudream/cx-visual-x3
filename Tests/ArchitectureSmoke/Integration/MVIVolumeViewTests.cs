@@ -159,6 +159,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var layout=new MVI3DSceneState();
                 Guid meshVisual=layout.Add(MVI3DSceneKind.Mesh,"ct3d:mesh:verified",4,"frame:1",.6);
                 Guid cadVisual=layout.Add(MVI3DSceneKind.Cad,"cad:solid:verified",3,"frame:1",.3);
+                Guid cloudVisual=layout.Add(MVI3DSceneKind.PointCloud,
+                    "ct3d:pointcloud:verified",3,"frame:1",.45);
+                layout.SetOrganization(cloudVisual,"analysis","pointclouds");
                 layout.SetOrganization(meshVisual,"analysis","inspection");
                 layout.SetOrganization(cadVisual,"reference","inspection");
                 layout.Select(cadVisual);
@@ -182,11 +185,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var restoredScene=new MVI3DSceneState();
                     MVI3DSceneLayoutPersistence.Open(engineering,layoutAddress,restoredScene,
                         item=>item.SourceRef=="ct3d:mesh:verified"||
-                            item.SourceRef=="cad:solid:verified",CancellationToken.None);
-                    MVI3DSceneItem restoredMesh,restoredCad;
-                    Check(restoredScene.Count==2&&restoredScene.SelectedId==cadVisual&&
+                            item.SourceRef=="cad:solid:verified"||
+                            item.SourceRef=="ct3d:pointcloud:verified",CancellationToken.None);
+                    MVI3DSceneItem restoredMesh,restoredCad,restoredCloud;
+                    Check(restoredScene.Count==3&&restoredScene.SelectedId==cadVisual&&
                         restoredScene.TryGet(meshVisual,out restoredMesh)&&
                         restoredScene.TryGet(cadVisual,out restoredCad)&&
+                        restoredScene.TryGet(cloudVisual,out restoredCloud)&&
+                        restoredCloud.Kind==MVI3DSceneKind.PointCloud&&
+                        restoredCloud.GroupKey=="pointclouds"&&restoredCloud.Opacity==.45&&
                         restoredMesh.LayerKey=="analysis"&&restoredMesh.GroupKey=="inspection"&&
                         restoredMesh.Opacity==.6&&restoredCad.Opacity==.3,
                         "MEM重开恢复多对象稳定ID、分组、透明度与专业选择");
