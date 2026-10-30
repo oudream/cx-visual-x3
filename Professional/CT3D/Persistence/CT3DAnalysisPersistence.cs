@@ -215,6 +215,19 @@ namespace CxVisual.Professional.CT3D
             string root,FVOPhysicalSliceRectangle rectangle,double minimumOffsetMm,
             double maximumOffsetMm,CancellationToken cancellation)
         {
+            return RecomputeSliceRoiAndCommit(engineering,owner,expectedRevision,
+                root,rectangle,minimumOffsetMm,maximumOffsetMm,null,cancellation);
+        }
+
+        /// <summary>ROI修改与已有Scene Visual引用同一MEM事务提交。
+        /// 视觉Owner负责重绑定新ResultId，CT3D不依赖MVI；缺少重绑定器时拒绝产生悬空Scene引用。</summary>
+        public static MRIObjectAddress RecomputeSliceRoiAndCommit(
+            MEMEngineeringSession engineering,MEMContent owner,int expectedRevision,
+            string root,FVOPhysicalSliceRectangle rectangle,double minimumOffsetMm,
+            double maximumOffsetMm,
+            Func<CT3DAnalysisCase,CT3DAnalysisCase,MPMAspect> rebindVisual,
+            CancellationToken cancellation)
+        {
             if(engineering==null)throw new ArgumentNullException("engineering");
             if(owner==null||engineering.Find(owner.Id)!=owner)
                 throw new ArgumentException("ROI编辑目标必须属于当前MEM工程。","owner");
@@ -222,11 +235,22 @@ namespace CxVisual.Professional.CT3D
             if(engineering.Revision!=expectedRevision)
                 throw new InvalidOperationException("org.version.conflict");
             cancellation.ThrowIfCancellationRequested();
+            const string sceneProvider="mvi.scene3d.layout";
+            bool hasScene=owner.Aspects.Any(a=>a.Kind==MPMAspectKind.Visual&&
+                a.ProviderId==sceneProvider);
+            if(hasScene&&rebindVisual==null)
+                throw new InvalidOperationException(
+                    "专业ROI重算需要同时重绑定当前Scene的Mesh/Measurement ResultId。");
             var original=Open(engineering,engineering.GetAddress(owner),root,cancellation);
             var edited=original.RecomputeWithSliceRectangle(root,rectangle,
                 minimumOffsetMm,maximumOffsetMm,cancellation);
             cancellation.ThrowIfCancellationRequested();
-            return Commit(engineering,owner,expectedRevision,root,edited,cancellation);
+            MPMAspect visual=rebindVisual==null?null:rebindVisual(original,edited);
+            if(hasScene&&(visual==null||visual.Kind!=MPMAspectKind.Visual||
+                visual.ProviderId!=sceneProvider))
+                throw new InvalidOperationException("Scene重绑定未返回同一MVI Visual Aspect。");
+            cancellation.ThrowIfCancellationRequested();
+            return Commit(engineering,owner,expectedRevision,root,edited,visual,cancellation);
         }
 
         /// <summary>从唯一MEM工程枚举所有CT3D专业Case；逐个复用Open的Hash/Frame/算法检验。
