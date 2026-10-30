@@ -602,3 +602,11 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - 固定SHA`adbe2740`的[Module Center CPU Windows #41003894207](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)及[Studio S1 Windows #41003894214](https://github.com/oudream/cx-visual-x3/actions/runs/41003894214)均成功，支持该固定SHA Release/x64编译与相应CPU/Studio STA G4；完整Imaging独立运行、真实UIA/设备HIL另行确认。
 - 跨体系公共回归阻塞：曾有CT3D `TCTVolumeViewerSmoke.cs`超作用域的`roiEditCommand`导致全工程CS0103，本轮在`96c2094223dda15cccf07db0bb74b73122b1f740`修复为通过`frame.Commands`获取当前命令，未删测试。后续默认Smoke显示Automation Modbus `PROTOCOL_IO_MISMATCH`，已由Automation Owner在`5552a931ff9a`修复独立测试；必须分别核对最终CI不能假设整体已通过。
 
+
+### IMG-01/02 首批MVI Overlay编辑手势State实施（2026-10-30，G2待CI）
+
+- `Mechanism/Visual/Imaging/MVIImageOverlayEditGesture.cs` + .csproj：单Store单短命编辑Owner，`Begin/TryUpdate/Complete/Cancel`保留图元原快照及上次自身写入实例；外部编辑/锁定/删除后不允许旧鼠标拖动覆盖状态；没有另建工程Undo、数据树。
+- `MPWImageViewerControl.xaml.cs` & XAML：保留原WPF工具/外部API，Move/Resize/Rotate/PolygonVertex改为使用MVI State更新，Esc/MouseCapture丢失、换图、ToolMode切换统一Cancel；双Pane以归属Pane完成手势且互斥拖动。具体提交`32716947`、`5bae2ef1`、`65744af0`、`b0824bb5`、`ae623a9a`、`ab4564e5`。
+- `MVIImageOverlayTests` （`eba9d445`）：新增Begin/Update/Complete/Cancel、幂等、外部删除/锁定/替换优先的非WPF正反例。保留既有多形状图像计算及WPF TestCenter smoke；没有伪称整套指针UIA已通过。
+- 最新CI及进一步状态只认本次SHA的Windows Imaging/Studio/TestCenter工作流。参见总控7.7；IMG-01/02仍为InProgress。
+
