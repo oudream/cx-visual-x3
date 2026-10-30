@@ -33,6 +33,8 @@
 
 ## 2. 权威文档与入口顺序（仓库路径已核对）
 
+**平台公共能力总目录（2026-10-30 新增）**：[《CxVisual 平台公共能力总目录 V1.0》](Architecture/CxVisual_平台公共能力总目录_V1.0.md)——统一 Platform 公共中心、Project 资源根、Content/Symbol 独立加载/组合/共享、数据与交互双入口及 14 类公共体系的 Owner/实施边界；为导航与目标设计，不代表所有中心已实现或完成 CI。
+
 1. `DOCS/01_CxVisual_平台灵魂与架构宪法_V1.0_Review.md`：平台理念与高层约束；“Review”表明仍有待裁决项。
 2. `DOCS/02_CxVisual_01至05_统一规格基线_V4.9_Foundation_Mechanism_ProfessionalDomain_轻量黑底彩色边框.xlsx`：能力需求、对象及属性方法目标；**规划数量不代表已实现**。
 3. `DOCS/03_CxVisual_三方面逐阶段 · 原结构归属完善 V2.01.xlsx`：三方面/子方面、来源、实施阶段和旧结构归属记录；注意文件名为“原结构归属完善”，不等同于所有未来归属问题已定案。
