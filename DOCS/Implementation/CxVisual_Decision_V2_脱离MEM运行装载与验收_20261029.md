@@ -70,3 +70,10 @@
 - 固定 SHA `d0080a6ed0ac` 对应 [Decision Windows 40984207218](https://github.com/oudream/cx-visual-x3/actions/runs/40984207218)、[Unified Runtime Windows 40984207370](https://github.com/oudream/cx-visual-x3/actions/runs/40984207370) 均 **Success**：全量 .NET48 编译、ArchitectureSmoke 专项与默认回归、Host 受信公钥→真实签名 Plan→MRK Stage/安全点 Activate、无权限主体提前拒绝、跨实例水位拒绝、损坏账本拒绝均通过。
 - [6c0d072955af](https://github.com/oudream/cx-visual-x3/commit/6c0d072955afce0808ebb9c5304d239f3380d0a3)：正式 Host 的 `StageFile` 移除 `allowUnverifiedLegacyContracts` 开关，强制严格能力合同；对声明 KeyUsage 的证书要求 `DigitalSignature`。对应测试 [3184c76bcf03](https://github.com/oudream/cx-visual-x3/commit/3184c76bcf03331c2f9a5602ee05130fc9783335) 新增仅限密钥加密用途证书的拒绝反例。其 [Unified Runtime Windows 40984569527](https://github.com/oudream/cx-visual-x3/actions/runs/40984569527)，固定 SHA `3184c76bcf03`，已 **Success**：全量 Windows x64 Rebuild、Runtime/ArchitectureSmoke 默认回归、Host 签名 Plan 发布、严格能力合同和非签名用途证书拒绝均通过。
 - 安全部署前置条件：外部可信配置必须保护 Scope、证书路径、证书 SHA-256 指纹、KeyId、主体授权与安全点策略；账本目录必须施加 OS ACL、防删除及可信恢复。可信证书只提供发布签名者身份，真实机器联锁/设备 ACK/HIL 和长时间故障恢复仍需机台验收。代码并未内置测试私钥作为生产信任锚。
+
+## 2026-10-30：Stage→Activate 专业版本二次复核
+
+- [4bae45cf88db](https://github.com/oudream/cx-visual-x3/commit/4bae45cf88dbfa3e5bf1398e7bf499cc4a8f645e)：`MRHTrustedReleaseHost` 维护已签名 Stage 的 **完整能力版本表和 pending 修订号**，锁定本 Host 内 Stage/Activate 操作；`TryActivate` 先核对 Host 主体权限、MRK 当前待激活修订号和 `IMRKVersionedCapabilityResolver` 的实时版本，再调用唯一 `MRKExecutionPlanPublisher.TryActivate`。
+- 反证：未授权激活不得查询专业 Provider；签名 Stage 与激活间发生算法版本热切换不得激活；Host 当前待激活对象被其它发布替换不能作为原签名发布激活；合法版本仍需经过 MRK 自身 `Authorize/IsSafeToActivate`。
+- 对应 [Unified Runtime Windows 40985883293](https://github.com/oudream/cx-visual-x3/actions/runs/40985883293) 当前须以实际最终结论为准，**不能将提交或 CI 启动视为测试通过**。
+- 此复核仍是**软件专业版本门禁**；Provider 检查后至设备指令下发间的外部变更、设备互锁、机台 ACK/状态确认需由 Host/Automation 专业的实际安全策略保障。无设备 HIL 证据不宣称安全生产完成。
