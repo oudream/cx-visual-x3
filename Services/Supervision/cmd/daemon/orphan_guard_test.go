@@ -12,6 +12,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/process"
 	"gogo/internal/program"
+	"gogo/internal/launchjournal"
 )
 
 func TestOrphanGuardChildHelper(t *testing.T) {
@@ -183,5 +184,57 @@ func TestOrphanScanQuarantinesPIDReusedByUnrelatedExecutable(t *testing.T) {
 	exists, err := process.PidExists(int32(cmd.Process.Pid))
 	if err != nil || !exists {
 		t.Fatalf("read-only scan killed or lost unrelated PID: exists=%t err=%v", exists, err)
+	}
+}
+
+
+func TestUnreconciledLaunchEvidenceBlocksEvenWithoutLegacyPID(t *testing.T) {
+	dir:=t.TempDir()
+	const id int64=9007199254740995
+	a:=program.Program{ID:id,Path:"/managed/child",Enabled:program.ENABLE}
+	recorder:=launchjournal.New(dir,id)
+	if err:=recorder.Begin(id,a.Path);err!=nil{t.Fatal(err)}
+	// Simulate Daemon SIGKILL between intent and Start: no old PID exists.
+	orphans,err:=scanUnreconciledPrograms(dir,[]program.Program{a})
+	if err!=nil{t.Fatal(err)}
+	if !strings.Contains(orphans[id],"stage=intent pid=0") {
+		t.Fatalf("new start intent was lost without PID: %+v",orphans)
+	}
+	gate:=newProgramWorkerGate()
+	if err:=gate.quarantineOrphans(orphans);err!=nil{t.Fatal(err)}
+	if gate.start(context.Background(),id,func(){t.Error("orphan duplicate spawned")}) {
+		t.Fatal("unreconciled start intent bypassed Daemon gate")
+	}
+	if err:=recorder.Started(30901);err!=nil{t.Fatal(err)}
+	orphans,err=scanUnreconciledPrograms(dir,[]program.Program{a})
+	if err!=nil || !strings.Contains(orphans[id],"stage=started pid=30901") {
+		t.Fatalf("observed PID journal was lost: %+v %v",orphans,err)
+	}
+}
+
+func TestUnreconciledLaunchEvidenceAndOldPIDCombine(t *testing.T) {
+	dir:=t.TempDir()
+	exe,err:=os.Executable()
+	if err!=nil{t.Fatal(err)}
+	a:=program.Program{ID:77,Path:exe}
+	createLegacyPIDForTest(t,dir,a,"bad")
+	recorder:=launchjournal.New(dir,a.ID)
+	if err:=recorder.Begin(a.ID,a.Path);err!=nil{t.Fatal(err)}
+	reasons,err:=scanUnreconciledPrograms(dir,[]program.Program{a})
+	if err!=nil{t.Fatal(err)}
+	if !strings.Contains(reasons[a.ID],"invalid PID") ||
+		!strings.Contains(reasons[a.ID],"unreconciled launch"){
+		t.Fatalf("both evidence sources must be retained: %q",reasons[a.ID])
+	}
+}
+
+func TestUnreconciledLaunchUnknownFileFailsClosed(t *testing.T) {
+	dir:=t.TempDir()
+	j:=launchjournal.New(dir,22)
+	if err:=j.Begin(22,"/managed/child");err!=nil{t.Fatal(err)}
+	path:=filepath.Join(dir,"supervision","launch-attempts","unattributed.txt")
+	if err:=os.WriteFile(path,[]byte("bad"),0600);err!=nil{t.Fatal(err)}
+	if _,err:=scanUnreconciledPrograms(dir,nil);err==nil{
+		t.Fatal("unknown launch evidence cannot be ignored at startup")
 	}
 }
