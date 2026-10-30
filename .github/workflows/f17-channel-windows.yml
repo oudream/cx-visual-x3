@@ -15,6 +15,9 @@ on:
       - 'Tests/TestCenter/Manual/Channel/**'
       - 'Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs'
       - '.github/workflows/f17-channel-windows.yml'
+concurrency:
+  group: cxvisual-f17-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   f17-channel-acceptance:
     runs-on: windows-2022
