@@ -498,13 +498,16 @@
                                         ToolTip="在空Content中一次MEM事务加入可保存可重开的RAW→真实阈值/四邻接专业算法及强类型端口"/>
                             </WrapPanel>
                             <WrapPanel Margin="10,0,10,8">
-                                <TextBlock Text="CPU灰度阈值" VerticalAlignment="Center"/>
+                                <CheckBox x:Name="FlowUseEffectiveConfig" Content="使用当前MHS Effective" Margin="0,0,9,0"
+                                          VerticalAlignment="Center"
+                                          ToolTip="勾选后通过Studio已有MHS配置中心权限及Effective版本捕获专业Provider，不使用下面的软件临时阈值。配置撤销或版本变更时拒绝新执行。"/>
+                                <TextBlock Text="本地CPU临时灰度阈值" VerticalAlignment="Center"/>
                                 <TextBox x:Name="FlowCpuThreshold" Width="65" Text="200" Margin="5,0"/>
                                 <TextBlock Text="最小区域" Margin="7,0,2,0" VerticalAlignment="Center"/>
                                 <TextBox x:Name="FlowCpuMinArea" Width="65" Text="2"/>
                                 <TextBlock Text="最大区域" Margin="7,0,2,0" VerticalAlignment="Center"/>
                                 <TextBox x:Name="FlowCpuMaxArea" Width="75" Text="100"/>
-                                <TextBlock Text="离线Vision仅CPU；PLC能力允许设计，但必须经Runtime.Host授权后执行"
+                                <TextBlock Text="临时参数不是MEM/MHS配置；要发布请勾选MHS Effective。PLC仅供离线设计，执行须Runtime.Host授权"
                                            Margin="12,0,0,0" VerticalAlignment="Center"
                                            Foreground="{DynamicResource StudioMutedTextBrush}"/>
                             </WrapPanel>
