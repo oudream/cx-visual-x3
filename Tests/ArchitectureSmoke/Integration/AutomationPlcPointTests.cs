@@ -89,6 +89,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MDSProtocolDataTargetAccess(registry),
                 new FTRSubChannelAddress("aut-plc-channel"), "wrong-scope",
                 new [] { new PADPlcPointBinding("word", "word100") }));
+            // 不能将一个PLC测点额外映射到未授权MDS目标或命令中心；
+            // 这类隐藏副作用可能使普通读点引起跨站写操作。
+            MPADataMapping illicitVariable = new MPADataMapping {
+                PointRef = "word100", TargetKind = MPADataTargetKind.Variable,
+                TargetRef = "plc/Unexpected", Direction = MPADataDirection.Inbound,
+                Operation = MPADataOperation.WriteValue, Required = true
+            };
+            protocolConfig.Mappings.Add(illicitVariable);
+            Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
+                new MDSProtocolDataTargetAccess(registry),
+                new FTRSubChannelAddress("aut-plc-channel"), "plc",
+                new [] { new PADPlcPointBinding("word", "word100") }));
+            protocolConfig.Mappings.Remove(illicitVariable);
+            MPADataMapping illicitCommand = new MPADataMapping {
+                PointRef = "word100", TargetKind = MPADataTargetKind.Command,
+                TargetRef = "unsafe-command", Direction = MPADataDirection.Inbound,
+                Operation = MPADataOperation.InvokeCommand, Required = true
+            };
+            protocolConfig.Mappings.Add(illicitCommand);
+            Reject<ArgumentException>(() => new PADPlcPointBridge(connector, catalog,
+                new MDSProtocolDataTargetAccess(registry),
+                new FTRSubChannelAddress("aut-plc-channel"), "plc",
+                new [] { new PADPlcPointBinding("word", "word100") }));
+            protocolConfig.Mappings.Remove(illicitCommand);
             PADDeviceVariableProvider provider = bridge.CreateWriteProvider(
                 (principal, variable) => principal == "operator" && variable.StableId == "word");
             using (MDSVariableProviderHost host = new MDSVariableProviderHost(registry))
