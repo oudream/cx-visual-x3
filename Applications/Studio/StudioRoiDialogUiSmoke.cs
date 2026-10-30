@@ -388,8 +388,20 @@ namespace CxVisual.Studio
                 await Task.Run(()=>SetValue(hwnd,
                     "Studio.ModuleCenter.BindSavedRoiStride","10"));
                 Trace(report,"原生OpenFileDialog即将重绑已存ROI原像素");
-                await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
-                    "重新绑定工程ROI原图",raw);
+                try
+                {
+                    await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.BindSavedRoiRaw",
+                        "重新绑定工程ROI原图",raw);
+                }
+                catch(Exception dialogError)
+                {
+                    // 真实WPF业务在ShowDialog前可能提前拒绝：必须连同
+                    // RAW状态保留在FAIL报告，不把业务拒绝误诊为OS不可见。
+                    Trace(report,"首个OpenFileDialog失败时RAW状态："+status.Text+
+                        "；结果状态："+details.Text);
+                    throw new InvalidOperationException("IMG05首个RAW重绑诊断："+
+                        status.Text+"；"+details.Text,dialogError);
+                }
                 await Until(()=>status.Text.Contains("原图校验通过")||
                     status.Text.Contains("失败"),"实际RAW文件重绑");
                 Require(status.Text.Contains("原图校验通过") &&
