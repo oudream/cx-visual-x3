@@ -35,6 +35,15 @@ namespace CxVisual.Studio
             UIntPtr extraInfo);
         private const uint MouseLeftDown=0x0002;
         private const uint MouseLeftUp=0x0004;
+        private delegate bool EnumWindowsCallback(IntPtr hwnd,IntPtr state);
+        [DllImport("user32.dll",SetLastError=true)]
+        private static extern bool EnumWindows(EnumWindowsCallback callback,IntPtr state);
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
+        [DllImport("user32.dll",CharSet=CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hwnd,StringBuilder buffer,int capacity);
+        [DllImport("user32.dll",CharSet=CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hwnd,StringBuilder buffer,int capacity);
 
         private static void Require(bool passed,string message)
         {
@@ -71,6 +80,23 @@ namespace CxVisual.Studio
             pattern.SetValue(value);
         }
 
+        private static System.Collections.Generic.IReadOnlyList<IntPtr> NativeDialogHandles()
+        {
+            var handles=new System.Collections.Generic.List<IntPtr>();
+            uint currentPid=unchecked((uint)Process.GetCurrentProcess().Id);
+            EnumWindows((hwnd,state)=>{
+                uint pid;
+                GetWindowThreadProcessId(hwnd,out pid);
+                if(pid!=currentPid)return true;
+                var cls=new StringBuilder(128);
+                GetClassName(hwnd,cls,cls.Capacity);
+                if(String.Equals(cls.ToString(),"#32770",StringComparison.Ordinal))
+                    handles.Add(hwnd);
+                return true;
+            },IntPtr.Zero);
+            return handles;
+        }
+
         private static AutomationElementCollection NativeProcessWindows()
         {
             return AutomationElement.RootElement.FindAll(TreeScope.Children,
@@ -97,7 +123,14 @@ namespace CxVisual.Studio
                 catch(ElementNotAvailableException)
                 { descriptions.Add("(窗口在枚举中已关闭)"); }
             }
-            return descriptions.Count==0?"(当前桌面没有本进程顶层Window)":
+            foreach(IntPtr hwnd in NativeDialogHandles())
+            {
+                var caption=new StringBuilder(256);
+                GetWindowText(hwnd,caption,caption.Capacity);
+                descriptions.Add("Win32 #32770 Hwnd="+hwnd+
+                    " Title="+caption);
+            }
+            return descriptions.Count==0?"(当前桌面没有本进程顶层Window或Win32文件框)":
                 String.Join(" | ",descriptions);
         }
 
@@ -121,7 +154,16 @@ namespace CxVisual.Studio
                 }
                 catch(ElementNotAvailableException){}
             }
-            return nativeCandidate;
+            if(nativeCandidate!=null)return nativeCandidate;
+            // GitHub Windows runner可能在不同Windows Desktop/UIA树，
+            // 但EnumWindows仍能找到同进程真实#32770 HWND。
+            // 继续使用UIAutomation与其实际控件交互，不模拟或绕过文件框。
+            foreach(IntPtr hwnd in NativeDialogHandles())
+            {
+                try { return AutomationElement.FromHandle(hwnd); }
+                catch(ElementNotAvailableException){}
+            }
+            return null;
         }
 
         private static AutomationElement FindFileNameEditor(AutomationElement dialog)
