@@ -231,3 +231,98 @@ func TestOwnedStopActivePIDTracksOnlyAttachedChild(t *testing.T) {
 		t.Fatal("already reaped child must not appear as active")
 	}
 }
+
+
+func TestOwnedStopLateWaitReconcilesExactlyOnce(t *testing.T) {
+	cmd := startOwnedStopChild(t)
+	controller := NewStopController(1401)
+	controller.attach(cmd)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	late := make(chan StopReceipt, 2)
+	first := controller.RequestStopWithLateReceipt(ctx, cmd.Process.Pid, func(receipt StopReceipt) {
+		late <- receipt
+	})
+	if first.State != StopUnknown || first.WaitCompleted {
+		t.Fatalf("first receipt must be UNKNOWN without Wait: %+v", first)
+	}
+	// The stop signal has been accepted but the Worker has not yet
+	// invoked Wait. The first timeout must not be reported as success.
+	select {
+	case receipt := <-late:
+		t.Fatalf("final receipt reported before original Worker Wait: %+v", receipt)
+	default:
+	}
+	err := cmd.Wait()
+	if !controller.finish(cmd, err) {
+		t.Fatal("accepted signal must be attributed to controlled stop")
+	}
+	select {
+	case receipt := <-late:
+		if receipt.State != StopConfirmed || !receipt.WaitCompleted ||
+			receipt.ProgramID != 1401 || receipt.PID != cmd.Process.Pid {
+			t.Fatalf("late callback not tied to original Wait: %+v", receipt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("missing reconciliation after original Wait")
+	}
+	select {
+	case duplicate := <-late:
+		t.Fatalf("late reconciliation invoked more than once: %+v", duplicate)
+	default:
+	}
+}
+
+func TestRunProgramControlledStopEndsEnabledWorkerGeneration(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := program.Program{
+		ID: 711, Path: exe, Dir: t.TempDir(),
+		ArgsString: "-test.run=^TestOwnedStopChildHelper$",
+		EnvsString: "CX_SUPERVISION_OWNED_STOP_CHILD=1",
+		Enabled: program.ENABLE, MaxError: 4, MaxCount: 10,
+		MinExitTime: 60,
+	}
+	controller := NewStopController(a.ID)
+	events := make(chan program.Event, 8)
+	done := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	go func() {
+		defer close(done)
+		RunProgramContextWithStop(ctx, a, events,
+			func(int64) (program.Program, error) { return a, nil },
+			log.New(io.Discard, "", 0), a.Dir, nil, controller)
+	}()
+	var start program.Event
+	select {
+	case start = <-events:
+	case <-ctx.Done():
+		t.Fatal("test child never started")
+	}
+	if start.Event != program.EventStart || !start.Status.IsRun {
+		t.Fatalf("unexpected start: %+v", start)
+	}
+	receipt := controller.RequestStop(ctx, start.Status.Pid)
+	if receipt.State != StopConfirmed {
+		t.Fatalf("original Worker Wait never confirmed: %+v", receipt)
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("intentional stop wrongly started a second child in old guardian")
+	}
+	select {
+	case exit := <-events:
+		if exit.Event != program.EventExit || exit.Status.ErrorCount != 0 {
+			t.Fatalf("expected one controlled exit without crash count: %+v", exit)
+		}
+	default:
+		t.Fatal("no exit event for controlled stop")
+	}
+	if len(events) != 0 {
+		t.Fatalf("old guardian restarted after controlled stop: extra=%d", len(events))
+	}
+}
