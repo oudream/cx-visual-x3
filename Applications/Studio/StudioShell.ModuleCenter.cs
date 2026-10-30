@@ -697,6 +697,8 @@ namespace CxVisual.Studio
             CxVisionRunSummary displayedRun=null;
             FIMImageBuffer displayedOriginal=null;
             Guid displayedProject=Guid.Empty;
+            Guid displayedPage=Guid.Empty;
+            int displayedRevision=-1;
             CancellationTokenSource contourOperation=null;
             long previewEpoch=0;
             bool bindingSavedRoi=false;
@@ -705,6 +707,7 @@ namespace CxVisual.Studio
                 if(contourOperation!=null)contourOperation.Cancel();
                 displayedRun=null;displayedOriginal=null;
                 displayedProject=Guid.Empty;
+                displayedPage=Guid.Empty;displayedRevision=-1;
                 contourButton.IsEnabled=false;sourceButton.IsEnabled=false;
                 runExportButton.IsEnabled=false;rawExportButton.IsEnabled=false;
                 saveRoiButton.IsEnabled=false;runSavedRoiButton.IsEnabled=false;
@@ -715,7 +718,16 @@ namespace CxVisual.Studio
             };
             Func<bool> hasCurrentSource=()=>displayedOriginal!=null &&
                 displayedProject==_viewModel.ProjectSession.Project.Id &&
+                _viewModel.ActivePage!=null &&
+                displayedPage==_viewModel.ActivePage.Id &&
                 Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original);
+            Func<bool> hasCurrentRun=()=>displayedRun!=null &&
+                displayedProject==_viewModel.ProjectSession.Project.Id &&
+                _viewModel.ActivePage!=null &&
+                displayedPage==_viewModel.ActivePage.Id &&
+                displayedRevision==_viewModel.ProjectSession.Revision &&
+                (displayedOriginal==null ||
+                 Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original));
             // 正式工程重开后不需要先运行一条新的CPU流程；
             // 只绑定用户指定的RAW原像素，原工程Revision和Run证据保持不变。
             bindRoiButton.Click+=async (sender,args)=>{
@@ -763,6 +775,7 @@ namespace CxVisual.Studio
                     resultPreview.ShowOriginal(restored);
                     displayedOriginal=restored;
                     displayedProject=projectId;
+                    displayedPage=page.Id;
                     resultPreview.Visibility=Visibility.Visible;
                     resultExpander.Visibility=Visibility.Visible;
                     resultExpander.IsExpanded=true;
@@ -866,6 +879,8 @@ namespace CxVisual.Studio
                     displayedRun=completed;
                     displayedOriginal=original;
                     displayedProject=projectId;
+                    displayedPage=page.Id;
+                    displayedRevision=expectedRevision;
                     resultDetail.Text="工程ROI复算完成：Run="+completed.RunId.ToString("N")+
                         "，ROI="+recipe.RoiId+"；结果已连接原MPW图窗。";
                 }
@@ -881,10 +896,7 @@ namespace CxVisual.Studio
                 }
             };
             runExportButton.Click+=(sender,args)=>{
-                if(displayedRun==null ||
-                   displayedProject!=_viewModel.ProjectSession.Project.Id ||
-                   (displayedOriginal!=null &&
-                    !Object.ReferenceEquals(displayedOriginal,resultPreview.Session.Original)))
+                if(!hasCurrentRun())
                 {
                     resultDetail.Text="本Run已失效，禁止将旧结果导出为当前工程证据。";
                     return;
@@ -905,7 +917,7 @@ namespace CxVisual.Studio
                 catch(Exception ex){resultDetail.Text="Run CSV导出失败："+ex.Message;}
             };
             rawExportButton.Click+=(sender,args)=>{
-                if(displayedRun==null || !hasCurrentSource())
+                if(!hasCurrentRun() || !hasCurrentSource())
                 {
                     resultDetail.Text="当前没有同源有效Run，禁止将其他图像导出为当前证据。";
                     return;
@@ -954,17 +966,17 @@ namespace CxVisual.Studio
                 catch(Exception ex){resultDetail.Text="Run RAW导出失败："+ex.Message;}
             };
             sourceButton.Click+=(sender,args)=>{
-                if(!hasCurrentSource()) {resultDetail.Text="结果来源失效或当前为非可视Run。";return;}
+                if(!hasCurrentRun()||!hasCurrentSource())
+                {resultDetail.Text="结果来源失效或当前为非可视Run。";return;}
                 resultPreview.SelectOriginal();
                 resultDetail.Text="正在查看同一Run的原始像素快照，未二次读取RAW。";
             };
             resultList.SelectionChanged+=(sender,args)=>{
                 var selected=resultList.SelectedItem as ListBoxItem;
                 if(selected==null)return;
-                if(displayedRun==null ||
-                   displayedProject!=_viewModel.ProjectSession.Project.Id)
+                if(!hasCurrentRun())
                 {
-                    resultDetail.Text="当前工程来源已变化，拒绝显示旧Run。";
+                    resultDetail.Text="当前工程页或Revision已变化，拒绝将旧Run显示为当前结果。";
                     return;
                 }
                 try {
@@ -974,7 +986,8 @@ namespace CxVisual.Studio
                 catch(Exception ex){resultDetail.Text="结果显示被拒绝："+ex.Message;}
             };
             contourButton.Click+=async (sender,args)=>{
-                if(!hasCurrentSource()||displayedRun.Items.Any(x=>
+                if(!hasCurrentRun()||!hasCurrentSource()||
+                   displayedRun.Items.Any(x=>
                     x.Kind==CxVisionResultKind.Contour))return;
                 CxVisionRunSummary expected=displayedRun;
                 FIMImageBuffer image=displayedOriginal;
@@ -1074,6 +1087,8 @@ namespace CxVisual.Studio
                     displayedRun=report.Evidence;
                     displayedOriginal=report.SourceImage;
                     displayedProject=_viewModel.ProjectSession.Project.Id;
+                    displayedPage=report.PageId;
+                    displayedRevision=_viewModel.ProjectSession.Revision;
                     resultExpander.Visibility=Visibility.Visible;
                     resultExpander.IsExpanded=true;
                     resultList.Visibility=Visibility.Visible;
