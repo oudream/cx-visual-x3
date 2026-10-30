@@ -260,6 +260,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     savedReplay.SliceRoiRecipe.Signature==persistedEdited.SliceRoiRecipe.Signature&&
                     Math.Abs(savedReplay.Plane.PointMm.Z-persistedEdited.Plane.PointMm.Z)<1e-10,
                     "没有旧显示像素仍能原值重选ROI/毫米平面，ResultId更新但配方稳定");
+                var modifiedRecipe=persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    persistedEdited.Source,.48,.52);
+                var modifiedResult=persistedEdited.RecomputeWithSliceRoiRecipe(
+                    folder,modifiedRecipe,CancellationToken.None);
+                Check(modifiedResult.Plane.ResultId!=persistedEdited.Plane.ResultId&&
+                    modifiedResult.RoiSignature==persistedEdited.RoiSignature&&
+                    modifiedResult.SliceRoiRecipe.Signature!=persistedEdited.SliceRoiRecipe.Signature&&
+                    modifiedResult.ParameterSignature!=persistedEdited.ParameterSignature&&
+                    modifiedResult.Plane.SampleCount==persistedEdited.Plane.SampleCount,
+                    "保持原Voxel四角/样本的毫米区间修改必须更新专业参数签名");
+                Reject<InvalidDataException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    persistedEdited.Source,.8,.1));
+                Reject<InvalidOperationException>(()=>persistedEdited.SliceRoiRecipe.WithNormalOffsets(
+                    shiftedSource,.48,.52));
                 Check(engineering.Revision==editRevision+1&&
                     persistedEdited.Plane.ResultId!=restored.Plane.ResultId&&
                     persistedEdited.RoiSignature==restored.RoiSignature&&
