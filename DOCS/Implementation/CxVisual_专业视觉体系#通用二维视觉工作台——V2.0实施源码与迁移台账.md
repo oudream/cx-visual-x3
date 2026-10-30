@@ -616,3 +616,12 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 - `TCTImageViewerSmoke.VerifyEscCancelsUncommittedLinePair`（`8d94fa0469bcce27fe0ab554582b5b31b3ba7511`）在真实已加载WPF控件中使用`Keyboard.PreviewKeyDownEvent`发送Esc，验证未完成两线测量的可见草稿被清除、重新从第一点开始、工具切换无遗留Store图元；这是受控WPF事件回归，不是人手UIA G5。
 - 跨专业编译阻塞`PADPlcPointBridge.cs` CS1061，经确认`IFTRChannel`合同不含状态事件，`IFTRChannelTransport`才包含；本轮最小修复`0a4cef4d01fe0df931acc67c0acb5cc988d37fef`沿用已有Connector做法，保持断线失效策略。
 - 固定SHA`eba9d445`的[MVI状态测试 #41007034955](https://github.com/oudream/cx-visual-x3/actions/runs/41007034955)成功；新版`8d94fa04` Windows全工程Imaging/TestCenter测试在登记时尚未完成，G3/G4需待固定结果，不迁移旧成功到新SHA。
+
+
+### IMG-01/02 本轮三处交互一致性问题实装修复（2026-10-30）
+
+- `8ae31b522b8a0831383cf40fa043e91937f02ee4`：`MPWImageViewerControl`区分`HasCapturedGesture`和`HasTransientGesture`。LostMouseCapture仅取消真正的鼠标捕获编辑；跨点击LinePair/Polygon草稿可继续；Esc仍取消所有暂态。受控WPF双Pane路由反例在`f86f830904d1d4bd795e2e68ff7065fc5ed55180`提交，固定SHA [Imaging #41013724419](https://github.com/oudream/cx-visual-x3/actions/runs/41013724419)成功。
+- `101395a88cbbc0b69f86a8a94cf627976a1dcd97`：`RefreshDisplay`发现公开`MVIImageSession.Original`变化时先取消原手势/鼠标捕获/草稿并清旧选中ID，不只清空OverlayStore；`bb8bc5e87459a106ad95bac6ca09243d8a08dac8`在真实TCT WPF测试中从`viewer.Session.SetOriginal`直接切图后反证旧草稿已经结束。
+- `d8b80eba824477de909ffde7fe39a57f9bfedde8`：MVI`Complete`对外部图层隐藏进行fail-closed处理，自有未提交草稿回滚且外部隐藏配置不变；`8895b5a99bdaeb20da8dcae99846b47c634948e7`补MouseUp后重新显示仍为原几何反例。
+- 此次Owner仍为MVI/MPW，原FIM、MEM/MTC、MRK和Studio结果所有权不变，没有新的.csproj或NuGet。最新`8895b5a9`的[Imaging #41013971612](https://github.com/oudream/cx-visual-x3/actions/runs/41013971612)/[Runtime #41013971625](https://github.com/oudream/cx-visual-x3/actions/runs/41013971625)待核实固定SHA结论；G5真用户操作、工业大图仍需追加。
+
