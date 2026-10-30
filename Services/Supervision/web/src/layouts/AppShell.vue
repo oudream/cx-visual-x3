@@ -3,23 +3,29 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
+import { useGuardStore } from '../stores/guard'
 import { useThemeStore } from '../stores/theme'
 
 const route = useRoute()
 const monitor = useMonitorStore()
+const guard = useGuardStore()
 const theme = useThemeStore()
 const { error, loading, updatedAt } = storeToRefs(monitor)
 let poller: ReturnType<typeof setInterval> | undefined
 const titles: Record<string, string> = {
-  '/': '运行总览', '/programs': '程序与服务', '/alerts': '异常历史', '/events': '事件记录',
+  '/': '运行总览', '/programs': '程序与服务', '/guard': '守护诊断', '/alerts': '异常历史', '/events': '事件记录',
 }
 const title = computed(() => titles[route.path] || '运行总览')
 
 onMounted(() => {
   theme.apply()
   void monitor.refresh()
+  void guard.refresh()
   poller = setInterval(() => {
-    if (document.visibilityState === 'visible') void monitor.refresh()
+    if (document.visibilityState === 'visible') {
+      void monitor.refresh()
+      if (route.path === '/' || route.path === '/guard' || route.path === '/programs') void guard.refresh()
+    }
   }, 5000)
 })
 onBeforeUnmount(() => {
@@ -37,6 +43,7 @@ onBeforeUnmount(() => {
       <nav class="nav" aria-label="主导航">
         <RouterLink to="/"><span class="nav-icon">⌂</span>运行总览</RouterLink>
         <RouterLink to="/programs"><span class="nav-icon">▣</span>程序与服务</RouterLink>
+        <RouterLink to="/guard"><span class="nav-icon">◇</span>守护诊断</RouterLink>
         <RouterLink to="/alerts"><span class="nav-icon">!</span>异常历史</RouterLink>
         <RouterLink to="/events"><span class="nav-icon">♧</span>事件记录</RouterLink>
       </nav>
