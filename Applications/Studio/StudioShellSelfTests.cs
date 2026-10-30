@@ -3161,6 +3161,30 @@ namespace CxVisual.Studio
                         Assert(physical.Unit=="mm"&&
                             Math.Abs(physical.TopLeft.Z-46)<1e-9,
                             "Studio四视图未使用同一标定Frame的二维物理ROI");
+                        using(var cancelled=new CancellationTokenSource())
+                        {
+                            cancelled.Cancel();
+                            bool rejected=false;
+                            try
+                            {
+                                AwaitStudioTask(workspace.RecomputeSelectedSliceRoiAsync(
+                                    .49,.51,cancelled.Token));
+                            }
+                            catch(OperationCanceledException){rejected=true;}
+                            Assert(rejected&&!workspace.IsAnalyzing&&
+                                !workspace.HasPendingAnalysis,
+                                "Studio取消后台分析仍错误发布了过期Feature");
+                        }
+                        CT3DAnalysisCase preview=AwaitStudioTask(
+                            workspace.RecomputeSelectedSliceRoiAsync(
+                                .49,.51,CancellationToken.None));
+                        Assert(preview.Plane.SampleCount==9&&workspace.HasPendingAnalysis&&
+                            !workspace.IsAnalyzing,
+                            "Studio后台原值拟合没有安全回到WPF并形成待保存专业结果");
+                        workspace.DiscardPendingAnalysis();
+                        Assert(!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==baseline.Plane.ResultId,
+                            "放弃未提交的Studio分析没有恢复原Feature和Scene");
                         CT3DAnalysisCase edited=workspace.RecomputeSelectedSliceRoi(.49,.51);
                         Assert(workspace.HasPendingAnalysis&&edited.Plane.SampleCount==9&&
                             edited.Plane.ResultId!=baseline.Plane.ResultId,
@@ -3723,6 +3747,28 @@ namespace CxVisual.Studio
                     {
                         try{Directory.Delete(folder,true);}catch(IOException){}
                     }
+        }
+
+        private static T AwaitStudioTask<T>(Task<T> task)
+        {
+            if(task==null)throw new ArgumentNullException("task");
+            if(!task.IsCompleted)
+            {
+                var frame=new System.Windows.Threading.DispatcherFrame();
+                var clock=System.Diagnostics.Stopwatch.StartNew();
+                var timer=new System.Windows.Threading.DispatcherTimer {
+                    Interval=TimeSpan.FromMilliseconds(25)};
+                timer.Tick+=(sender,args)=>{
+                    if(task.IsCompleted||clock.Elapsed>TimeSpan.FromSeconds(20))
+                        frame.Continue=false;
+                };
+                timer.Start();
+                try{System.Windows.Threading.Dispatcher.PushFrame(frame);}
+                finally{timer.Stop();}
+                if(!task.IsCompleted)
+                    throw new TimeoutException("Studio三维异步分析在Windows STA超时。");
+            }
+            return task.GetAwaiter().GetResult();
         }
 
         private static void CheckStep(string title, Action body)
