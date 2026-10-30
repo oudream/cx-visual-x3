@@ -7,6 +7,8 @@ on:
       - 'Applications/Studio/StudioRoiDialogUiSmoke.cs'
       - 'Applications/Studio/App.xaml.cs'
       - 'Applications/Studio/CxVisual.Studio.csproj'
+      - 'Applications/Studio/StudioShell.ModuleCenter.cs'
+      - 'Mechanism/Presentation.Wpf/Modules/MPWModuleCenterControl.cs'
       - '.github/workflows/studio-roi-dialog-uia-windows.yml'
 jobs:
   roi-native-dialog-uia:
