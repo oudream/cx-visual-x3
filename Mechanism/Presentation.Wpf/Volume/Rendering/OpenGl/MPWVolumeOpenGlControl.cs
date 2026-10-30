@@ -182,31 +182,48 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private void SynchronizeSceneMeshes()
         {
             if(_sceneMeshState==null)return;
-            var desired=new HashSet<Guid>();
+            var wanted=new Dictionary<Guid,Tuple<string,MPWVolumeDisplayMesh,double>>();
+            int triangles=SurfaceMeshTriangleCount;
             foreach(MVI3DSceneItem item in _sceneMeshState.Snapshot())
             {
                 if(!item.Visible||(item.Kind!=MVI3DSceneKind.Mesh&&
                     item.Kind!=MVI3DSceneKind.Cad))continue;
                 string key=item.Kind+":"+item.SourceRef+":"+item.SourceRevision+":"+
                     item.SpatialFrameRef;
-                string current;
-                if(_sceneMeshKeys.TryGetValue(item.Id,out current)&&current==key)
-                {
-                    UpdateSceneMeshOpacity(item.Id,item.Opacity);
-                    desired.Add(item.Id);
-                    continue;
-                }
-                MPWVolumeDisplayMesh geometry=_sceneMeshResolver(item);
-                if(geometry==null)continue;
-                SetSceneMesh(item.Id,geometry,item.Opacity);
-                _sceneMeshKeys[item.Id]=key;
-                desired.Add(item.Id);
+                string old;
+                bool unchanged=_sceneMeshKeys.TryGetValue(item.Id,out old)&&old==key;
+                MPWVolumeDisplayMesh geometry=unchanged?null:_sceneMeshResolver(item);
+                if(!unchanged&&geometry==null)continue;
+                int count=0;
+                CachedSceneMesh existing;
+                if(unchanged&&_sceneMeshes.TryGetValue(item.Id,out existing))
+                    count=existing.Vertices.Length/9;
+                else if(geometry!=null)count=geometry.TriangleCount;
+                triangles=checked(triangles+count);
+                if(triangles>50000)
+                    throw new InvalidOperationException("MVI多对象GPU Mesh总预算超过50000三角面。");
+                wanted.Add(item.Id,Tuple.Create(key,geometry,item.Opacity));
             }
+            // 全部预算通过后更新：先回收过期VBO，防止替换时短暂超过显存预算。
             foreach(Guid id in new List<Guid>(_sceneMeshKeys.Keys))
             {
-                if(desired.Contains(id))continue;
+                Tuple<string,MPWVolumeDisplayMesh,double> planned;
+                string old;
+                if(wanted.TryGetValue(id,out planned)&&
+                   _sceneMeshKeys.TryGetValue(id,out old)&&old==planned.Item1)continue;
                 RemoveSceneMesh(id);
                 _sceneMeshKeys.Remove(id);
+            }
+            foreach(var pair in wanted)
+            {
+                string old;
+                if(_sceneMeshKeys.TryGetValue(pair.Key,out old)&&old==pair.Value.Item1)
+                    UpdateSceneMeshOpacity(pair.Key,pair.Value.Item3);
+                else
+                {
+                    SetSceneMesh(pair.Key,pair.Value.Item2,pair.Value.Item3);
+                    _sceneMeshKeys[pair.Key]=pair.Value.Item1;
+                }
             }
         }
         private void UpdateSceneMeshOpacity(Guid id,double opacity)
