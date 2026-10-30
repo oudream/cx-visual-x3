@@ -300,15 +300,20 @@ func main() {
 								var bKill = false
 								var bRun = false
 								if ad.Action == program.ActionInsert {
-									addProgram(ad.Program)
-									bRun = true
+									if oldProgramErr != nil {
+										addProgram(ad.Program)
+										bRun = ad.Program.Enabled == program.ENABLE
+									}
 								} else if ad.Action == program.ActionUpdate {
 									oldEnabled, newEnabled, err := updateProgram(ad.Program)
 									if err != nil {
 										_logger.Printf(_title.Info+"program diff-employ %s program[%s](%d) updateProgram err: %s\n", ad.Action, ad.Program.Path, ad.Program.ID, err)
-									} else {
-										bKill = true
-										bRun = newEnabled && oldEnabled != newEnabled
+									} else if oldProgramErr != nil || !program.IsSameProgram(&oldProgram, &ad.Program) {
+										// A changed, enabled Program needs a fresh guardian
+										// AFTER the old Worker exits. Previously updating
+										// enabled->enabled could stop without replacement.
+										bKill = oldEnabled
+										bRun = newEnabled
 									}
 								} else {
 									deleteProgram(ad.ID)
@@ -378,20 +383,24 @@ func main() {
 							err = json.Unmarshal(codeMessage.Data, &ad)
 							if err == nil {
 								_logger.Printf(_title.Info+"daemon restart program req, program[%s](%d)", ad.Path, ad.ID)
-								bProgramHasRun := false
-								if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
-									bProgramHasRun = true
+								// The legacy request's Program fields are not authoritative:
+								// use the Daemon's current configuration and original Worker.
+								currentProgram, lookupErr := findProgramById(ad.ID)
+								if lookupErr != nil || currentProgram.Enabled != program.ENABLE {
+									_logger.Printf(_title.Error+"Restart refused Program=%d: absent/disabled local configuration", ad.ID)
+								} else if pid := _programWorkers.ownedChildren()[ad.ID]; safeManagedPID(pid) {
 									if !queueOwnedStop(ad.ID, pid, "legacy-restart", stopReceipts) {
 										_logger.Printf(_title.Error+"Restart-stop REFUSED Program=%d PID=%d: no owned Worker", ad.ID, pid)
 									} else {
-										_logger.Printf(_title.Info+"Restart-stop handed to original Worker Program=%d PID=%d; awaiting Wait receipt", ad.ID, pid)
+										_logger.Printf(_title.Info+"Restart-stop handed to original Worker Program=%d PID=%d; replacement awaits confirmed Wait", ad.ID, pid)
 									}
-								}
-								if !bProgramHasRun && ad.Enabled == program.ENABLE {
-									if launchProgramWorker(workerCtx, ad.Program, cae) {
-										_logger.Printf(_title.Info+"daemon restart program req, run program[%s](%d)", ad.Path, ad.ID)
+								} else {
+									// No running owned child. The gate still prevents a
+									// duplicate during startup or restart backoff.
+									if launchProgramWorker(workerCtx, currentProgram, cae) {
+										_logger.Printf(_title.Info+"daemon restart request admitted Program=%d", ad.ID)
 									} else {
-										_logger.Printf(_title.Info+"daemon restart program req, existing guardian retained program[%s](%d)", ad.Path, ad.ID)
+										_logger.Printf(_title.Info+"daemon restart request kept existing guardian/latch Program=%d", ad.ID)
 									}
 								}
 							} else {
@@ -407,6 +416,15 @@ func main() {
 		// Stop result is a local diagnostic, not a new UDP response.
 		case ownedResult := <-stopReceipts:
 			writeOwnedStopLog(_logger, ownedResult)
+			if ownedResult.Action == "legacy-restart" && ownedResult.Receipt.WaitCompleted {
+				// Never restart from the untrusted request payload or merely
+				// because Kill returned nil. Require the original Worker Wait.
+				if current, err := findProgramById(ownedResult.Receipt.ProgramID); err == nil && current.Enabled == program.ENABLE {
+					if started, queued := requestProgramWorker(workerCtx, current, cae); started || queued {
+						_logger.Printf(_title.Info+"Confirmed legacy restart admitted Program=%d (queued=%t)", current.ID, queued)
+					}
+				}
+			}
 
 		// daemon 守护协程管道
 		case programEvent := <-cae:
