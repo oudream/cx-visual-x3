@@ -37,7 +37,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 	for DaemonRun {
 		a2, err := fnFindProgram(a1.ID)
 		if err != nil {
-			logger.Printf(_titleDaemon.Error+"进程[%s](%d) Can Not Be Find. 退出\n", a2.Path, a2.ID)
+			logger.Printf(_titleDaemon.Error+"进程[%s](%d) Can Not Be Find. 退出: %v\n", a1.Path, a1.ID, err)
 			break
 		}
 		if a2.Enabled != program.ENABLE {
@@ -111,19 +111,21 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 		cmd, err := startProc(args, envs, dir, logFile)
 		if err != nil {
 			status.IsRun = false
-			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: err.Error()}
-			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 启动子进程失败: %s\n", a1.Path, a1.ID, err)
+			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
+			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: err.Error()}
+			logger.Printf(_titleDaemon.Error+"进程[%s](%d) 启动子进程失败: %s\n", a1.Path, a1.ID, err)
 			continue
 		}
 
 		//
 		if cmd == nil {
 			status.IsRun = false
-			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}
+			status.Pid = 0
 			status.StartFailCount++
 			status.ErrorCount++
+			programEvent <- program.Event{Event: program.EventStart, Status: status, Message: "cmd is nil"}
 			continue
 		}
 
@@ -146,6 +148,7 @@ func RunProgram(a0 program.Program, programEvent chan program.Event, fnFindProgr
 			status.ErrorCount = 0
 		}
 		status.IsRun = false
+		status.Pid = 0
 		//被守护的进程停止后，通过管道向守护进程发出消息
 		programEvent <- program.Event{Event: program.EventExit, Status: status, Message: fmt.Sprintf("%v", err)}
 		logger.Printf(_titleDaemon.Error+"进程[%s](%d) pid(%d)退出, 共运行了%d秒: %s\n", a1.Path, a1.ID, cmd.ProcessState.Pid(), dat, err)
@@ -207,14 +210,21 @@ func startProc(args, env []string, dir string, logFile string) (*exec.Cmd, error
 		if err != nil {
 			return nil, errors.New(fmt.Sprintf("redirect stdout fail, err= %s", err))
 		}
+		// os/exec duplicates the descriptor for the child at Start.
+		// Close the parent's copy on both success and error, otherwise
+		// long-running Daemon restarts accumulate open log descriptors.
 		cmd.Stderr = stdout
 		cmd.Stdout = stdout
+		err = cmd.Start()
+		_ = stdout.Close()
+		if err != nil {
+			return nil, err
+		}
+		return cmd, nil
 	}
 
-	err := cmd.Start()
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-
 	return cmd, nil
 }
