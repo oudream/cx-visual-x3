@@ -93,6 +93,12 @@
 
 **B5 代码边界：**`MainWindow.xaml.cs`仅缓存用户主动开启查看后的有界安全文本；增量更新仍取唯一MRK Trace/StepResult，空闲150ms Tick不扫描大量结果。工程Revision改变时，`RefreshScene`失效旧结果/Trace，旧Flow仍可安全取消、不制造外部设备已完成事实。应用测试为`StudioShellSelfTests`的两个B5真实MRK/WPF测试，不增建另一套调试引擎或数据中心。
 
+### 3.4 B2/B3 关闭MEM后的静态Plan归档与真实专业CPU执行
+
+- **已存在并验证的B2机制：** `Mechanism/Decision`的`MDCPlanArchiveCodec`实现可序列化、带摘要检查的静态Plan归档；`Mechanism/Runtime/Execution/DecisionBinding/MOCManifestRuntimeBinding.cs`的`Bind(MDCDeclarativePlan,...)`从完全独立的Plan闭包降级到同一MRK运行计划，要求Host提供完整的专业Capability版本固定，未提供/变更时拒绝。`MDCDecisionTests.DetachedPlanRuntimeLowering`在关闭MEM后覆盖V1动态Loop和V2嵌套Content、稳定SourceMap、损坏归档、缺版本和版本漂移等反例；[Decision Windows #41004371419](https://github.com/oudream/cx-visual-x3/actions/runs/41004371419)在固定`86a35e79` **Success**。
+- **本轮增强（待固定SHA CI）：** `OrganizationLogicIntegrationTests.G06ArchivedPlanExecutesRealCpuProvider`采用真实`CxVisionThresholdProvider`执行灰度阈值与连通区域运算，复用唯一MDS具名`Pixels`端口和MRK结果；MEM关闭后重新读取静态Plan归档，检验像素真值、SourceMap及升级后的专业版本拒绝。[源码`c2e2bd95`](https://github.com/oudream/cx-visual-x3/commit/c2e2bd95aeb53f09049133731bfd7e42ca7aae14)；[Engineering Windows #41008082158](https://github.com/oudream/cx-visual-x3/actions/runs/41008082158)、[Decision #41008082148](https://github.com/oudream/cx-visual-x3/actions/runs/41008082148)、[Runtime #41008082116](https://github.com/oudream/cx-visual-x3/actions/runs/41008082116)查询时为**Queued，不能登记通过**。
+- **尚未关闭：** 跨Vision以外专业的严格CLR合同/版本闭包、真正Host进程加载此归档并实施发布授权、真实PLC/MES/采图及设备操作确认；单一软件CPU案例不能冒充以上覆盖。
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
