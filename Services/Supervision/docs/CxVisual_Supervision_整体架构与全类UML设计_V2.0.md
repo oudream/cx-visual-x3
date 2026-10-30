@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：152 项（S/R 源码存在或复用 75 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 152 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：153 项（S/R 源码存在或复用 76 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 153 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -168,6 +168,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 |---|---|---|---|---|
 | R | Mechanism.Core | IMLCServiceModule | Service 标准模块接口 | 不重建服务生命周期 |
 | R | Mechanism.Core | MLCServiceModuleBase | Start/Stop/Faulted 基类 | 当前 IsReady 仅由 Running 推断，需深化 |
+| S | Mechanism.Core | MLCServiceModuleObservation / MLCServiceModuleBase.Observe | 原真实服务实例的不可变生命周期与Ready证据快照 | 不建第二注册中心；无跨进程传输 |
 | R | Mechanism.Core | MLCServiceModuleState | 现有五态枚举 | 不要新建等价公共枚举 |
 | R | Mechanism.Core | MLCServiceModuleConfiguration | Provider/超时/并发/依赖配置 | FCM 真源 |
 | R | Mechanism.Core | MFMModuleDescriptor | 已有模块身份/能力描述 | 不建服务全局注册表 |
@@ -1193,3 +1194,40 @@ CPU 使用约 200ms 真实采样区间，内存用实际 Used/Total/Available；
 Go 测试位于 `internal/resourceview/resource_test.go` 和 `internal/httpapi/resources_test.go`，覆盖 NaN/负数/超界 CPU、空/不存在工作目录、独立来源失败、时间戳及 LocalOnly 403/非GET；前端 `client.test.ts`、`resources.test.ts` 覆盖 API 正反和旧快照保留。Go Windows/Linux/macOS 及 Vue 已有工作流能够覆盖新增源码，但**此阶段新 SHA 尚未取得完整 CI 通过记录；G1 待本次确认，G2/G3 仍需现场采集验证**。
 
 下一步 S05 真实历史趋势、GPU/网络/磁盘IO/容量阈值不能由当前采样推断，应经真实性能数据与明确容量/保留策略再实现。详细验收见 [12大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第二十五章。
+
+
+## 31. S03 原Service Owner真实状态观察（2026-10-30）
+
+### 31.1 最新代码与Owner裁决
+
+实际核查发现：`Mechanism/Core/Modules/Service/MLCServiceModuleBase.cs` 管理真实 `MLCServiceModuleState`（Stopped/Starting/Running/Stopping/Faulted），`IMLCServiceModule.IsReady` 目前在基类中由 `State==Running` 推导；**仅凭这一属性不能判断服务依赖、真实请求处理者与专业设备是否Ready**。`Applications/Runtime.Host` 尚未提供把所有运行实例状态可靠投影到 Go Monitor 的跨进程观察合同。因此本期不在 Go 创建 ServiceRegistry/虚假 Provider，不创建显示“正常”的空 H5 服务页。
+
+本期在既有 `MLCServiceModuleBase` 所属文件新增不可变 `MLCServiceModuleObservation` 和 `Observe()`，真实读取当前模块身份（原 `MFMModuleDescriptor.Id/Name/Version`）、生命周期状态及 UTC 观察时间。`VerifiedReady` 为三态 `bool?`：
+- `false`：生命周期非 Running，明确不是 Ready；
+- `null`：生命周期 Running，但原服务 Provider 没有给出真实请求/依赖就绪证据，或读取过程失败；
+- `true/false`：只有专业 Service 自己的 `TryObserveReadiness(out bool)` 才能报告可核实的 Ready/NotReady，不能拿 PID、HTTP 200、旧 `IsReady` 充作证据。
+
+双次读取生命周期，避免专业依赖检查期间状态发生切换却原样返回旧 Running 结论；不持有生命周期内部锁调用专业虚函数，以免与服务 Start/Stop 的锁顺序互锁。异常降为 Unknown 而不修改服务事实。快照包含的是**取样时的实例级证据**，不保证取样后永远可用、不赋予运维写权限。
+
+~~~mermaid
+flowchart TD
+ M[真实MLCServiceModuleBase实例] --> O[Observe owner-side快照]
+ O --> P{Lifecycle==Running?}
+ P -->|否| X[VerifiedReady=false]
+ P -->|是| C{Provider提供真实证据?}
+ C -->|无或异常| U[VerifiedReady=Unknown]
+ C -->|是| E[VerifiedReady=true/false]
+ X --> T[TestCenter/实际Host仅消费只读事实]
+ U --> T
+ E --> T
+ T -.->|跨进程合同待实现| G[Go Monitor]
+ G -.->|真实Provider接入后| W[H5 Service诊断]
+~~~
+
+### 31.2 真实 TestCenter 接入与本阶段验收
+
+`Tests/TestCenter/Manual/Module/TCTServiceRequestPanel.cs` 的现有 `TCTLocalEchoService` 在原 OnStart 注册请求处理槽、OnStop 释放处理槽；本期覆写 `TryObserveReadiness`，以 `_accepting && _slots != null` 的真实状态判断该本地服务可接请求。有未核验依赖时返回 Unknown。WPF 面板显示启动后的“已核验”、停止后的“不可用”，并提供 `CurrentObservation` 供只读诊断。没有引入第二套请求执行器、服务生命周期、模块注册表或网络监听。
+
+`Tests/ArchitectureSmoke/Integration/ModuleFoundationSmokeTests.cs` 新增 `RunServiceObservation`，包括 Stopped/Running/Stopped 真状态、Running 无Provider证据为 Unknown、UTC/身份/快照独立性；`Tests/ArchitectureSmoke/Program.cs` 新增 `--service-observe`；`supervision-migration.yml` Windows Job 将实际运行该命令。`Tests/TestCenter/Verification/TCTServiceRequestUiSmoke.cs` 验证真实 WPF 启动/停止的 Ready/NotReady UI 证据；原 `testcenter-service-local-ui-windows.yml` 更新触发路径至新的 Core Service 实际目录。
+
+**状态**：Owner 真实源码与正反测试已提交（S）。本次修改对应的 Windows 构建、ArchitectureSmoke 命令、WPF UIA 和软件 G1 **尚未获取固定 SHA 成功运行结果**，不能继承此前 Codex `5760a30d` 的通过结论。Go Monitor ↔ .NET Host 传输、跨进程身份/时间/代次、依赖读取、H5真实 Service 页面仍是 S03 后续任务；工业服务/设备 Ready 与 G2/G3 未验。
