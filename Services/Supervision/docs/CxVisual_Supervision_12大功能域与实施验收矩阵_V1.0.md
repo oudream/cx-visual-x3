@@ -306,3 +306,23 @@ SX-A/SX-C 由 Supervision 聚合展示，但事实由各级 Owner 提供；SX-B/
 **实测与等级**：本地独立最小工程（go.mod 声明 Go 1.19，实际使用 Go 1.23.2 / Linux amd64） 最小门禁工程执行 go test -count=30 -race ./... 成功（返回码 0），但该工程使用简化依赖，只证明门禁核心并发算法，不代表完整 cx-visual-x3、正式 RunProgramContext 集成测试或 GitHub Windows/Linux/macOS CI 已通过。仓库源码和测试已提交（S），G1/G2/G3 待真实作业/现场证据。
 
 **剩余风险**：Daemon 进程重启清除锁；人工认证解锁及持久化未实现；旧 UDP 配置与重启仍无可信身份；正 PID 身份、进程树终止、核验回执与活动告警仍未完成，不能宣称 SX-B 全链路验收。
+
+
+## 十四、Daemon 守护上限闭锁持久化（2026-10-30）
+
+**实际源码**：cmd/daemon/terminal_store.go 新增严格的版本化 JSON 本地守护上限日志，cmd/daemon/workers.go 接入 terminal 锁读写，cmd/daemon/main.go 在首次启动受管进程之前加载并验证。存放位置为工作目录下 supervision/daemon-terminal-latches.json，与旧 Program/SQLite、原 PID/UDP/HTTP 分离；Program ID 使用 64 位整数的 JSON map key 保存为十进制字符串，保持历史 ID 精度。文件临时写入、0600 权限、Sync 后同目录 Rename；不宣称所有 Windows/文件系统组合均已实现完整断电耐久性。
+
+**状态与拒绝规则**：
+- MaxError 或 MaxCount 触发时，原同步 terminal callback 在发布旧 Event 前更新 Gate 的终止锁并持久化；旧事件码与消息合同不变。
+- Daemon 正常重启时重新读取已存在的锁，自动恢复、配置启用请求与原 UDP 重启入口不能清除锁，也不会自动运行被锁定的受管程序。
+- 启动时日志损坏、版本不支持、条目非法、位置不可写，则 Daemon 在管理任何程序前报 Fatal 并退出（当前退出码 -6），而不是清空故障历史自动恢复。
+- 正常运行期间若落盘失败，Gate 记录 storageFault 并拒绝所有新的 Worker 启动及排队续接；现有已运行受管进程不因这一错误被自动杀死。**注意**：如果崩溃/断电时终止锁尚未成功落盘，重启时无法从损坏前的旧日志还原该次终止；此时尚无跨故障介质的完整持久化保证，必须通过监控与现场运维治理。
+- 尚未开放浏览器、HTTP、原 UDP 的解锁功能。现阶段只有受控现场/离线处置；不因重新启用配置或旧重启命令而清除 MaxError/MaxCount 终止锁。
+
+**隔离测试源码**：cmd/daemon/terminal_store_test.go 覆盖跨 Gate/Daemon 实例载入、两个终止原因、超大 int64 ProgramId、损坏 JSON/无效原因/版本错误/尾随内容、不可写位置、非终止事件及运行中持久化失败后整体拒启；原 workers_test.go 与 daemonc/daemon_test.go 保留并发和终止事件先锁后发测试。独立 Go 最小测试工程使用相同日志序列化/原子替换算法，在 Go 1.23.2 / Linux amd64 执行 go test -race -count=30 ./... 返回 0；**此为隔离算法验证，非主仓库源文件完整编译/G1**。
+
+**部署及离线恢复规程（不等同正式授权解锁）**：生产必须保证 Daemon 工作目录持久且写入权限最小化，备份并纳入设备恢复清单；发生终止锁时先查清根因、修复程序，再由现场有权限人员停机/停止 Daemon 并对完整日志备份及记录变更理由，必要时离线更新对应条目后重新启动并复核。不能在线删除/编辑日志来要求即时清锁，因为内存 Gate 仍保有锁；更不允许把旧 UDP 重启作为解锁。正式多用户授权、不可篡改审计、双人复核和幂等解锁仍是 S11 待开发。
+
+**进程停止安全边界**：同时将旧 exitPidFiles 路径纳入 safeManagedPID，禁止以 PID 0/负值/Daemon 本身为目标。此谓词只做 ID 基础校验，**不提供正 PID 的创建代次、真实可执行文件身份、进程树退出等待或业务 Ready 回执**；Kill 返回成功仅代表信号/终止请求已发出，不得说进程已完成停止。后续需由持有真实子进程句柄的 Worker 及 OS 平台适配完成目标身份与停止结果核实。
+
+**证据等级**：已提交正式源码/测试/文档（S）；此轮 GitHub Windows/Linux/macOS Go CI、真实集成 Daemon、物理工控机和长稳/断电 G1/G2/G3 未证实，必须在固定 SHA 下验收。
