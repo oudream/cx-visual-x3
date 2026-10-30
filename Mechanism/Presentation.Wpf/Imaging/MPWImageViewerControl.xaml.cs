@@ -35,6 +35,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         // MVI持有单一短命编辑手势和取消快照；正式Undo仍属于MEM/MTC。
         private readonly MVIImageOverlayEditGesture _overlayEdit;
         private FIMImageBuffer _overlayOriginal;
+        // 原图可能重新装载同一Buffer实例；只比较引用会让旧图元/草稿残留。
+        private long _overlayOriginalGeneration;
         private BitmapSource _bitmap;
         private FIMImageBuffer _shownImage;
         private bool _dragging, _selecting, _moving, _pendingFit = true;
@@ -458,6 +460,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = image;
+            // Viewer入口已显式处理手势；在同步Changed之前登记预期代次。
+            _overlayOriginalGeneration = checked(_session.OriginalGeneration + 1);
             _session.SetOriginal(image);
         }
 
@@ -476,6 +480,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             CancelTransientGesture();
             _pendingFit=false;
             _overlayOriginal=image;
+            // 连续帧入口刻意保留视口/Overlay；仅外部Session换源才清理。
+            _overlayOriginalGeneration=checked(_session.OriginalGeneration+1);
             _session.SetOriginal(image);
         }
 
@@ -517,6 +523,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
+            _overlayOriginalGeneration = checked(_session.OriginalGeneration + 1);
             _pixelSpacing = null; _rulerMillimeters = false;
             _session.Clear();
         }
@@ -722,12 +729,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             FIMImageBuffer original = _session.Original;
-            if (!ReferenceEquals(original, _overlayOriginal))
+            long currentOriginalGeneration = _session.OriginalGeneration;
+            if (!ReferenceEquals(original, _overlayOriginal) ||
+                currentOriginalGeneration != _overlayOriginalGeneration)
             {
                 // SDK可直接使用公开Session切图；必须同样终止当前捕获/草稿，
                 // 而不能只清Store，留下失去所属图像的鼠标编辑状态。
                 CancelTransientGesture();
                 _overlayOriginal = original;
+                _overlayOriginalGeneration = currentOriginalGeneration;
                 _selectedOverlayId = null;
                 _region = null;
                 _pixelSpacing = null; _rulerMillimeters = false;
