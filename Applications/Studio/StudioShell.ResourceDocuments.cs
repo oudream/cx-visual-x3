@@ -48,6 +48,9 @@ namespace CxVisual.Studio
 
         private void AttachStudioResourceChangeWatch(MEMEngineeringSession session)
         {
+            if(_studioRemoteHmi!=null &&
+                (session==null||session.Project.Id!=_studioRemoteProjectId))
+                ReleaseStudioScadaReadOnly();
             if(_resourceDocumentChanges!=null)
             {_resourceDocumentChanges.Dispose();_resourceDocumentChanges=null;}
             _resourceChangedRoots.Clear();
