@@ -2004,7 +2004,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 _vision=vision;
                 _source=new MRKResolvedCapability((context,token)=>{
                     token.ThrowIfCancellationRequested();
-                    return Task.FromResult((object)((byte[])_pixels.Clone()));
+                    byte[] snapshot=(byte[])_pixels.Clone();
+                    context.Data.Return("Pixels",snapshot);
+                    return Task.FromResult((object)snapshot);
                 },new MRKExecutionOutput(typeof(byte[])),
                     dataOutputs:new Dictionary<string,Type>{{"Pixels",typeof(byte[])}},
                     inputs:new MRKCapabilityInput[0]);
