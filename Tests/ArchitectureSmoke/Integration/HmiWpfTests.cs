@@ -62,6 +62,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                     throw new InvalidOperationException("HMI WPF真实窗口未呈现");
                                 table.Update<ushort>("word100", 91);
                                 view.Refresh();
+                                var frame = CxVisual.Mechanism.Visual.MVISceneProjection.ProjectResource(
+                                    doc, page.Id, session);
+                                if (frame.Count != 1 || frame[0].Text != "91")
+                                    throw new InvalidOperationException(
+                                        "MDS动态Text没有通过原MVI投影更新真实WPF页面");
+                                var design = CxVisual.Mechanism.Visual.MVISceneProjection.ProjectResource(
+                                    doc, page.Id);
+                                if (design.Count != 1 || design[0].Text != "待采集")
+                                    throw new InvalidOperationException(
+                                        "运行值污染了MEM静态Text声明");
                                 if (doc.Revision != revision)
                                     throw new InvalidOperationException("数据变化污染了MEM Revision");
                                 if ((double)session.Resolve(
