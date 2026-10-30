@@ -172,6 +172,7 @@ namespace CxVisual.TestCenter.UI
             string root=Path.GetDirectoryName(full);
             int caseIndex=_professionalCaseIndex;
             long capturedEpoch=_sphereEpoch;
+            long capturedCaseRequest=_caseRequestEpoch;
             var capturedVolume=_volume;
             var capturedScene=_state.Scene3D;
             long sceneRevision=capturedScene.Revision;
@@ -218,6 +219,8 @@ namespace CxVisual.TestCenter.UI
             {
                 bool restore=Object.ReferenceEquals(_volume.SpatialFrame,roi.SpatialFrame)&&
                     _state!=null&&Object.ReferenceEquals(_state.Scene3D,capturedScene)&&
+                    Object.ReferenceEquals(_state.SelectedSliceRectangle,roi)&&
+                    _caseRequestEpoch==capturedCaseRequest&&
                     sceneRevision==capturedScene.Revision;
                 if(restore)
                 {
