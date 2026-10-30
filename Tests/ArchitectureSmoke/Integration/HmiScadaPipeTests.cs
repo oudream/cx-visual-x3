@@ -107,6 +107,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "新Generation拒绝后必须立刻撤回旧Good运行帧");
             }
             Check(server.Wait(TimeSpan.FromSeconds(10)), "Pipe v1服务端契约夹具没有完成");
+            // .NET Framework 4.8真实IPC超时反证：连接成功后Host不回包，
+            // 客户端必须在IO截止关闭句柄，不允许HMI后台线程永久阻塞。
+            string silentName="cxvisual-hmi-silent-"+Guid.NewGuid().ToString("N");
+            Task silent=Task.Run(()=>
+            {
+                using(NamedPipeServerStream endpoint=new NamedPipeServerStream(silentName,
+                    PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.None))
+                {
+                    endpoint.WaitForConnection();
+                    byte[] size=new byte[4];ReadAll(endpoint,size);
+                    byte[] packet=new byte[BitConverter.ToInt32(size,0)];
+                    ReadAll(endpoint,packet);
+                    Thread.Sleep(3700);
+                }
+            });
+            bool expired=false;
+            try{new PHMScadaReadOnlyPipeClient(silentName).Discover();}
+            catch(TimeoutException){expired=true;}
+            Check(expired,"Host连接后不响应必须在3秒IO截止内fail closed");
+            Check(silent.Wait(TimeSpan.FromSeconds(7)),
+                "真实超时Pipe测试服务端未收敛");
+            // Host第一次未采样允许Value、RefreshUtc、ChangeUtc为空，
+            // 但不允许客户端把该点伪造为数值0/当前时间/Quality.Good。
+            string blankName="cxvisual-hmi-unsampled-"+Guid.NewGuid().ToString("N");
+            Task blank=Task.Run(()=>
+            {
+                using(NamedPipeServerStream endpoint=new NamedPipeServerStream(blankName,
+                    PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.None))
+                {
+                    endpoint.WaitForConnection();
+                    byte[] size=new byte[4];ReadAll(endpoint,size);
+                    byte[] packet=new byte[BitConverter.ToInt32(size,0)];
+                    ReadAll(endpoint,packet);
+                    string response="{\"SchemaVersion\":1,\"Status\":\"Ok\","+
+                        "\"DeploymentVersion\":\"DEP1\",\"Devices\":[{\"DeviceRef\":\""+device+
+                        "\",\"ScopeId\":\"plc/test\",\"ConfigVersion\":\"CFG1\","+
+                        "\"Generation\":\"GEN1\",\"Running\":true,\"Points\":[{"+
+                        "\"StablePointId\":\"word100\",\"VariableId\":\"plc/test/word100\","+
+                        "\"Type\":\"UInt16\",\"HasValue\":false,\"Value\":null,"+
+                        "\"Quality\":\"Uncertain\",\"RefreshUtc\":null,"+
+                        "\"ChangeUtc\":null,\"Revision\":0}]}]}";
+                    byte[] bytes=Encoding.UTF8.GetBytes(response);
+                    endpoint.Write(BitConverter.GetBytes(bytes.Length),0,4);
+                    endpoint.Write(bytes,0,bytes.Length);endpoint.Flush();
+                }
+            });
+            PHMScadaDeviceSnapshot unsampled=
+                new PHMScadaReadOnlyPipeClient(blankName).Snapshot(devices[0]);
+            Check(unsampled.Points.Count==1&&!unsampled.Points[0].HasValue&&
+                unsampled.Points[0].Value==null&&unsampled.Points[0].Text=="—"&&
+                unsampled.Points[0].RefreshUtc==default(DateTime),
+                "未采样点不能冒充Good值/采样时间");
+            Check(blank.Wait(TimeSpan.FromSeconds(5)),
+                "未采样Pipe测试服务端未正常退出");
             Console.WriteLine("PASS HMI Pipe v1 real NamedPipe transport, device identity, "+
                 "UInt16/MDS and generation fail-closed (contract fixture, not PLC)");
         }
