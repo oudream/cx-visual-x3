@@ -149,3 +149,11 @@ Host新增可选 `scada-group-serve <project.cxproj> <mhsRoot> --recover-device 
 ## 11. A2只读采集诊断计数（2026-10-30）
 
 A侧Runtime.Host的v1 Pipe discover/snapshot中，Devices[]增加仅附加的long字段：CompletedCycles、SuccessfulCycles、PartialCycles。它们直接透传同一个设备现有FCR/PADPlcPollingSession统计，只表示**当前SessionGeneration**已完成的FC03轮次、全成功轮次及部分失败轮次，不是设备物理执行动作或可持久趋势。断线替换后新Generation计数重新开始；HMI不得跨代次累计后认为是同一次稳定会话。旧B客户端无需以这些字段作为必填项；DataContractJsonSerializer对额外字段可忽略，SchemaVersion仍为1，旧字段、ACL、版本拒绝及只读操作保持不变。新的G1会验证两台PLC设备的独立SuccessCount>=2、PartialCycles=0与无写报文。
+
+
+## 12. A5 Runtime.Host工程预检及A/B部署接入合同（2026-10-30）
+
+- A正式CLI：`CxVisual.Runtime.Host.exe scada-project-check <saved.cxproj> <mhsRoot>`；成功Stdout单行UTF-8 JSON，SchemaVersion=1、Status=EngineeringValidated、DeploymentVersion及Devices[]；调用进程必须同时核验退出码为0。无数据表明设备已连通：`DeviceCommunicationValidated=false`。
+- Devices的DeviceRef固定于MEM工程、ScopeId对应MDS，ConnectorModuleId/ConnectorEffectiveVersion来自MHS，ChannelId来自F17正式配置；ScanIntervalMs和Contiguous来自保存的项目部署Effective。Points[]列出StablePointId、VariableAddress、ValueType、Unit、WritableDefinition；不得据WritableDefinition让HMI直接对PLC写寄存器。
+- HMI-B需要在Studio保存并生效MHS后调用此CLI预检时，应显示它仅是**工程配置有效/设备未验证**。实时是否连通和数据质量，仍通过已存在的Runtime.Host Pipe的Discover/Snapshot（含SessionGeneration、MDS Quality及FCR循环计数）读取，而不是反向从工程预检推断“设备在线”。
+- 失败时CLI返回非零及stderr错误说明，不输出成功JSON。Go Supervision可由其自己的进程管理Owner选择接入，此文仅交付合同，不代表已修改Daemon/Monitor或完成受信服务装配。
