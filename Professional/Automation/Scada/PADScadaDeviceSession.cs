@@ -161,7 +161,8 @@ namespace CxVisual.Professional.Automation.Scada
         /// HMI与专业服务只能向已配置可信授权器的MRK提交命令。空授权器没有降级入口。
         /// 本会话启动前才可注册控制；只读宿主永不创建此绑定。
         /// </summary>
-        public IDisposable RegisterWriteCommands(MRKCommandCenter hostCenter,long commandId)
+        public IDisposable RegisterWriteCommands(MRKCommandCenter hostCenter,long commandId,
+            Func<bool> currentControlGuard = null)
         {
             if(hostCenter==null)throw new ArgumentNullException("hostCenter");
             lock(_gate)
@@ -176,7 +177,8 @@ namespace CxVisual.Professional.Automation.Scada
                 // a closed/stale/replaced device must NEVER issue FC06 merely because
                 // the MHS Effective revision itself has not changed.
                 Func<bool> activeGenerationApproved=()=>IsRunning &&
-                    (_effectiveStillApproved==null||_effectiveStillApproved());
+                    (_effectiveStillApproved==null||_effectiveStillApproved()) &&
+                    (currentControlGuard==null||currentControlGuard());
                 _commandsBinding=PADPlcMrkCommandRegistration.RegisterUInt16Write(
                     hostCenter,_provider,_deviceRef,commandId,_configVersion,
                     activeGenerationApproved,()=>SessionGeneration);
