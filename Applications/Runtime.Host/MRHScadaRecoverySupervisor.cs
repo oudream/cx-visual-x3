@@ -120,5 +120,41 @@ namespace CxVisual.Runtime.Host
                 await Task.Delay(delay,cancellationToken).ConfigureAwait(false);
             }
         }
+        internal static int Serve(string projectPath,string configRoot,Guid deviceId,
+            string moduleId,string scopeId,int intervalMs,bool contiguous)
+        {
+            using(CancellationTokenSource signal=new CancellationTokenSource())
+            {
+                ConsoleCancelEventHandler onCancel=(sender,e)=>
+                {
+                    e.Cancel=true;signal.Cancel();
+                };
+                Console.CancelKeyPress+=onCancel;
+                try
+                {
+                    MRHScadaRecoverySupervisor supervisor=new MRHScadaRecoverySupervisor(
+                        projectPath,configRoot,deviceId,moduleId,scopeId,
+                        intervalMs,contiguous);
+                    Console.WriteLine("SCADA supervised read-only Host. Ctrl+C to stop. "+
+                        "Communication retries limited to 3 generations; no command replay.");
+                    try
+                    {
+                        supervisor.RunAsync(signal.Token,connected=>
+                            Console.WriteLine("SCADA connected generation="+connected.Generation+
+                                " Effective="+connected.ConfigVersion+
+                                " RecoveryAttempt="+supervisor.RecoveryAttempts))
+                            .GetAwaiter().GetResult();
+                        return 0;
+                    }
+                    catch(OperationCanceledException) when(signal.IsCancellationRequested)
+                    {
+                        Console.WriteLine("SCADA supervised Host stopped cleanly");
+                        return 0;
+                    }
+                }
+                finally { Console.CancelKeyPress-=onCancel; }
+            }
+        }
+
     }
 }
