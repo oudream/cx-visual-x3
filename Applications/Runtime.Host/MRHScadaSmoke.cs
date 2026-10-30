@@ -77,6 +77,52 @@ namespace CxVisual.Runtime.Host
             }
         }
 
+        // A5部署合同：真正运行第二个Runtime.Host.exe进程，而非在G1内部直接
+        // 调用预检类。安全地转义Windows命令行路径（可以包含空格）。
+        private static MRHScadaEngineeringInspection PreflightFromProcess(
+            string projectPath,string configRoot,int expectedExit)
+        {
+            if(projectPath.IndexOf('"')>=0||configRoot.IndexOf('"')>=0)
+                throw new ArgumentException("SCADA G1工程路径包含不支持的引号");
+            string args="scada-project-check \""+projectPath+"\" \""+configRoot+"\"";
+            ProcessStartInfo start=new ProcessStartInfo(
+                Process.GetCurrentProcess().MainModule.FileName,args);
+            start.UseShellExecute=false;
+            start.CreateNoWindow=true;
+            start.RedirectStandardOutput=true;
+            start.RedirectStandardError=true;
+            using(Process child=Process.Start(start))
+            {
+                if(child==null)throw new InvalidOperationException("不能启动独立SCADA工程预检进程");
+                Task<string> stdout=child.StandardOutput.ReadToEndAsync();
+                Task<string> stderr=child.StandardError.ReadToEndAsync();
+                if(!child.WaitForExit(12000))
+                {
+                    try{child.Kill();}catch(InvalidOperationException){}
+                    child.WaitForExit(3000);
+                    throw new TimeoutException("独立SCADA工程预检进程没有按时退出");
+                }
+                Task.WhenAll(stdout,stderr).GetAwaiter().GetResult();
+                Check(child.ExitCode==expectedExit,
+                    "独立工程预检退出码不符合预期：expected="+expectedExit+
+                    " actual="+child.ExitCode+" error="+stderr.Result);
+                if(expectedExit!=0)
+                {
+                    Check(String.IsNullOrWhiteSpace(stdout.Result),
+                        "工程预检失败不能输出误导性的有效部署JSON");
+                    return null;
+                }
+                Check(!String.IsNullOrWhiteSpace(stdout.Result) &&
+                    String.IsNullOrWhiteSpace(stderr.Result),
+                    "工程预检成功必须只在stdout返回部署JSON");
+                using(MemoryStream stream=new MemoryStream(
+                    Encoding.UTF8.GetBytes(stdout.Result.Trim()),false))
+                    return (MRHScadaEngineeringInspection)
+                        new DataContractJsonSerializer(
+                            typeof(MRHScadaEngineeringInspection)).ReadObject(stream);
+            }
+        }
+
         private sealed class TcpPlcFixture : IDisposable
         {
             private readonly TcpListener _listener;
@@ -263,6 +309,17 @@ namespace CxVisual.Runtime.Host
                     inspected.Devices.Any(x=>x.DeviceRef==b.ToString("N") &&
                         x.ScopeId=="stationB" && x.ConnectorModuleId=="connector-B"),
                     "工程预检必须来自真实MEM/MHS，包含双工站身份、点位与版本");
+                MRHScadaEngineeringInspection actualCli=PreflightFromProcess(
+                    project,configs,0);
+                Check(actualCli.SchemaVersion==1 &&
+                    actualCli.Status=="EngineeringValidated" &&
+                    !actualCli.DeviceCommunicationValidated &&
+                    actualCli.DeploymentVersion==inspected.DeploymentVersion &&
+                    actualCli.Devices.Length==2 &&
+                    actualCli.Devices.All(x=>x.Points.Length==2) &&
+                    plcA.Reads==0 && plcB.Reads==0 &&
+                    plcA.Writes==0 && plcB.Writes==0,
+                    "独立Host.exe的工程预检必须返回正式双PLC身份且零FC03/FC06");
                 string deploymentJson=MRHScadaEngineeringPreflight.ToJson(inspected);
                 Check(deploymentJson.Contains("\"EngineeringValidated\"") &&
                     deploymentJson.Contains("\"DeviceCommunicationValidated\":false") &&
@@ -708,6 +765,7 @@ namespace CxVisual.Runtime.Host
                 int preflightReadsA=plcA.Reads,preflightReadsB=plcB.Reads;
                 Reject<InvalidOperationException>(()=>
                     MRHScadaEngineeringPreflight.Inspect(project,configs));
+                PreflightFromProcess(project,configs,1); // 跨进程同样必须拒绝身份冲突。
                 Check(plcA.Reads==preflightReadsA&&plcB.Reads==preflightReadsB,
                     "工程预检拒绝跨设备Channel冲突时不能发送任何FC03");
                 Check(plcA.Writes==0&&plcB.Writes==0,
