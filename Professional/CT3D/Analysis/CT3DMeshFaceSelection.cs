@@ -155,7 +155,9 @@ namespace CxVisual.Professional.CT3D
             if(faces==null)throw new ArgumentNullException("faces");
             return new CT3DMeshFaceRoiRecipe(source,mesh,faces);
         }
-        internal IReadOnlyList<CT3DMeshFaceReference> Resolve(
+        /// <summary>验证当前资产、Frame、原Mesh方法与面片StableId，
+        /// 返回与配方绑定的原值面片引用；允许Headless/SDK调用。</summary>
+        public IReadOnlyList<CT3DMeshFaceReference> Resolve(
             CT3DAssetReference source,CT3DVoxelBoundaryMeshResult mesh,
             CancellationToken cancellation)
         {
