@@ -424,6 +424,14 @@
 - **真实用户可达性**：[ef218777](https://github.com/oudream/cx-visual-x3/commit/ef2187772ca2427608f6dc0dbb74d127b4239fb5)在既有`MPWModuleCenterControl`为头部长表单/结果Viewer提供限高垂直滚动，保持`HeaderContent`对外对象合同与专业模块Owner不变；避免图窗因顶栏无限增高而在较小WPF窗口中不可触达。[aa9e2c7a](https://github.com/oudream/cx-visual-x3/commit/aa9e2c7a59777911de09ce5b9a2d58a9a7d52a2f)让独立UIA在相关MPW布局及Studio模块ROI改动时自动触发。
 - **验收门禁**：截至登记，新的固定SHA [ROI UIA #41040812867](https://github.com/oudream/cx-visual-x3/actions/runs/41040812867)尚在Windows队列；GUI步骤没有可确认的成功报告，IMG-05维持`InProgress`，G5未完成，工业HIL G6未完成。
 
+### 7.18 IMG-05 Windows失败根因、原生UIA结果保护与统一MEM撤销（2026-10-30）
+
+- **旧CI的真实失败类别**：固定[ROI UIA #41040812867](https://github.com/oudream/cx-visual-x3/actions/runs/41040812867)（`aa9e2c7a`）、[Studio S1 #41040750289](https://github.com/oudream/cx-visual-x3/actions/runs/41040750289)及[ROI UIA #41040629965](https://github.com/oudream/cx-visual-x3/actions/runs/41040629965)均`failure`，实测日志原因是Studio HMI的`StudioShell.Hmi.cs`中`Any(x=>...)`与同一作用域`double x,y`命名冲突（`CS0136`），旧SHA还涉及Transport测试类型可见性；GUI操作步骤尚未执行。已按最新master实际源码以[49b8d56f](https://github.com/oudream/cx-visual-x3/commit/49b8d56f83b0a5dc3e99b1bcbbc48528c179a52a)将HMI lambda变量改名，**只解除跨专业编译阻塞，不修改HMI功能合同**。
+- **真实Ribbon而非直接测试MEM**：[e7bead82](https://github.com/oudream/cx-visual-x3/commit/e7bead82e416db0aedf20581e1acf4f84e81de98)给原有Studio全局`UndoCommand`/`RedoCommand`按钮配置稳定UIA身份（没有新增历史系统）；[4da5d132](https://github.com/oudream/cx-visual-x3/commit/4da5d13271c8f3350b4951e89703a5f1f14fc6e3)将R1-UIA测试改为`InvokePattern`实际点击Ribbon，再检查MEM Data+Visual双Aspect Undo/Redo恢复ROI身份及Revision/SaveAs。
+- **专项测试修正及诊断可追溯**：[b4958839](https://github.com/oudream/cx-visual-x3/commit/b4958839ef364e5b6da7898c97766eb3b49288a0)修正“二次MRK Run后错源重绑结果必须不变”的反证，比较重绑前的真实完整结果状态，不再错误地期待第一次CSV导出提示；为MEM重开、文件对话框、系统鼠标、Undo/Redo、Mask选取与复算输出分段写`STEP`日志，超时能看到最后一个真实到达节点，成功/失败不覆盖历史步骤。[c3f31b6d](https://github.com/oudream/cx-visual-x3/commit/c3f31b6d62313f3cd6e9c9883ae2076acf148b8f)给专项Windows UIA工作流增加同一分支最新版互斥，减少过期重复队列。
+- **结果只读边界**：审查发现保存ROI入口原先只检查“图窗绑定有原图”，若当前显示的是本Run的Mask/Result仍可能误操作。[752025b6](https://github.com/oudream/cx-visual-x3/commit/752025b6c580baa2a7e5dd9903112dc2ce270962)要求`Session.ActiveSlot==Original`才允许显式提交MEM；[af167f6c](https://github.com/oudream/cx-visual-x3/commit/af167f6cb02ccb7f1aaf50f90b2638f4409f0bdf)增加实际UIA选择Mask再点击保存的拒绝反证，确认Run证据只读且MEM Revision不变。
+- **验收分级**：截至本条记录，代码已提交G2；固定[ROI UIA #41043512541](https://github.com/oudream/cx-visual-x3/actions/runs/41043512541)在`af167f6c`仍处于queued，**新提交未获得G3/G4/G5成功**；不得用旧失败归因为新UIA交互失败，亦不得用旧绿色Imaging SHA代替最新Studio GUI。需要真实Windows执行后根据STEP逐个修复；工业G6未开始。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
