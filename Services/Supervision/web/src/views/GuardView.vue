@@ -12,9 +12,10 @@ const monitor = useMonitorStore()
 const { report, error, loading, fetchedAt } = storeToRefs(guard)
 const { programs } = storeToRefs(monitor)
 const query = ref('')
-const onlyBlocked = ref(true)
+const category = ref('all')
 
 interface DisplayIssue extends GuardIssue {
+  key: string
   category: '终止闭锁' | '孤儿隔离'
   path: string
 }
@@ -26,7 +27,7 @@ const issues = computed<DisplayIssue[]>(() => {
   function collect(source: GuardSource, category: DisplayIssue['category']): void {
     if (!source.available) return
     for (const issue of source.items) {
-      collected.push({ ...issue, category, path: index.get(issue.programId) ?? '' })
+      collected.push({ ...issue, key: category + ':' + issue.programId, category, path: index.get(issue.programId) ?? '' })
     }
   }
   collect(report.value.terminal, '终止闭锁')
@@ -35,7 +36,7 @@ const issues = computed<DisplayIssue[]>(() => {
 })
 
 const filtered = computed(() => issues.value.filter(item => {
-  if (!onlyBlocked.value) return true
+  if (category.value !== 'all' && item.category !== category.value) return false
   const q = query.value.trim().toLowerCase()
   return !q || item.programId.includes(q) || item.path.toLowerCase().includes(q) ||
     item.reason.toLowerCase().includes(q) || item.category.includes(q)
@@ -102,10 +103,14 @@ onMounted(() => { void guard.refresh() })
       </div>
       <div class="filter-row">
         <el-input v-model="query" class="search-box" clearable placeholder="搜索 Program ID、路径、原因" />
-        <el-checkbox v-model="onlyBlocked">按搜索条件过滤</el-checkbox>
+        <el-select v-model="category" style="width: 140px" aria-label="保护类型筛选">
+          <el-option label="全部类型" value="all" />
+          <el-option label="终止闭锁" value="终止闭锁" />
+          <el-option label="孤儿隔离" value="孤儿隔离" />
+        </el-select>
         <span class="muted">查询于 {{ observationTime(fetchedAt) }}</span>
       </div>
-      <el-table :data="filtered" class="cx-table" row-key="programId"
+      <el-table :data="filtered" class="cx-table" row-key="key"
         :empty-text="anyUnavailable ? '数据源不可用或没有可展示的记录，不代表安全' : '已读取的诊断文件没有匹配记录'">
         <el-table-column label="类型" width="128">
           <template #default="{ row }">
