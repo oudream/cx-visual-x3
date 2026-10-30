@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchGuardReport, fetchOverview, fetchPrograms, fetchStopHistory } from './client'
+import { fetchGuardReport, fetchHostResources, fetchOverview, fetchPrograms, fetchStopHistory } from './client'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -81,5 +81,32 @@ describe('read-only durable stop history', () => {
   it('refuses 403 instead of fabricating an empty record', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
     await expect(fetchStopHistory()).rejects.toThrow('仅允许在 Monitor 本机查询')
+  })
+})
+
+describe('read-only host resource sampling', () => {
+  it('retains host vs workDir disk scope and individual unavailable sources', async () => {
+    const response = {
+      data: {
+        scope: 'host', diskScope: 'work-dir-filesystem',
+        cpu: { available: false, percent: 0, sampledAt: '2026-10-30T08:00:00Z', error: 'CPU unavailable' },
+        memory: { available: true, totalBytes: 2048, usedBytes: 1024, availableBytes: 1024,
+          usedPercent: 50, sampledAt: '2026-10-30T08:00:01Z' },
+        disk: { available: true, totalBytes: 4096, usedBytes: 2048, availableBytes: 2048,
+          usedPercent: 50, sampledAt: '2026-10-30T08:00:02Z' },
+      },
+      generatedAt: '2026-10-30T08:00:03Z',
+      scope: 'local-only', kind: 'host-resource-snapshot',
+    }
+    const mock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => response })
+    vi.stubGlobal('fetch', mock)
+    await expect(fetchHostResources()).resolves.toEqual(response)
+    expect(mock).toHaveBeenCalledWith('/api/v1/resources',
+      expect.objectContaining({ cache: 'no-store' }))
+  })
+
+  it('does not silently report zero host usage on a 403', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(fetchHostResources()).rejects.toThrow('仅允许在 Monitor 本机查询')
   })
 })
