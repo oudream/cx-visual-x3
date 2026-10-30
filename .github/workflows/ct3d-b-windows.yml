@@ -14,6 +14,10 @@ on:
       - 'Tests/TestCenter/Manual/Volume/**'
       - '.github/workflows/ct3d-b-windows.yml'
 
+concurrency:
+  group: ct3d-b-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ct3d-volume:
     runs-on: windows-2022
