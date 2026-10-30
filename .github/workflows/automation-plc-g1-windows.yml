@@ -10,6 +10,7 @@ on:
       - 'Mechanism/Connectivity/**'
       - 'Mechanism/Data/Variables/**'
       - 'Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/AutomationPlcPlanIntegrationTests.cs'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
       - '.github/workflows/automation-plc-g1-windows.yml'
@@ -32,7 +33,7 @@ jobs:
         run: |
           & msbuild.exe Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj /m:1 /nr:false /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
           if($LASTEXITCODE -ne 0) { throw 'Automation G1 build failed' }
-      - name: Run real F17 virtual Modbus TCP protocol frames and Automation/MDS G1
+      - name: Run real TCP loopback Modbus and cross-professional Vision PLC MRK G1
         shell: pwsh
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
@@ -41,4 +42,4 @@ jobs:
         shell: pwsh
         run: |
           Write-Host 'PASS gate only if actual protocol bytes + MPA/MCN/MDS + authorization + readback tests exit 0'
-          Write-Host 'G1 virtual PLC: no actual hardware, radiation, motion, G2 or HIL validated'
+          Write-Host 'G1 OS TCP loopback PLC simulator: no actual PLC hardware, radiation, motion, G2 or HIL validated'
