@@ -642,3 +642,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R2-01-05 | 原有TCT二维ROI八柄、旋转、顶点、移动、缩放、双Pane、PNG与已有CI功能全部不退化 | 需最新Imaging/Studio/TestCenter固定SHA实际结果 |
 
 测试纪律：本批不涉及MEM/MTC持久事务，不能将MVI短命草稿撤销当成工程Undo；是否具备G3/G4/G5按真实Windows编译、STA和操作记录分别登记。
+
+
+### IMG-02 Esc取消与跨工程Build回归（2026-10-30）
+
+| 编号 | 验收内容 | 代码与当前证据 |
+|---|---|---|
+| R2-02-01 | 真实WPF已加载图像下，LinePair首点应产生可见草稿而不生成Overlay；`PreviewKeyDown(Escape)`清除草稿并`Handled=true`，保留原图/当前Store | `TCTImageViewerSmoke.VerifyEscCancelsUncommittedLinePair`，`8d94fa04` G2，Windows需见#41010129867/#41010129932结论 |
+| R2-02-02 | Esc后重新输入必须从第一点开始，切换到Navigate再次清空草稿 | 同一WPF STA方法，G2，禁止伪称物理键盘G5 |
+| R2-02-03 | 旧跨项目CS1061：`IFTRChannel`不拥有`StateChanged`；桥接通过`IFTRChannelTransport`订阅并释放事件，不允许绕过断线质量通知 | `PADPlcPointBridge.cs` `0a4cef4d`，Windows全解决方案回归待验 |
+| R2-02-04 | 原MVI短手势Begin/Update/Complete/Cancel与外部修改安全测试不得退化 | `MVIImageOverlayTests` 在`eba9d445`的[Imaging #41007034955](https://github.com/oudream/cx-visual-x3/actions/runs/41007034955)成功；新SHA另验 |
+
