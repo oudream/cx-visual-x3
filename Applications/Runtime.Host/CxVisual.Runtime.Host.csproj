@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{1626A969-FF77-560F-AA00-53D010AD01B3}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Automation\CxVisual.Professional.Automation.csproj"><Project>{02494452-8A8C-593B-8B49-A58D05218D88}</Project><Name>CxVisual.Professional.Automation</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Connectivity\CxVisual.Mechanism.Connectivity.csproj"><Project>{C7214F9E-1205-5F24-AA31-39FD49CD7EE1}</Project><Name>CxVisual.Mechanism.Connectivity</Name></ProjectReference>
+    <ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference>
   </ItemGroup>
   <ItemGroup><None Include="App.config"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
