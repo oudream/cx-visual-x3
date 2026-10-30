@@ -359,7 +359,7 @@ namespace CxVisual.Runtime.Host
                 string actualPeer=WindowsIdentity.GetCurrent().Name;
                 Check(!String.IsNullOrWhiteSpace(actualPeer),
                     "Windows MRK受信Pipe必须取得真实宿主账户");
-                bool peerAllowed=true,modeAllowed=true;
+                bool peerAllowed=true,modeAllowed=true,revokeImmediatelyAfterAdmission=false;
                 string mrkPipe="CxScada.A4."+Guid.NewGuid().ToString("N");
                 using(MRHScadaRuntime host=MRHScadaRuntime.Open(project,configs,
                     deviceId,module,scope,100,true,additionalApproval:approved,
@@ -371,12 +371,24 @@ namespace CxVisual.Runtime.Host
                     host,mrkPipe,970731,
                     peer=>peerAllowed&&String.Equals(peer,actualPeer,
                         StringComparison.OrdinalIgnoreCase),
-                    context=>modeAllowed &&
-                        (context.Caller=="operator" ||
-                         String.Equals(context.Caller,actualPeer,
-                             StringComparison.OrdinalIgnoreCase)) &&
-                        context.Descriptor.Definition.PermissionKey==
-                            PADPlcMrkCommandRegistration.WritePermission,
+                    context=>
+                    {
+                        bool admitted=modeAllowed &&
+                            (context.Caller=="operator" ||
+                             String.Equals(context.Caller,actualPeer,
+                                 StringComparison.OrdinalIgnoreCase)) &&
+                            context.Descriptor.Definition.PermissionKey==
+                                PADPlcMrkCommandRegistration.WritePermission;
+                        // Adversarial: authorization passed, but immediately
+                        // after MRK admission the control mode is revoked.
+                        // PAD must recheck before a physical FC06.
+                        if(admitted && revokeImmediatelyAfterAdmission)
+                        {
+                            revokeImmediatelyAfterAdmission=false;
+                            modeAllowed=false;
+                        }
+                        return admitted;
+                    },
                     currentControlGuard:()=>modeAllowed))
                 {
                     MRKCommandCenter commands=trusted.Commands;
@@ -502,6 +514,22 @@ namespace CxVisual.Runtime.Host
                             "Host控制模式审批撤销后MRK必须在FC06前拒绝");
                     }
                     finally{modeAllowed=true;}
+                    int beforeRevocation=plc.Writes;
+                    revokeImmediatelyAfterAdmission=true;
+                    try
+                    {
+                        MRKCommandResponse revokedAfterAdmission=ipc.InvokeAsync(
+                            remoteRequest(87,host.Generation,Guid.NewGuid()))
+                            .GetAwaiter().GetResult();
+                        Check(revokedAfterAdmission.BusinessSuccess!=true &&
+                            plc.Writes==beforeRevocation && !modeAllowed,
+                            "MRK已经受理后控制模式撤销仍不能在物理FC06前执行");
+                    }
+                    finally
+                    {
+                        modeAllowed=true;
+                        revokeImmediatelyAfterAdmission=false;
+                    }
                     peerAllowed=false;
                     try
                     {
