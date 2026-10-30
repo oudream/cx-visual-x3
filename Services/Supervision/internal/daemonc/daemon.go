@@ -220,6 +220,12 @@ func RunProgramContextWithStop(ctx context.Context, a0 program.Program, programE
 			return
 		}
 		logger.Printf(_titleDaemon.Error+"进程[%s](%d) pid(%d)退出, 共运行了%d秒: %s\n", a1.Path, a1.ID, cmd.ProcessState.Pid(), dat, err)
+		// A deliberate stop ends THIS guardian generation. Otherwise it
+		// could immediately restart a child while a configuration change
+		// already queued the replacement Worker behind it.
+		if stoppedByRequest {
+			return
+		}
 	}
 }
 
