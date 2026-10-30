@@ -683,3 +683,35 @@ sequenceDiagram
 5. 当前仅有源码提交证据（S），本轮尚未取得可核查的 CI 通过与真实隔离运行记录（G1/G2 待验）；不把测试文件存在视为测试成功。
 
 **全类设计的收敛**：无需为上述 P0 能力批量创建新 Manager/Process/Operation 类，先在原 Go 对象上完成正确性与可靠性。遗留风险包括进程树终止及回执、PID 映射重复 Worker 竞态、UdpC 接收协程退出、真实网络断线、S11 认证审计；S01～S12 进度仍以 [12大功能域矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引。
+
+
+## 17. 守护协程唯一归属的实装（2026-10-30）
+
+S02 本轮实装对象为 cmd/daemon/programWorkerGate（见第 5 章 E1；全类共 130 条，现有及复用 53 条，待实现候选 77 条）。该对象**只负责 ProgramId 对应守护 goroutine 的同步占用和最终退出释放**；Program PID、SQLite 配置、专业执行状态仍归原 Owner。初始启动、配置更改、旧重启入口、周期恢复统一调用 launchProgramWorker，避免 PID 未上报或重试延时中重复创建同 ID Worker。
+
+### 17.1 执行与数据边界
+
+~~~mermaid
+sequenceDiagram
+ participant C as Daemon启动/恢复/配置入口
+ participant G as programWorkerGate
+ participant W as RunProgramContext
+ C->>G: start(ProgramId)
+ G->>G: 同步预占 ID
+ G->>W: 启动守护协程
+ C->>G: 重复 start(相同 ID)
+ G-->>C: 已占用，拒绝并发启动
+ W-->>G: Worker 真正返回
+ G->>G: 释放占用
+~~~
+
+周期恢复先检查现有 Worker 是否占用，避免无意义的 FirstWaitTime 阻塞。配置更新、重启与 Daemon 退出前的停止目标检查使用 safeManagedPID，排除 0、负数和 Daemon 自身 PID。它不是完整 PID 身份/代次认证，因此不等同设备安全保证。
+
+### 17.2 验证与后续边界
+
+- cmd/daemon/workers_test.go：128 个相同 64 位 ID 的并发启动、独立 ID、取消、占用期间拒绝、退出释放重入，以及 PID=0 时恢复跳过已有 Worker。
+- cmd/daemon/main_test.go：PID 0/负数/自身 PID 拒绝测试。
+- 已执行**独立 Go 1.19 最小工程**的门禁实现测试，go test -count=20 及 go test -race -count=10 均通过；该工程使用替身依赖，不等于在仓库真实模块中通过。仓库实际 CI/G1 和现场 G2 仍待验。
+- 仍未解决：旧 Worker 退出期间立即启用的续接通知；MaxError/MaxCount 跨五分钟恢复周期锁定；PID 代次与进程树停止确认；S11 认证、授权与审计。**不能因此声称 SX-B 全部完成**。
+
+实际完成度仍以 [12大功能域验收矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)为唯一索引。
