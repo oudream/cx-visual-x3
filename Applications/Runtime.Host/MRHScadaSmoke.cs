@@ -122,6 +122,123 @@ namespace CxVisual.Runtime.Host
             }
         }
 
+        private static void ConfigureDevice(string configRoot,string moduleId,string scopeId,
+            string channelId,int port)
+        {
+            MHSConfigService store=new MHSConfigService(configRoot);
+            var section=store.ForScope("module",moduleId)
+                .Open<MCNConnectorConfiguration>();
+            var saved=section.UpdateAsync(model=>
+            {
+                model.DisplayName="SCADA工业设备 "+moduleId;
+                model.Channel=new FTRTcpClientChannelConfiguration{
+                    Id=channelId,Kind=FTRChannelKind.TcpClient,
+                    Host="127.0.0.1",Port=port,ConnectTimeoutMs=2000
+                };
+                model.Protocol=new MPAProtocolConfiguration("protocol-"+moduleId,"modbus.tcp");
+                model.Protocol.TimeoutMs=550;
+                model.Protocol.Points.Add(new MPAPointDefinition("word100","holding:100",
+                    typeof(ushort)){StationAddress="1",CanRead=true,CanWrite=false});
+                model.Protocol.Points.Add(new MPAPointDefinition("input101","holding:101",
+                    typeof(ushort)){StationAddress="1",CanRead=true,CanWrite=false});
+                foreach(string name in new[]{"word100","input101"})
+                    model.Protocol.Mappings.Add(new MPADataMapping{
+                        PointRef=name,TargetKind=MPADataTargetKind.Variable,
+                        TargetRef=scopeId+"/Station."+(name=="word100"?"Word":"Input"),
+                        Direction=MPADataDirection.Inbound,
+                        Operation=MPADataOperation.WriteValue,Required=true});
+            },"SCADA多设备正式配置",CancellationToken.None).GetAwaiter().GetResult();
+            Check(saved.Success,"多设备MHS保存失败: "+saved.ErrorCode);
+            if(section.HasPendingApply)
+                Check(section.ApplyPendingAtTaskBoundary(),"多设备MHS未能生效");
+        }
+
+        private static void RunTwoDevices(string root)
+        {
+            using(TcpPlcFixture plcA=new TcpPlcFixture(73,99))
+            using(TcpPlcFixture plcB=new TcpPlcFixture(45,66))
+            {
+                string project=Path.Combine(root,"multi.cxproj");
+                string configs=Path.Combine(root,"multi-configs");
+                Guid a,b;
+                using(MEMEngineeringSession engineering=MEMEngineering.Create("双工站工业工程"))
+                {
+                    a=engineering.AddPage("StationA").Id;
+                    b=engineering.AddPage("StationB").Id;
+                    engineering.SaveAs(project);
+                }
+                ConfigureDevice(configs,"connector-A","stationA","station-A-channel",plcA.Port);
+                ConfigureDevice(configs,"connector-B","stationB","station-B-channel",plcB.Port);
+                MRHScadaDeviceLaunch launchA=new MRHScadaDeviceLaunch(a,"connector-A",
+                    "stationA",85,true);
+                MRHScadaDeviceLaunch launchB=new MRHScadaDeviceLaunch(b,"connector-B",
+                    "stationB",85,true);
+                Reject<InvalidOperationException>(()=>MRHScadaRuntimeGroup.Open(
+                    project,configs,new[]{launchA,launchA}));
+                Reject<InvalidOperationException>(()=>MRHScadaRuntimeGroup.Open(
+                    project,configs,new[]{launchA,
+                        new MRHScadaDeviceLaunch(b,"connector-B","stationA",85,true)}));
+                Reject<InvalidOperationException>(()=>MRHScadaRuntimeGroup.Open(
+                    project,configs,new[]{launchA,
+                        new MRHScadaDeviceLaunch(b,"connector-A","stationB",85,true)}));
+                Check(plcA.Reads==0&&plcB.Reads==0,
+                    "身份/Scope/Module冲突不得发任何TCP命令");
+                using(MRHScadaRuntimeGroup group=MRHScadaRuntimeGroup.Open(
+                    project,configs,new[]{launchA,launchB}))
+                {
+                    Check(group.Count==2&&group.Find(a).DeviceRef!=group.Find(b).DeviceRef &&
+                        group.Find(a).Device.DataTable.ScopeId=="stationA" &&
+                        group.Find(b).Device.DataTable.ScopeId=="stationB" &&
+                        group.Find(a).Device.ChannelId!=group.Find(b).Device.ChannelId,
+                        "多设备Group没有独立Device/Scope/Channel所有权");
+                    group.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    Check(SpinWait.SpinUntil(()=>
+                        group.Find(a).CompletedCycles>=2 &&
+                        group.Find(b).CompletedCycles>=2,10000),
+                        "两个独立TCP工站没有同时完成至少2轮FC03");
+                    IMDSVariableSnapshot sampleA=group.Find(a).Device.Inspect("word100");
+                    IMDSVariableSnapshot sampleB=group.Find(b).Device.Inspect("word100");
+                    Check((ushort)sampleA.CurrentObject==73 &&
+                        (ushort)sampleB.CurrentObject==45 &&
+                        sampleA.Quality==MDSVariableQuality.Good &&
+                        sampleB.Quality==MDSVariableQuality.Good &&
+                        group.Find(a).Generation!=group.Find(b).Generation &&
+                        plcA.Reads>=2&&plcB.Reads>=2 &&
+                        plcA.Writes==0&&plcB.Writes==0,
+                        "两个工站真实TCP原始值发生串台或出现未授权FC06");
+                    group.Find(a).StopAsync().GetAwaiter().GetResult();
+                    Check(group.Find(a).Device.Inspect("word100").Quality==
+                        MDSVariableQuality.Stale,
+                        "单个PLC停止后必须独立降级MDS质量");
+                    int beforeB=plcB.Reads;
+                    Check(SpinWait.SpinUntil(()=>plcB.Reads>=beforeB+2,5000) &&
+                        group.Find(b).Device.Inspect("word100").Quality==
+                            MDSVariableQuality.Good,
+                        "PLC-A停止不得影响PLC-B的Channel/采集/MDS");
+                    group.StopAsync().GetAwaiter().GetResult();
+                    int readsA=plcA.Reads,readsB=plcB.Reads;
+                    Thread.Sleep(220);
+                    Check(plcA.Reads==readsA&&plcB.Reads==readsB,
+                        "设备组Stop后不允许任何残余TCP采样");
+                }
+                // 两个设备配置不同Module，但手动误复用ChannelId也必须被Host拒绝。
+                MHSConfigService store=new MHSConfigService(configs);
+                var second=store.ForScope("module","connector-B")
+                    .Open<MCNConnectorConfiguration>();
+                var edited=second.UpdateAsync(model=>
+                    model.Channel.Id="station-A-channel",
+                    "SCADA共享通道冲突负例",CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(edited.Success,"多设备Channel冲突负例无法保存");
+                if(second.HasPendingApply)
+                    Check(second.ApplyPendingAtTaskBoundary(),"Channel冲突变更未生效");
+                Reject<InvalidOperationException>(()=>MRHScadaRuntimeGroup.Open(
+                    project,configs,new[]{launchA,launchB}));
+                Check(plcA.Writes==0&&plcB.Writes==0,
+                    "多设备错误装配不能发出写控制命令");
+            }
+        }
+
         internal static int Run()
         {
             string root=Path.Combine(Path.GetTempPath(),"CxVisual-Scada-G1-"+
@@ -276,7 +393,8 @@ namespace CxVisual.Runtime.Host
                             "MHS版本漂移后没有通知MDS旧样本Stale");
                     }
                     Check(plc.Writes==0,"SCADA首批只读Host不允许写设备");
-                    Console.WriteLine("PASS SCADA G1 MEM-save/reopen MHS-Effective TCP-Modbus MDS polling Stop restart version-drift");
+                    RunTwoDevices(root);
+                    Console.WriteLine("PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift");
                     return 0;
                 }
             }
