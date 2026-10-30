@@ -629,3 +629,16 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-03-06 | Windows CPU Studio STA回归 | 固定SHA `adbe2740` `Module Center CPU`与`Studio S1`均成功，包含Release/x64编译与各自真实STA操作 | [CPU #41003894207](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)、[Studio #41003894214](https://github.com/oudream/cx-visual-x3/actions/runs/41003894214) G3/G4，**非本表全部单测G4** |
 
 验证约束：本轮`CxVisionRunSummary`仍只是已发布的轻量只读投影；Cancelled/Failed/Rejected仍以原`MRKFlowResult`为真源，不能为了显示产生带有效ResultItem的失败Run。缺失磁盘Artifact的真实生命周期由IMG-06验证，不能拿当前内存Item判定冒充持久库。全套Imaging测试需待相同源码提交关联CI结果后再正式更新G4；后续UIA/HIL另按G5/G6。
+
+
+### IMG-01/02 统一短命图元编辑State回归矩阵（2026-10-30）
+
+| 测试编号 | 路径/验收要求 | 当前证据 |
+|---|---|---|
+| R2-01-01 | `MVIImageOverlayTests.VerifyEditableOverlayGesture`：Begin独占、非法参数拒绝、TryUpdate同ID、Cancel还原不可变图元快照且通知正常 | `eba9d445`测试源码G2 |
+| R2-01-02 | MouseUp Complete后LostMouseCapture不得把已经提交的编辑回滚；重复取消无写入 | `eba9d445` MVI G2；WPF G5待验 |
+| R2-01-03 | 编辑中外部更改颜色/锁定/删除优先，旧Gesture不得覆盖、解锁或重插入 | `eba9d445` MVI G2 |
+| R2-01-04 | 双Pane一次仅一鼠标拖动，失捕/按Esc/换原图/切工具清除草稿并回滚，自身正常完成仍可继续编辑 | `65744af0`、`b0824bb5`、`ae623a9a`、`ab4564e5` 源码G2；Windows WPF STA及真实UIA待验 |
+| R2-01-05 | 原有TCT二维ROI八柄、旋转、顶点、移动、缩放、双Pane、PNG与已有CI功能全部不退化 | 需最新Imaging/Studio/TestCenter固定SHA实际结果 |
+
+测试纪律：本批不涉及MEM/MTC持久事务，不能将MVI短命草稿撤销当成工程Undo；是否具备G3/G4/G5按真实Windows编译、STA和操作记录分别登记。
