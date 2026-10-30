@@ -1241,7 +1241,14 @@ namespace CxVisual.Studio
 
         private StudioProfessionalFlowResolver CreateProfessionalFlowResolver(bool bindRaw)
         {
-            CxVisionInspectionOptions options=ReadProfessionalCpuOptions();
+            // The authoritative MHS Effective path already exists in the
+            // Studio Module Center. Reuse its scope, principal and revocation
+            // checks instead of creating a parallel configuration store.
+            CxVisionThresholdProvider effective=null;
+            if(FlowUseEffectiveConfig.IsChecked==true)
+                effective=LoadStudioEffectiveVisionProvider().Item1;
+            CxVisionInspectionOptions options=effective==null?
+                ReadProfessionalCpuOptions():effective.CaptureInspectionOptions();
             byte[] raw=null;
             string source=FlowRawPath.Text==null?"":FlowRawPath.Text.Trim();
             if(bindRaw && source.Length>0)
@@ -1253,8 +1260,11 @@ namespace CxVisual.Studio
                 raw=CxVisionRawCpuRunner.ReadRaw(source,width,height,
                     options.PixelDepth,CancellationToken.None);
             }
-            return new StudioProfessionalFlowResolver(options,
-                StudioProfessionalFlowResolver.ComputeSoftwareRevision(options),raw,_simulation);
+            return effective!=null?
+                new StudioProfessionalFlowResolver(effective,raw,_simulation):
+                new StudioProfessionalFlowResolver(options,
+                    StudioProfessionalFlowResolver.ComputeSoftwareRevision(options),
+                    raw,_simulation);
         }
 
         private MOCCapabilityCatalog CurrentCatalog()
