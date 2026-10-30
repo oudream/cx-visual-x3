@@ -19,6 +19,7 @@ namespace CxVisual.Studio
             if (table == null) throw new ArgumentNullException("table");
             if (!ReferenceEquals(_studioVariableScope, table)) CloseStudioHmiRuntimeDocuments();
             _studioVariableScope = table;
+            if (_viewModel != null) _viewModel.RefreshRuntimeVariableChoices();
             _studioVariableProvider = provider;
             _studioVariableWritesAllowed = allowRuntimeWrites;
             LayoutDocument opened = FindStudioContent("doc.variables") as LayoutDocument;
