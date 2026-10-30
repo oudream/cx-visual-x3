@@ -3688,6 +3688,19 @@ namespace CxVisual.Studio
                         Assert(!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
                             "放弃三角面预览不能修改已提交MEM结果或跨Case身份。");
+                        var savedFaceCase=AwaitStudioTask(workspace.RecomputeMeshFaceRoiAsync(
+                            selectedFaces,CancellationToken.None));
+                        workspace.SavePendingResult();
+                        Guid savedFaceId=savedFaceCase.Plane.ResultId;
+                        workspace.OpenProject(project);
+                        Assert(workspace.CurrentAnalysis.Plane.ResultId==savedFaceId&&
+                            workspace.CurrentAnalysis.RoiSignature==savedFaceCase.RoiSignature&&
+                            workspace.CurrentAnalysis.SelectedVertexIndices.Count==9&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe==null&&
+                            workspace.Scene3D.Snapshot().Single(x=>
+                                x.Kind==MVI3DSceneKind.Measurement).SourceRef==
+                                "ct3d:plane:"+savedFaceId.ToString("N"),
+                            "真实多面片ROI必须经MEM Data/Visual一笔提交，重开恢复Feature、顶点及Scene来源。");
                         Assert(window.StudioEngineeringRevision==originalRevision,
                             "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
                         window.CloseStudioDocument("doc.ct3d");
