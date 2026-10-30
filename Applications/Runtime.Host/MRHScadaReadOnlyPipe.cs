@@ -196,10 +196,20 @@ namespace CxVisual.Runtime.Host
                         {
                             server.WaitForConnection();
                             if(cancellationToken.IsCancellationRequested)break;
-                            server.ReadTimeout=3000;
-                            server.WriteTimeout=3000;
-                            MRHScadaPipeRequest req=Receive<MRHScadaPipeRequest>(server,MaxRequest);
-                            Send(server,Respond(group,req),MaxReply);
+                            // .NET Framework 4.8的PipeStream不支持可依赖的
+                            // Stream.ReadTimeout/WriteTimeout。用取消令牌到期主动关句柄，
+                            // 避免客户端只连接不发报文时永久占用唯一监听实例。
+                            using(CancellationTokenSource deadline=
+                                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                            using(CancellationTokenRegistration timed=deadline.Token.Register(()=>
+                            {
+                                try{server.Dispose();}catch(ObjectDisposedException){}
+                            }))
+                            {
+                                deadline.CancelAfter(3000);
+                                MRHScadaPipeRequest req=Receive<MRHScadaPipeRequest>(server,MaxRequest);
+                                Send(server,Respond(group,req),MaxReply);
+                            }
                         }
                         catch(IOException){if(cancellationToken.IsCancellationRequested)break;}
                         catch(ObjectDisposedException){if(cancellationToken.IsCancellationRequested)break;}
@@ -217,8 +227,8 @@ namespace CxVisual.Runtime.Host
                 name,PipeDirection.InOut,PipeOptions.None))
             {
                 client.Connect(3000);
-                client.ReadTimeout=3000;
-                client.WriteTimeout=3000;
+                // 测试夹具仅在已启动Host上短连接；生产HMI须自行使用
+                // 超时Token关闭Pipe句柄，不能依赖Stream超时属性。
                 Send(client,req,MaxRequest);
                 return Receive<MRHScadaPipeReply>(client,MaxReply);
             }
