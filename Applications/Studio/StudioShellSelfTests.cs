@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Media3D;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Foundation.Volume;
@@ -3696,6 +3697,29 @@ namespace CxVisual.Studio
                             CancellationToken.None)&&
                             faceHit!=null&&Math.Abs(hit.Point.Z-46.5)<1e-9,
                             "Studio SDK必须使用FGE原始Mesh物理射线命中真实面片。");
+                        // 显示坐标不是原值网格坐标：经真实12³ Volume体素逆变换
+                        // 与同一FVO标定Frame转为双精度毫米，再在专业Mesh重拾取。
+                        double normalized=(5.25+.5)/12-.5;
+                        CT3DMeshFaceReference displayedPick;
+                        FGEMeshRayHit displayedHit;
+                        Assert(workspace.TryPickMeshFaceFromDisplayRay(
+                            new Point3D(normalized,-normalized,(15+.5)/12-.5),
+                            new Point3D(normalized,-normalized,(6.5+.5)/12-.5),
+                            out displayedPick,out displayedHit,CancellationToken.None)&&
+                            displayedPick.StableId==faceHit.StableId&&
+                            Math.Abs(displayedHit.Point.Z-46.5)<1e-9,
+                            "三维WPF显示射线必须经过原Voxel与Frame，重新命中FGE真实Mesh而非LOD面片。");
+                        workspace.ToggleMeshFaceSelection(displayedPick);
+                        Assert(workspace.SelectedMeshFaceCount==1,
+                            "Studio子元素选择应保留专业原Mesh三角面StableId。");
+                        var singleFace=AwaitStudioTask(workspace.RecomputeSelectedMeshFacesAsync(
+                            CancellationToken.None));
+                        Assert(workspace.HasPendingAnalysis&&singleFace.Plane.SampleCount==3,
+                            "真正Ctrl+Shift选中的单三角面应走CT3D原值拟合并形成待保存结果。");
+                        workspace.ToggleMeshFaceSelection(displayedPick);
+                        Assert(workspace.SelectedMeshFaceCount==0&&!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
+                            "取消单面选择必须撤销过期专业预览并恢复原Scene/Feature身份。");
                         var selectedFaces=new List<CT3DMeshFaceReference>();
                         for(int triangle=0;triangle<beforeFace.Mesh.Mesh.TriangleCount;triangle++)
                         {
@@ -3712,6 +3736,12 @@ namespace CxVisual.Studio
                             selectedFaceResult.RoiSignature==beforeFace.RoiSignature&&
                             selectedFaceResult.Plane.ResultId!=beforeFace.Plane.ResultId,
                             "Studio多真实Mesh面片ROI须后台原值重算并形成新的待保存Feature。");
+                        workspace.ToggleMeshFaceSelection(faceHit);
+                        Assert(!workspace.HasPendingAnalysis&&
+                            workspace.SelectedMeshFaceCount==1&&
+                            workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
+                            "面片选择修改必须立即撤销旧ROI分析和专业Scene预览。");
+                        workspace.ToggleMeshFaceSelection(faceHit);
                         workspace.DiscardPendingAnalysis();
                         Assert(!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==beforeFace.Plane.ResultId,
