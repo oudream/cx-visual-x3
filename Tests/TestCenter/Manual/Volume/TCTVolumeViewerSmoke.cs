@@ -921,7 +921,13 @@ namespace CxVisual.TestCenter.UI
                     var multiScene=new MVI3DSceneState();
                     Guid multiMesh=multiScene.Add(MVI3DSceneKind.Mesh,"ct3d:mesh:extra",1);
                     Guid multiCad=multiScene.Add(MVI3DSceneKind.Cad,"cad:assembly:extra",1);
-                    frame.Scene.BindAdditionalMeshes(multiScene,item=>previewMesh);
+                    int meshResolves=0;
+                    frame.Scene.BindAdditionalMeshes(multiScene,item=>
+                    {
+                        meshResolves++;
+                        return previewMesh;
+                    });
+                    Check(meshResolves==2,"首次WPF多对象场景必须解析两个独立Mesh来源");
                     Check(frame.Scene.AdditionalMeshCount==2,
                         "真实WPF场景须从MVI同时加载Mesh与CAD专业显示对象");
                     multiScene.SetVisibility(multiCad,false);
@@ -929,8 +935,10 @@ namespace CxVisual.TestCenter.UI
                         frame.Scene.AdditionalMeshTriangleCount==previewMesh.TriangleCount,
                         "MVI隐藏CAD必须从WPF Viewport3D释放该显示实例");
                     multiScene.SetOpacity(multiMesh,.28);
-                    Check(frame.Scene.AdditionalMeshCount==1,
-                        "MVI透明度更新不得创建重复Mesh显示实例");
+                    Check(frame.Scene.AdditionalMeshCount==1&&meshResolves==2,
+                        "MVI透明度更新只改变材质，不得重读专业Mesh或重建几何");
+                    multiScene.SetOrganization(multiMesh,"analysis","inspection");
+                    Check(meshResolves==2,"MVI图层编辑不得触发重复Mesh几何加载");
                     multiScene.Remove(multiMesh);
                     Check(frame.Scene.AdditionalMeshCount==0,
                         "MVI删除专业引用须卸载WPF Mesh");
