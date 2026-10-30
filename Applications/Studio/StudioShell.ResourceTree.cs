@@ -77,10 +77,12 @@ namespace CxVisual.Studio
                     menu.Items.Add(new MenuItem {Header="新建页面",Command=_viewModel.AddPageCommand});
                     break;
                 case "contents":
+                    AddResourceNavigation(menu,"打开Content管理中心","doc.content-center");
                     menu.Items.Add(new MenuItem {Header="新建共享Content",Command=_viewModel.AddContentCommand});
                     menu.Items.Add(new MenuItem {Header="导入已有Content资源包",Command=_viewModel.ImportCommand});
                     break;
                 case "symbols":
+                    AddResourceNavigation(menu,"打开Symbol管理中心","doc.symbol-center");
                     menu.Items.Add(new MenuItem {Header="新建共享Symbol",Command=_viewModel.AddSymbolCommand});
                     menu.Items.Add(new MenuItem {Header="导入已有Symbol资源包",Command=_viewModel.ImportCommand});
                     break;
@@ -343,7 +345,9 @@ namespace CxVisual.Studio
             if(category!=null)
             {
                 // 分组打开现有真实工作区，不会创建或写入任何工程对象。
-                string document=category=="flows"?"doc.flow":
+                string document=category=="contents"?"doc.content-center":
+                    category=="symbols"?"doc.symbol-center":
+                    category=="flows"?"doc.flow":
                     category=="modules"?"doc.modules":
                     category=="data"?"doc.variables":
                     category=="configuration"?"doc.config":null;
