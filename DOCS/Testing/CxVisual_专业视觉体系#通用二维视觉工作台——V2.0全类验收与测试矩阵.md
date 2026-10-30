@@ -719,3 +719,13 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R1-UIA-14 | 通过真实UIA选择Mask使图窗切到Result槽，点击“保存选中ROI到MEM”必须拒绝，Revision不变；原图槽仍允许已授权工程ROI提交 | `752025b6`、`af167f6c` G2；Windows UIA尚待固定SHA验证 |
 | R1-UIA-15 | 独立`studio-roi-dialog-uia-windows.yml`同一分支只保留最新提交，完成构建、真实Open/Save对话框、Win32系统鼠标、新老ROI重绑/导出/MEM Undo/Redo完整试验后才升级G4/G5 | `c3f31b6d` G2；[ROI #41043512541](https://github.com/oudream/cx-visual-x3/actions/runs/41043512541)最新查询queued，不宣称通过 |
 
+
+### IMG-05 新Revision后旧Run像素彻底失效与专项Studio构建（2026-10-30）
+
+| ID | 正反验收 | 已提交证据及边界 |
+|---|---|---|
+| R1-UIA-16 | 原生GUI中MRK生成Mask且原图ROI已选中；单次MEM提交新ROI Revision后，旧Run像素`Session.Result==null`、结果列表为空、不可导出，但选中正式面积ROI仍存在 | `3fc24684`清Result及按Contour ItemId清只读Run轮廓；`ee1526e5`重跑自动选中工程ROI；`dac1e806`末段真实UIA正反测试，G2，Windows待验 |
+| R1-UIA-17 | 独立原生UIA编译真实`CxVisual.Studio.csproj`及引用，再执行实际窗口、Win32鼠标、文件对话框；CT3D独立测试的CS1061不能阻断专项GUI，但全解决方案仍由Studio S1/TestCenter分别核验 | [`6ad4c451`](https://github.com/oudream/cx-visual-x3/commit/6ad4c451534ab0f9c9070c5130d9ad5ef224f335) G2，**不能替代全解决方案G3/G4** |
+| R1-UIA-18 | 并行提交不能反复杀死已进入Windows GUI的交互式作业；只合并最新待运行项，不取消已经执行的鼠标/文件对话框测试 | [`8e72f04f`](https://github.com/oudream/cx-visual-x3/commit/8e72f04f7f2198fb43cef55a0065b5fb60dbeeac) `cancel-in-progress:false`；有界25分钟超时保持 |
+
+以上均只是源码/自动化合同提交证据；无本批固定SHA的真实PASS报告，不得将IMG-05列为G4/G5通过。
