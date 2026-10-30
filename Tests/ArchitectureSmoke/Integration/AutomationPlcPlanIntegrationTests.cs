@@ -116,7 +116,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     flow.SetParameter(inspectBlock,"Width","5");
                     flow.SetParameter(inspectBlock,"Height","3");
                     flow.SetParameter(plcBlock,"StableId","word");
-                    flow.SetParameter(plcBlock,"Value","96");
+                    flow.SetParameter(plcBlock,"Value","91");
                     flow.Connect(capture,"Done",inspectBlock,"Start");
                     flow.Connect(capture,"Pixels",inspectBlock,"RawPixels",MPCPortKind.Data);
                     flow.Connect(inspectBlock,"Done",plcBlock,"Start");
@@ -155,8 +155,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     inspection.Regions.Count==1&&inspection.Regions[0].PixelArea==3&&
                     done.Results.ContainsKey(plcStep)&&
                     object.Equals(done.Results[plcStep],true)&&
-                    actualRegister()==96&&writes()==before+1&&
-                    table.Get<ushort>("Station.Word")==96&&
+                    actualRegister()==91&&writes()==before+1&&
+                    table.Get<ushort>("Station.Word")==91&&
                     trace.Events.Any(x=>x.Origin.BlockId==inspectBlock&&
                         x.Transition.State==MRKStepState.Completed)&&
                     trace.Events.Any(x=>x.Origin.BlockId==plcBlock&&
@@ -190,12 +190,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(failed.State==MRKFlowState.Failed&&
                         failed.Results.ContainsKey(visionStep)&&
                         !failed.Results.ContainsKey(plcStep)&&
-                        writes()==beforeReject+1&&actualRegister()==96,
+                        writes()==beforeReject+1&&actualRegister()==91,
                         "unknown PLC outcome published success or retried device operation");
                 }
                 finally {ignoreWrite(false);}
                 Check((ushort)bridge.ReadAndMapAsync("word",CancellationToken.None)
-                    .GetAwaiter().GetResult()==96,
+                    .GetAwaiter().GetResult()==91,
                     "unknown PLC operation requires fresh readback for recovery");
             }
             finally {engine.StopAsync(true).GetAwaiter().GetResult();}
