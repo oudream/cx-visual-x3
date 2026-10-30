@@ -22,6 +22,7 @@ using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;
+using CxVisual.Professional.Automation.Scada;
 
 namespace CxVisual.Studio
 {
@@ -647,6 +648,10 @@ namespace CxVisual.Studio
             RegisterStudioConfiguration<CxCtReconstructionOptions>("CT3D · 重建参数");
             RegisterStudioConfiguration<MDSDataLifecycleEngineeringOptions>(
                 "运行时数据 · 五维生命周期工程策略");
+            // 专业Owner交付的唯一SCADA部署FCM项目段：用原MHS配置编辑、
+            // 校验、Pending/Effective和审计，不创建Studio私有设备运行表。
+            RegisterStudioConfiguration<PADScadaDeploymentConfiguration>(
+                "Automation · ICS/SCADA工站部署");
         }
 
         /// <summary>
