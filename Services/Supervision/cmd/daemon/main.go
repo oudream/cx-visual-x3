@@ -177,6 +177,7 @@ func main() {
 	}
 	_logger.Println(_title.Info + "Run Program List:")
 	cae := make(chan program.Event)
+	stopReceipts := make(chan ownedStopOutcome, 128)
 	for i := 0; i < len(_programs); i++ {
 		a := _programs[i]
 		if a.ID == program.DefaultProgramIdDaemon {
@@ -223,37 +224,39 @@ func main() {
 		select {
 		// os.Signal
 		case <-cbr:
-			_logger.Println(_title.Info + "执行清理..")
-			_logger.Println(_title.Info + "结束退出..")
-			// Signal cancellation first so restart waits and blocked event sends
-			// stop before the main loop stops draining program events.
+			_logger.Println(_title.Info + "Daemon stopping: cancel workers and request owned-child exits")
 			cancelWorkers()
 			daemonc.DaemonRun.Store(false)
-			for ProgramId, pid := range _runProgramIds {
+			pendingShutdown := 0
+			for programID, pid := range _runProgramIds {
 				if !safeManagedPID(pid) {
 					continue
 				}
-				a, err := findProgramById(ProgramId)
-				if err != nil {
-					_logger.Printf(_title.Error+"Skip daemon shutdown PID %d: Program %d not found\n", pid, ProgramId)
-					continue
+				if queueOwnedStop(programID, pid, "shutdown", stopReceipts) {
+					pendingShutdown++
+				} else {
+					_logger.Printf(_title.Error+"Shutdown stop REFUSED Program=%d PID=%d: no matching owned Worker", programID, pid)
 				}
-				if err := verifyManagedExecutablePID(pid, a.Path); err != nil {
-					_logger.Printf(_title.Error+"Skip daemon shutdown stop Program %d PID %d: %v\n", ProgramId, pid, err)
-					continue
-				}
-				proc, err := os.FindProcess(pid)
-				if err != nil {
-					_logger.Printf(_title.Error+"Stop PID lookup Program %d PID %d failed: %v\n", ProgramId, pid, err)
-					continue
-				}
-				if err := proc.Kill(); err != nil {
-					_logger.Printf(_title.Error+"Stop request Program %d PID %d failed: %v\n", ProgramId, pid, err)
-					continue
-				}
-				_logger.Printf(_title.Info+"Stop request SENT Program %d PID %d (exit NOT verified)\n", ProgramId, pid)
-				program.DeleteProgramPidFile(*_workDir, a.GetFileName())
 			}
+			deadline := time.NewTimer(ownedStopWaitTimeout + time.Second)
+			for pendingShutdown > 0 {
+				select {
+				case outcome := <-stopReceipts:
+					writeOwnedStopLog(_logger, outcome)
+					if outcome.Action == "shutdown" {
+						pendingShutdown--
+						if outcome.Receipt.WaitCompleted {
+							if a, err := findProgramById(outcome.Receipt.ProgramID); err == nil {
+								program.DeleteProgramPidFile(*_workDir, a.GetFileName())
+							}
+						}
+					}
+				case <-deadline.C:
+					_logger.Printf(_title.Error+"Shutdown stop UNKNOWN: %d owned-child receipts outstanding", pendingShutdown)
+					pendingShutdown = 0
+				}
+			}
+			deadline.Stop()
 			bRunning = false
 
 		// ticker
@@ -313,16 +316,11 @@ func main() {
 								if bKill {
 									if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
 										if oldProgramErr != nil {
-											_logger.Printf(_title.Error+"Refuse config-stop Program %d PID %d: old program unknown\n", ad.ID, pid)
-										} else if err := verifyManagedExecutablePID(pid, oldProgram.Path); err != nil {
-											_logger.Printf(_title.Error+"Refuse config-stop Program %d PID %d: %v\n", ad.ID, pid, err)
-										} else if proc, err := os.FindProcess(pid); err == nil {
-											if err := proc.Kill(); err != nil {
-												_logger.Printf(_title.Error+"Config-stop request Program %d PID %d failed: %v\n", ad.ID, pid, err)
-											} else {
-												delete(_runProgramIds, ad.ID)
-												_logger.Printf(_title.Info+"Config-stop request SENT Program %d PID %d (exit NOT verified)\n", ad.ID, pid)
-											}
+											_logger.Printf(_title.Error+"Config-stop REFUSED Program=%d PID=%d: old program missing", ad.ID, pid)
+										} else if !queueOwnedStop(ad.ID, pid, "config-change", stopReceipts) {
+											_logger.Printf(_title.Error+"Config-stop REFUSED Program=%d PID=%d: no owned Worker (old=%s)", ad.ID, pid, oldProgram.Path)
+										} else {
+											_logger.Printf(_title.Info+"Config-stop handed to original Worker Program=%d PID=%d; awaiting Wait receipt", ad.ID, pid)
 										}
 									}
 								}
@@ -381,18 +379,10 @@ func main() {
 								bProgramHasRun := false
 								if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
 									bProgramHasRun = true
-									currentProgram, lookupErr := findProgramById(ad.ID)
-									if lookupErr != nil {
-										_logger.Printf(_title.Error+"Refuse restart-stop Program %d PID %d: program unknown\n", ad.ID, pid)
-									} else if err := verifyManagedExecutablePID(pid, currentProgram.Path); err != nil {
-										_logger.Printf(_title.Error+"Refuse restart-stop Program %d PID %d: %v\n", ad.ID, pid, err)
-									} else if proc, err := os.FindProcess(pid); err == nil {
-										if err := proc.Kill(); err != nil {
-											_logger.Printf(_title.Error+"Restart-stop request Program %d PID %d failed: %v\n", ad.ID, pid, err)
-										} else {
-											delete(_runProgramIds, ad.ID)
-											_logger.Printf(_title.Info+"Restart-stop request SENT Program %d PID %d (exit NOT verified)\n", ad.ID, pid)
-										}
+									if !queueOwnedStop(ad.ID, pid, "legacy-restart", stopReceipts) {
+										_logger.Printf(_title.Error+"Restart-stop REFUSED Program=%d PID=%d: no owned Worker", ad.ID, pid)
+									} else {
+										_logger.Printf(_title.Info+"Restart-stop handed to original Worker Program=%d PID=%d; awaiting Wait receipt", ad.ID, pid)
 									}
 								}
 								if !bProgramHasRun && ad.Enabled == program.ENABLE {
@@ -411,6 +401,10 @@ func main() {
 			} else {
 
 			}
+
+		// Stop result is a local diagnostic, not a new UDP response.
+		case ownedResult := <-stopReceipts:
+			writeOwnedStopLog(_logger, ownedResult)
 
 		// daemon 守护协程管道
 		case programEvent := <-cae:
