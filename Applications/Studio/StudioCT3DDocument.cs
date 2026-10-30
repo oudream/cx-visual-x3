@@ -60,7 +60,7 @@ namespace CxVisual.Studio
             _cases.SelectionChanged+=(s,e)=>{
                 if(_updating||_cases.SelectedIndex<0)return;
                 int requested=_cases.SelectedIndex;
-                try{SelectCase(requested);}
+                try{SelectCaseByIndex(requested);}
                 catch(Exception error)
                 {
                     _updating=true;
@@ -138,6 +138,15 @@ namespace CxVisual.Studio
             if(_roiCancellation!=null)_roiCancellation.Cancel();
         }
         public int CaseCount {get{return _owners==null?0:_owners.Length;}}
+        public int CurrentCaseIndex {get{return _caseIndex;}}
+        /// <summary>统一Case选择入口：复用已有MEM加载与未保存编辑保护，不复制会话。</summary>
+        public void SelectCaseByIndex(int index)
+        {
+            SelectCase(index);
+            _updating=true;
+            try{_cases.SelectedIndex=index;}
+            finally{_updating=false;}
+        }
         public CT3DAnalysisCase CurrentAnalysis {get{return _pending??_current;}}
         public string ProjectPath {get{return _projectPath;}}
         public MPWVolumeFourViewWorkbenchControl Workbench {get{return _workbench;}}
@@ -245,7 +254,8 @@ namespace CxVisual.Studio
                 _state.Scene3D.Changed+=OnSceneChanged;
                 RefreshSlices();
                 RefreshProfessionalOverlay();
-                _status.Text="已验证原值和专业工程："+ 
+                _minimum.Text="0.49";_maximum.Text="0.51";
+                _status.Text="已验证原值和专业工程："+
                     analysis.Kind+" · "+analysis.GetFeatureMeasurements().Count+"项量值。";
                 if(analysis.SliceRoiRecipe!=null)
                 {

@@ -328,3 +328,11 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - StudioShellSelfTests以真实CT3D RAW/MEM工程将已存原Voxel ROI的毫米厚度由0.49～0.51修改为0.48～0.52，经过正式保存、关闭重开，核实配方、Feature ResultId、参数签名、原ROI身份和MVI选中对象均恢复一致。
 - CT3DArchitectureSmoke增加相同毫米范围生成同一稳定配方签名的确定性反例；此前逆序范围/跨源修改拒绝保持。
 - 早期SHA因并行Automation及MVI Smoke编译错误被阻断。上述编译问题已独立修复；需以后续提交的固定SHA真实Windows CI重新验证，不能把历史失败或代码存在登记成通过。
+
+
+### 10.24 B包：Studio多Case的ROI编辑和Scene隔离（2026-10-30）
+
+- 继续复用一个MEM Engineering Session及原有Case选择流程，StudioCT3DDocument公开SelectCaseByIndex/CurrentCaseIndex，组合框也使用同一入口，未保存/正在运行的ROI分析禁止跨Case切换。
+- DisplayCase载入新Case时先清空上一Case毫米输入默认状态，再仅由当前Case持久ROI配方恢复毫米范围与三刀矩形；不把旧Case的ROI、选中对象、结果或厚度继承到另一个Case。
+- StudioShellSelfTests采用同一个真实工程内两个MEM Content及独立CT3D Case，覆盖CaseA编辑并保存、CaseB原始未编辑、CaseB待提交时拒绝跳Case、放弃B编辑后恢复CaseA的专业ROI/Scene/厚度、再切回B结果保持不变。
+- 工程软件验证以本次提交固定SHA Windows Studio S1与TestCenter真实Job记录为准；G4真实GPU和G5工业精度尚未关闭。

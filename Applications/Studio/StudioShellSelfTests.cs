@@ -3404,11 +3404,18 @@ namespace CxVisual.Studio
                             info,frame,1,CancellationToken.None);
                         var baseline=CT3DAnalysisCase.Analyze(folder,source,1000,100,
                             CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None);
+                        var secondary=CT3DAnalysisCase.Analyze(folder,source,1000,100,
+                            CT3DAnalysisCase.SelectTopVoxelFace,CancellationToken.None);
+                        Guid firstOwnerId=Guid.Empty;
                         using(var engineering=MEMEngineering.Create("StudioCT3D"))
                         {
                             MEMContent owner=engineering.AddPage("真实三维分析").RootContent;
+                            firstOwnerId=owner.Id;
                             CT3DAnalysisPersistence.Commit(engineering,owner,
                                 engineering.Revision,folder,baseline,CancellationToken.None);
+                            MEMContent second=engineering.AddPage("备用三维分析").RootContent;
+                            CT3DAnalysisPersistence.Commit(engineering,second,
+                                engineering.Revision,folder,secondary,CancellationToken.None);
                             engineering.SaveAs(project);
                         }
                         window.OpenStudioDocument("doc.ct3d");
@@ -3418,7 +3425,8 @@ namespace CxVisual.Studio
                         Assert(workspace!=null&&workspace.CaseCount==0,
                             "Studio CT3D文档必须初始不加载任何演示工程");
                         workspace.OpenProject(project);
-                        Assert(workspace.CaseCount==1&&workspace.CurrentAnalysis!=null&&
+                        Assert(workspace.CaseCount==2&&workspace.CurrentCaseIndex==0&&
+                            workspace.CurrentAnalysis!=null&&
                             workspace.CurrentAnalysis.Kind==CT3DAnalysisKind.MeshPlane,
                             "真实CT3D MEM工程和原始RAW未进入Studio工作台");
                         Assert(!workspace.TryRestoreSavedSliceRoi(),
@@ -3547,7 +3555,7 @@ namespace CxVisual.Studio
                         using(var engineering=MEMEngineering.Open(project))
                         {
                             var owner=engineering.Project.DescendantsAndSelf().OfType<MEMContent>()
-                                .Single(x=>x.Aspects.Any(a=>
+                                .Single(x=>x.Id==firstOwnerId&&x.Aspects.Any(a=>
                                     a.ProviderId==CT3DAnalysisPersistence.ProviderId));
                             var current=CT3DAnalysisPersistence.Open(engineering,
                                 engineering.GetAddress(owner),folder,CancellationToken.None);
@@ -3556,6 +3564,47 @@ namespace CxVisual.Studio
                                     MVI3DSceneLayoutPersistence.ProviderId),
                                 "Studio保存必须同时提交CT3D Data及Scene Visual Aspect");
                         }
+                        // 多Case切换不能复用前一个Case的ROI、厚度或未提交结果。
+                        workspace.SelectCaseByIndex(1);
+                        Assert(workspace.CurrentCaseIndex==1&&
+                            workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe==null&&
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
+                                SelectedSliceRectangle==null&&
+                            !workspace.HasPendingAnalysis&&
+                            workspace.Scene3D.Snapshot().Count==3,
+                            "切换另一个Case必须隔离原Case物理ROI与专业Scene");
+                        var secondRoi=workspace.Workbench.GetViewport(FVOSlicePlane.XY)
+                            .SelectRectangleRoi(5,5,6,6);
+                        Assert(secondRoi!=null,"备用Case真实原体素ROI创建失败");
+                        var previewSecondary=workspace.RecomputeSelectedSliceRoi(.49,.51);
+                        Assert(workspace.HasPendingAnalysis&&
+                            previewSecondary.Plane.ResultId!=secondary.Plane.ResultId,
+                            "备用Case不能复用第一Case的专业结果");
+                        bool switchingRejected=false;
+                        try{workspace.SelectCaseByIndex(0);}
+                        catch(InvalidOperationException){switchingRejected=true;}
+                        Assert(switchingRejected&&workspace.CurrentCaseIndex==1&&
+                            workspace.HasPendingAnalysis,
+                            "跨Case切换不得丢弃尚未提交的专业ROI分析");
+                        workspace.DiscardPendingAnalysis();
+                        workspace.SelectCaseByIndex(0);
+                        Assert(workspace.CurrentCaseIndex==0&&
+                            workspace.CurrentAnalysis.Plane.ResultId==finalizedId&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe!=null&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MinimumOffsetMm==.48&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe.MaximumOffsetMm==.52&&
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
+                                SelectedSliceRectangle!=null&&
+                            workspace.Scene3D.SelectedId==hiddenMeasurement,
+                            "返回已保存Case必须恢复其独立ROI、毫米厚度及原Scene选择");
+                        workspace.SelectCaseByIndex(1);
+                        Assert(workspace.CurrentAnalysis.Plane.ResultId==secondary.Plane.ResultId&&
+                            workspace.CurrentAnalysis.SliceRoiRecipe==null&&
+                            workspace.Workbench.GetViewport(FVOSlicePlane.XY).ViewState.
+                                SelectedSliceRectangle==null,
+                            "备用Case的未提交ROI不能污染正式MEM结果");
+                        workspace.SelectCaseByIndex(0);
                         Assert(window.StudioEngineeringRevision==originalRevision,
                             "打开外部三维工程文档不应写入Studio当前其它工程的Revision");
                         window.CloseStudioDocument("doc.ct3d");
