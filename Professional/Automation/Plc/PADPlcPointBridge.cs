@@ -311,6 +311,12 @@ namespace CxVisual.Professional.Automation.Plc
             _transport.StateChanged -= OnChannelStateChanged;
         }
 
+        /// <summary>宿主在整个采集会话失效时标记已采样数据不可供控制使用。</summary>
+        public void InvalidateSamples()
+        {
+            foreach (string id in _bindings.Keys) MarkStale(id);
+        }
+
         private void MarkStale(string stableId)
         {
             PADDeviceVariableProvider provider = Volatile.Read(ref _qualityProvider);
