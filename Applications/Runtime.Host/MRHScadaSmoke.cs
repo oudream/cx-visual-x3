@@ -357,8 +357,9 @@ namespace CxVisual.Runtime.Host
                 // A4可信IPC使用Windows OS认证得到的peer，绝不信任报文Caller。
                 // 测试中仍保留既有进程内operator回归；部署授权必须额外检查角色/模式/联锁。
                 string actualPeer=WindowsIdentity.GetCurrent().Name;
-                Check(!String.IsNullOrWhiteSpace(actualPeer),
-                    "Windows MRK受信Pipe必须取得真实宿主账户");
+                SecurityIdentifier approvedPeerSid=WindowsIdentity.GetCurrent().User;
+                Check(!String.IsNullOrWhiteSpace(actualPeer) && approvedPeerSid!=null,
+                    "Windows MRK受信Pipe必须取得真实宿主SID");
                 bool peerAllowed=true,modeAllowed=true,revokeImmediatelyAfterAdmission=false;
                 bool pipePeerChecked=false,pipePeerMatched=false,commandPolicyChecked=false;
                 string mrkPipe="CxScada.A4."+Guid.NewGuid().ToString("N");
@@ -373,8 +374,19 @@ namespace CxVisual.Runtime.Host
                     peer=>
                     {
                         pipePeerChecked=true;
-                        pipePeerMatched=String.Equals(peer,actualPeer,
-                            StringComparison.OrdinalIgnoreCase);
+                        // GetImpersonationUserName can use a different name form
+                        // than WindowsIdentity.Name. Resolve both via the OS SID;
+                        // never authorize a matching username in a different domain.
+                        try
+                        {
+                            SecurityIdentifier peerSid=(SecurityIdentifier)
+                                new NTAccount(peer).Translate(typeof(SecurityIdentifier));
+                            pipePeerMatched=peerSid.Equals(approvedPeerSid);
+                        }
+                        catch(IdentityNotMappedException)
+                        {
+                            pipePeerMatched=false;
+                        }
                         return peerAllowed && pipePeerMatched;
                     },
                     context=>
@@ -487,6 +499,7 @@ namespace CxVisual.Runtime.Host
                             options:new MRKCommandOptions(timeoutMilliseconds:5000,remote:true),
                             expectedSchemaVersion:1);
                     Guid ipcOperation=Guid.NewGuid();
+                    commandPolicyChecked=false;
                     int beforeIpc=plc.Writes;
                     // Temporary SCADA-G1 evidence for an IPC peer that closes before
                     // a structured response. The shared MRK server intentionally
