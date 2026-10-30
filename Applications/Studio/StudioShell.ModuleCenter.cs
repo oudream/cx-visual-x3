@@ -850,7 +850,7 @@ namespace CxVisual.Studio
                 var address=project.GetAddress(page.RootContent);
                 var original=displayedOriginal;
                 Guid projectId=project.Project.Id;
-                long sourceVersion=resultPreview.Session.SourceVersion;
+                long originalGeneration=resultPreview.Session.OriginalGeneration;
                 int expectedRevision=project.Revision;
                 CxVisionRoiRecipe recipe;
                 try {recipe=CxVisionRoiEngineering.Open(project,address);}
@@ -868,7 +868,7 @@ namespace CxVisual.Studio
                        !Object.ReferenceEquals(_viewModel.ActivePage,page) ||
                        project.Revision!=expectedRevision ||
                        !Object.ReferenceEquals(displayedOriginal,original) ||
-                       sourceVersion!=resultPreview.Session.SourceVersion)
+                       originalGeneration!=resultPreview.Session.OriginalGeneration)
                     {
                         resultDetail.Text="工程或图像在运行中变化，拒绝发布旧ROI结果。";
                         return;
@@ -1005,7 +1005,7 @@ namespace CxVisual.Studio
                 CxVisionRunSummary expected=displayedRun;
                 FIMImageBuffer image=displayedOriginal;
                 Guid project=displayedProject;
-                long generation=resultPreview.Session.SourceVersion;
+                long generation=resultPreview.Session.OriginalGeneration;
                 var work=new CancellationTokenSource();
                 contourOperation=work;
                 contourButton.IsEnabled=false;
@@ -1017,7 +1017,7 @@ namespace CxVisual.Studio
                     if(work.IsCancellationRequested || !Object.ReferenceEquals(displayedRun,expected) ||
                        !Object.ReferenceEquals(displayedOriginal,image) ||
                        project!=_viewModel.ProjectSession.Project.Id ||
-                       generation!=resultPreview.Session.SourceVersion)return;
+                       generation!=resultPreview.Session.OriginalGeneration)return;
                     int contourCount=projected.Items.Count(x=>x.Kind==CxVisionResultKind.Contour);
                     if(contourCount>256)throw new InvalidOperationException(
                         "单Run轮廓超过256项，需缩小区域");
