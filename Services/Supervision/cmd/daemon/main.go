@@ -287,6 +287,10 @@ func main() {
 							err = json.Unmarshal(codeMessage.Data, &ad)
 							if err == nil {
 								_logger.Printf(_title.Info+"program diff-employ %s program[%s](%d)", ad.Action, ad.Program.Path, ad.Program.ID)
+								// Keep the OLD executable identity before update/delete
+								// mutates the configured Program. Never trust the incoming
+								// UDP replacement path for killing the previous child.
+								oldProgram, oldProgramErr := findProgramById(ad.ID)
 								// sync to _programs
 								var bKill = false
 								var bRun = false
@@ -308,14 +312,17 @@ func main() {
 								// sync to daemonc
 								if bKill {
 									if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
-										proc, err := os.FindProcess(pid)
-										if err == nil && proc != nil {
-											_ = proc.Kill()
-											delete(_runProgramIds, ad.ID)
-											if bRun {
-												time.Sleep(time.Millisecond * 200)
+										if oldProgramErr != nil {
+											_logger.Printf(_title.Error+"Refuse config-stop Program %d PID %d: old program unknown\n", ad.ID, pid)
+										} else if err := verifyManagedExecutablePID(pid, oldProgram.Path); err != nil {
+											_logger.Printf(_title.Error+"Refuse config-stop Program %d PID %d: %v\n", ad.ID, pid, err)
+										} else if proc, err := os.FindProcess(pid); err == nil {
+											if err := proc.Kill(); err != nil {
+												_logger.Printf(_title.Error+"Config-stop request Program %d PID %d failed: %v\n", ad.ID, pid, err)
+											} else {
+												delete(_runProgramIds, ad.ID)
+												_logger.Printf(_title.Info+"Config-stop request SENT Program %d PID %d (exit NOT verified)\n", ad.ID, pid)
 											}
-											_logger.Printf(_title.Info+"program diff-employ %s and kill program[%s](%d)", ad.Action, ad.Path, ad.ID)
 										}
 									}
 								}
@@ -373,13 +380,20 @@ func main() {
 								_logger.Printf(_title.Info+"daemon restart program req, program[%s](%d)", ad.Path, ad.ID)
 								bProgramHasRun := false
 								if pid, ok := _runProgramIds[ad.ID]; ok && safeManagedPID(pid) {
-									proc, err := os.FindProcess(pid)
-									if err == nil && proc != nil {
-										_ = proc.Kill()
-										delete(_runProgramIds, ad.ID)
-										_logger.Printf(_title.Info+"daemon restart program req, send kill signal to program[%s](%d)", ad.Path, ad.ID)
+									bProgramHasRun = true
+									currentProgram, lookupErr := findProgramById(ad.ID)
+									if lookupErr != nil {
+										_logger.Printf(_title.Error+"Refuse restart-stop Program %d PID %d: program unknown\n", ad.ID, pid)
+									} else if err := verifyManagedExecutablePID(pid, currentProgram.Path); err != nil {
+										_logger.Printf(_title.Error+"Refuse restart-stop Program %d PID %d: %v\n", ad.ID, pid, err)
+									} else if proc, err := os.FindProcess(pid); err == nil {
+										if err := proc.Kill(); err != nil {
+											_logger.Printf(_title.Error+"Restart-stop request Program %d PID %d failed: %v\n", ad.ID, pid, err)
+										} else {
+											delete(_runProgramIds, ad.ID)
+											_logger.Printf(_title.Info+"Restart-stop request SENT Program %d PID %d (exit NOT verified)\n", ad.ID, pid)
+										}
 									}
-									bProgramHasRun = pid > 0
 								}
 								if !bProgramHasRun && ad.Enabled == program.ENABLE {
 									if launchProgramWorker(workerCtx, ad.Program, cae) {
