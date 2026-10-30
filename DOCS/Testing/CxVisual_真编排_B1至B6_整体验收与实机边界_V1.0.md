@@ -105,6 +105,16 @@
 - **本轮新增（待当前提交CI）**：[`bd622abf`](https://github.com/oudream/cx-visual-x3/commit/bd622abf4d38fcbae82948de7590deca2ea3172e)在相同测试的安全激活之后，获取`MRKExecutionPlanSlot.Capture()`的正式Lease，启动真实`MRKExecutionEngine`（F19 Worker），验证MRK FlowId、Completed、可信专业Capability的输出`9`且只执行一次；[`04f994eb`](https://github.com/oudream/cx-visual-x3/commit/04f994ebf141074735783dfee54c5085da4497eb)加入12秒运行门禁及超时安全取消，避免软件验收无界等待。这是明确测试用的确定性`CiCapability`，不伪称真实工业检测算法，真实Vision CPU测试由3.4提供。
 - 此批`unified-runtime-windows.yml`的`Verify pinned Host certificate and real signed Plan publication`必须在对应SHA成功后才能登记通过；查看[Runtime #41011469736](https://github.com/oudream/cx-visual-x3/actions/runs/41011469736)在固定`bd622abf`整条Job **Success**，其`Verify pinned Host certificate and real signed Plan publication`步骤执行真实激活后MRK Flow及结果断言成功；其后包含超时限制的`04f994eb`对应[Runtime #41011684090](https://github.com/oudream/cx-visual-x3/actions/runs/41011684090) **整条Job Success**，覆盖正式MRK执行、12秒有界等待、Debug/Release双构建及Host恢复/可信发布专项。**即使软件成功，依旧不等于对真实PLC/运动控制器/X-Ray安全链验证通过。**
 
+### 3.6 B3 跨专业真编排：Vision CPU → Automation PLC（2026-10-30）
+
+此项是先前单一Vision CPU能力之外的**第二个真实专业Owner**联动；不新建CommandCenter、ExecutionEngine、数据仓或协议栈。
+
+- **正式代码**：`Professional/Automation/Plc/PADPlcMrkWriteCapabilityProvider.cs`将已存在的`PADPlcMrkCommandRegistration`及Host装配的`MRKCommandCenter`适配为`IMOCCapabilityProvider`与`IMRKVersionedCapabilityResolver`；静态输入`StableId:string`、`Value:ushort`，输出`RegisterReadbackMatched:bool`。Host必须注入可信Principal、批准点表的固定版本、设备资源授权和唯一命令中心。**无默认权限、无自动重试**。
+- **业务失败Fail-Closed**：只有`MRKCommandStage.Accepted + MRKCommandState.Completed + BusinessSuccess=true + PLC_REGISTER_READBACK_CONFIRMED + True输出`时，才提交MRK的具名Data与StepResult；协议应答但读回不符/结果未知时，MOC设备Step不得假报Completed，不放行后续依赖节点，仍须通过独立设备复核确定实际物理状态。
+- **测试**：`Tests/ArchitectureSmoke/Integration/AutomationPlcPlanIntegrationTests.cs`经`AutomationPlcPointTests.Run`调用，复用其真实OS TCP本机Modbus服务器、MCN/MPA/FTR、MDS和正式MRK命令中心。单一MEM流程组织`RAW测试输入→真实Vision CPU阈值和连通区域→PLC UInt16寄存器写入/回读`，关闭MEM后将纯Decision Plan归档重读，再绑定真实专业Resolver并执行MRK。检查Vision实际像素、PLC寄存器及MDS、SourceMap、Provider版本漂移拒绝、写命令未知时不提交PLC结果且不重复写入。
+- **固定源码**：[`c37af127`](https://github.com/oudream/cx-visual-x3/commit/c37af1273581b7a5af5a4f6735948e6ea5deda67)、[`6086defb`](https://github.com/oudream/cx-visual-x3/commit/6086defb517b26b0a6440c5352c5f5a881baedbd)及后续引用/测试接线提交。**当下Windows自动化状态待固定SHA实际完成后核验；严禁先填通过**。
+- **环境边界**：RAW图像来自确定性测试输入而非X-Ray探测器；PLC使用真实TCP/Modbus报文但对端为本机仿真服务器，验证的是G1软件协议与资源授权，不是PLC实机、设备运动到位、出束安全联锁或MES现场G2/G3。
+
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
 | 现场场景 | 必须记录的证据 | 安全要求 |
