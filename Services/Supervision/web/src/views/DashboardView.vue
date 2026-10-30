@@ -30,9 +30,9 @@ const { overview, programs } = storeToRefs(monitor)
       <span class="muted">持久闭锁</span>
     </RouterLink>
     <RouterLink to="/guard" class="dashboard-guard-item">
-      <div class="metric-label">遗留进程隔离</div>
+      <div class="metric-label">启动隔离（含凭证）</div>
       <strong :class="{ 'guard-alert-number': (orphanCount ?? 0) > 0 }">{{ orphanCount ?? '未知' }}</strong>
-      <span class="muted">上次启动扫描</span>
+      <span class="muted">上次启动扫描，非实时</span>
     </RouterLink>
     <div class="dashboard-guard-item">
       <div class="metric-label">守护证据状态</div>
