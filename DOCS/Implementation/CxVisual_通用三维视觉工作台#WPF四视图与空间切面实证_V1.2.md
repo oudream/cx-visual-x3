@@ -81,3 +81,12 @@
 - TestCenter正式窗口`SaveEditedSliceRoiAsync`（`86cec07`）复用上述CT3D/MVI/MEM合同，检查StoreToken、Frame、旧ResultId、当前Case索引与异步场景Epoch；提交后仅当视图仍一致才恢复新结果。工作区命令`ct3d.case.roi.commit`与实际ROI按钮（`ed9729e`/`e1dc25b`）调用同一入口，WPF实测`d480795`/`62c94ad`检查磁盘Data/Visual双Aspect和入口可用性，异常时显式关闭Dirty会话（`cc3346c`）。
 - `MVI3DSceneState.RemapSources`与StudioCT3DDocument复用（`43a2d52`/`65c5a90`）：局部专业ROI预览、丢弃和再次计算不清空重建Scene实例，而在同一来源Revision/Frame下原位重绑定专业ResultId；批量先校验再一次Changed。Studio的窗口回归`15119ec`/`1a183f8`核对原Measurement实例Id、选择、显隐在异步分析、放弃、重算、MEM保存重开后保持一致；Headless MVI原子拒绝反证`0dc059b`。
 - **门禁声明**：上述增量均已提交至master，但相应CT3D B G1–G3与Studio S1固定SHA Windows工作流在本次检查时仍为queued，严禁沿用历史成功Run替代最新G1/G2/G3。真实GPU多对象渲染/显存/Context恢复的G4及实际工业标准样本G5尚无本轮通过证据。B工作包保持【实施中，未完成最终验收】。
+
+
+### 2026-10-30 B包异步ROI编辑竞态补强与独立CI收敛
+
+- `1a8f74e`在正式`TCTManualVolumeViewerFrame.SaveEditedSliceRoiAsync`补充`SelectedSliceRectangle`的对象身份与`_caseRequestEpoch`回填检查：保存开始后用户再次Shift框选或切换专业Case，即使Scene Revision没变，已写入磁盘的合法旧快照也不得重新覆盖UI最新ROI/Measurement状态。
+- `fa41e8d`/`8d98a6b`增加实际WPF保存与框选竞争反证：校验当前ROI和旧Measurement失效，并通过重新打开MEM工程核对最新持久结果；测试不假设后台IO必定比UI事件慢。
+- `dc6b962`把双Case测试的Dirty MEM会话关闭放在finally中，保证测试失败时保留最初的专业断言而非仅见关闭异常。
+- 专属`ct3d-b-windows.yml`新增按分支并发去重（`d7a2998`），减少过期SHA的Windows工作负载，不取消其它Owner工作流。更新后旧CT3D B固定SHA出现`cancelled`是预期调度结果，不能标记为PASS。
+- **验收状态**：上述所有源码、Studio/WPF和Headless测试都已提交；本段更新时最新实际改动为`8d98a6b`，独立CT3D B Run `40999568810`为`queued`，Studio S1更早的待验Run也尚未完结。没有任何证据支持将这一最新SHA标记为G1–G3全部成功。真实GPU多对象显存/Context在指定物理GPU机器上的G4以及全套工业样本性能闭环仍未完全通过。
