@@ -142,3 +142,15 @@ G2/G3 报告另记 `Model/SN/Firmware/ControllerSafeStatus/CalibrationId/SDKx64/
 - **固定证据**：`279a45cc6fcdb604a325720d57e4e98cbddcbbb9`，Windows G1 [Actions run 41013766404](https://github.com/oudream/cx-visual-x3/actions/runs/41013766404)：**success**。源码在 `06f1c1b4dee9a3225f499768d768ec62cbad0275`，原验收矩阵不把新API误标为Modbus单报文合并批读。
 - **证据解释**：此批只达到G1真实Windows编译+软件协议/状态集成，逐点分离的FC03应答不能证明现场PLC硬件读数、采样速率、跨点原子一致性或物理安全。G2/G3尚无证据；连续块FC03批读、动态采样调度、Studio/TestCenter点表面板和性能 P95/P99 仍未验收。
 - **后续归档**：AUT-PI-009（双点正常）、AUT-PI-010（非法预检与取消）、AUT-PI-011（单点超时隔离/恢复）、AUT-PI-012（设备代次变更/PLC断开多点）、AUT-PI-013（连续地址合并性能优化与真实设备确认）。其中009～011已有G1运行成功，012～013尚待专有场景及性能/硬件证据。
+
+### 18. AUT-PI-013 连续FC03真实软件集成与批读失败门禁（2026-10-30）
+
+**本轮源码与API**：`IMPAProtocolContiguousPointReader`（Mechanism.Connectivity可选合同）、`MPAModbusTcpProtocol.ReadContiguousPointsAsync`（真实MBAP RequestAsync、校验站号/连续地址/Count=1～125/Int16-UInt16/响应长度）、`MCNConnectorModule.ReadContiguousPointsAsync`（Session/Channel合法性）、`PADPlcPointBridge.ScanContiguousAsync`（1～64个稳定ID与MDS ProviderHost）。数据值唯一Owner依旧是MDS。
+
+**正例**：真实本机TCP Loopback向holding:100/101发一次 `FC03 start=100 count=2`；返回两个强类型值，核对请求数量仅+1、BlockReads+1、两点MDS Good，普通 `ScanAsync` 的逐点独立事务原有用例保持通过。
+
+**负例**：反向地址、重复StableId、空集合必须在发包前拒绝；针对FC03 count=2，设备返回长度仅1个寄存器的PDU，应被正式MPA校验为 `InvalidDataException`，本次读取**不发布任何半批Good值**，旧数据及RefreshUtc保留且两点质量Stale，恢复后必须再次真实FC03才能恢复Good。
+
+**测试与实际通过状态**：固定提交 `0db3c0b9484cc8e1c6ca96d1097df9a8e02fbaed`；[Automation PLC Windows G1](https://github.com/oudream/cx-visual-x3/actions/runs/41015075474)、[Config L1](https://github.com/oudream/cx-visual-x3/actions/runs/41015075572)。**本条初次填写时均为Queued，CI有明确Success后才能标识G1 Passed；不能将“已提交”算作“已验收”。** G2真实PLC、跨设备时间一致性及G3安全现场均未执行。
+
+**非目标**：没有进行工业硬实时宣称、跨点MDS原子事务、周期调度、独立线程循环或Studio/TestCenter专业UI。需要时先复用已实现的通道诊断/变量订阅/TestCenter展示组件。
