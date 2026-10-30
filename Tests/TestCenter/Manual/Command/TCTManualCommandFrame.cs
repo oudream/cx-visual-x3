@@ -803,6 +803,9 @@ namespace CxVisual.TestCenter.UI
             {
                 if (frame._local.Router.Discover().Count != 2)
                     throw new InvalidOperationException("命令目录没有对应真实Registry");
+                if (!frame._shared.Connected || frame._shared.VisibleCommandCount != 2 ||
+                    !frame._shared.SelectCommand("TestCenter/Algorithm","Multiply"))
+                    throw new InvalidOperationException("共享MPW命令控件没有绑定同一MRK正式目录");
                 frame._sources["Input"].SelectedIndex = 1;
                 MRKCommandResponse result = await frame.InvokeSelectedAsync().ConfigureAwait(true);
                 if (result.State != MRKCommandState.Completed ||
