@@ -18,6 +18,16 @@ namespace CxVisual.Studio
     {
         private PHMScadaRemoteReadSession _studioRemoteHmi;
         private Guid _studioRemoteProjectId;
+        private IDisposable _studioRemoteBindingUpdates;
+        private void NotifyStudioRemoteBindingChoices()
+        {
+            if(Dispatcher.HasShutdownStarted||Dispatcher.HasShutdownFinished)return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if(_studioRemoteHmi!=null && _viewModel!=null)
+                    _viewModel.RefreshRuntimeVariableChoices();
+            }),System.Windows.Threading.DispatcherPriority.Background);
+        }
 
         private void AttachStudioScadaReadOnly(string pipeName,
             PHMScadaDeviceIdentity approved)
@@ -36,8 +46,12 @@ namespace CxVisual.Studio
             try{next.Start(1000);}
             catch{next.Dispose();throw;}
             CloseStudioHmiRuntimeDocuments();
+            IDisposable oldWatch=_studioRemoteBindingUpdates;
+            _studioRemoteBindingUpdates=null;
             PHMScadaRemoteReadSession previous=_studioRemoteHmi;
             _studioRemoteHmi=next;
+            _studioRemoteBindingUpdates=next.Subscribe(NotifyStudioRemoteBindingChoices);
+            if(oldWatch!=null)oldWatch.Dispose();
             _studioRemoteProjectId=project.Project.Id;
             _studioVariableScope=null;
             _studioVariableProvider=null;
@@ -54,8 +68,12 @@ namespace CxVisual.Studio
             if(prior==null)return;
             _studioRemoteHmi=null;
             _studioRemoteProjectId=Guid.Empty;
+            IDisposable updates=_studioRemoteBindingUpdates;
+            _studioRemoteBindingUpdates=null;
+            if(updates!=null)updates.Dispose();
             CloseStudioHmiRuntimeDocuments();
             prior.Dispose();
+            if(_viewModel!=null)_viewModel.RefreshRuntimeVariableChoices();
         }
 
         private FrameworkElement CreateStudioRemoteHmiView(
