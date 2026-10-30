@@ -134,3 +134,11 @@ G2/G3 报告另记 `Model/SN/Firmware/ControllerSafeStatus/CalibrationId/SDKx64/
 - 无危险命令的ACK即成功、旧Generation重放、质量差执行、伪Ready、内存泄漏/线程残留；
 - 模型、点表、配方、Runner版本冻结/保存重开/升级与回滚均经过真实回归；
 - 现场验证和 Windows CI 单独归档，不夸大通过范围，全部重大风险有Owner/措施/期限。
+
+### 17. PLC多点扫描 G1 固定证据（2026-10-30）
+
+- **源码**：`Professional/Automation/Plc/PADPlcPointBridge.cs`（`ScanAsync`、`PADPlcScanResult`、`PADPlcPointScanResult`）；正式项目仍为 `CxVisual.Professional.Automation`，无独立Scanner工程/协议/变量仓。
+- **自动用例**：`Tests/ArchitectureSmoke/Integration/AutomationPlcPointTests.cs`，原生Windows TCP回环+F17+MCN/MPA+PAD ProviderHost+唯一MDS：两个已绑定寄存器逐点03真实报文、返回顺序及UInt16值、1～64约束、重复/未知/空集合/取消在发包前拒绝、单点设备超时 Stale 且保留真实值/RefreshUtc、后续点Good、恢复后实际重新读回Good。
+- **固定证据**：`279a45cc6fcdb604a325720d57e4e98cbddcbbb9`，Windows G1 [Actions run 41013766404](https://github.com/oudream/cx-visual-x3/actions/runs/41013766404)：**success**。源码在 `06f1c1b4dee9a3225f499768d768ec62cbad0275`，原验收矩阵不把新API误标为Modbus单报文合并批读。
+- **证据解释**：此批只达到G1真实Windows编译+软件协议/状态集成，逐点分离的FC03应答不能证明现场PLC硬件读数、采样速率、跨点原子一致性或物理安全。G2/G3尚无证据；连续块FC03批读、动态采样调度、Studio/TestCenter点表面板和性能 P95/P99 仍未验收。
+- **后续归档**：AUT-PI-009（双点正常）、AUT-PI-010（非法预检与取消）、AUT-PI-011（单点超时隔离/恢复）、AUT-PI-012（设备代次变更/PLC断开多点）、AUT-PI-013（连续地址合并性能优化与真实设备确认）。其中009～011已有G1运行成功，012～013尚待专有场景及性能/硬件证据。
