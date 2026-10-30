@@ -724,7 +724,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FIMImageBuffer original = _session.Original;
             if (!ReferenceEquals(original, _overlayOriginal))
             {
+                // SDK可直接使用公开Session切图；必须同样终止当前捕获/草稿，
+                // 而不能只清Store，留下失去所属图像的鼠标编辑状态。
+                CancelTransientGesture();
                 _overlayOriginal = original;
+                _selectedOverlayId = null;
                 _region = null;
                 _pixelSpacing = null; _rulerMillimeters = false;
                 _linePairGesture.Reset();
