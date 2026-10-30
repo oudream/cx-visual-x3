@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Json;
+using System.Security.Principal;
 using System.Text;
 using System.Linq;
 using System.Net;
@@ -353,17 +354,33 @@ namespace CxVisual.Runtime.Host
                 Reject<UnauthorizedAccessException>(()=>MRHScadaRuntime.Open(
                     project,configs,deviceId,module,scope,100,true,
                     authorizeWrite:(principal,point)=>true));
+                // A4可信IPC使用Windows OS认证得到的peer，绝不信任报文Caller。
+                // 测试中仍保留既有进程内operator回归；部署授权必须额外检查角色/模式/联锁。
+                string actualPeer=WindowsIdentity.GetCurrent().Name;
+                Check(!String.IsNullOrWhiteSpace(actualPeer),
+                    "Windows MRK受信Pipe必须取得真实宿主账户");
+                bool peerAllowed=true,modeAllowed=true;
+                string mrkPipe="CxScada.A4."+Guid.NewGuid().ToString("N");
                 using(MRHScadaRuntime host=MRHScadaRuntime.Open(project,configs,
                     deviceId,module,scope,100,true,additionalApproval:approved,
                     authorizeWrite:(principal,point)=>
-                        principal=="operator"&&point.StableId=="word100"))
-                using(MRKCommandCenter commands=new MRKCommandCenter(
-                    authorize:context=>context.Caller=="operator" &&
+                        (principal=="operator" ||
+                         String.Equals(principal,actualPeer,StringComparison.OrdinalIgnoreCase)) &&
+                         point.StableId=="word100"))
+                using(MRHScadaTrustedCommandPipe trusted=new MRHScadaTrustedCommandPipe(
+                    host,mrkPipe,970731,
+                    peer=>peerAllowed&&String.Equals(peer,actualPeer,
+                        StringComparison.OrdinalIgnoreCase),
+                    context=>modeAllowed &&
+                        (context.Caller=="operator" ||
+                         String.Equals(context.Caller,actualPeer,
+                             StringComparison.OrdinalIgnoreCase)) &&
                         context.Descriptor.Definition.PermissionKey==
                             PADPlcMrkCommandRegistration.WritePermission))
-                using(IDisposable registration=host.RegisterTrustedWriteCommands(commands,970731))
                 {
+                    MRKCommandCenter commands=trusted.Commands;
                     host.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    trusted.Start();
                     Check(SpinWait.SpinUntil(()=>host.CompletedCycles>=2,8000) &&
                         host.Device.Inspect("word100").Quality==MDSVariableQuality.Good &&
                         plc.Writes==0,"A4受信Host启动前必须真实读取PLC且尚无写命令");
@@ -434,6 +451,68 @@ namespace CxVisual.Runtime.Host
                         plc.ActualWord==84 && plc.Writes==before+2,
                         "A4设备已应答但实际未写入：必须Unknown且无自动重试");
 
+                    // 同一已批准设备Session，以正式MRKCommandPipeServer/Client
+                    // 真实OS NamedPipe交换，而非使用另一套SCADA远程命令总线。
+                    // 报文Caller为伪造值，服务端只能使用OS peer身份。
+                    MRKCommandPipeClient ipc=new MRKCommandPipeClient(".",mrkPipe,
+                        connectTimeoutMilliseconds:3000,exchangeTimeoutMilliseconds:8000);
+                    Func<ushort,string,Guid,MRKCommandRequest> remoteRequest=
+                        (value,generation,operation)=>new MRKCommandRequest(target,
+                            PADPlcMrkCommandRegistration.WriteUInt16Code,
+                            new Dictionary<string,object>{
+                                {"StableId","word100"},{"Value",value},
+                                {"EffectiveVersion",version},
+                                {"SessionGeneration",generation}
+                            },caller:"forged-wire-operator",operationId:operation,
+                            options:new MRKCommandOptions(timeoutMilliseconds:5000,remote:true),
+                            expectedSchemaVersion:1);
+                    Guid ipcOperation=Guid.NewGuid();
+                    int beforeIpc=plc.Writes;
+                    MRKCommandResponse remoteWritten=ipc.InvokeAsync(
+                        remoteRequest(86,host.Generation,ipcOperation))
+                        .GetAwaiter().GetResult();
+                    Check(remoteWritten.Stage==MRKCommandStage.Accepted &&
+                        remoteWritten.State==MRKCommandState.Completed &&
+                        remoteWritten.BusinessSuccess==true &&
+                        remoteWritten.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
+                        plc.ActualWord==86 && plc.Writes==beforeIpc+1,
+                        "真实Windows MRK Pipe OS认证→MRK→FC06→FC03回读未成功");
+                    MRKCommandResponse remoteQuery=ipc.QueryAsync(ipcOperation)
+                        .GetAwaiter().GetResult();
+                    Check(remoteQuery.State==MRKCommandState.Completed &&
+                        remoteQuery.OperationId==ipcOperation &&
+                        remoteQuery.BusinessSuccess==true &&
+                        plc.Writes==beforeIpc+1,
+                        "真实MRK Pipe OperationId查询不应重发FC06");
+                    MRKCommandResponse oldRemote=ipc.InvokeAsync(
+                        remoteRequest(87,Guid.NewGuid().ToString("N"),Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(oldRemote.BusinessSuccess!=true && plc.Writes==beforeIpc+1,
+                        "真实MRK Pipe旧SessionGeneration不能调用设备FC06");
+                    modeAllowed=false;
+                    try
+                    {
+                        MRKCommandResponse modeDenied=ipc.InvokeAsync(
+                            remoteRequest(87,host.Generation,Guid.NewGuid()))
+                            .GetAwaiter().GetResult();
+                        Check(modeDenied.Stage==MRKCommandStage.Rejected &&
+                            modeDenied.ErrorCode=="Unauthorized" &&
+                            plc.Writes==beforeIpc+1,
+                            "Host控制模式审批撤销后MRK必须在FC06前拒绝");
+                    }
+                    finally{modeAllowed=true;}
+                    peerAllowed=false;
+                    try
+                    {
+                        MRKCommandResponse peerDenied=ipc.InvokeAsync(
+                            remoteRequest(87,host.Generation,Guid.NewGuid()))
+                            .GetAwaiter().GetResult();
+                        Check(peerDenied.BusinessSuccess!=true &&
+                            plc.Writes==beforeIpc+1,
+                            "OS Peer授权撤销后Pipe不得触发FC06");
+                    }
+                    finally{peerAllowed=true;}
+
                     host.StopAsync().GetAwaiter().GetResult();
                     int afterStop=plc.Writes;
                     MRKCommandResponse after=commands.InvokeAsync(request(
@@ -443,6 +522,13 @@ namespace CxVisual.Runtime.Host
                         host.Device.Inspect("word100").Quality==
                             MDSVariableQuality.Stale,
                         "A4旧会话Stop后即使MHS仍同版也必须拒绝FC06并降级MDS");
+                    MRKCommandResponse pipeAfterStop=ipc.InvokeAsync(
+                        remoteRequest(88,host.Generation,Guid.NewGuid()))
+                        .GetAwaiter().GetResult();
+                    Check(pipeAfterStop.BusinessSuccess!=true &&
+                        plc.Writes==afterStop,
+                        "Host Stop后受信MRK Pipe必须FailClosed且零FC06");
+                    trusted.StopAsync().GetAwaiter().GetResult();
                 }
             }
         }
