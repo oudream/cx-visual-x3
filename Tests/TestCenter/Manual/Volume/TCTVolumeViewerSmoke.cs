@@ -1265,7 +1265,21 @@ namespace CxVisual.TestCenter.UI
                         visualOnDisk.SnapshotLayer("analysis").Count==1,
                         "真实WPF ROI编辑保存后Data/Visual三对象来源必须在同一MEM工程一致");
                 }
-                restored=editedFromWpf;
+                viewport.SelectRectangleRoi(5,5,6,6);
+                var pendingEditedRoi=frame.SaveEditedSliceRoiAsync(.49,.51,
+                    System.Threading.CancellationToken.None);
+                viewport.SelectRectangleRoi(0,0,2,2);
+                AwaitProfessional(pendingEditedRoi);
+                Check(frame.ViewState.SelectedSliceRectangle!=null&&
+                    frame.ViewState.SelectedSliceRectangle.Left==0&&
+                    frame.LastMeshPlaneFit==null&&
+                    Object.ReferenceEquals(frame.LastOpenedProfessionalCase,editedFromWpf),
+                    "ROI持久编辑进行中重新框选，旧快照不得覆盖较新的二维ROI与Measurement失效状态");
+                AwaitProfessional(frame.OpenProfessionalCaseAsync(project,
+                    System.Threading.CancellationToken.None));
+                restored=frame.LastOpenedProfessionalCase;
+                Check(restored.Plane.ResultId!=editedFromWpf.Plane.ResultId,
+                    "发生切片ROI竞态后仍须能重新打开磁盘上的最新专业结果");
                 Guid planeId=restored.Plane.ResultId;
                 AwaitProfessional(frame.OpenProfessionalCaseAsync(project,System.Threading.CancellationToken.None));
                 Check(frame.LastMeshPlaneFit.ResultId==planeId,"重复重开不改变结果身份");
