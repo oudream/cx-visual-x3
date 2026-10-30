@@ -28,7 +28,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
         private readonly TextBox _payload = new TextBox { Text="Image001", MinWidth=200, Margin=new Thickness(4) };
         private readonly TextBlock _status = new TextBlock { TextWrapping=TextWrapping.Wrap, Margin=new Thickness(7) };
         private readonly TextBlock _metrics = new TextBlock { TextWrapping=TextWrapping.Wrap, Margin=new Thickness(7) };
-        private readonly Button _publish = new Button { Content="发布文本消息", Padding=new Thickness(10,5), Margin=new Thickness(3) };
+        private readonly Button _publish = new Button { Content="发布文本消息", Padding=new Thickness(10,5,10,5), Margin=new Thickness(3) };
         private readonly CheckBox _retain = new CheckBox { Content="Retain", Margin=new Thickness(7,5,7,5) };
         private MNMMessageCenter _owner;
         private IDisposable _subscription;
@@ -78,7 +78,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Interaction
         }
         private static Button Button(string label,Action action)
         {
-            Button button=new Button {Content=label,Margin=new Thickness(3),Padding=new Thickness(10,5)};
+            Button button=new Button {Content=label,Margin=new Thickness(3),Padding=new Thickness(10,5,10,5)};
             button.Click+=(s,e)=>{try{action();}catch(Exception ex){MessageBox.Show(ex.Message,label);}};
             return button;
         }
