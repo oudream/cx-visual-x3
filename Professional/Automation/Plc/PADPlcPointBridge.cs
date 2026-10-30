@@ -53,6 +53,7 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly Dictionary<string, string> _approvedSignatures;
         private readonly SemaphoreSlim _writeGate = new SemaphoreSlim(1, 1);
         private readonly string _scopeId;
+        private PADDeviceVariableProvider _qualityProvider;
 
         public PADPlcPointBridge(MCNConnectorModule connector, PADDeviceVariableCatalog catalog,
             IMPADataTargetAccess dataOwner, FTRSubChannelAddress destination,
@@ -112,9 +113,25 @@ namespace CxVisual.Professional.Automation.Plc
         /// 规约回包先进入操作局部暂存。会话世代和点表经二次核验后，才向唯一MDS仓提交；
         /// 对超时、配置漂移、迟到回包均不将未经确认的数据发布为Good。
         /// </summary>
-        public Task<object> ReadAndMapAsync(string stableId, CancellationToken cancellationToken)
+        public async Task<object> ReadAndMapAsync(string stableId, CancellationToken cancellationToken)
         {
-            return ReadConfirmedAsync(stableId, cancellationToken);
+            try
+            {
+                return await ReadConfirmedAsync(stableId, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                MarkStale(stableId);
+                throw;
+            }
+        }
+
+        private void MarkStale(string stableId)
+        {
+            PADDeviceVariableProvider provider = Volatile.Read(ref _qualityProvider);
+            if (provider == null) return;
+            try { provider.EmitQuality(stableId, CxVisual.Mechanism.Data.Variables.MDSVariableQuality.Stale); }
+            catch (ObjectDisposedException) { /* 正在Stop的Host不再接受该世代质量信号 */ }
         }
 
         private async Task<object> ReadConfirmedAsync(string stableId, CancellationToken cancellationToken)
@@ -147,7 +164,27 @@ namespace CxVisual.Professional.Automation.Plc
         public PADDeviceVariableProvider CreateWriteProvider(
             Func<string, PADDeviceVariableDefinition, bool> authorizeWrite)
         {
-            return new PADDeviceVariableProvider(_catalog, new VerifiedWriteBackend(this), authorizeWrite);
+            PADDeviceVariableProvider provider =
+                new PADDeviceVariableProvider(_catalog, new VerifiedWriteBackend(this), authorizeWrite);
+            RegisterQualityProvider(provider);
+            return provider;
+        }
+
+        /// <summary>只读PLC可只注册采样与质量源；没有装配写入后端或授权时写入默认拒绝。</summary>
+        public PADDeviceVariableProvider CreateReadProvider()
+        {
+            PADDeviceVariableProvider provider = new PADDeviceVariableProvider(_catalog);
+            RegisterQualityProvider(provider);
+            return provider;
+        }
+
+        private void RegisterQualityProvider(PADDeviceVariableProvider provider)
+        {
+            if (Interlocked.CompareExchange(ref _qualityProvider, provider, null) != null)
+            {
+                provider.Dispose();
+                throw new InvalidOperationException("PLC会话已装配Provider，不允许二次创建");
+            }
         }
 
         private string Resolve(string stableId)
@@ -220,12 +257,16 @@ namespace CxVisual.Professional.Automation.Plc
                 }
                 catch (Exception error)
                 {
+                    MarkStale(variable.StableId);
                     throw new PADPlcOutcomeUnknownException(pointName,
                         "PLC写请求可能已发送，协议结果未知；必须现场核实", error);
                 }
                 if (acknowledgement == null || !acknowledgement.IsCompleted)
+                {
+                    MarkStale(variable.StableId);
                     throw new PADPlcOutcomeUnknownException(pointName,
                         "PLC协议未确认完成；禁止将写请求标记为物理成功");
+                }
                 object observed;
                 try
                 {
@@ -237,6 +278,7 @@ namespace CxVisual.Professional.Automation.Plc
                 }
                 catch (Exception error)
                 {
+                    MarkStale(variable.StableId);
                     throw new PADPlcOutcomeUnknownException(pointName,
                         "PLC写入已获协议应答，但回读缺失或失效；物理结果未知", error);
                 }
