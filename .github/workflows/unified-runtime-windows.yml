@@ -51,6 +51,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CommandCenter P0 tests failed' }
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw "Unified Execution architecture tests failed" }
+      - name: B6 sustained MDS memory ownership and release soak
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-soak 20000
+          if ($LASTEXITCODE -ne 0) { throw 'B6 MDS 20k-frame lifecycle leak/latency soak failed' }
       - name: Execute compiled subflow, authorized publication and durable host recovery
         shell: pwsh
         run: |
