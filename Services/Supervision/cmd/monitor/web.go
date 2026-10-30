@@ -9,6 +9,7 @@ import (
 
 	"gogo/internal/guardview"
 	"gogo/internal/httpapi"
+	"gogo/internal/resourceview"
 	"gogo/internal/stopjournal"
 )
 
@@ -23,6 +24,9 @@ func setupHttpServer(e *gin.Engine, _ *http.Server) {
 	})
 	httpapi.RegisterStopHistory(e, func() stopjournal.History {
 		return stopjournal.Read(*_workDir)
+	})
+	httpapi.RegisterResources(e, func() resourceview.Report {
+		return resourceview.Collect(*_workDir)
 	})
 }
 
