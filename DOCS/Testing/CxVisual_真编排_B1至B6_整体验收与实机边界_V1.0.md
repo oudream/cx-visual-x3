@@ -103,7 +103,7 @@
 
 - **原有已验证**：`Applications/Runtime.Host/MRHTrustedReleaseSmoke.cs`通过真实Host受信证书Pin、RSA签名、损坏Envelope拒绝、原有MRK Publisher的Stage/Activate/安全点、独立新Host实例打开持久Ledger时防重放与损坏记录拒绝；此前只检查激活后的PlanSlot，不等于已执行签名Plan。
 - **本轮新增（待当前提交CI）**：[`bd622abf`](https://github.com/oudream/cx-visual-x3/commit/bd622abf4d38fcbae82948de7590deca2ea3172e)在相同测试的安全激活之后，获取`MRKExecutionPlanSlot.Capture()`的正式Lease，启动真实`MRKExecutionEngine`（F19 Worker），验证MRK FlowId、Completed、可信专业Capability的输出`9`且只执行一次；[`04f994eb`](https://github.com/oudream/cx-visual-x3/commit/04f994ebf141074735783dfee54c5085da4497eb)加入12秒运行门禁及超时安全取消，避免软件验收无界等待。这是明确测试用的确定性`CiCapability`，不伪称真实工业检测算法，真实Vision CPU测试由3.4提供。
-- 此批`unified-runtime-windows.yml`的`Verify pinned Host certificate and real signed Plan publication`必须在对应SHA成功后才能登记通过；查看[Runtime #41011469736](https://github.com/oudream/cx-visual-x3/actions/runs/41011469736)为最初代码提交，其后带有超时限制的新SHA须另核对。**即使软件成功，依旧不等于对真实PLC/运动控制器/X-Ray安全链验证通过。**
+- 此批`unified-runtime-windows.yml`的`Verify pinned Host certificate and real signed Plan publication`必须在对应SHA成功后才能登记通过；查看[Runtime #41011469736](https://github.com/oudream/cx-visual-x3/actions/runs/41011469736)在固定`bd622abf`整条Job **Success**，其`Verify pinned Host certificate and real signed Plan publication`步骤执行真实激活后MRK Flow及结果断言成功；其后包含超时限制的`04f994eb`仍须独立核对[Runtime #41011684090](https://github.com/oudream/cx-visual-x3/actions/runs/41011684090)。**即使软件成功，依旧不等于对真实PLC/运动控制器/X-Ray安全链验证通过。**
 
 ## 4. 实机验收矩阵：没有现场记录的项目维持未验证
 
