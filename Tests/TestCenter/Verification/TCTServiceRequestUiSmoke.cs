@@ -108,6 +108,11 @@ namespace CxVisual.TestCenter.UI
                     "actual MLC Ready");
                 Check(panel.StatusMessage.Contains("本地请求Ready证据=已核验"),
                     "TestCenter must display real handler readiness, not only Running");
+                Check(panel.CurrentObservation!=null &&
+                    panel.CurrentObservation.LifecycleRunning &&
+                    panel.CurrentObservation.VerifiedReady.HasValue &&
+                    panel.CurrentObservation.VerifiedReady.Value,
+                    "Owner-based Service observation must match the real in-process request handler");
                 await Set(hwnd,"TCT.Service.RequestId","req-1");
                 await Set(hwnd,"TCT.Service.Payload","hello CxVisual");
                 await Invoke(hwnd,"TCT.Service.Send");
@@ -134,6 +139,11 @@ namespace CxVisual.TestCenter.UI
                 await Invoke(hwnd,"TCT.Service.Stop");
                 await Until(()=>panel.State==MLCServiceModuleState.Stopped&&!panel.IsBusy,
                     "actual lifecycle Stop");
+                Check(panel.CurrentObservation!=null &&
+                    panel.CurrentObservation.State==MLCServiceModuleState.Stopped &&
+                    panel.CurrentObservation.VerifiedReady.HasValue &&
+                    !panel.CurrentObservation.VerifiedReady.Value,
+                    "Stopped Service must not publish stale Ready evidence");
                 await Invoke(hwnd,"TCT.Service.Send");
                 await Until(()=>panel.StatusMessage.StartsWith("Service请求拒绝")&&!panel.IsBusy,
                     "reject after Stop");
