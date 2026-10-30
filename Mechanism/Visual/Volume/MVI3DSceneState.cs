@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Mechanism.Visual
 {
@@ -196,6 +197,41 @@ namespace CxVisual.Mechanism.Visual
             selectedId=match.Id;
             Select(selectedId);
             return true;
+        }
+
+        /// <summary>从真正FGE double点云选择距离相机最近的可见实例，不以显示LOD拾取值做计量。</summary>
+        public bool TryPickPointCloudRay(FGEPoint3D origin,FGEVector3D direction,
+            double maximumDistance,double radius,Func<MVI3DSceneItem,FGEPointCloud3D> resolve,
+            out Guid sceneId,out FGEPointCloudRayHit pointHit,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(resolve==null)throw new ArgumentNullException("resolve");
+            sceneId=Guid.Empty;pointHit=null;
+            long revision=Revision;
+            foreach(MVI3DSceneItem item in Snapshot())
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if(!item.Visible||item.Kind!=MVI3DSceneKind.PointCloud)continue;
+                FGEPointCloud3D cloud=resolve(item);
+                if(cloud==null)continue;
+                FGEPointCloudRayHit current;
+                if(!cloud.TryPickRay(origin,direction,maximumDistance,radius,
+                    out current,cancellation))continue;
+                if(pointHit==null||current.RayDistance<pointHit.RayDistance||
+                    (current.RayDistance==pointHit.RayDistance&&
+                     current.RadialDistance<pointHit.RadialDistance))
+                {
+                    sceneId=item.Id;pointHit=current;
+                }
+            }
+            if(revision!=Revision)
+                throw new InvalidOperationException("拾取期间Scene来源/显隐已经改变，拒绝过期选择。");
+            if(!sceneId.Equals(Guid.Empty))
+            {
+                Select(sceneId);
+                return true;
+            }
+            return false;
         }
 
         /// <summary>专业来源提交新Revision时，批量撤销旧版本的可视实例；
