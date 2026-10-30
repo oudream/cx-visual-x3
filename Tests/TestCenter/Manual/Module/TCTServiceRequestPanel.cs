@@ -40,6 +40,20 @@ namespace CxVisual.TestCenter.UI
         private int _sequence;
         private bool _accepting;
         public int UniqueRequests {get{lock(_gate)return _records.Count;}}
+        // Actual request handler state, not a process-level proxy for Ready.
+        protected override bool TryObserveReadiness(out bool ready)
+        {
+            lock(_gate)
+            {
+                if(Options.DependencyRefs.Count!=0)
+                {
+                    ready=false; // Dependency readiness is not observable here.
+                    return false;
+                }
+                ready=_accepting && _slots!=null;
+                return true;
+            }
+        }
         public TCTLocalEchoService(MFMModuleDescriptor descriptor,MLCServiceModuleConfiguration config)
             :base(descriptor,config) {}
         protected override Task OnStartAsync(CancellationToken token)
@@ -250,8 +264,12 @@ namespace CxVisual.TestCenter.UI
                 string version;RequireEffective(out version);
                 if(version!=_effectiveVersion)throw new InvalidOperationException("Effective已变化，须重新装配");
                 await _runningService.StartAsync(CancellationToken.None);
-                _status.Text="Service真实生命周期Running/Ready；"+
-                    "本地请求处理已注册，配置="+_effectiveVersion;
+                MLCServiceModuleObservation observed=_runningService.Observe();
+                _status.Text="Service生命周期="+observed.State+
+                    "，本地请求Ready证据="+
+                    (observed.VerifiedReady.HasValue?
+                        (observed.VerifiedReady.Value?"已核验":"不可用"):"未知")+
+                    "；配置="+_effectiveVersion;
             }
             catch(Exception ex){_status.Text="Service启动拒绝："+ex.Message;}
             finally{_busy=false;}
