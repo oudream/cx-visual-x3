@@ -25,6 +25,16 @@ namespace CxVisual.Professional.CT3D
         public static MRIObjectAddress Commit(MEMEngineeringSession engineering,MEMContent owner,
             int expectedRevision,string root,CT3DAnalysisCase analysis,CancellationToken cancellation)
         {
+            return Commit(engineering,owner,expectedRevision,root,analysis,null,cancellation);
+        }
+
+        /// <summary>CT3D Data与调用方提供的MEM Visual Aspect整体提交并共享一次Undo。</summary>
+        public static MRIObjectAddress Commit(MEMEngineeringSession engineering,MEMContent owner,
+            int expectedRevision,string root,CT3DAnalysisCase analysis,MPMAspect visualAspect,
+            CancellationToken cancellation)
+        {
+            if(visualAspect!=null&&visualAspect.Kind!=MPMAspectKind.Visual)
+                throw new ArgumentException("附加Aspect必须为Visual。","visualAspect");
             if(engineering==null)throw new ArgumentNullException("engineering");
             if(owner==null || engineering.Find(owner.Id)!=owner)
                 throw new ArgumentException("结果必须登记到当前工程的MEMContent。","owner");
@@ -48,6 +58,7 @@ namespace CxVisual.Professional.CT3D
                 engineering.Edit("登记三维专业分析结果",expectedRevision,edit=>
                 {
                     edit.SetAspect(owner,new MPMAspect(MPMAspectKind.Data,ProviderId,Schema,payload,true));
+                    if(visualAspect!=null)edit.SetAspect(owner,visualAspect);
                     return true;
                 }).RequireValue();
                 // 提交成功以后不再检查取消：避免工程已经提交而向调用者谎报回滚。
