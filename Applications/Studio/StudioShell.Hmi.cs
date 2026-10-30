@@ -180,6 +180,14 @@ namespace CxVisual.Studio
                 OpenStudioScadaReadOnlyDialog(origin,pageId);
             });
             hmi.Items.Add(remoteConnect);
+            var scadaConfig=new MenuItem {
+                Header="打开SCADA工站部署配置（原MHS工程Schema）" };
+            scadaConfig.Click+=(sender,args)=>SafeStudioAction(()=>
+            {
+                RequireStudioHmiTarget(origin,pageId,null,null);
+                OpenStudioDocument("doc.config");
+            });
+            hmi.Items.Add(scadaConfig);
             var button=new MenuItem {
                 Header="添加控制按钮（未分配命令，在线禁止操作）" };
             button.Click+=(sender,args)=>SafeStudioAction(()=>
