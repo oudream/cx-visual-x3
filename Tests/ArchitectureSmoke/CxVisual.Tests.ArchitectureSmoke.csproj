@@ -65,5 +65,6 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <ItemGroup><ProjectReference Include="..\..\Professional\HMI\CxVisual.Professional.HMI.csproj"><Project>{BD648041-ACE5-59F1-8124-B8E0336450B8}</Project><Name>CxVisual.Professional.HMI</Name></ProjectReference></ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Foundation\Numerics\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference></ItemGroup>
 </Project>
