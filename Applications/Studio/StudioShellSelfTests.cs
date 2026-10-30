@@ -3390,20 +3390,28 @@ namespace CxVisual.Studio
                         Assert(preview.Plane.SampleCount==9&&workspace.HasPendingAnalysis&&
                             !workspace.IsAnalyzing,
                             "Studio后台原值拟合没有安全回到WPF并形成待保存专业结果");
+                        Assert(workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement,
+                            "Studio后台ROI复算应保留Measurement场景实例Id而非清空重建");
                         workspace.DiscardPendingAnalysis();
                         Assert(!workspace.HasPendingAnalysis&&
                             workspace.CurrentAnalysis.Plane.ResultId==baseline.Plane.ResultId,
                             "放弃未提交的Studio分析没有恢复原Feature和Scene");
                         var hiddenAfterDiscard=workspace.Scene3D.Snapshot().Single(x=>
                             x.Kind==MVI3DSceneKind.Measurement);
-                        Assert(!hiddenAfterDiscard.Visible&&workspace.Scene3D.SelectedId==null,
-                            "Studio后台ROI复算/放弃不能重新选择被隐藏的Measurement");
+                        Assert(!hiddenAfterDiscard.Visible&&workspace.Scene3D.SelectedId==null&&
+                            hiddenAfterDiscard.Id==hiddenMeasurement,
+                            "Studio预览丢弃须保持隐藏的Measurement实例Id及场景选择");
                         workspace.Scene3D.SetVisibility(hiddenAfterDiscard.Id,true);
                         workspace.Scene3D.Select(hiddenAfterDiscard.Id);
                         CT3DAnalysisCase edited=workspace.RecomputeSelectedSliceRoi(.49,.51);
                         Assert(workspace.HasPendingAnalysis&&edited.Plane.SampleCount==9&&
                             edited.Plane.ResultId!=baseline.Plane.ResultId,
                             "Studio选区没有形成可持久化的新专业Feature");
+                        Assert(workspace.Scene3D.Snapshot().Single(x=>
+                            x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement&&
+                            workspace.Scene3D.SelectedId==hiddenMeasurement,
+                            "Studio同步ROI复算不得使原Scene选择和可视实例身份漂移");
                         Assert(!window.TryCloseStudioDocument("doc.ct3d")&&
                             window.GetStudioContentIds().Contains("doc.ct3d"),
                             "Studio有未保存专业结果时不能直接关闭并丢失分析");
