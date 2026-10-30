@@ -63,7 +63,7 @@ npm run dev
 
 开发期前端通过 Vite 代理 Monitor 的 `/api`；部署时复制 `web/dist/` **内的文件**到 Monitor 工作目录的 `assets/comm/`，原 `/index.html` 跳转兼容。详见 [deploy/README.md](deploy/README.md)。`npm` 不参与 Go 进程的运行。
 
-注意：V1 无用户登录/操作授权，**仅用于受控可信网络中的只读监控**。UI 显示真实查询状态；不能把 HTTP 连通或历史心跳看作业务健康。
+注意：V1 无用户登录/操作授权，**敏感的新版本化进程查询 API 仅支持 Monitor 本机回环访问**；远程打开 H5 时可能收到 403，不可绕过该门禁。旧 `/programs_status` 为兼容保留原访问行为，监听公网/产线网卡时必须以绑定地址和防火墙 ACL 限制。详见 [部署与访问控制](deploy/README.md)。UI 显示真实查询状态；不能把 HTTP 连通或历史心跳看作业务健康。
 
 ## 十二大功能域及本期 P0 实现
 
