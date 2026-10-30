@@ -1584,7 +1584,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(!_rotatingOverlay || _rotationStart==null || ActiveImage==null)return;
             if(!CanContinueOverlayGesture(_rotationStart))
             {
-                _rotatingOverlay=false;_rotationStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="矩形已锁定、隐藏或删除；旋转已安全终止。";
                 return;
             }
@@ -1600,7 +1600,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {PixelStatus.Text="旋转角点超出原图，保留最近一次有效矩形。";}
             catch(InvalidOperationException)
             {
-                _rotatingOverlay=false;_rotationStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="旋转编辑被当前对象状态拒绝，已安全结束手势。";
             }
         }
@@ -1746,7 +1746,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(!_editingVertex || _vertexEditStart==null || ActiveImage==null) return;
             if(!CanContinueOverlayGesture(_vertexEditStart))
             {
-                _editingVertex=false;_vertexEditStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="多边形已锁定、隐藏或删除；顶点拖动已安全终止。";
                 return;
             }
@@ -1765,7 +1765,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             catch(InvalidOperationException)
             {
-                _editingVertex=false;_vertexEditStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="顶点修改被对象状态拒绝，已安全结束手势。";
             }
         }
@@ -1830,7 +1830,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 ActiveImage.Width,ActiveImage.Height);
             if (!CanContinueOverlayGesture(_resizeStart))
             {
-                _resizing=false; _resizeStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="ROI已锁定、隐藏或删除；缩放已安全终止。";
                 return;
             }
@@ -1847,7 +1847,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {PixelStatus.Text="调整后角点超出原图，保留上一有效尺寸。";}
             catch(InvalidOperationException)
             {
-                _resizing=false;_resizeStart=null;
+                CancelTransientGesture();
                 PixelStatus.Text="ROI缩放已被当前对象状态拒绝。";
             }
         }
