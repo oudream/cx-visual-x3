@@ -158,3 +158,13 @@ channel.Dispose();
 在`FTRChannelReceiveContext`增加兼容的只读`SessionId`属性，FTR正式接收时填入当前物理Session；外部自行构造上下文默认`Guid.Empty`，不虚构会话身份。池化`FTRReceiveBuffer`同样封存`SessionId`，由原`FTRReceivePipeline.Publish`在接收块Seal时传入，`Retain()`保留原会话ID且不分配字节副本。这样长期驻留Host把旧缓冲保留到新一次Open之后，仍能明确区分旧会话数据，不从活动Channel实时状态推断原缓冲的身份。
 
 源码提交`25e46e4`、`511b892`、`d09cff2`、`f7a7a78`、`932c263`；`FTRChannelConvenienceTests`与`FTRPersistentChannelTests`新增会话ID/跨Close保留断言（`0c012a7`、`5bb3180`）。保持原IFTR公开方法、接收线程和Owner不变。以上新增断言的Windows CI须在固定SHA完成后才可登记通过。
+
+## 2026-10-30 F17增量：HTTP Client响应接收有界与同步回调发送协调
+
+- **现有缺口与Owner**：原FTRHttpClientChannel.PostAsync通过MemoryStream.ToArray再调用Receive，未为HTTP Client响应聚合启用FTRBufferedByteBudget；MemoryStream扩容、完整副本和FTRChannelReceiveContext隔离副本使大响应峰值偏高。接收回调发生在_sendGate内，回调同步Send第二次HTTP请求可能自锁。均属于唯一Foundation.Transport F17。
+- **实装**：ConfigureInFlightBudget(_config.ReceiveByteBudget)；接收scratch和MemoryStream每次扩容（新旧数组重叠）预先Reserve，ReadAsync完整检查MaxResponseBytes，交付使用现有ReceiveBytes地址+有效count而非额外ToArray，后者在既有FTR预算下保留legacy Received的隔离快照语义。一次接收阶段总预算包含scratch、缓冲容量、交付隔离副本；额度不足明确抛FTRBudgetExceededException并释放额度，不能声称HTTP业务成功或者远端未执行。HTTP发送门在上层Received之前释放，回调可同步Send下一次请求，HTTP请求/响应仍是一条消息而非按segmentBytes重复POST。
+- **配置与诊断**：FTRChannelBase.ConfigureSendAdmission中使既有CapturePayloadEvidence生效，含HTTP/WS消息型实现；CapturePayloadEvidence=false仅省略payload证据拷贝，真实TX/RX字节、故障及预算统计照常。ReceiveByteBudget现在实际约束HTTP Client临时聚合+交付，单条MaxResponseBytes并不承诺等额的低内存预算一定可以交付：应为scratch、旧新容量短时重叠及legacy Received快照留足实际额度。与旧独立TCP池预算并行，不创建第二套Channel、业务队列或Protocol。
+- **复用对比**：已对照cx-vision-x2 Common/CommonInterfaces/Channels/TcpClientBase.cs的独立Thread但共用大锁、TcpServerService.cs的ConcurrentQueue以及Visions/CxCTVisionDetection/CtServiceUtils.cs的ArrayPool分块读取。没有搬运业务ReadLine/EOL组帧、无界队列或共享大锁；保留其池/分块理念并使用当前FTR预算与生命周期。
+- **源码提交**：`5e3779c93`（HTTP Client主修复）、`00f797528` / `9ce091b6d`（真实回环测试及异常兼容）、`b89141bfc`（配置诊断开关）、`40a018d8e`（峰值与诊断测试）。无新增项目、NuGet和跨层Owner依赖。
+- **实际验收入口**：原Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.Run → HttpClientBoundedResponseAndReentrantSend，覆盖真实HTTP localhost请求/响应、回调内同步再Send、ReceiveByteBudget=512、Rx/Tx诊断无载荷、响应256字节因峰值超额拒绝且会话继续响应小请求。自动进入`--channel-uml-core`和`--channel-transport`，并由`.github/workflows/f17-channel-windows.yml` Windows x64全SLN + 双方向各2GiB验收触发。**本轮新SHA Windows CI仍在排队，不能判定已编译/通过**。
+- **未完边界**：HTTP Client流式上层消费和跨专业DataHandle零复制（legacy事件仍按原合同复制）；24h/跨PC/真实Detector/CT设备持续性能；HTTP/WS多Peer公平与现场延迟SLA；TLS/认证新增按用户要求暂缓，未移除既有HTTPS及输入限制。
