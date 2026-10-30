@@ -1,4 +1,4 @@
-import type { AlertHistoryEnvelope, Envelope, EventsEnvelope, Overview, Program } from '../types/supervision'
+import type { AlertHistoryEnvelope, Envelope, EventsEnvelope, GuardEnvelope, Overview, Program } from '../types/supervision'
 
 // Same-origin in production; Vite proxies /api to the local Go Monitor in dev.
 // An AbortSignal guarantees that a disconnected Monitor does not hang the UI.
@@ -47,4 +47,9 @@ export function fetchAlertHistory(limit = 30): Promise<AlertHistoryEnvelope> {
     return Promise.reject(new Error('异常历史数量必须在 1～100 之间'))
   }
   return request<AlertHistoryEnvelope>('/api/v1/alerts/history?limit=' + limit)
+}
+
+/** Only local, read-only diagnostic artifacts. Never an operation endpoint. */
+export function fetchGuardReport(): Promise<GuardEnvelope> {
+  return request<GuardEnvelope>('/api/v1/guard')
 }
