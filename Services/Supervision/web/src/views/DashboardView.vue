@@ -1,12 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
 import { useThemeStore } from '../stores/theme'
+import { useGuardStore } from '../stores/guard'
 import CpuChart from '../components/CpuChart.vue'
 import { formatBytes, programName } from '../utils/format'
 
 const monitor = useMonitorStore()
 const theme = useThemeStore()
+const guard = useGuardStore()
+const { report: guardReport, error: guardError } = storeToRefs(guard)
+const closedCount = computed(() => guardReport.value?.terminal.available ? guardReport.value.terminal.items.length : null)
+const orphanCount = computed(() => guardReport.value?.orphans.available ? guardReport.value.orphans.items.length : null)
 const { overview, programs } = storeToRefs(monitor)
 </script>
 
@@ -16,6 +22,23 @@ const { overview, programs } = storeToRefs(monitor)
     <div class="metric-card"><div class="metric-label">运行中</div><div class="metric-value success">{{ overview?.running ?? '—' }}</div><div class="metric-note">进程运行，不代表业务就绪</div></div>
     <div class="metric-card"><div class="metric-label">未运行</div><div class="metric-value">{{ overview?.stopped ?? '—' }}</div><div class="metric-note">需要结合守护策略判断</div></div>
     <div class="metric-card"><div class="metric-label">监控进程 RSS</div><div class="metric-value smaller">{{ overview ? formatBytes(overview.memoryRssBytes) : '—' }}</div><div class="metric-note">程序内存统计合计</div></div>
+  </div>
+  <div class="dashboard-guard-strip">
+    <RouterLink to="/guard" class="dashboard-guard-item">
+      <div class="metric-label">达到守护上限</div>
+      <strong :class="{ 'guard-alert-number': (closedCount ?? 0) > 0 }">{{ closedCount ?? '未知' }}</strong>
+      <span class="muted">持久闭锁</span>
+    </RouterLink>
+    <RouterLink to="/guard" class="dashboard-guard-item">
+      <div class="metric-label">遗留进程隔离</div>
+      <strong :class="{ 'guard-alert-number': (orphanCount ?? 0) > 0 }">{{ orphanCount ?? '未知' }}</strong>
+      <span class="muted">上次启动扫描</span>
+    </RouterLink>
+    <div class="dashboard-guard-item">
+      <div class="metric-label">守护证据状态</div>
+      <strong>{{ guardError ? '查询失败' : guardReport ? (closedCount === null || orphanCount === null ? '来源不完整' : '已读取') : '未读取' }}</strong>
+      <span class="muted">与业务 Ready 无关</span>
+    </div>
   </div>
   <div class="content-grid">
     <section class="panel">
@@ -46,6 +69,7 @@ const { overview, programs } = storeToRefs(monitor)
     </section>
   </div>
   <div class="dashboard-actions">
+    <RouterLink to="/guard" class="subtle-link">检查守护闭锁与遗留进程 →</RouterLink>
     <RouterLink to="/events" class="subtle-link">查看原始事件记录 →</RouterLink>
   </div>
 </template>
