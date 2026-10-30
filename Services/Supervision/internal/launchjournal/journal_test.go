@@ -117,3 +117,31 @@ func TestLaunchEvidenceDirectorySymlinkRejected(t *testing.T) {
 		t.Fatal("redirected evidence directory must refuse a new process launch")
 	}
 }
+
+
+func TestPriorJournalWithoutOSBirthStaysUnresolved(t *testing.T) {
+	wd := t.TempDir()
+	j := New(wd, 9007199254740995)
+	if err := j.Begin(9007199254740995, "/legacy/managed"); err != nil {
+		t.Fatal(err)
+	}
+	// Older JSON snapshots did not include processStartMs. They are
+	// read as unknown evidence, never auto-unlatched during migration.
+	r, err := readRecord(recordPath(wd, 9007199254740995))
+	if err != nil { t.Fatal(err) }
+	r.Stage, r.PID, r.ProcessStartMs = "started", 2147483647, 0
+	if err := writeRecord(recordPath(wd, 9007199254740995), &r); err != nil {
+		t.Fatal(err)
+	}
+	found, err := Scan(wd)
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(found[9007199254740995], "unverified-original-birth") &&
+		!strings.Contains(found[9007199254740995], "pid-not-observable") {
+		t.Fatalf("old unbound record must stay quarantined: %+v", found)
+	}
+	r.ProcessStartMs = -1
+	if err := writeRecord(recordPath(wd, 9007199254740995), &r); err != nil { t.Fatal(err) }
+	if found, err = Scan(wd); err != nil || !strings.Contains(found[9007199254740995], "corrupt") {
+		t.Fatalf("negative OS birth timestamp must be rejected: %+v %v", found, err)
+	}
+}
