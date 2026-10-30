@@ -7,16 +7,17 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"gogo/common/utilities"
-	"gogo/internal/daemonc"
-	"gogo/internal/monitorc"
-	"gogo/internal/program"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"gogo/common/utilities"
+	"gogo/internal/daemonc"
+	"gogo/internal/monitorc"
+	"gogo/internal/program"
 )
 
 var (
@@ -113,6 +114,7 @@ func main() {
 	csg := make(chan os.Signal, 1)
 	// 订阅系统信号:ctrl+c
 	signal.Notify(csg, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer signal.Stop(csg)
 	//从管道csg抓取系统信号：:ctrl+c，并从管道cbr发出消息
 	go func() {
 		for s := range csg {
@@ -123,7 +125,10 @@ func main() {
 				// 發出退出信號
 				cancelWorkers()
 				ticker.Stop()
-				select { case cbr <- true: default: }
+				select {
+				case cbr <- true:
+				default:
+				}
 				_logger.Println(_title.Info + "Ticker stopped")
 			default:
 				_logger.Println(_title.Info+"接收到信號-other: ", s)
@@ -155,7 +160,9 @@ func main() {
 			_logger.Printf(_title.Error+"Check DB[ mqtt, redis, influxdb ] Connected Status Fail, program[ %s ] can not be run.\n", a.Path)
 			continue
 		}
-		if a.FirstWaitTime > 0 && !waitForFirstStart(workerCtx, time.Second * time.Duration(a.FirstWaitTime)) { break }
+		if a.FirstWaitTime > 0 && !waitForFirstStart(workerCtx, time.Second*time.Duration(a.FirstWaitTime)) {
+			break
+		}
 		go daemonc.RunProgramContext(workerCtx, a, cae, findProgramById, _logger, *_workDir)
 		_logger.Println(_title.Info + "Run Program: " + a.Path)
 	}
@@ -409,7 +416,9 @@ func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 		}
 		// run program
 		if !bProgramHasRun {
-			if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second * time.Duration(a.FirstWaitTime)) { return }
+			if a.FirstWaitTime > 0 && !waitForFirstStart(ctx, time.Second*time.Duration(a.FirstWaitTime)) {
+				return
+			}
 			go daemonc.RunProgramContext(ctx, a, cae, findProgramById, _logger, *_workDir)
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
