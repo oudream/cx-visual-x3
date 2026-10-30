@@ -46,7 +46,16 @@ namespace CxVisual.Professional.Automation.Plc
 
         public TimeSpan Interval { get { return _interval; } }
         public bool Contiguous { get { return _contiguous; } }
-        public bool IsStarted { get { lock (_gate) return _job != null; } }
+        // 对外表示当前可继续采样的会话，不是“历史上曾启动”。
+        // 故障完成或Host发出Stop后立即不再对外宣称Running。
+        public bool IsStarted
+        {
+            get
+            {
+                lock (_gate)
+                    return _job != null && !_stopped && !_job.Completion.IsCompleted;
+            }
+        }
         public long CompletedCycles
         {
             get
