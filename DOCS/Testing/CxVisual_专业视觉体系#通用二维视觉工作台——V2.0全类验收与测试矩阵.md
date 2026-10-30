@@ -672,3 +672,14 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | 跨专业失败事实 | `9944b63b`的[Imaging #41010672790](https://github.com/oudream/cx-visual-x3/actions/runs/41010672790)和[Runtime #41010672735](https://github.com/oudream/cx-visual-x3/actions/runs/41010672735)均failure，日志`AUT-PLC-G1`要求点表漂移时“不写过期MDS”；不是Imaging类编译失败 |
 | 质量契约修复 | `AutomationPlcPointTests` `d4710675`将“整个Revision不变”更正为质量Revision递增同时Stale、原样本/采样时间不变；无需放宽旧回包禁入、不能伪装Good |
 | 验收限制 | 全量G4须等`9431d358`相关实际Actions成功；受控WPF Esc Step成功不等于真实人工操作G5 |
+
+
+### R2-03 捕获/草稿分离、公开Session切图与隐藏层MouseUp（2026-10-30）
+
+| ID | 可重复测试与正确语义 | 实测等级 |
+|---|---|---|
+| R2-03-01 | `TCTImageViewerSmoke.VerifyEscCancelsUncommittedLinePair`：主/副Pane`LostMouseCapture`合成路由不清空等待第二点的测量草稿，允许第二点继续，Esc必须清理 | `f86f8309` [Imaging #41013724419](https://github.com/oudream/cx-visual-x3/actions/runs/41013724419) Windows WPF STA G3/G4 success |
+| R2-03-02 | 公开`viewer.Session.SetOriginal(newSource)`即使绕过`viewer.ShowOriginal`，也终止旧原图草稿/捕获、清理选中身份，并允许恢复原图继续使用 | `101395a8`/ `bb8bc5e8`，TCT WPF测试已提交；最新固定SHA结果待验 |
+| R2-03-03 | `MVIImageOverlayEditGesture.Complete`：已更新草稿、外部隐藏图层、MouseUp不得提交；回滚草稿但不改变外部层可见性，重新显示不得复活旧变更 | `d8b80eba`/`8895b5a9`，`MVIImageOverlayTests`正反例已提交；[Imaging #41013971612](https://github.com/oudream/cx-visual-x3/actions/runs/41013971612)待验 |
+| R2-03-04 | 真实双Pane人手鼠标抢占/Esc/失捕、DPI和焦点切换多轮 | G5未执行；不得以合成事件或普通单测冒充 |
+
