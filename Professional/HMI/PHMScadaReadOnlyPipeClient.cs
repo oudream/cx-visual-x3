@@ -96,6 +96,7 @@ namespace CxVisual.Professional.HMI
                 DateTimeStyles.RoundtripKind,out refreshed))
                 throw new InvalidDataException("hmi.pipe.timestamp_invalid");
             StablePointId=point.StablePointId;VariableId=point.VariableId;
+            ValueTypeName=point.Type;
             Unit=point.Unit??"";Source=point.SourceId??"";
             Revision=point.Revision;RefreshUtc=refreshed.ToUniversalTime();
             Quality=quality;HasValue=point.HasValue;
@@ -104,6 +105,7 @@ namespace CxVisual.Professional.HMI
         }
         public string StablePointId {get;private set;}
         public string VariableId {get;private set;}
+        public string ValueTypeName {get;private set;}
         public string Unit {get;private set;}
         public string Source {get;private set;}
         public long Revision {get;private set;}
