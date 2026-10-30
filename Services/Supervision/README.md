@@ -92,3 +92,12 @@ npm run dev
 已新增 `GET /api/v1/guard` **本机只读诊断接口**与 H5 “守护诊断”页。终止闭锁读取原 Daemon 持久锁文件；孤儿隔离读取最近一次 Daemon 启动扫描发布的带时间戳文件。来源不可用、损坏或不同工作目录时显示“未知”，不得误报数量为零。页面提供闭锁/隔离分类筛选、Program ID 跳转、原因及观察时间；“运行总览”“程序与服务”同步显示已观察到的保护信息，“异常历史”“事件记录”支持点击 Program ID 定位程序。
 
 仍沿用原 Go Monitor/Daemon、Gin、Vue 3、Element Plus、Pinia、ECharts 与旧 UDP/SQLite。没有新增远程启停、重启、在线解锁、审核或业务 Ready 判定，H5 仍需同机访问。启动阶段孤儿凭证窗口、停止结果持久化及 S11 权限审计仍待继续开发。详见 [守护诊断部署](deploy/README.md)、[V2.0全类架构](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md) 第25章及 [S01～S12验收矩阵](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第20章。
+
+
+## 启动前意图持久化与崩溃隔离（2026-10-30）
+
+已新增正式 Daemon 子进程启动凭证：`internal/launchjournal` 在每次 OS Start 前写入 `intent`，成功后更新 `started + PID`，原 Worker `Wait` 后清算。下次 Daemon 启动扫描会合并旧 PID 文件与未清算凭证，**即使旧 PID 未写入，也不会把无证据的状态当作安全可重新启动**。写盘/核验/删除失败按安全默认拒启，不通过旧 UDP、H5 自动清隔离。
+
+H5 “守护诊断”、运行总览和程序详情已补充“启动隔离（含凭证）”说明，并继续展示原隔离原因、Program ID 与扫描时刻。随机 AttemptID 不等于 OS PID 创建代次；断电耐久性、原生进程树归属及真实设备 Ready 均未完成。此为上段旧版“遗留 PID 独立扫描仍有窗口”的增量修复记录，正式验收仍以 CI 和现场数据为准。
+
+详见 [V2.0整体架构第26章](docs/CxVisual_Supervision_整体架构与全类UML设计_V2.0.md)、[S01-S12验收矩阵第21章](docs/CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)、[现场部署与离线处置](deploy/README.md)。
