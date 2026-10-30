@@ -127,6 +127,29 @@ namespace CxVisual.Runtime.Host
                 {denied=e.Message=="mrh.release.certificate_pin_mismatch";}
                 Check(denied,"untrusted public certificate pin was accepted");
 
+                // A pinned RSA certificate with only key-encipherment use is
+                // not a valid signing identity, regardless of its fingerprint.
+                string badUsageFile=Path.Combine(root,"not-for-signing.cer");
+                var badUsageRequest=new CertificateRequest(
+                    "CN=CxVisual CI encipherment-only key",
+                    signingKey,HashAlgorithmName.SHA256,RSASignaturePadding.Pkcs1);
+                badUsageRequest.CertificateExtensions.Add(new X509KeyUsageExtension(
+                    X509KeyUsageFlags.KeyEncipherment,true));
+                using(X509Certificate2 badUsageCert=badUsageRequest.CreateSelfSigned(
+                    DateTimeOffset.UtcNow.AddDays(-1),DateTimeOffset.UtcNow.AddDays(1)))
+                    File.WriteAllBytes(badUsageFile,badUsageCert.Export(X509ContentType.Cert));
+                string badUsagePin;
+                using(SHA256 sha=SHA256.Create())
+                    badUsagePin=BitConverter.ToString(
+                        sha.ComputeHash(File.ReadAllBytes(badUsageFile))).Replace("-","");
+                denied=false;
+                try {new MRHTrustedReleaseHost(scope,ledgerFile,
+                    new[]{new MRHTrustedSigningKey(keyId,badUsageFile,badUsagePin)},
+                    p=>p=="ci-release-officer",publisher,catalog,capability);}
+                catch(UnauthorizedAccessException e)
+                {denied=e.Message=="mrh.release.certificate_not_signing";}
+                Check(denied,"non-signing certificate was accepted as trusted signing key");
+
                 var trusted=new MRHTrustedReleaseHost(scope,ledgerFile,trustedKeys,
                     p=>p=="ci-release-officer",publisher,catalog,capability);
 
