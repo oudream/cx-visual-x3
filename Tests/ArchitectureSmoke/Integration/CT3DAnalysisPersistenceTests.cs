@@ -271,6 +271,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 string absent=blob+".missing";File.Move(blob,absent);
                 Reject<FileNotFoundException>(()=>CT3DAnalysisPersistence.Open(engineering,address,folder,CancellationToken.None));
                 File.Move(absent,blob);
+                engineering.Close(true); // 故意Undo后仍为Dirty，必须显式丢弃测试会话。
             }
             Reject<InvalidDataException>(()=>CT3DAssetReference.Capture(folder,"../source.raw",info,frame,1,CancellationToken.None));
             var wrong=new FVORawVolumeInfo(n,n,n+1,1,1,1,FVORawVoxelFormat.UInt16,"wrong");
