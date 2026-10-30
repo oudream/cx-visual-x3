@@ -114,3 +114,12 @@
 - A3只读Pipe v1的Discover/Snapshot设备记录增加可选采集统计：CompletedCycles、SuccessfulCycles、PartialCycles（SHA 9f14ba0f）。数值直接来自现有PADScadaDeviceSession/FCRPeriodicJob运行计数，不复制MDS数据，也不产生新诊断状态Owner；新PLC SessionGeneration重新计数，客户端不能跨代次将计数连续拼接。
 - 双PLC真实Windows G1在每个设备完成两轮FC03后验证上述三个字段与真实MDS Good/原值；其中两台各SuccessfulCycles>=2且PartialCycles=0，任一设备失败需继续诊断而非声称PLC数据已正常（SHA 784b5e9b）。HMI-B不需修改旧有必填字段，SchemaVersion仍为1。
 - A/B共享联调契约追加独立说明，原`DeviceRef/ScopeId/ConfigVersion/Generation`的版本锁与只读默认拒写仍保留。只有固定SHA Windows x64真实CI通过后才认定G1成功；本机Socket G1不证明现场设备G2/G3。
+
+
+## 14. A5 正式工程预检入口与无IO版本验收（2026-10-30）
+
+- 新增正式入口：`CxVisual.Runtime.Host.exe scada-project-check <saved.cxproj> <mhsRoot>`。使用既有`MRHScadaRuntimeGroup.OpenFromEngineering`从磁盘重新读取MEM资源、MHS项目部署Effective、所有Connector Effective，并复用PAD点表/MDS映射校验，不另建工程树或参数真源。
+- 成功时仅向标准输出输出SchemaVersion=1的单条JSON，Status=`EngineeringValidated`，字段包含DeploymentVersion、Devices（DeviceRef、ScopeId、ConnectorModuleId、ConnectorEffectiveVersion、ChannelId、ScanIntervalMs、Contiguous、Points）及明确`DeviceCommunicationValidated=false`。Point仅包含StablePointId、VariableAddress、ValueType、Unit、WritableDefinition；不输出PLC IP、密码、Token或现场控制参数；WritableDefinition仅代表工程定义，不是授权命令许可。
+- **该预检不启动F17 Channel或PLC轮询、没有FC03/FC06及设备物理身份验证**。项目缺失、待生效、点表映射异常、重复设备Scope/Channel、外部部署漂移等情况沿用正式装配异常，CLI由Host返回非零退出码，不能输出误导性的成功清单。它是供部署/Supervision审核的只读预检，不是另一个SCADA内核、许可服务、远程API或配置快照仓。
+- `MRHScadaSmoke.RunTwoDevices`在双PLC真实OS Socket开启后，先调用真实预检校验双站、Point、MHS版本和零报文；再在构造Channel冲突后验证预检拒绝且没有额外FC03（相关提交`4473e2e`、`f7f276e`、`fc3f6d8`、`0885994`、`f4b36a5`）。
+- 先前SCADA G1成功证据：SHA `784b5e9bc77289bd2849336ee48f46255509894a`，Run `41046444013` 的.NET48 Windows x64 Restore、Build、实际 `scada-g1-smoke` 全部PASS，日志为“PASS SCADA G1 MEM/MHS TCP/MDS polling Recovery TwoStations Isolation Stop restart version-drift”。该记录只认证对应旧SHA；本预检增量需以新SHA Windows G1真实结果为准。
