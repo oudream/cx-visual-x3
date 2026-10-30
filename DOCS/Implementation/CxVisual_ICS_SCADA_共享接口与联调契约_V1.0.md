@@ -137,3 +137,10 @@ HMI-B可按以上合同用Windows NamedPipeClientStream连接本机同账户Host
 ## 9. 多设备组恢复对HMI-B的会话语义（2026-10-30）
 
 A新增可选 `scada-group-serve ... --recover [--read-pipe <pipeName>]`；当前失败后**整个组**关闭并重新从同版MEM+MHS Effective装配，所有Device Generation同时换代，Pipe可能在退避期间断开。B应在Pipe不可达/旧Generation拒绝时清除旧Good显示，待新Discover成功后主动重新建立绑定；不得凭相同DeviceRef/Scope假设旧Session仍可控制或继续显示实时值。非通信错误、部署版本变更不得自动恢复。此版本仍只读，没有HMI远程MRK写入口。
+
+
+## 10. 单PLC隔离恢复联调合同（2026-10-30）
+
+Host新增可选 `scada-group-serve <project.cxproj> <mhsRoot> --recover-device [--read-pipe <pipeName>]`：仅通信异常影响的DeviceRef被摘除和重装，其余DeviceRef/Scope/Generation和MDS采集继续。**同一Pipe不退出**：故障PLC暂时不在Discover.Devices中，新世代恢复成功后以同DeviceRef/Scope、新Generation重新出现。原有客户端旧Generation请求要么返回DEVICE_NOT_FOUND（恢复空档），要么SESSION_VERSION_MISMATCH（恢复完成），均必须清除上一次Good并重新Discover后绑定；其余健康设备订阅可继续使用原会话版本。A在设备替换期间锁住读端快照与旧设备Dispose，保证快照不会引用已释放的MDS。
+
+本版只允许本机同账户只读Snapshot；尚无跨账户授权、可靠推送、SCADA远程可信控制或工业硬件身份判定。HMI-B保持公共Owner及原Pipe v1协议，不应将PLC reconnect认为现场执行器状态已确认。A的双PLC真TCP回归新增A断包重连而B不停采的反证，CI状态以提交SHA对应实际Windows运行日志为准。
