@@ -51,3 +51,23 @@
 - `9fecb6b`/`4131ef1`：`MVI3DSceneState.RemoveOlderSourceRevisions`按SourceRef、当前专业Revision一次性撤销旧Surface/Measurement等场景引用，保留最新来源实例，自动清理旧选择并仅发布一次Changed事件。重复无效化保持零变更；不删除MEM真源或物理资产。ArchitectureSmoke增加正反测试。
 - 这些仅属于MVI公共Scene消费端的失效控制，实际专业结果的变更由CT3D/MEM既有Owner发起；未来Studio/MPW须在结果提交与重开恢复路径调用此统一方法，而非另建Scene版本栈。
 - 固定SHA Windows CI及真实GPU混合深度、像素精确拾取、场景样式MEM保存重开、ROI跨切片变换、LOD/预算仍待验证。不得标B工作包完成。
+
+
+## 5. B包 2026-10-30 多对象交付增量与验收状态（基于master实码）
+
+**正式生产路径**：继续由FVO持有原值/Frame、FGE持有double几何、MVI持有Scene/选择/分组、MPW持有WPF/GL显示缓存、CT3D持有Feature/Measurement、MEM持有工程事务。没有新建工程树或独立GPU状态系统。
+
+- **Studio用户作业**：`StudioCT3DDocument`已有实际MEM打开、ROI复算、待提交预览、丢弃、Scene与Data原子保存；`3b3e37f7`/`cc13f3c0`修正隐藏Measurement后复算/丢弃不能重新选中不可见对象，真实Studio S1固定SHA成功（例如`cc13f3c0`的Windows Studio S1）。
+- **真实PointCloud**：`e8cc4ace`追加MVI PointCloud枚举且保持旧Scene Schema1枚举编号；`aaf15011`/`1c39c183`增加FGE不可变double点云及.NET48工程编译，保留原值索引、确定性显示抽样、物理射线最近点拾取；`dfb688ba`/`ecb73a34`/`7ab7cc11`将原值射线拾取与场景可见实例选择/版本竞争连接，含Headless正反测试。
+- **WPF/GL点云**：`ec280345`/`4ff3e91b`/`591ef848`提供每Scene独立点云Visual、材质透明度、MVI显隐/删除和缓存；`82d4653c`/`b4e05bc0`/`9dcd46f2`建立GL点云独立VBO和GPU硬件专用回归。上屏可视与原值点号分离，不冒充亚体素或CAD计量。
+- **统一物理显示**：`f2b69ae6`/`f9f9e8fe`将Surface/PointCloud投影对齐原Mesh的`(voxel+0.5)/N`体空间规则，`MPWVolumeDisplayPointCloud`保留原点索引；原投影旧断言造成的固定`f2b69ae6` G2失败已在后续测试修正。WPF测试`8dce1f68`改为从真实原值Frame投影，不再手写虚拟屏幕点。
+- **真实GPU反投影/性能**：`7d62a267`/`548ff22d`使System.Numerics投影反算一致，中央与右侧像素方向有CPU解析断言；`ce78c9df`/`1db48b8f`让WPF Mesh/CAD仅来源修订时重建，组/透明度修改零重复解析；`110a97f6`在GL多Mesh替换前检查全局三角预算并先释放旧VBO。
+- **可见3D ROI与Mask**：`f24b2bed`/`49b643ac`将二维物理矩形加毫米法向范围映射为12三角面的FGE棱柱，并验证旋转Frame、非法厚度；`1e161d8b`/`ef6c32f6`使MVI Roi/Mask复用WPF/GL真实索引三角面路径，支持对象级透明显隐及释放；`80af8c83`增加真实GPU硬件专项。
+
+**固定成功证据**：
+- [CT3D B G1–G3 `40994784012`](https://github.com/oudream/cx-visual-x3/actions/runs/40994784012)：`ce78c9df`，SUCCESS，包含Release/Debug x64、Headless、真实WPF。
+- [CT3D B G1–G3 `40994645435`](https://github.com/oudream/cx-visual-x3/actions/runs/40994645435)：`7ab7cc11`，SUCCESS。
+- [CT3D B G1–G3 `40994429709`](https://github.com/oudream/cx-visual-x3/actions/runs/40994429709)：`7d62a267`，SUCCESS。
+- 本节后续物理ROI/Mask最新SHA仍为queued，不将旧SHA成功外推为全部通过。
+
+**B包剩余硬门禁**：跨Volume/Roi/Mask/Mesh/CAD/PointCloud的真实GL深度及半透明排序（当前深度仅几何叠加，不代表Raymarch可写入正确逐像素深度）、真实GPU工作站新PointCloud/ROI组合G4、Context丢失与显存压力上限的全量反证、正式CAD和多对象独立专业资产在MEM工程中的可靠保存重开、真实用户鼠标操作及大规模稳定性。不得把B标为完整验收。历史第三节描述的是2026-10-27初始阶段，不再代表2026-10-30源码状态。
