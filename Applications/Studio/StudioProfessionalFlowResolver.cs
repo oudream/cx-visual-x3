@@ -57,7 +57,14 @@ namespace CxVisual.Studio
             if(options==null)throw new ArgumentNullException("options");
             if(simulation==null)throw new ArgumentNullException("simulation");
             string invalid=CxVisionInspectionOptions.Validate(options);
-            if(invalid!=null)throw new ArgumentException(invalid,"options");
+            if(invalid!=null || options.GrayThreshold<0 ||
+                options.GrayThreshold>65535 || options.MinDefectArea<1 ||
+                options.MaxDefectArea>10000000 ||
+                double.IsNaN(options.MinDefectArea) ||
+                double.IsNaN(options.MaxDefectArea) ||
+                double.IsInfinity(options.MinDefectArea) ||
+                double.IsInfinity(options.MaxDefectArea))
+                throw new ArgumentException("studio.vision.invalid_cpu_options","options");
             _simulation=simulation;
             _effectiveProvider=effectiveProvider;
             _raw=rawBytes==null?null:(byte[])rawBytes.Clone();
