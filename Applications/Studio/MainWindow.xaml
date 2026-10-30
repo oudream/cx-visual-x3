@@ -759,6 +759,12 @@
                             <DataTemplate x:Key="EngineeringBooleanEditor">
                                 <CheckBox Content="启用" IsThreeState="{Binding IsMixedValue}" IsChecked="{Binding NullableBooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                             </DataTemplate>
+                            <!-- 原MPM变量绑定仍唯一保存；列表取自可信运行MDS，不手填内部GUID。 -->
+                            <DataTemplate x:Key="EngineeringVariableEditor">
+                                <ComboBox ItemsSource="{Binding VariableChoices}" IsEditable="True"
+                                          Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          ToolTip="从当前受信MDS Scope的变量名选择；未连接时仍可编辑已保存绑定"/>
+                            </DataTemplate>
                             <DataTemplate x:Key="EngineeringResourceEditor">
                                 <ComboBox ItemsSource="{Binding ResourceChoices}"
                                           SelectedItem="{Binding SelectedBindingResource, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -791,6 +797,9 @@
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsResourceSource}" Value="True">
                                                     <Setter Property="ContentTemplate" Value="{StaticResource EngineeringResourceEditor}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsVariableSource}" Value="True">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource EngineeringVariableEditor}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
