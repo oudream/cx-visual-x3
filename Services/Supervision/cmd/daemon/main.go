@@ -75,7 +75,8 @@ func main() {
 
 	_myProgram, err = program.GetProgramById(*_workDir, program.DefaultProgramIdDaemon)
 	if err != nil {
-		_logger.Printf(_title.Error+"Fatal _myProgram=GetProgramById( %d ), err=%s, Program Will Exit.\n", program.DefaultProgramIdDaemon, err)
+		// Logger is not initialized until the program definition is loaded.
+		fmt.Printf(_title.Error+"Fatal _myProgram=GetProgramById( %d ), err=%s, Program Will Exit.\n", program.DefaultProgramIdDaemon, err)
 		os.Exit(-3)
 		return
 	}
