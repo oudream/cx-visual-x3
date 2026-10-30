@@ -1173,6 +1173,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             .GetAwaiter().GetResult();
                         Check(first.RunId!=second.RunId &&
                             first.SourceId==second.SourceId &&
+                            first.ConfigRevision==21 && second.ConfigRevision==21 &&
                             first.Items.Single(x=>x.Name=="阈值命中像素数")
                                 .IntegerValue==6 &&
                             second.Items.Single(x=>x.Kind==CxVisionResultKind.Measurement)
