@@ -682,4 +682,5 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | R2-03-02 | 公开`viewer.Session.SetOriginal(newSource)`即使绕过`viewer.ShowOriginal`，也终止旧原图草稿/捕获、清理选中身份，并允许恢复原图继续使用 | `101395a8`/ `bb8bc5e8`，TCT WPF测试已提交；最新固定SHA结果待验 |
 | R2-03-03 | `MVIImageOverlayEditGesture.Complete`：已更新草稿、外部隐藏图层、MouseUp不得提交；回滚草稿但不改变外部层可见性，重新显示不得复活旧变更 | `d8b80eba`/`8895b5a9`，`MVIImageOverlayTests`正反例已提交；[Imaging #41013971612](https://github.com/oudream/cx-visual-x3/actions/runs/41013971612)待验 |
 | R2-03-04 | 真实双Pane人手鼠标抢占/Esc/失捕、DPI和焦点切换多轮 | G5未执行；不得以合成事件或普通单测冒充 |
+| R2-03-05 | 固定SHA`8895b5a9`的Imaging #41013971612与Runtime #41013971625失败，Windows日志定位为Automation新Provider缺Decision工程引用的CS0246；`d57392e9`已补该ProjectReference | **当前代码含修复，但最新SHA G3/G4仍待实测；不得把跨专业编译失败记为MVI编辑测试失败** |
 
