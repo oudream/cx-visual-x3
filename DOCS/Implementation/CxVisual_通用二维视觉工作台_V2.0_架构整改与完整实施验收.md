@@ -325,6 +325,13 @@
 - **实际Windows证据**：[`Module Center CPU #41003894207`](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)（SHA `adbe2740`）成功，包含Release/x64统一解决方案编译和双CPU STA闭环，可登记该SHA G3和对应CPU路径G4；新增`RuntimeVisionResultTests`及`RuntimeVisionArtifactsTests`的完整Imaging/Runtime G4必须依对应Workflow结果另行核验，不以CPU Job替代。
 - **仍未完成**：完整失败/拒绝Run的独立审计持久合同、缺失Artifact的真实磁盘场景、真正Studio文件弹框UIA/截图及G6工业设备/大图长稳。IMG-04继续InProgress；本增量属于最小OOP/已有MRK状态真源组合而非第二状态机。
 
+### 7.6 IMG-04 最新Windows集成复验（2026-10-30）
+
+- 前一阶段`adbe2740213cfc2019e44c813f54f01e48f270a9`的[Module Center CPU #41003894207](https://github.com/oudream/cx-visual-x3/actions/runs/41003894207)与[Studio S1 #41003894214](https://github.com/oudream/cx-visual-x3/actions/runs/41003894214)已真实`success`；此两项可确认为对应SHA的Windows G3和受控STA G4。
+- 同SHA的[Imaging #41003894164](https://github.com/oudream/cx-visual-x3/actions/runs/41003894164)在完成Windows构建后，默认ArchitectureSmoke因`AutomationPlcPointTests`触发`PROTOCOL_IO_MISMATCH`失败；日志为确切堆栈而非Imaging算法失败。Automation Owner后续以`5552a931ff9a`修复测试中的TCP回环通道配置。
+- 为重新覆盖经过跨专业修复的当前代码，在`RuntimeVisionResultTests`补充“Empty候选但有效零统计仍为Valid、未提供当前源必须Stale”测试（`86aa81a5`，`f57ccda8`修正按唯一输出名取值）。[Imaging最新SHA `f57ccda8` #41004342250](https://github.com/oudream/cx-visual-x3/actions/runs/41004342250)和[Unified Runtime #41004342241](https://github.com/oudream/cx-visual-x3/actions/runs/41004342241)触发时均在队列，不能提前宣布完整G4。
+- **保留判据**：结果Kind=Statistic且值为0属于有效统计，不因数值为零自动Empty；只有候选计数为0的DetectionSummary标记Empty。Run执行失败、Cancelled、Rejected的证据仍由原MRK状态Owner负责，不能在PVC制造新成功Run。
+
 ## 8. 变更控制、回滚和“不得完成”规则
 
 1. **进入任务前**：对照真实master和涉及的csproj、正式Owner、References与现有测试，明确最小边界；并行更改同文件/公共API时先核对最新HEAD避免覆盖别人的提交。
