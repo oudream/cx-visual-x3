@@ -166,6 +166,17 @@ namespace CxVisual.Studio
                 resourceId.ToString("N")+"."+registration.Id+"."+
                 (instanceId.HasValue?instanceId.Value.ToString("N"):"definition");
             LayoutDocument existing=FindStudioContent(key) as LayoutDocument;
+            // HMI运行投影与工程Revision一一对应。编辑后的旧Viewer不能被同Key
+            // 再次打开时复用成“在线正常”画面；关闭并重建新的运行订阅。
+            StudioViewerDocument priorHmi;
+            if(existing!=null&&chosen.EditorId=="hmi.scada.live"&&
+                _studioViewerDocuments.TryGetValue(key,out priorHmi)&&
+                priorHmi.Identity.OpenRevision!=session.Revision)
+            {
+                existing.Content=null;existing.Close();
+                ReleaseStudioViewerDocument(key);
+                existing=null;
+            }
             if(existing==null)
             {
                 LayoutDocumentPane pane=StudioDock.Layout.Descendents()
