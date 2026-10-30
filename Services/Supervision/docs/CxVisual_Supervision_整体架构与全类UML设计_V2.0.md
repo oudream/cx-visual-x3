@@ -101,7 +101,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 
 ## 5. 全类对象地图与源码归属
 
-**对象地图条目数：146 项（S/R 源码存在或复用 69 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 146 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
+**对象地图条目数：149 项（S/R 源码存在或复用 72 项，A 候选职责 77 项）。** 此数字包含 Go 函数和 TS 组件，**不是 149 个应新建的 class 或源文件**。候选应以用途、Owner、测试和源码查重收敛，允许合并或裁撤。
 
 表列的“现有”包含 Go 函数与 TS 组件，其语言形态须保留；R 为跨 Owner 正式复用；A 仅为设计候选。候选的初始名称用于讨论职责与避免重复，**在已有 C# FQN、Go 类型和 DOCS/02～04 逐项查重以前不视为公开 API 定案**。以下清单是产品级逻辑全类，不是本期要批量自动创建的文件清单。
 
@@ -133,6 +133,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go cmd/daemon | verifyManagedExecutablePID [函数] | 无活跃 Worker 的旧 PID 文件最小身份校验 | 不消除 PID 复用竞态 |
 | S | Go cmd/daemon | programWorkerGate / launchProgramWorker | 守护协程同步占用及退出释放，防止同 ID 重复启动 | 不复制 Program 状态、PID 或 Runtime 调度 |
 | S | Go internal/launchjournal | Journal / Record / Scan | 持久化启动意图、观察 PID、原 Wait 后清算 | 仅重启恢复证据，非 OS 进程真源 |
+| S | Go internal/stopjournal | Entry / History / NewRequest / Append / Read / RecordReceipt | 持久停止操作编号、递增回执与重启对账 | 本地有限流水，不是可信安全审计或控制接口 |
 | S | Go internal/launchjournal | observedBirthMs / DescribeCurrentPID / birthEvidence | OS 创建时间及真实可执行文件的只读恢复核验 | 仅缩小 PID 复用疑点，不证明进程归属 |
 | S | Go internal/daemonc | LaunchRecorder / RunProgramContextWithLaunchEvidence | 原守护 Worker Start/Wait 两端记录启动凭证 | 保留原签名与 UDP Event |
 | S | Go internal/program | GetProgramRunList [函数] | 读取待运行的受管程序配置 | 保持原 DB |
@@ -156,6 +157,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | Go internal/httpapi | RegisterAlertHistory [函数] | 注册异常历史查询路由 | 本机只读 |
 | S | Go internal/guardview | Item / Source / Report / Read | 有界解码、独立来源状态、精确 Program ID 投影 | 不读取实时 Daemon 内存或执行控制 |
 | S | Go internal/httpapi | GuardProvider / RegisterGuardDiagnostics | 只读 GET /api/v1/guard | security.LocalOnly；无写路由 |
+| S | Go internal/httpapi | RegisterStopHistory | 本机GET停止操作历史 | security.LocalOnly，不提供POST/DELETE |
 | S | Go internal/security | LocalOnly [函数] | 本地访问限制中间件 | 不是身份/RBAC |
 
 ### E3 现有跨体系 C# Owner（复用，不迁入 Go）
@@ -190,6 +192,7 @@ Mechanism/Core/Modules/Service/（现有 C# Service Owner，原位深化）
 | S | web/src/stores | useThemeStore [Pinia] | 浅色/深色 Token | 保留双主题 |
 | S | web/src/views | DashboardView/ProgramsView [Vue] | 运行总览与程序详情 | 已有真实接口 |
 | S | web/src/views | GuardView [Vue] | 双来源守护诊断、筛选、时间及原因 | 只读，S11 安全操作未开放 |
+| S | web/src/views/stores | StopHistoryView / useStopHistoryStore | 停止请求/最终Wait及未结清操作可视对账 | 仅读取旧Daemon工作目录，不是跨机运维 |
 | S | web/src/stores,utils | useGuardStore / guardVerdict | 缓存旧证据标记过期、推导保护状态 | 仅双来源可用才显示无记录 |
 | S | web/src/views | EventsView/AlertsView [Vue] | 事件记录与异常历史 | 已有真实接口 |
 | S | web/src/components | CpuChart [Vue] | CPU 数据图组件 | 不得伪造趋势数据 |
@@ -1110,3 +1113,48 @@ flowchart TD
 `identity_test.go` 增加真实当前进程创建时间读取、不同创建时间判别、无创建时间/仅 intent、旧记录拒绝自动放行等回归。`guard.test.ts` 验证 UI 不把“吻合”当作放行。Linux Race CI 追加创建时间相关用例；**固定 SHA 的 Go 三平台 CI、前端 typecheck/build 和设备 G2/G3 仍待取得真实执行日志，不能冒称已通过**。
 
 详见 [Supervision S01～S12 矩阵](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md) 第二十二章。
+
+
+## 28. 停止请求的持久流水与跨Daemon重启对账（2026-10-30）
+
+### 28.1 已实装 Owner、对象与运行时序
+
+继续使用既有 `cmd/daemon/queueOwnedStop` 和 `daemonc.StopController`，不另建控制服务。新增 `internal/stopjournal` 管理独立于启动凭证/终止闭锁的停止操作事件流水：`<WorkDir>/supervision/daemon-stop-operations.ndjson`。采用 128 位随机 OperationID、**字符串 ProgramId**、历史 PID、动作、状态、WaitCompleted、错误和 UTC 时间。文件 0600，单条不超过 4 KiB，整份上限 4 MiB；Append 使用进程内锁、追加及 Sync，日志满/损坏时新操作**在发送 Kill 之前拒绝**，必须安全离线归档，不得破坏工控现场安全状态。
+
+~~~mermaid
+sequenceDiagram
+ participant Main as 原Daemon停止入口
+ participant Journal as stopjournal NDJSON
+ participant Worker as StopController/原Worker
+ participant OS as 原os.Process
+ participant Monitor as 本机Monitor
+ participant H5 as H5停止历史
+ Main->>Journal: NewRequest + Append(requested) + Sync
+ alt 落盘失败
+ Journal-->>Main: Refuse（不发送Kill）
+ else 操作可追溯
+ Main->>Worker: RequestStopWithLateReceipt
+ Worker->>OS: Kill原始句柄
+ alt 原Worker Wait及时返回
+ OS-->>Worker: Wait结果
+ Worker->>Journal: wait-confirmed（或失败）
+ else 先超时
+ Worker->>Journal: unknown（阶段性）
+ OS-->>Worker: 稍后Wait
+ Worker->>Journal: 相同OperationID补报最终Wait
+ end
+ end
+ H5->>Monitor: GET /api/v1/stops/history（回环）
+ Monitor->>Journal: Read并按OperationID合并
+ Journal-->>H5: 最近最多200操作、来源状态与最终结果
+~~~
+
+`stopjournal.Read` 按 OperationID 合并并核对 ProgramId/PID/Action 不得变化；即使晚到的 `unknown` 写在 `wait-confirmed` 之后，也不得降级实际观察到的原始 Worker Wait。只有 WaitCompleted=true 且状态为 `wait-confirmed` 才能显示“原进程退出已确认”，**不等于进程树全部退出、设备或业务 Ready**。Daemon SIGKILL 时仅有 requested/unknown 记录仍保留未结清状态，不自动声称已停止。
+
+### 28.2 H5交互、测试与验收边界
+
+复用 `internal/httpapi/security.LocalOnly` 新增 `GET /api/v1/stops/history`，Monitor 读取 Daemon 同工作目录日志，仅本机只读，不新增未认证写接口。`web/src/views/StopHistoryView.vue` 新增“停止历史”页面，展示未结清/已Wait确认数量、OperationID、Program ID、历史 PID、停止来源、错误与时间；支持筛选、Program ID 跳转及深浅主题，`AppShell` 已加入导航和定时刷新。日志缺失、截断、无效条目或身份冲突时 `available=false`，不显示为无停止历史或系统健康。
+
+回归源码：`internal/stopjournal/journal_test.go` 覆盖重启恢复、迟到确认乱序、64位ID、损坏/身份篡改、并发追加、无法持久时拒绝操作；`internal/httpapi/stop_history_test.go` 验证远端/转发拒绝、本机查询、不可写路由；`web/src/api/client.test.ts` 验证本机只读合同及403。CI 在原 Windows/Linux/macOS Go 全量构建测试、Vue Typecheck/Vitest/build 基础上追加 Linux Race 定向覆盖。但此阶段仅确认源码和测试已提交（S），**固定SHA本仓库全量CI、Win/Linux/macOS及工控现场G1/G2/G3仍待真实验证**。
+
+**不能扩大结论**：本地日志具备持续性，不代表不可篡改审计、防断电保证、S11身份认证、审批、在线解锁或硬件急停。日志满时软件守护的停止请求会拒绝发出，应依现场设备已有独立安全停机机制处置，授权人员离线归档后重新验证。避免直接在运行中删除日志。详见 [验收矩阵第23章](CxVisual_Supervision_12大功能域与实施验收矩阵_V1.0.md)。
