@@ -35,8 +35,14 @@ namespace CxVisual.Mechanism.Visual
             return IsActive && _kind==kind && _originPane==pane;
         }
 
+        /// <summary>保持现有双参数入口的CLR方法签名，旧SDK二进制不需重新编译。</summary>
+        public bool Begin(MVIImageOverlayItem item,MVIImageOverlayEditKind kind)
+        {
+            return Begin(item,kind,MVIImageGesturePane.Primary);
+        }
+
         public bool Begin(MVIImageOverlayItem item,MVIImageOverlayEditKind kind,
-            MVIImageGesturePane pane = MVIImageGesturePane.Primary)
+            MVIImageGesturePane pane)
         {
             if(item==null)throw new ArgumentNullException("item");
             if(!Enum.IsDefined(typeof(MVIImageOverlayEditKind),kind))
