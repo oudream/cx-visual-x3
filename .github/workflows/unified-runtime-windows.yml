@@ -42,6 +42,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Real orchestration vertical gate failed" }
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --orchestration-industrial
           if ($LASTEXITCODE -ne 0) { throw "Orchestration industrial cancellation/resource gate failed" }
+      - name: B6 Debug x64 full build and real orchestration regression
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'B6 Debug x64 unified solution build failed' }
+          $debugExe = '.\Output\Debug\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          if (-not (Test-Path $debugExe)) { throw 'B6 Debug ArchitectureSmoke binary missing' }
+          & $debugExe --orchestration-vertical
+          if ($LASTEXITCODE -ne 0) { throw 'B6 Debug real Vision/MDS orchestration failed' }
+          & $debugExe --orchestration-industrial
+          if ($LASTEXITCODE -ne 0) { throw 'B6 Debug industrial cancellation, resources or isolation failed' }
+          & $debugExe
+          if ($LASTEXITCODE -ne 0) { throw 'B6 Debug default architecture regression failed' }
       - name: Execute real concurrency and orchestration tests
         shell: pwsh
         run: |
