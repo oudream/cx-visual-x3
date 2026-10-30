@@ -2,7 +2,8 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:imaging="clr-namespace:CxVisual.Mechanism.Presentation.Wpf.Imaging"
- MinWidth="220" MinHeight="160" SnapsToDevicePixels="True">
+ MinWidth="220" MinHeight="160" SnapsToDevicePixels="True" Focusable="True"
+ PreviewKeyDown="OnGesturePreviewKeyDown">
  <Grid>
   <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
   <Grid Grid.Row="0">
@@ -26,6 +27,7 @@
     <ColumnDefinition x:Name="SecondaryColumn" Width="0"/>
    </Grid.ColumnDefinitions>
   <Grid x:Name="ViewportRoot" Grid.Column="0" ClipToBounds="True" Background="#1D2430"
+   Focusable="True" LostMouseCapture="OnGestureLostMouseCapture"
    MouseLeftButtonDown="OnMouseDown" MouseLeftButtonUp="OnMouseUp" MouseMove="OnMouseMove"
    MouseWheel="OnMouseWheel" MouseLeave="OnMouseLeave" SizeChanged="OnViewportSizeChanged">
    <!-- 大图原生Image.Width/Height不得扩大Grid的DesiredSize，
@@ -59,6 +61,7 @@
     ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
    <Grid x:Name="SecondaryViewportRoot" Grid.Column="2" Background="#1D2430"
     ClipToBounds="True" Visibility="Collapsed"
+    Focusable="True" LostMouseCapture="OnGestureLostMouseCapture"
     MouseLeftButtonDown="OnSecondaryMouseDown" MouseLeftButtonUp="OnSecondaryMouseUp"
     MouseMove="OnSecondaryMouseMove" MouseWheel="OnSecondaryMouseWheel"
     SizeChanged="OnSecondaryViewportSizeChanged">
