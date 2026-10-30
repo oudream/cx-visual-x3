@@ -326,7 +326,8 @@ namespace CxVisual.Professional.CT3D
         private static void WriteResult(BinaryWriter w,CT3DAnalysisCase a,CancellationToken cancellation)
         {
             // 元数据Aspect保持Schema1；结果制品V2增加明确种类，读取仍兼容已有V1 Mesh/平面。
-            w.Write(Magic);w.Write(a.Kind==CT3DAnalysisKind.MeshPlane&&a.SliceRoiRecipe!=null?4:
+            w.Write(Magic);w.Write(a.Kind==CT3DAnalysisKind.MeshPlane&&a.FaceRoiRecipe!=null?5:
+                a.Kind==CT3DAnalysisKind.MeshPlane&&a.SliceRoiRecipe!=null?4:
                 a.Kind==CT3DAnalysisKind.SurfaceCylinder?3:2);w.Write((int)a.Kind);w.Write(a.AlgorithmVersion);w.Write(a.Source.Signature);
             if(a.Kind==CT3DAnalysisKind.SurfaceSphere)
             {
@@ -352,16 +353,17 @@ namespace CxVisual.Professional.CT3D
             w.Write(a.SelectedVertexIndices.Count);foreach(int index in a.SelectedVertexIndices)w.Write(index);
             WritePlane(w,a.Plane);
             if(a.SliceRoiRecipe!=null){w.Write(true);a.SliceRoiRecipe.Write(w);}
+            if(a.FaceRoiRecipe!=null){w.Write(true);a.FaceRoiRecipe.Write(w);}
         }
 
         private static CT3DAnalysisCase ReadResult(BinaryReader r,CT3DAssetReference source,CancellationToken cancellation)
         {
             if(r.ReadInt32()!=Magic)throw new InvalidDataException("三维结果头无效。");
             int version=r.ReadInt32();
-            if(version!=1&&version!=2&&version!=3&&version!=4)throw new InvalidDataException("三维结果版本不受支持。");
+            if(version!=1&&version!=2&&version!=3&&version!=4&&version!=5)throw new InvalidDataException("三维结果版本不受支持。");
             var kind=version==1?CT3DAnalysisKind.MeshPlane:(CT3DAnalysisKind)r.ReadInt32();
             if(!Enum.IsDefined(typeof(CT3DAnalysisKind),kind)||
-                (version==4&&kind!=CT3DAnalysisKind.MeshPlane))
+                ((version==4||version==5)&&kind!=CT3DAnalysisKind.MeshPlane))
                 throw new InvalidDataException("三维结果种类无效。");
             string method=kind==CT3DAnalysisKind.MeshPlane?"ct3d.voxel-mesh-plane/1":kind==CT3DAnalysisKind.SurfaceSphere?"ct3d.surface-sphere/1":"ct3d.surface-cylinder-axis/1";
             if(CT3DArtifactFiles.ReadText(r,64)!=method||
@@ -400,6 +402,12 @@ namespace CxVisual.Professional.CT3D
                 if(!r.ReadBoolean())throw new InvalidDataException("V4结果缺少ROI编辑配方。");
                 recipe=CT3DSliceRoiRecipe.Read(r,source);
             }
+            CT3DMeshFaceRoiRecipe faces=null;
+            if(version==5)
+            {
+                if(!r.ReadBoolean())throw new InvalidDataException("V5结果缺少面片ROI编辑配方。");
+                faces=CT3DMeshFaceRoiRecipe.Read(r,source,mesh,cancellation);
+            }
             if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException("三维制品含多余数据。");
             // 用同一FNU求解器核验保存的量值，再恢复原始结果身份，不手工制造成功残差。
             var xyz=new double[roiCount,3];
@@ -408,6 +416,7 @@ namespace CxVisual.Professional.CT3D
             cancellation.ThrowIfCancellationRequested();
             var restored=new CT3DAnalysisCase(source,mesh,plane,roi,planarity,condition,budget);
             if(recipe!=null)restored.WithSliceRoiRecipe(recipe);
+            if(faces!=null)restored.WithFaceRoiRecipe(faces);
             return restored;
         }
 

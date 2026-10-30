@@ -129,6 +129,8 @@ namespace CxVisual.Professional.CT3D
         public ReadOnlyCollection<int> SelectedVertexIndices {get;private set;}
         /// <summary>原体素物理切片配方；旧案例没有配方时保持null。</summary>
         public CT3DSliceRoiRecipe SliceRoiRecipe {get;private set;}
+        /// <summary>真实Mesh三角面编辑配方，旧制品没有时为空。</summary>
+        public CT3DMeshFaceRoiRecipe FaceRoiRecipe {get;private set;}
         /// <summary>同来源与几何ROI复算不变的稳定身份指纹；不同源或ROI变化即失效。</summary>
         public string RoiSignature
         {
@@ -201,6 +203,7 @@ namespace CxVisual.Professional.CT3D
                             w.Write(MaxPlanarityRatio);w.Write(MaxInPlaneCondition);
                             w.Write(RoiSignature);
                             if(SliceRoiRecipe!=null)w.Write(SliceRoiRecipe.Signature);
+                            if(FaceRoiRecipe!=null)w.Write(FaceRoiRecipe.Signature);
                         }
                         else
                         {
@@ -449,9 +452,42 @@ namespace CxVisual.Professional.CT3D
             if(Kind!=CT3DAnalysisKind.MeshPlane)
                 throw new InvalidOperationException("非MeshPlane案例不能使用三角面ROI。");
             if(faces==null)throw new ArgumentNullException("faces");
-            return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
-                mesh=>CT3DMeshFaceSelection.ResolveVertices(Source,mesh,faces,cancellation),
+            CT3DMeshFaceRoiRecipe recipe=CT3DMeshFaceRoiRecipe.Capture(Source,Mesh,faces);
+            return RecomputeWithFaceRoiRecipe(root,recipe,cancellation);
+        }
+
+        /// <summary>来自工程原始Mesh面片配方的原值重算，不使用任何显示顶点。</summary>
+        public CT3DAnalysisCase RecomputeWithSavedMeshFaces(string root,CancellationToken cancellation)
+        {
+            if(FaceRoiRecipe==null)
+                throw new InvalidOperationException("历史案例没有可复算的Mesh面片配方。");
+            return RecomputeWithFaceRoiRecipe(root,FaceRoiRecipe,cancellation);
+        }
+        private CT3DAnalysisCase RecomputeWithFaceRoiRecipe(string root,
+            CT3DMeshFaceRoiRecipe recipe,CancellationToken cancellation)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane)
+                throw new InvalidOperationException("非MeshPlane案例不能复算面片ROI。");
+            recipe.Resolve(Source,Mesh,cancellation);
+            CT3DAnalysisCase result=Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
+                mesh=>CT3DMeshFaceSelection.ResolveVertices(Source,mesh,
+                    recipe.Resolve(Source,mesh,cancellation),cancellation),
                 cancellation,MaxPlanarityRatio,MaxInPlaneCondition);
+            return result.WithFaceRoiRecipe(recipe);
+        }
+        internal CT3DAnalysisCase WithFaceRoiRecipe(CT3DMeshFaceRoiRecipe recipe)
+        {
+            if(Kind!=CT3DAnalysisKind.MeshPlane||recipe==null)
+                throw new InvalidOperationException("只有MeshPlane可以恢复专业面片配方。");
+            IReadOnlyList<int> selected=CT3DMeshFaceSelection.ResolveVertices(
+                Source,Mesh,recipe.Resolve(Source,Mesh,CancellationToken.None));
+            if(selected.Count!=SelectedVertexIndices.Count)
+                throw new InvalidDataException("面片配方与所存原值顶点ROI不一致。");
+            for(int i=0;i<selected.Count;i++)
+                if(selected[i]!=SelectedVertexIndices[i])
+                    throw new InvalidDataException("面片配方与所存原值ROI顶点顺序不一致。");
+            FaceRoiRecipe=recipe;
+            return this;
         }
 
         /// <summary>更新圆柱轴向约束并进行原值重算，返回新Feature/Measurement。</summary>
@@ -486,6 +522,7 @@ namespace CxVisual.Professional.CT3D
             if(Kind==CT3DAnalysisKind.SurfaceSphere)
                 return AnalyzeSphere(root,Source,Surface.Threshold,Surface.SampleStep,
                     Surface.MaximumPoints,cancellation,Sphere.MaximumConditionNumber);
+            if(FaceRoiRecipe!=null)return RecomputeWithSavedMeshFaces(root,cancellation);
             if(SliceRoiRecipe!=null)return RecomputeWithSavedSliceRoi(root,cancellation);
             return Analyze(root,Source,Mesh.Threshold,MaximumTriangles,
                 mesh=>SelectedVertexIndices,cancellation,MaxPlanarityRatio,MaxInPlaneCondition);

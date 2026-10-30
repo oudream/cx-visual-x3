@@ -123,4 +123,86 @@ namespace CxVisual.Professional.CT3D
             return new List<int>(vertices).AsReadOnly();
         }
     }
+
+    /// <summary>专业原Mesh子元素ROI配方；以资产/Frame/算法和稳定面片身份定义，
+    /// 不保存WPF显示LOD、面片拾取像素或第二套MEM工程节点。</summary>
+    public sealed class CT3DMeshFaceRoiRecipe
+    {
+        private readonly ReadOnlyCollection<CT3DMeshFaceReference> _faces;
+        private CT3DMeshFaceRoiRecipe(CT3DAssetReference source,
+            CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces)
+        {
+            CT3DMeshFaceSelection.ResolveVertices(source,mesh,faces);
+            SourceSignature=source.Signature;
+            MeshMethod=mesh.Method;
+            MeshThreshold=mesh.Threshold;
+            _faces=new List<CT3DMeshFaceReference>(faces).AsReadOnly();
+            using(var stream=new MemoryStream())
+            using(var w=new BinaryWriter(stream,Encoding.UTF8,true))
+            {
+                Write(w);w.Flush();Signature=CT3DArtifactFiles.HashBytes(stream.ToArray());
+            }
+        }
+        public string SourceSignature {get;private set;}
+        public string MeshMethod {get;private set;}
+        public float MeshThreshold {get;private set;}
+        public string Signature {get;private set;}
+        public ReadOnlyCollection<CT3DMeshFaceReference> Faces {get{return _faces;}}
+
+        public static CT3DMeshFaceRoiRecipe Capture(CT3DAssetReference source,
+            CT3DVoxelBoundaryMeshResult mesh,IReadOnlyList<CT3DMeshFaceReference> faces)
+        {
+            if(faces==null)throw new ArgumentNullException("faces");
+            return new CT3DMeshFaceRoiRecipe(source,mesh,faces);
+        }
+        internal IReadOnlyList<CT3DMeshFaceReference> Resolve(
+            CT3DAssetReference source,CT3DVoxelBoundaryMeshResult mesh,
+            CancellationToken cancellation)
+        {
+            if(source==null||mesh==null||source.Signature!=SourceSignature||
+                mesh.Method!=MeshMethod||mesh.Threshold!=MeshThreshold)
+                throw new InvalidOperationException("已存面片配方来源或Mesh提取算法改变。");
+            CT3DMeshFaceSelection.ResolveVertices(source,mesh,_faces,cancellation);
+            return _faces;
+        }
+        internal void Write(BinaryWriter w)
+        {
+            w.Write(SourceSignature);w.Write(MeshMethod);w.Write(MeshThreshold);
+            w.Write(_faces.Count);
+            foreach(CT3DMeshFaceReference f in _faces)
+            {
+                w.Write(f.TriangleIndex);w.Write(f.StableId);
+            }
+        }
+        internal static CT3DMeshFaceRoiRecipe Read(BinaryReader r,
+            CT3DAssetReference source,CT3DVoxelBoundaryMeshResult mesh,
+            CancellationToken cancellation)
+        {
+            string signature=CT3DArtifactFiles.ReadText(r,64);
+            string method=CT3DArtifactFiles.ReadText(r,128);
+            float threshold=r.ReadSingle();
+            if(signature!=source.Signature||method!=mesh.Method||
+                threshold!=mesh.Threshold)
+                throw new InvalidDataException("存档面片ROI来源或算法版本不一致。");
+            int count=r.ReadInt32();
+            if(count<1||count>30000||count>mesh.Mesh.TriangleCount)
+                throw new InvalidDataException("存档面片ROI数量无效。");
+            var faces=new List<CT3DMeshFaceReference>(count);
+            var unique=new HashSet<int>();
+            for(int i=0;i<count;i++)
+            {
+                if((i&255)==0)cancellation.ThrowIfCancellationRequested();
+                int triangleIndex=r.ReadInt32();
+                string expected=CT3DArtifactFiles.ReadText(r,64);
+                if(!unique.Add(triangleIndex)||triangleIndex<0||
+                    triangleIndex>=mesh.Mesh.TriangleCount)
+                    throw new InvalidDataException("存档面片ROI重复或索引越界。");
+                var actual=new CT3DMeshFaceReference(source,mesh,triangleIndex);
+                if(actual.StableId!=expected)
+                    throw new InvalidDataException("存档面片指纹与真实原Mesh拓扑不一致。");
+                faces.Add(actual);
+            }
+            return new CT3DMeshFaceRoiRecipe(source,mesh,faces);
+        }
+    }
 }
