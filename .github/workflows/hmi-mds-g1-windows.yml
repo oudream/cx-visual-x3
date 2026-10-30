@@ -25,6 +25,9 @@ on:
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
       - '.github/workflows/hmi-mds-g1-windows.yml'
+concurrency:
+  group: cxvisual-hmi-g1-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   hmi-mds-g1:
     runs-on: windows-2022
