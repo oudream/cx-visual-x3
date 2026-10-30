@@ -42,6 +42,16 @@ namespace CxVisual.Studio
             _studioViews.Remove(key);
         }
 
+        private void OnStudioSharedResourceCentersChanged(object sender, EventArgs args)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(RefreshStudioSharedResourceCenters));
+                return;
+            }
+            RefreshStudioSharedResourceCenters();
+        }
+
         private void RefreshStudioSharedResourceCenters()
         {
             if (_contentManagementCenter != null) _contentManagementCenter.Refresh();
@@ -262,7 +272,8 @@ namespace CxVisual.Studio
                     _types.Items.Add(item);
                     if (type==descriptor.TypeId) item.IsSelected = true;
                 }
-                ComboBoxItem oldPage = _pages.SelectedItem as ComboBoxItem;\n                Guid? page = oldPage==null ? (Guid?)null : (Guid)oldPage.Tag;
+                ComboBoxItem oldPage = _pages.SelectedItem as ComboBoxItem;
+                Guid? page = oldPage==null ? (Guid?)null : (Guid)oldPage.Tag;
                 _pages.Items.Clear();
                 foreach (MEMPage item in session.Project.Pages)
                 {
@@ -328,7 +339,7 @@ namespace CxVisual.Studio
                     ? (_symbol?"新组件 ":"新内容 ")+DateTime.Now.ToString("HHmmss")
                     :_name.Text.Trim();
                 Guid created=_host.CreateStudioSharedDefinition(_symbol,name,id);
-                Refresh();Select(_local,created);
+                Refresh();_catalog.SelectedIndex=0;Select(_local,created);
                 _host.OpenStudioResourceDocument(created);
                 _feedback.Text="已通过MEM创建独立共享定义："+name;
             }
