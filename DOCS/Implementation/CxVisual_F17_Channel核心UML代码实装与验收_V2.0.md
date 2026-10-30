@@ -168,3 +168,10 @@ channel.Dispose();
 - **源码提交**：`5e3779c93`（HTTP Client主修复）、`00f797528` / `9ce091b6d`（真实回环测试及异常兼容）、`b89141bfc`（配置诊断开关）、`40a018d8e`（峰值与诊断测试）。无新增项目、NuGet和跨层Owner依赖。
 - **实际验收入口**：原Tests/ArchitectureSmoke/Transport/FTRMultiClientBudgetTests.Run → HttpClientBoundedResponseAndReentrantSend，覆盖真实HTTP localhost请求/响应、回调内同步再Send、ReceiveByteBudget=512、Rx/Tx诊断无载荷、响应256字节因峰值超额拒绝且会话继续响应小请求。自动进入`--channel-uml-core`和`--channel-transport`，并由`.github/workflows/f17-channel-windows.yml` Windows x64全SLN + 双方向各2GiB验收触发。**本轮新SHA Windows CI仍在排队，不能判定已编译/通过**。
 - **未完边界**：HTTP Client流式上层消费和跨专业DataHandle零复制（legacy事件仍按原合同复制）；24h/跨PC/真实Detector/CT设备持续性能；HTTP/WS多Peer公平与现场延迟SLA；TLS/认证新增按用户要求暂缓，未移除既有HTTPS及输入限制。
+
+### F17 HTTP Client请求全程截止追补（2026-10-30）
+
+- 实现`323a4b3b`：原HttpClient.Timeout搭配ResponseHeadersRead不能当作整个Body读完的保证，已在PostAsync外层以链接CancellationTokenSource.CancelAfter(RequestTimeoutMs)覆盖等待原Send门、SendAsync响应头和ReadAsync完整Body；对.NET Framework 4.8部分响应流不主动遵守取消的情形仅Dispose该响应流，不调用全局CancelPendingRequests、不中断其它请求。调用方取消优先保留OperationCanceledException，单次超时明确TimeoutException；诊断由FTR基类原路径记录。
+- 真实慢流回归`723c10c4`/`d7ec8b6d`：OS HttpListener返回200和首块后保持Body未结束，运行中850ms总截止必须超时、未交付半包、在途额度归零；先核实服务端首块已经Flush，避免测试退化为“仅连接超时”。`6ae8fd4b`确保Timer上的Dispose异常不逃逸导致Host崩溃。
+- F17工作流`43f048ad`配置同master分支并发合并取消旧运行，仅最新源码SHA能充当完整Windows回归证据；不能以取消的run为成功，也不能以本机源码提交替代.NET48构建。
+- 后续还需HTTP请求/响应端到端业务追踪、跨PC慢端、TLS认证环境与24小时内存峰值/CPU/GC实测；本阶段不新增TLS/证书/身份认证。
