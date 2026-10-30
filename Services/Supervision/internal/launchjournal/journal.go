@@ -27,6 +27,7 @@ type Record struct {
 	AttemptID string `json:"attemptId"`
 	Stage string `json:"stage"`
 	PID int `json:"pid"`
+	ProcessStartMs int64 `json:"processStartMs,omitempty"`
 	Path string `json:"path"`
 	IntendedAt string `json:"intendedAt"`
 	ObservedAt string `json:"observedAt,omitempty"`
@@ -86,6 +87,7 @@ func (j *Journal) Started(pid int) error {
 	}
 	rec := *j.active
 	rec.Stage, rec.PID = "started", pid
+	rec.ProcessStartMs = observedBirthMs(pid)
 	rec.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if err := writeRecord(recordPath(j.workDir, j.id), &rec); err != nil {
 		return err
@@ -165,7 +167,8 @@ func readRecord(path string) (Record,error) {
 	if err!=nil || id<=0 || strconv.FormatInt(id,10)!=rec.ProgramID ||
 		rec.Version!=Version || len(rec.AttemptID)!=32 || strings.Trim(rec.AttemptID,"0123456789abcdef")!="" ||
 		rec.Path=="" || (rec.Stage!="intent" && rec.Stage!="started") ||
-		(rec.Stage=="intent" && rec.PID!=0) || (rec.Stage=="started" && rec.PID<=0) {
+		(rec.Stage=="intent" && (rec.PID!=0 || rec.ProcessStartMs!=0)) ||
+		(rec.Stage=="started" && rec.PID<=0) || rec.ProcessStartMs<0 {
 		return rec,errors.New("invalid launch evidence schema")
 	}
 	if _,err=time.Parse(time.RFC3339Nano,rec.IntendedAt);err!=nil {
@@ -211,8 +214,8 @@ func Scan(workDir string) (map[int64]string,error) {
 			out[id]="launch evidence ProgramId mismatch"
 			continue
 		}
-		out[id]=fmt.Sprintf("unreconciled launch attempt=%s stage=%s pid=%d intent=%s; original Worker Wait not confirmed",
-			rec.AttemptID,rec.Stage,rec.PID,rec.IntendedAt)
+		out[id]=fmt.Sprintf("unreconciled launch attempt=%s stage=%s pid=%d osBirthMs=%d identity=%s intent=%s; original Worker Wait not confirmed",
+			rec.AttemptID,rec.Stage,rec.PID,rec.ProcessStartMs,DescribeCurrentPID(rec),rec.IntendedAt)
 	}
 	return out,nil
 }
