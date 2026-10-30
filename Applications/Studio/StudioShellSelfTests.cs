@@ -3970,7 +3970,7 @@ namespace CxVisual.Studio
                     StudioViewModel vm=window.DataContext as StudioViewModel;
                     MEMEngineeringSession session=vm.ProjectSession;
                     if(session.FindType("studio.center.content")==null)
-                        session.RegisterTypes(new StudioSharedCenterTestTypes());
+                        window.RegisterStudioSharedResourceTypes(new StudioSharedCenterTestTypes());
                     int beforeOpen=session.Revision;
                     window.OpenStudioSharedResourceCenter(false);
                     window.OpenStudioSharedResourceCenter(true);
