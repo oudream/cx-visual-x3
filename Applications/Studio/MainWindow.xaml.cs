@@ -2315,7 +2315,9 @@ namespace CxVisual.Studio
                         releaseFingerprint,publicationRevision)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
-                    RefreshRequestedFlowResultInspection();
+                    // Only rescan committed results after an actual MRK transition;
+                    // idle WPF timer ticks must not enumerate large Flow histories.
+                    if(changes.Events.Count>0) RefreshRequestedFlowResultInspection();
                 };
                 timer=new DispatcherTimer(DispatcherPriority.Background)
                 {Interval=TimeSpan.FromMilliseconds(150)};
