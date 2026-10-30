@@ -69,3 +69,12 @@ Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --automation-plc
 修订采用本机 `TcpListener` 的确定性单寄存器 PLC 测试端与正式 `FTRTcpClientChannel`，通过真实 OS socket 收发 MBAP/FC03/FC06 帧，保留 MPA Protocol、MCN Connector 和 MDS 的正式调用。测试覆盖虚拟通道不被非法装配、03读取、06回显、现场回读矛盾、读回超时 Unknown 与恢复；无任何实机 PLC/G2/HIL 证明。
 
 本节记录实际已观察的首批失败原因，修复后的 Windows CI 结论须读取修复提交 SHA 对应 Actions 才能填写，不预填 PASS。
+
+## 七、运行态点表映射防串写（2026-10-30）
+
+- 已在 `PADPlcPointBridge` 的初始绑定检查中要求：每个只读点恰有一条唯一的必需MDS入站映射；每个可写点恰有一条额外的授权出站映射，目标与类型一致，不接受隐藏的Message/Command/其他变量目标。
+- 在构造时记录已批准的协议地址、站号、类型、读写属性与完整映射快照；每次读写开始前检查当前配置是否漂移。运行中改变寄存器地址、增加跨站变量或命令映射会拒绝执行，避免继续按未经批准的配置发送请求。
+- 新增正反测试：恶意额外MDS映射、隐藏命令映射、运行期地址修改、运行期映射修改。测试使用真实本机TCP回环，不绕开MCN的协议/Channel类型约束。
+- **保留风险**：这一层是“操作开始前的配置一致性”守卫，不是对运行期可变配置的原子版本冻结；Connector与MPA真实请求过程中的并发配置变更，仍需在公共配置/运行Owner实施不可变Session快照和安全切换，不应由Automation另建一套配置系统。跨实例设备资源仲裁仍须正式M12/MRK租约。
+
+本批新的Windows G1以及完整回归结果，必须关联修订提交SHA审查；未见结论前不得改为PASS。
