@@ -81,7 +81,7 @@ namespace CxVisual.Studio
             toolbar.Children.Add(analyze);
             var saved=Button("按已存ROI复算","Studio.CT3D.RecomputeSavedRoi");
             saved.Click+=async(s,e)=>{
-                try{await RecomputeSavedSliceRoiAsync(CancellationToken.None);}
+                try{await AnalyzeSavedSliceRoiAsync();}
                 catch(OperationCanceledException){_status.Text="已存ROI重算已取消，工程未修改。";}
                 catch(Exception error){_status.Text="已存ROI重算失败："+error.Message;}
             };
@@ -479,6 +479,16 @@ namespace CxVisual.Studio
             await RecomputeSelectedSliceRoiAsync(minimum,maximum,CancellationToken.None);
         }
 
+        /// <summary>用户使用已有参数框调整已存ROI的法向毫米厚度。</summary>
+        private async Task AnalyzeSavedSliceRoiAsync()
+        {
+            double minimum,maximum;
+            if(!double.TryParse(_minimum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out minimum)||
+                !double.TryParse(_maximum.Text,NumberStyles.Float,CultureInfo.InvariantCulture,out maximum))
+                throw new ArgumentException("请输入有效的ROI法向毫米范围。");
+            await RecomputeSavedSliceRoiAsync(minimum,maximum,CancellationToken.None);
+        }
+
         /// <summary>大RAW在后台由同一专业API复算；取消、切换ROI与卸载均拒绝旧结果发布。</summary>
         public async Task<CT3DAnalysisCase> RecomputeSelectedSliceRoiAsync(
             double minimum,double maximum,CancellationToken cancellation)
@@ -521,7 +531,17 @@ namespace CxVisual.Studio
 
         /// <summary>Studio真实入口：不要求旧WPF视口仍可精确映出ROI，
         /// 始终由CT3D保存的原体素几何配方在后台重算，不使用屏幕矩形作为真源。</summary>
-        public async Task<CT3DAnalysisCase> RecomputeSavedSliceRoiAsync(CancellationToken cancellation)
+        public Task<CT3DAnalysisCase> RecomputeSavedSliceRoiAsync(CancellationToken cancellation)
+        {
+            if(_current==null||_current.SliceRoiRecipe==null)
+                throw new InvalidOperationException("当前Case没有已保存的ROI配方。");
+            return RecomputeSavedSliceRoiAsync(_current.SliceRoiRecipe.MinimumOffsetMm,
+                _current.SliceRoiRecipe.MaximumOffsetMm,cancellation);
+        }
+
+        /// <summary>保留原体素四角，修改法向毫米偏移后生成待保存专业结果。</summary>
+        public async Task<CT3DAnalysisCase> RecomputeSavedSliceRoiAsync(
+            double minimum,double maximum,CancellationToken cancellation)
         {
             if(_disposed||_engineering==null||_current==null||_state==null||
                 _current.SliceRoiRecipe==null)
@@ -529,6 +549,8 @@ namespace CxVisual.Studio
             if(_roiCancellation!=null)
                 throw new InvalidOperationException("已有专业ROI分析正在进行。");
             CT3DAnalysisCase original=_current;
+            CT3DSliceRoiRecipe recipe=original.SliceRoiRecipe.WithNormalOffsets(
+                original.Source,minimum,maximum);
             MVIVolumeViewState state=_state;
             FVOPhysicalSliceRectangle selected=state.SelectedSliceRectangle;
             int index=_caseIndex;
@@ -540,7 +562,7 @@ namespace CxVisual.Studio
             {
                 _status.Text="使用保存的原Voxel四角及毫米范围在后台重算；旧WPF预览不参与专业选点。";
                 CT3DAnalysisCase result=await Task.Run(()=>
-                    original.RecomputeWithSavedSliceRoi(root,linked.Token),linked.Token);
+                    original.RecomputeWithSliceRoiRecipe(root,recipe,linked.Token),linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
                 if(_disposed||epoch!=_roiEpoch||!Object.ReferenceEquals(state,_state)||
                     !Object.ReferenceEquals(original,_current)||index!=_caseIndex||

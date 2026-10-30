@@ -31,6 +31,14 @@ namespace CxVisual.Professional.CT3D
         public double MaximumOffsetMm {get;private set;}
         public string Signature {get;private set;}
 
+        /// <summary>原体素四角保持不变，仅更新ROI法向毫米范围。</summary>
+        public CT3DSliceRoiRecipe WithNormalOffsets(CT3DAssetReference source,
+            double minimumOffsetMm,double maximumOffsetMm)
+        {
+            RequireSource(source);
+            return new CT3DSliceRoiRecipe(source,Plane,_corners,minimumOffsetMm,maximumOffsetMm);
+        }
+
         internal static CT3DSliceRoiRecipe Capture(CT3DAssetReference source,
             FVOPhysicalSliceRectangle rectangle,double minMm,double maxMm)
         {

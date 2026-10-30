@@ -314,3 +314,10 @@ using (var engineering = MEMEngineering.Open(Path.Combine(root, "analysis.cxproj
 - **交互新增**：StudioCT3DDocument在打开具有V4原Voxel ROI配方的工程后，将ROI法向毫米区间恢复到原有参数控件，并尝试用FVO VoxelToImage/RectangleToPhysical原有采样映射将四角重绘到MVI/MPW四视图。只有四角物理精确相等才绘制，不可逆降采样显示明确提示，不借伪造的预览几何替代专业ROI。
 - **实际操作**：“按已存ROI复算”按钮及RecomputeSavedSliceRoiAsync公开API，后台调用同一专业Case.RecomputeWithSavedSliceRoi；取消、工程/Case切换、用户新ROI选择及旧结果回传均使用现有epoch失效控制。专业结果仍待用户通过已有“保存专业结果”提交唯一MEM Data+Visual事务。
 - **测试与范围**：扩展StudioShellSelfTests真实MEM文件/RAW/四视图/Scene/Undo链，覆盖老Case拒绝虚构ROI、保存后重开选区/毫米参数恢复、后台按已存配方重算、待提交丢弃。正式GPU及不同DPI人工操作仍需独立验收。
+
+
+### 10.22 B包：Studio已存ROI毫米范围可编辑（2026-10-30）
+
+- CT3DSliceRoiRecipe.WithNormalOffsets只更新法向毫米区间，不更换原Voxel四角和资产Frame身份，使用已存在的配方构造合法性检查。
+- Studio“按已存ROI复算”按钮读取已有毫米输入框，使用专业RecomputeWithSliceRoiRecipe生成新的待保存Feature；原选中顶点相同也会更新ParameterSignature。无参数API仍支持完全按原配方重播。
+- StudioShellSelfTests增加毫米范围变化、ParameterSignature失效、原RoiSignature保持、放弃预览和逆序区间拒绝测试；最终验证以对应固定SHA Windows CI为准。

@@ -3510,6 +3510,24 @@ namespace CxVisual.Studio
                         Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
                             !workspace.HasPendingAnalysis,
                             "放弃已存配方复算预览不得修改MEM已提交的专业结果");
+                        var changedOffset=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(
+                            .48,.52,CancellationToken.None));
+                        Assert(workspace.HasPendingAnalysis&&
+                            changedOffset.SliceRoiRecipe.MinimumOffsetMm==.48&&
+                            changedOffset.SliceRoiRecipe.MaximumOffsetMm==.52&&
+                            changedOffset.SliceRoiRecipe.Signature!=
+                                workspace.CurrentAnalysis.SliceRoiRecipe.Signature&&
+                            changedOffset.ParameterSignature!=savedSignature&&
+                            changedOffset.RoiSignature==workspace.CurrentAnalysis.RoiSignature,
+                            "编辑保存ROI的毫米范围必须保留原Voxel四角并更新专业参数有效性");
+                        workspace.DiscardPendingAnalysis();
+                        bool invalidOffsetsRejected=false;
+                        try{AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(
+                            .9,.1,CancellationToken.None));}
+                        catch(InvalidDataException){invalidOffsetsRejected=true;}
+                        Assert(invalidOffsetsRejected&&!workspace.HasPendingAnalysis&&
+                            workspace.CurrentAnalysis.Plane.ResultId==editedId,
+                            "逆序毫米区间必须拒绝且不修改MEM或待提交专业预览");
                         Assert(workspace.Scene3D.Snapshot().Single(x=>
                             x.Kind==MVI3DSceneKind.Measurement).Id==hiddenMeasurement&&
                             workspace.Scene3D.SelectedId==hiddenMeasurement,
