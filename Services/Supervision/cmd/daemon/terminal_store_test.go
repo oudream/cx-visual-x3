@@ -110,3 +110,39 @@ func TestTerminalLatchStoreIgnoresNonTerminalEvent(t *testing.T) {
 		t.Fatal("normal exit incorrectly persisted as terminal lock")
 	}
 }
+
+
+func TestTerminalLatchWriteFaultBlocksFutureWorkerStarts(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "supervision")
+	path := filepath.Join(dir, "daemon-terminal-latches.json")
+	gate := newProgramWorkerGate()
+	if err := gate.enablePersistence(path); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a storage path disappearing after initial successful load.
+	// Make the old directory path a plain file so MkdirAll cannot recreate it.
+	moved := filepath.Join(root, "moved")
+	if err := os.Rename(dir, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("blocked"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := gate.markTerminal(program.Event{
+		Event: program.EventMaxError, Status: program.Status{Id: 91},
+	})
+	if err == nil || gate.persistenceError() == nil {
+		t.Fatal("failed journal write must be surfaced and recorded")
+	}
+	for _, id := range []int64{91, 92} {
+		if gate.start(context.Background(), id, func() { t.Error("worker started after storage fault") }) {
+			t.Fatalf("storage fault must reject Program %d", id)
+		}
+		if started, queued := gate.request(context.Background(), id, func() {
+			t.Error("queued worker after storage fault")
+		}); started || queued {
+			t.Fatal("storage fault must reject explicit enabled-start intent")
+		}
+	}
+}
