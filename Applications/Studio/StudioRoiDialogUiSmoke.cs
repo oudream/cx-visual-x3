@@ -42,6 +42,14 @@ namespace CxVisual.Studio
         private static extern bool EnumThreadWindows(uint threadId,
             EnumWindowsCallback callback,IntPtr state);
         private static uint _studioUiThreadId;
+        private static string _activeReport;
+        private static readonly object _reportGate=new object();
+        private static void Mark(string step)
+        {
+            string report=_activeReport;
+            if(String.IsNullOrEmpty(report))return;
+            Trace(report,step);
+        }
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
         [DllImport("user32.dll",CharSet=CharSet.Unicode)]
@@ -145,6 +153,8 @@ namespace CxVisual.Studio
             if(match==IntPtr.Zero && handles.Count==1)
                 match=handles[0]; // 同进程仅有一个原生对话框，兼容地区标题差异
             if(match==IntPtr.Zero)return null;
+            Mark("Win32已定位原生文件框 HWND="+match+
+                "，开始取得真实UIAutomation元素");
             try{return AutomationElement.FromHandle(match);}
             catch(ElementNotAvailableException){return null;}
         }
@@ -181,15 +191,20 @@ namespace CxVisual.Studio
                 }
                 Require(dialog!=null,"系统文件对话框未出现："+title+
                     "；本进程窗口快照："+NativeWindowDiagnostics());
+                Mark("原生文件框UIA元素已获得："+title+"；查找文件名编辑框");
                 AutomationElement editor=FindFileNameEditor(dialog);
+                Mark("已定位真实文件名编辑框："+editor.Current.AutomationId);
                 ((ValuePattern)editor.GetCurrentPattern(ValuePattern.Pattern))
                     .SetValue(file);
+                Mark("已通过真实ValuePattern设置文件路径；查找系统确认按钮");
                 AutomationElement button=Find(dialog,"1");
                 InvokePattern invoke=button.GetCurrentPattern(InvokePattern.Pattern)
                     as InvokePattern;
                 Require(invoke!=null && button.Current.IsEnabled,
                     "系统打开/保存按钮不可点击："+title);
+                Mark("开始点击真实Win32文件框确认按钮："+title);
                 invoke.Invoke();
+                Mark("原生文件框已确认关闭："+title);
             }
             catch
             {
@@ -215,6 +230,7 @@ namespace CxVisual.Studio
         private static async Task ClickWithNativeDialog(IntPtr hwnd,
             string buttonId,string title,string file)
         {
+            Mark("UIA操作开始："+buttonId+" / "+title);
             Task click=Task.Run(()=>Invoke(hwnd,buttonId));
             Task dialog=Task.Run(()=>ConfirmNativeFileDialog(title,file));
             Task pair=Task.WhenAll(click,dialog);
@@ -228,6 +244,7 @@ namespace CxVisual.Studio
             }
             if(click.IsFaulted)await click;
             await pair;
+            Mark("UIA系统文件对话框操作完成："+title);
         }
 
         private static async Task Click(IntPtr hwnd,string id)
@@ -324,9 +341,10 @@ namespace CxVisual.Studio
 
         private static void Trace(string report,string step)
         {
-            File.AppendAllText(report,
-                "STEP: "+DateTime.UtcNow.ToString("O")+" "+step+
-                Environment.NewLine,new UTF8Encoding(false));
+            lock(_reportGate)
+                File.AppendAllText(report,
+                    "STEP: "+DateTime.UtcNow.ToString("O")+" "+step+
+                    Environment.NewLine,new UTF8Encoding(false));
         }
 
         public static async Task<bool> RunAsync(MainWindow window,string report)
@@ -337,6 +355,7 @@ namespace CxVisual.Studio
             File.WriteAllText(report,
                 "START IMG05 Studio Windows native-dialog/ROI acceptance"+Environment.NewLine,
                 new UTF8Encoding(false));
+            _activeReport=report;
             try
             {
                 string raw=Path.Combine(folder,"source-4x4-stride10.raw");
@@ -668,6 +687,7 @@ namespace CxVisual.Studio
             }
             finally
             {
+                _activeReport=null;
                 try{Directory.Delete(folder,true);}catch(IOException){}
             }
         }
