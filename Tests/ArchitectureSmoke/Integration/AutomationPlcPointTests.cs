@@ -37,12 +37,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 真正的Decision/MRK执行引擎运行PLC Capability；设备命令仍由
         // 唯一MRKCommandCenter拥有，结果不能把寄存器回读等同物理动作完成。
         private static MRKFlowResult ExecutePinnedCapability(MRKCommandCenter commands,
-            string commandEffectiveVersion)
+            string commandEffectiveVersion,string sessionGeneration = null,
+            string deviceRef = "plc-versioned")
         {
             PADPlcMrkWriteCapabilityProvider provider=
                 new PADPlcMrkWriteCapabilityProvider(commands,
-                    "plc-versioned","operator","plc-capability-contract-v1",
-                    commandEffectiveVersion:commandEffectiveVersion);
+                    deviceRef,"operator","plc-capability-contract-v1",
+                    commandEffectiveVersion:commandEffectiveVersion,
+                    commandSessionGeneration:sessionGeneration);
             MRKResolvedCapability binding;
             Check(provider.TryResolve(
                 PADPlcMrkWriteCapabilityProvider.CapabilityId,out binding),
@@ -498,12 +500,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             correctGeneration.BusinessCode=="PLC_REGISTER_READBACK_CONFIRMED" &&
                             plc.Writes==generationWrites+1,
                             "MRK双版本匹配应有且仅有一笔FC06+FC03回读");
+                        MRKFlowResult pinnedGenerationFlow=ExecutePinnedCapability(
+                            generationCenter,"approved-effective-v1",
+                            activeGeneration,"plc-generation");
+                        Check(pinnedGenerationFlow.State==MRKFlowState.Completed &&
+                            pinnedGenerationFlow.Results.ContainsKey("pinned-plc") &&
+                            object.Equals(pinnedGenerationFlow.Results["pinned-plc"],true) &&
+                            plc.Writes==generationWrites+2,
+                            "MOC Capability必须透传正式命令SessionGeneration并完成真实FC06");
+
                         string previousGeneration=activeGeneration;
                         activeGeneration=Guid.NewGuid().ToString("N");
                         MRKCommandResponse afterReconnection=send(previousGeneration);
+                        MRKFlowResult oldFlow=ExecutePinnedCapability(generationCenter,
+                            "approved-effective-v1",previousGeneration,"plc-generation");
                         Check(afterReconnection.BusinessSuccess!=true &&
-                            plc.Writes==generationWrites+1,
-                            "旧Generation不得在新的F17连接代次执行写入");
+                            oldFlow.State==MRKFlowState.Failed &&
+                            !oldFlow.Results.ContainsKey("pinned-plc") &&
+                            plc.Writes==generationWrites+2,
+                            "旧Generation的MRK命令和MOC Plan均不得写入新连接");
                     }
 
                     // 专业多点扫描不是Modbus单报文合并批读：真实TCP逐点FC03，
