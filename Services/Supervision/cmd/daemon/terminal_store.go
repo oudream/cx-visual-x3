@@ -23,10 +23,17 @@ const terminalLatchVersion = 1
 const terminalLatchMaxBytes = 1024 * 1024
 
 func readTerminalLatches(path string) (map[int64]int, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return make(map[int64]int), nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	// Bound memory before decoding: a corrupted/hostile local journal must
+	// never cause an unbounded allocation during Daemon startup.
+	data, err := io.ReadAll(io.LimitReader(file, terminalLatchMaxBytes+1))
 	if err != nil {
 		return nil, err
 	}
