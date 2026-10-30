@@ -443,7 +443,14 @@ namespace CxVisual.Studio
                 FIMImageBuffer mask=viewer.Session.Result;
                 Require(mask.Width==4 && mask.Height==4,
                     "选中Mask后WPF图窗没有显示同尺寸的真实像素");
-                Trace(report,"UIA已选中Mask，正在原生SaveFileDialog导出RAW");
+                // Mask/Result只是只读Run证据，不能把屏幕上残存的ROI
+                // 当成用户在原图选择的新工程定义误提交。
+                await Click(hwnd,"Studio.ModuleCenter.CommitSelectedRoi");
+                Require(details.Text.Contains("Mask/Result是本Run只读证据") &&
+                    viewer.Session.ActiveSlot==MVIImageSlot.Result &&
+                    vm.ProjectSession.Revision==revision,
+                    "在Mask结果槽保存ROI必须拒绝且不变更MEM原配方");
+                Trace(report,"Mask只读视图拒绝ROI提交，正在原生SaveFileDialog导出RAW");
                 await ClickWithNativeDialog(hwnd,"Studio.ModuleCenter.ExportRunRaw",
                     "导出本Run的无损原始像素",rawExport);
                 Require(File.Exists(rawExport) &&
