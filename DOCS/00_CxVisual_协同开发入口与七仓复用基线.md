@@ -35,6 +35,8 @@
 
 **平台公共能力总目录（2026-10-30 新增）**：[《CxVisual 平台公共能力总目录 V1.0》](Architecture/CxVisual_平台公共能力总目录_V1.0.md)——统一 Platform 公共中心、Project 资源根、Content/Symbol 独立加载/组合/共享、数据与交互双入口及 14 类公共体系的 Owner/实施边界；为导航与目标设计，不代表所有中心已实现或完成 CI。
 
+**Studio/TestCenter公共交互控件复用（2026-10-30）**：[《公共能力复用第一批开发与验收》](Implementation/CxVisual_Studio与TestCenter公共能力复用_第一批实际开发与验收_20261030.md)——MDS变量/运行数据/模块已有公共控件，新增MNM消息与MRK命令公共WPF，Studio双Host绑定/只读安全和TestCenter同Owner共用，详见编译实错及剩余缺口。
+
 **Content / Symbol 双中心实际开发（2026-10-30）**：[《Studio Content与Symbol双管理中心——实现与验收》](Implementation/CxVisual_Studio_Content与Symbol双管理中心_实现与验收_20261030.md)——两个独立Dock中心、可信类型注册、包加载/导出、Page引用、实例二次配置与回归用例的实现状态和待验证边界。
 
 1. `DOCS/01_CxVisual_平台灵魂与架构宪法_V1.0_Review.md`：平台理念与高层约束；“Review”表明仍有待裁决项。
