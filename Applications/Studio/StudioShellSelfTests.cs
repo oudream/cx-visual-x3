@@ -3508,25 +3508,27 @@ namespace CxVisual.Studio
                                 SelectedSliceRectangle.Plane==FVOSlicePlane.XY,
                             "Studio工程重开必须把原Voxel四角配方映回真实MVI四视图，并恢复毫米区间");
                         string savedSignature=workspace.CurrentAnalysis.ParameterSignature;
+                        CT3DAnalysisCase committedBeforeReplay=workspace.CurrentAnalysis;
                         var replay=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(CancellationToken.None));
                         Assert(workspace.HasPendingAnalysis&&replay.Plane.ResultId!=editedId&&
                             replay.ParameterSignature==savedSignature&&
                             replay.SliceRoiRecipe.Signature==
-                                workspace.CurrentAnalysis.SliceRoiRecipe.Signature,
+                                committedBeforeReplay.SliceRoiRecipe.Signature,
                             "Studio从工程保存配方复算应产生新Feature身份而保留物理ROI真值");
                         workspace.DiscardPendingAnalysis();
                         Assert(workspace.CurrentAnalysis.Plane.ResultId==editedId&&
                             !workspace.HasPendingAnalysis,
                             "放弃已存配方复算预览不得修改MEM已提交的专业结果");
+                        CT3DAnalysisCase committedBeforeOffset=workspace.CurrentAnalysis;
                         var changedOffset=AwaitStudioTask(workspace.RecomputeSavedSliceRoiAsync(
                             .48,.52,CancellationToken.None));
                         Assert(workspace.HasPendingAnalysis&&
                             changedOffset.SliceRoiRecipe.MinimumOffsetMm==.48&&
                             changedOffset.SliceRoiRecipe.MaximumOffsetMm==.52&&
                             changedOffset.SliceRoiRecipe.Signature!=
-                                workspace.CurrentAnalysis.SliceRoiRecipe.Signature&&
+                                committedBeforeOffset.SliceRoiRecipe.Signature&&
                             changedOffset.ParameterSignature!=savedSignature&&
-                            changedOffset.RoiSignature==workspace.CurrentAnalysis.RoiSignature,
+                            changedOffset.RoiSignature==committedBeforeOffset.RoiSignature,
                             "编辑保存ROI的毫米范围必须保留原Voxel四角并更新专业参数有效性");
                         workspace.DiscardPendingAnalysis();
                         bool invalidOffsetsRejected=false;
