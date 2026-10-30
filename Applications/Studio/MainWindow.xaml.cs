@@ -1913,6 +1913,16 @@ namespace CxVisual.Studio
                 (rows.Length==0?"暂无已提交StepResult":
                     string.Join(Environment.NewLine,rows));
         }
+        private void CaptureCompletedFlowPreview(MRKFlowHandle flow,
+            Guid projectId,int engineeringRevision)
+        {
+            if(flow==null||projectId==Guid.Empty||engineeringRevision<0)
+                throw new ArgumentException("studio.flow_result.invalid_identity");
+            _lastRunResultSummary=FormatFlowResultSummary(flow);
+            _lastRunProjectId=projectId;
+            _lastRunEngineeringRevision=engineeringRevision;
+            FlowResultPreview.Text=_lastRunResultSummary;
+        }
         private void OnFlowInspectData(object sender,RoutedEventArgs args)
         {
             if(_logicFlow!=null)
@@ -2247,10 +2257,8 @@ namespace CxVisual.Studio
                 LogicInfo.Text="CPU仿真运行中：Plan Revision "+compiled.EngineeringRevision;
                 var result=await _logicFlow.Completion;
                 update();
-                _lastRunResultSummary=FormatFlowResultSummary(_logicFlow);
-                _lastRunProjectId=_viewModel.ProjectSession.Project.Id;
-                _lastRunEngineeringRevision=_viewModel.ProjectSession.Revision;
-                FlowResultPreview.Text=_lastRunResultSummary;
+                CaptureCompletedFlowPreview(_logicFlow,
+                    runSnapshot.Project.Id,runSnapshot.Revision);
                 LogicInfo.Text="仿真执行结束: "+result.State+
                     "；FlowId="+result.FlowId.ToString("N")+
                     (result.Error==null?"":"；错误: "+result.Error.Message);

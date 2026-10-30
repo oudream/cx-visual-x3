@@ -161,6 +161,22 @@ namespace CxVisual.Studio
                         command("OnFlowDebugCancel");
                         Assert(status.Text.Contains("没有可取消的运行任务"),
                             "B5已完成Flow错误接受取消");
+                        // The real Studio run path releases its MRK handle after
+                        // completion. The bounded preview must remain readable
+                        // for the same MEM project/revision, and reject stale data.
+                        var capture=typeof(MainWindow).GetMethod(
+                            "CaptureCompletedFlowPreview",flags);
+                        Assert(capture!=null,"B5缺少Flow完成后的安全摘要捕获");
+                        var project=((StudioViewModel)window.DataContext).ProjectSession;
+                        capture.Invoke(window,new object[]{flow,project.Project.Id,project.Revision});
+                        flowField.SetValue(window,null);
+                        command("OnFlowInspectData");
+                        Assert(preview.Text.Contains("second = Int32 value=2"),
+                            "B5运行完成释放句柄后结果不可查看");
+                        capture.Invoke(window,new object[]{flow,Guid.NewGuid(),project.Revision});
+                        command("OnFlowInspectData");
+                        Assert(preview.Text.Contains("无可查看的运行结果"),
+                            "B5错误允许查看其他工程的历史Flow数据");
                         var cancelDebug=new MRKExecutionDebugController();
                         cancelDebug.AddBreakpoint("first");
                         var cancelled=engine.StartFlowWithControl(plan,cancelDebug);
