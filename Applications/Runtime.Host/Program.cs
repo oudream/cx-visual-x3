@@ -36,6 +36,12 @@ namespace CxVisual.Runtime.Host
                 if (verb == "scada-group-serve" && args.Length == 6 &&
                     args[3] == "--recover" && args[4] == "--read-pipe")
                     return MRHScadaGroupRecoverySupervisor.Serve(args[1],args[2],args[5]);
+                if (verb == "scada-group-serve" && args.Length == 4 &&
+                    args[3] == "--recover-device")
+                    return MRHScadaIsolatedRecoverySupervisor.Serve(args[1],args[2],null);
+                if (verb == "scada-group-serve" && args.Length == 6 &&
+                    args[3] == "--recover-device" && args[4] == "--read-pipe")
+                    return MRHScadaIsolatedRecoverySupervisor.Serve(args[1],args[2],args[5]);
                 if (verb == "scada-serve" && args.Length >= 7 && args.Length <= 10)
                 {
                     bool contiguous=false,serviceMode=false,recover=false;
@@ -97,7 +103,7 @@ namespace CxVisual.Runtime.Host
                     Show(MVISceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-group-serve <project.cxproj> <mhsRoot> [--recover] [--read-pipe <pipeName>] | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | scada-group-serve <project.cxproj> <mhsRoot> [--recover|--recover-device] [--read-pipe <pipeName>] | scada-serve <project.cxproj> <mhsRoot> <MEMDeviceGuid> <connectorModuleId> <scopeId> <intervalMs> [--contiguous] [--service] [--recover] | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16> | release-trusted-smoke <directory> | release-ledger-smoke <path> | release-ledger-resume <path> | release-ledger-corrupt-check <path>]");
                 return 2;
             }
             catch (Exception ex)
