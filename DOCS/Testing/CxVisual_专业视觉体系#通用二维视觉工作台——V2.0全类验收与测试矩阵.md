@@ -557,3 +557,17 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 
 **门禁**：`CxVisual.Unified.sln` Release/x64，`ArchitectureSmoke --imaging`、`--vision-results`、默认回归，以及`TestCenter --imaging-viewer-smoke`；Windows成功SHA日志待取得。
 
+## 33. R1 CASE-07：正式ROI工程、双Aspect单事务、再运行与来源指纹（2026-10-30）
+
+| R1验证ID | 正反场景/真实证据来源 | 本批状态 |
+|---|---|---|
+| R1-ENG-01 | 4×4 Gray8原图与MVI三角ROI (3.6px边界) 显式提交，MEM revision精确+1；Data与Visual具有同一ROI稳定Guid/Schema/Owner | 正式生产代码+ArchitectureSmoke源码已提交，Windows G3/G4待执行 |
+| R1-ENG-02 | 工程`Undo`同时清除两个Aspect，再`Redo`完整恢复ROI形状、来源、规则与同Guid；无独立撤销栈 | 回归已提交，G3/G4待执行 |
+| R1-ENG-03 | `SaveAs→Close→Open`重建原MVI像素中心命中谓词，MRK ROI同源像素面积6px²，重复Run得到新RunId，工程不Dirty | 回归已提交，G3/G4待执行 |
+| R1-ENG-04 | 仅变更4×4原图第16像素的值，虽然尺寸与位深相同仍必须因SHA-256不匹配拒绝运行 | 负例已提交，G3/G4待执行 |
+| R1-ENG-05 | 提交时旧Revision、预取消或缺少合法源图/ROI拒绝；重开运行预取消不得改变工程 | 部分负例已提交，G3/G4待执行 |
+| R1-ENG-06 | Studio原ModuleCenter.ResultPanel出现`CommitSelectedRoi`和`RunSavedRoi`真实按钮，调用生产MEM双Aspect与MRK重跑入口 | Studio Shell结构自测已提交，真实用户点击的STA全链仍待 |
+| R1-ENG-07 | 用户完整`Studio ROI选图→显式提交→Undo/Redo→Save/Open→重绑原图→再运行→导出`，含并发版本冲突和界面取消 | **未通过：R1产品级闭环待继续实施和固定SHA Windows日志** |
+
+**质量门禁**：`CxVisual.Unified.sln` /Release/x64、`ArchitectureSmoke --vision-results`、`--imaging`及默认回归，`Studio --module-center-cpu-self-test`与`--shell-self-test`，`TestCenter --imaging-viewer-smoke`。CI源代码测试存在≠实际通过；当前工具无法取得本批push工作流匹配SHA的Windows成功记录，因此不得登记G3～G5完成。
+
