@@ -24,6 +24,9 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Mechanism.Data.Messages;
+using CxVisual.Mechanism.Runtime.Commands;
+using CxVisual.Mechanism.Presentation.Wpf.Interaction;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;
 using CxVisual.Professional.Automation;
@@ -75,6 +78,42 @@ namespace CxVisual.Studio
                     window.OpenStudioDocument("doc.flow");
                     window.OpenStudioDocument("doc.flow");
                     Assert(window.GetStudioContentIds().Count(id => id == "doc.flow") == 1, "重复文档");
+                });
+                CheckStep("CAT-06 Studio与TestCenter共用MNM/MRK WPF交互中心", () =>
+                {
+                    int rev=window.StudioEngineeringRevision;
+                    using(MNMMessageCenter bus=new MNMMessageCenter())
+                    using(MRKCommandCenter commands=new MRKCommandCenter())
+                    {
+                        window.OpenStudioMessageCenter(bus);
+                        window.OpenStudioCommandCenter(commands);
+                        window.OpenStudioDocument("doc.messages");
+                        Assert(window.GetStudioContentIds().Count(id=>id=="doc.messages")==1 &&
+                            window.GetStudioContentIds().Count(id=>id=="doc.commands")==1,
+                            "消息/命令中心未复用唯一AvalonDock正式DocumentId");
+                        LayoutDocument messageDoc=window.StudioDock.Layout.Descendents()
+                            .OfType<LayoutDocument>().Single(d=>d.ContentId=="doc.messages");
+                        LayoutDocument commandDoc=window.StudioDock.Layout.Descendents()
+                            .OfType<LayoutDocument>().Single(d=>d.ContentId=="doc.commands");
+                        MPWMessageCenterControl messages=messageDoc.Content as MPWMessageCenterControl;
+                        MPWCommandCenterControl commandView=commandDoc.Content as MPWCommandCenterControl;
+                        Assert(messages!=null&&commandView!=null&&messages.Connected&&
+                            commandView.Connected&&commandView.VisibleCommandCount==0,
+                            "Studio没有使用Mechanism.Presentation.Wpf公共视图或创建了虚假命令目录");
+                        AssertThrows(()=>messages.PublishTextAsync().GetAwaiter().GetResult());
+                        AssertThrows(()=>commandView.InvokeSelectedAsync().GetAwaiter().GetResult());
+                        messages.Subscribe();
+                        Assert(bus.Metrics().SubscriptionCount==1,
+                            "MNM观察必须使用注入Host的真实订阅令牌");
+                        window.CloseStudioDocument("doc.messages");
+                        Assert(bus.Metrics().SubscriptionCount==0,
+                            "关闭Studio消息中心没有释放原MNM订阅");
+                        window.CloseStudioDocument("doc.commands");
+                        Assert(bus.State!=MNMMessageState.Stopped&&commands.Router.Discover().Count==0,
+                            "关闭共享WPF视图错误销毁了原Host或创建了测试Handler");
+                        Assert(window.StudioEngineeringRevision==rev,
+                            "消息/命令运行观察不可修改MEM工程Revision");
+                    }
                 });
                 CheckStep("B5 调试暂停继续单步取消的真实Studio入口与空会话安全", () =>
                 {
