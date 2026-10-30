@@ -221,7 +221,7 @@ namespace CxVisual.TestCenter.UI
                 GridLinesVisibility = DataGridGridLinesVisibility.Horizontal };
             AutomationProperties.SetAutomationId(historyGrid, "TCT.Command.History");
             tabs.Items.Add(Tab("人工会话证据", historyGrid));
-            tabs.Items.Add(Tab("共享公共命令中心（同一MRK）", _shared));
+
             StackPanel formal = new StackPanel { Margin = new Thickness(14) };
             formal.Children.Add(new TextBlock { Text = "命令中心正式TCT自动测试",
                 FontSize = 19, FontWeight = FontWeights.SemiBold });
@@ -246,6 +246,7 @@ namespace CxVisual.TestCenter.UI
             formal.Children.Add(formalRun);
             tabs.Items.Add(Tab("正式TCT验收", formal));
             BuildMultipleOperationPanel(tabs);
+            tabs.Items.Add(Tab("共享公共命令中心（同一MRK）", _shared));
             Grid.SetColumn(tabs, 1); columns.Children.Add(tabs);
             main.Children.Add(columns);
             Content = main;
