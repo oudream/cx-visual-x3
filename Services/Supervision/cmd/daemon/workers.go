@@ -16,6 +16,8 @@ type programWorkerGate struct {
 	mu           sync.Mutex
 	active       map[int64]struct{}
 	pending      map[int64]func()
+	pendingStop  map[int64]*daemonc.StopController
+	activeStop   map[int64]*daemonc.StopController
 	terminal     map[int64]int
 	persistPath  string
 	storageFault error
@@ -24,8 +26,10 @@ type programWorkerGate struct {
 func newProgramWorkerGate() *programWorkerGate {
 	return &programWorkerGate{
 		active:   make(map[int64]struct{}),
-		pending:  make(map[int64]func()),
-		terminal: make(map[int64]int),
+		pending:     make(map[int64]func()),
+		pendingStop: make(map[int64]*daemonc.StopController),
+		activeStop:  make(map[int64]*daemonc.StopController),
+		terminal:    make(map[int64]int),
 	}
 }
 
@@ -77,7 +81,11 @@ func (g *programWorkerGate) persistenceError() error {
 
 // start reserves the ID before launching. Periodic recovery never queues.
 func (g *programWorkerGate) start(ctx context.Context, id int64, run func()) bool {
-	started, _ := g.admit(ctx, id, run, false)
+	return g.startWithStop(ctx, id, run, nil)
+}
+
+func (g *programWorkerGate) startWithStop(ctx context.Context, id int64, run func(), stop *daemonc.StopController) bool {
+	started, _ := g.admit(ctx, id, run, false, stop)
 	return started
 }
 
@@ -86,10 +94,14 @@ func (g *programWorkerGate) start(ctx context.Context, id int64, run func()) boo
 // immediately AFTER its return (never concurrently). It cannot bypass a
 // MaxError/MaxCount latch.
 func (g *programWorkerGate) request(ctx context.Context, id int64, run func()) (started, queued bool) {
-	return g.admit(ctx, id, run, true)
+	return g.requestWithStop(ctx, id, run, nil)
 }
 
-func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), allowQueue bool) (bool, bool) {
+func (g *programWorkerGate) requestWithStop(ctx context.Context, id int64, run func(), stop *daemonc.StopController) (started, queued bool) {
+	return g.admit(ctx, id, run, true, stop)
+}
+
+func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), allowQueue bool, stop *daemonc.StopController) (bool, bool) {
 	if id <= 0 || ctx.Err() != nil || run == nil {
 		return false, false
 	}
@@ -109,11 +121,13 @@ func (g *programWorkerGate) admit(ctx context.Context, id int64, run func(), all
 	if _, exists := g.active[id]; exists {
 		if allowQueue {
 			g.pending[id] = run
+			g.pendingStop[id] = stop
 		}
 		g.mu.Unlock()
 		return false, allowQueue
 	}
 	g.active[id] = struct{}{}
+	g.activeStop[id] = stop
 	g.mu.Unlock()
 	go g.run(ctx, id, run)
 	return true, false
@@ -123,23 +137,30 @@ func (g *programWorkerGate) run(ctx context.Context, id int64, run func()) {
 	run()
 	g.mu.Lock()
 	next := g.pending[id]
+	nextStop := g.pendingStop[id]
 	delete(g.pending, id)
+	delete(g.pendingStop, id)
 	if ctx.Err() != nil || next == nil {
 		delete(g.active, id)
+		delete(g.activeStop, id)
 		g.mu.Unlock()
 		return
 	}
 	if g.storageFault != nil {
 		delete(g.active, id)
+		delete(g.activeStop, id)
 		g.mu.Unlock()
 		return
 	}
 	if _, blocked := g.terminal[id]; blocked {
 		delete(g.active, id)
+		delete(g.activeStop, id)
 		g.mu.Unlock()
 		return
 	}
-	// Keep the reservation continuously owned across the handoff.
+	// Keep the reservation continuously owned across the handoff; stop
+	// commands in flight remain bound to the ORIGINAL worker controller.
+	g.activeStop[id] = nextStop
 	g.mu.Unlock()
 	go g.run(ctx, id, next)
 }
@@ -157,6 +178,7 @@ func (g *programWorkerGate) markTerminal(event program.Event) error {
 	defer g.mu.Unlock()
 	g.terminal[event.Status.Id] = event.Event
 	delete(g.pending, event.Status.Id)
+	delete(g.pendingStop, event.Status.Id)
 	if g.persistPath != "" {
 		if err := writeTerminalLatches(g.persistPath, g.terminal); err != nil {
 			g.storageFault = err
@@ -176,7 +198,14 @@ func (g *programWorkerGate) blocked(id int64) (int, bool) {
 func (g *programWorkerGate) clearPending(id int64) {
 	g.mu.Lock()
 	delete(g.pending, id)
+	delete(g.pendingStop, id)
 	g.mu.Unlock()
+}
+
+func (g *programWorkerGate) stopController(id int64) *daemonc.StopController {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.activeStop[id]
 }
 
 func (g *programWorkerGate) has(id int64) bool {
@@ -189,21 +218,23 @@ func (g *programWorkerGate) has(id int64) bool {
 var _programWorkers = newProgramWorkerGate()
 
 func launchProgramWorker(ctx context.Context, a program.Program, events chan program.Event) bool {
-	return _programWorkers.start(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+	controller := daemonc.NewStopController(a.ID)
+	return _programWorkers.startWithStop(ctx, a.ID, func() {
+		daemonc.RunProgramContextWithStop(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
 			if err := _programWorkers.markTerminal(event); err != nil {
 				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
 			}
-		})
-	})
+		}, controller)
+	}, controller)
 }
 
 func requestProgramWorker(ctx context.Context, a program.Program, events chan program.Event) (bool, bool) {
-	return _programWorkers.request(ctx, a.ID, func() {
-		daemonc.RunProgramContextWithTerminal(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
+	controller := daemonc.NewStopController(a.ID)
+	return _programWorkers.requestWithStop(ctx, a.ID, func() {
+		daemonc.RunProgramContextWithStop(ctx, a, events, findProgramById, _logger, *_workDir, func(event program.Event) {
 			if err := _programWorkers.markTerminal(event); err != nil {
 				_logger.Printf("CRITICAL: failed to persist terminal latch for Program %d: %v; all future starts blocked", event.Status.Id, err)
 			}
-		})
-	})
+		}, controller)
+	}, controller)
 }
