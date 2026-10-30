@@ -28,6 +28,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             HttpClientSegmentedPost();
             HttpClientBoundedResponseAndReentrantSend();
             HttpClientBodyDeadline();
+            HttpClientMultiMegabyteResponse();
             HttpConcurrentResponses();
             HttpAggregateOverload();
             WebSocketTwoClientsRouted();
@@ -244,6 +245,70 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 Check(server.Wait(5000),"HTTP慢Body服务端未正常结算");
                 headersSent.Dispose();
+            }
+        }
+
+        private static void HttpClientMultiMegabyteResponse()
+        {
+            const int bytes=4*1024*1024;
+            int port=Port();
+            string url="http://localhost:"+port+"/volume-response/";
+            var serverConfig=new FTRHttpServerChannelConfiguration {
+                Id="f17-large-http-server",Prefix=url,
+                MaxClients=2,MaxRequestBytes=64,MaxResponseBytes=bytes,
+                TotalBufferedBytes=16*1024*1024,ResponseTimeoutMs=15000,
+                ReceiveBufferBytes=1024
+            };
+            var clientConfig=new FTRHttpClientChannelConfiguration {
+                Id="f17-large-http-client",Url=url,RequestTimeoutMs=15000,
+                MaxResponseBytes=bytes,CapturePayloadEvidence=false
+            };
+            Check(clientConfig.ReceiveByteBudget>=10*1024*1024,
+                "HTTP Client默认4MiB响应预算不足以覆盖缓冲与Legacy快照");
+            var codec=new FTRChannelConfigurationConverter();
+            var saved=(FTRHttpClientChannelConfiguration)codec.Read(codec.Write(clientConfig));
+            Check(saved.ReceiveByteBudget==clientConfig.ReceiveByteBudget,
+                "HTTP Client独立预算没有走既有FCM序列化");
+            byte[] expected=new byte[bytes];
+            for(int i=0;i<expected.Length;i++)
+                expected[i]=(byte)((i*31+(i>>13))&255);
+            using(var server=new FTRHttpServerChannel(serverConfig))
+            using(var client=new FTRHttpClientChannel(clientConfig))
+            {
+                int received=0;
+                server.Received+=packet=>
+                {
+                    Check(packet.Data.Length==1,"HTTP批量响应请求身份错误");
+                    server.ReplyAsync(packet,expected,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                };
+                client.Received+=packet=>
+                {
+                    byte[] body=packet.Data;
+                    Check(body.Length==bytes,"HTTP 4MiB响应长度不足");
+                    for(int i=0;i<body.Length;i+=4093)
+                        Check(body[i]==expected[i],"HTTP 4MiB响应校验/顺序错误："+i);
+                    Interlocked.Increment(ref received);
+                };
+                try
+                {
+                    server.Open();client.Open();
+                    client.Send(new byte[]{9});
+                    FTRChannelDiagnosticsSnapshot evidence=client.Diagnostics;
+                    Check(received==1&&evidence.ReceivedBytes==bytes&&
+                        evidence.BufferedPayloadBytes==0&&
+                        evidence.PeakBufferedPayloadBytes<=clientConfig.ReceiveByteBudget&&
+                        evidence.PayloadBufferByteBudget==clientConfig.ReceiveByteBudget,
+                        "真实HTTP 4MiB响应没有正确使用FCM总额度或未回收");
+                    Console.WriteLine("F17.HTTP_LARGE_PASS bytes="+bytes+
+                        " peakBudgetBytes="+evidence.PeakBufferedPayloadBytes+
+                        " budget="+evidence.PayloadBufferByteBudget);
+                }
+                finally
+                {
+                    if(client.State!=FTRChannelState.Closed)client.Close();
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
             }
         }
 
