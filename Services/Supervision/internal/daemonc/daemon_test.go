@@ -236,3 +236,73 @@ func TestRunProgramContextWithIsolatedChild(t *testing.T) {
 		t.Fatalf("error limit event must report actual failed runs, got %+v", limit)
 	}
 }
+
+
+func TestTerminalHookPrecedesPublishedLimitEvent(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		reason int
+		maxError int
+		maxCount int
+		startFailures int
+	}{
+		{"max errors", program.EventMaxError, 0, 10, 1},
+		{"max start count", program.EventMaxCount, 100, 1, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			a := program.Program{
+				ID: 615,
+				Path: filepath.Join(dir, "missing-executable"),
+				Dir: dir,
+				Enabled: program.ENABLE,
+				MaxError: tc.maxError,
+				MaxCount: tc.maxCount,
+			}
+			events := make(chan program.Event, 6)
+			noticed := make(chan program.Event, 1)
+			proceed := make(chan struct{})
+			done := make(chan struct{})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			go func() {
+				defer close(done)
+				RunProgramContextWithTerminal(ctx, a, events,
+					func(id int64) (program.Program, error) { return a, nil },
+					log.New(io.Discard, "", 0), dir,
+					func(event program.Event) {
+						noticed <- event
+						<-proceed
+					})
+			}()
+			var terminal program.Event
+			select {
+			case terminal = <-noticed:
+			case <-ctx.Done():
+				t.Fatalf("terminal callback not received: %v", ctx.Err())
+			}
+			if terminal.Event != tc.reason || terminal.Status.Id != a.ID {
+				t.Fatalf("wrong terminal callback: %+v", terminal)
+			}
+			// Callback deliberately blocks the publishing worker. The
+			// terminal Event must not yet appear in the event stream.
+			if len(events) != tc.startFailures {
+				t.Fatalf("terminal event was published before guard callback: pending=%d", len(events))
+			}
+			close(proceed)
+			select {
+			case <-done:
+			case <-ctx.Done():
+				t.Fatalf("terminal worker did not stop: %v", ctx.Err())
+			}
+			for i := 0; i < tc.startFailures; i++ {
+				if event := <-events; event.Event != program.EventStart {
+					t.Fatalf("failure event %d: %+v", i, event)
+				}
+			}
+			if event := <-events; event.Event != tc.reason {
+				t.Fatalf("incorrect published final reason: %+v", event)
+			}
+		})
+	}
+}
