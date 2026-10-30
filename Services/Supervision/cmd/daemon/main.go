@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
@@ -103,6 +104,8 @@ func main() {
 		_logger.Printf(_title.Info+"Read Program Complete, %s\n", utilities.JsonLogString(prog))
 	}
 
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	defer cancelWorkers()
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	//cbr:c + break 通知守护进程退出的管道
 	cbr := make(chan bool)
@@ -154,7 +157,7 @@ func main() {
 		if a.FirstWaitTime > 0 {
 			time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
 		}
-		go daemonc.RunProgram(a, cae, findProgramById, _logger, *_workDir)
+		go daemonc.RunProgramContext(workerCtx, a, cae, findProgramById, _logger, *_workDir)
 		_logger.Println(_title.Info + "Run Program: " + a.Path)
 	}
 
@@ -187,7 +190,10 @@ func main() {
 		case <-cbr:
 			_logger.Println(_title.Info + "执行清理..")
 			_logger.Println(_title.Info + "结束退出..")
-			daemonc.DaemonRun = false
+			// Signal cancellation first so restart waits and blocked event sends
+			// stop before the main loop stops draining program events.
+			cancelWorkers()
+			daemonc.DaemonRun.Store(false)
 			for ProgramId, pid := range _runProgramIds {
 				if pid > 0 {
 					proc, err2 := os.FindProcess(pid)
@@ -218,7 +224,7 @@ func main() {
 				dtHeartbeat = dtNow
 			}
 			if dtNow-dtRecovery > 0 {
-				recoveryPrograms(cae)
+				recoveryPrograms(workerCtx, cae)
 				dtRecovery += minute5
 			}
 
@@ -267,7 +273,7 @@ func main() {
 									}
 								}
 								if bRun {
-									go daemonc.RunProgram(ad.Program, cae, findProgramById, _logger, *_workDir)
+									go daemonc.RunProgramContext(workerCtx, ad.Program, cae, findProgramById, _logger, *_workDir)
 									_logger.Printf(_title.Info+"program diff-employ %s and run program[%s](%d)", ad.Action, ad.Path, ad.ID)
 								}
 							} else {
@@ -297,7 +303,7 @@ func main() {
 								fmt.Println("checkDbsEmployReq Fail, binary.Read failed:", err)
 							}
 							if dbsState.InfluxdbState && dbsState.MqttState && dbsState.RedisState {
-								recoveryPrograms(cae)
+								recoveryPrograms(workerCtx, cae)
 								dtRecovery += minute5
 							}
 
@@ -371,7 +377,7 @@ func main() {
 	_logger.Println(_title.Info + "Daemon End")
 }
 
-func recoveryPrograms(cae chan program.Event) {
+func recoveryPrograms(ctx context.Context, cae chan program.Event) {
 	ps := getPrograms()
 	for i := 0; i < len(ps); i++ {
 		a := ps[i]
@@ -387,7 +393,7 @@ func recoveryPrograms(cae chan program.Event) {
 			if a.FirstWaitTime > 0 {
 				time.Sleep(time.Second * time.Duration(a.FirstWaitTime))
 			}
-			go daemonc.RunProgram(a, cae, findProgramById, _logger, *_workDir)
+			go daemonc.RunProgramContext(ctx, a, cae, findProgramById, _logger, *_workDir)
 			_logger.Printf(_title.Info+"run program[%s](%d)", a.Path, a.ID)
 		}
 	}
