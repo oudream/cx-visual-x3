@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Transport;
@@ -49,6 +50,7 @@ namespace CxVisual.Professional.Automation.Plc
         private readonly IMPADataTargetAccess _dataOwner;
         private readonly FTRSubChannelAddress _destination;
         private readonly Dictionary<string, string> _bindings;
+        private readonly Dictionary<string, string> _approvedSignatures;
         private readonly SemaphoreSlim _writeGate = new SemaphoreSlim(1, 1);
         private readonly string _scopeId;
 
@@ -69,6 +71,7 @@ namespace CxVisual.Professional.Automation.Plc
             _scopeId = scopeId.Trim();
             string prefix = _scopeId + "/";
             _bindings = new Dictionary<string, string>(StringComparer.Ordinal);
+            _approvedSignatures = new Dictionary<string, string>(StringComparer.Ordinal);
             HashSet<string> points = new HashSet<string>(StringComparer.Ordinal);
             foreach (PADPlcPointBinding binding in bindings)
             {
@@ -100,6 +103,7 @@ namespace CxVisual.Professional.Automation.Plc
                     mappings.Length != inbound.Length + outbound.Length)
                     throw new ArgumentException(
                         "PLC点只允许唯一、必需且目标一致的MDS入站映射与授权出站映射: " + point.Name);
+                _approvedSignatures.Add(binding.StableId, Signature(point, mappings));
             }
             if (_bindings.Count == 0) throw new ArgumentException("至少绑定一个有效PLC测点");
         }
@@ -123,7 +127,39 @@ namespace CxVisual.Professional.Automation.Plc
             string point;
             if (stableId == null || !_bindings.TryGetValue(stableId, out point))
                 throw new KeyNotFoundException("PLC变量未绑定：" + stableId);
+            MPAPointDefinition live = _connector.Points.FirstOrDefault(x => x.Name == point);
+            MPADataMapping[] mappings = _connector.Configuration.Protocol.Mappings
+                .Where(x => x != null && x.PointRef == point).ToArray();
+            string approved;
+            if (!_approvedSignatures.TryGetValue(stableId, out approved) ||
+                !string.Equals(approved, Signature(live, mappings), StringComparison.Ordinal))
+                throw new InvalidOperationException("PLC运行点表已变化，须停止会话并重新审批装配: " + point);
             return point;
+        }
+
+        // 记录当前会话被批准的点描述与映射；不是加密签名或跨线程原子配置版本。
+        private static string Signature(MPAPointDefinition point, MPADataMapping[] mappings)
+        {
+            if (point == null || mappings == null) return "";
+            StringBuilder builder = new StringBuilder();
+            Action<string> append = value => {
+                string text = value ?? "";
+                builder.Append(text.Length).Append(':').Append(text);
+            };
+            append(point.Name); append(point.Address); append(point.StationAddress);
+            append(point.ValueType); append(point.CanRead ? "1" : "0");
+            append(point.CanWrite ? "1" : "0");
+            append(mappings.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            foreach (MPADataMapping item in mappings)
+            {
+                append(item.PointRef); append(item.TargetRef);
+                append(((int)item.TargetKind).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                append(((int)item.Direction).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                append(((int)item.Operation).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                append(((int)item.Transform).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                append(item.Required ? "1" : "0");
+            }
+            return builder.ToString();
         }
 
         private sealed class VerifiedWriteBackend : IPADDeviceVariableWriteBackend
