@@ -942,8 +942,30 @@ namespace CxVisual.Studio
             _viewModel.Dispose();
             base.OnClosed(e);
         }
+        private void InvalidateStaleRunPresentation()
+        {
+            // A changed MEM project/revision invalidates *both* result text and
+            // visible trace. The old MRK Flow itself remains cancellable until it
+            // settles; do not manufacture completion or discard the engine owner.
+            bool staleActive=_logicFlow!=null&&_activeFlowProjectId!=Guid.Empty&&
+                !IsCurrentResultScope(_activeFlowProjectId,_activeFlowEngineeringRevision);
+            bool staleHistory=_lastRunResultSummary!=null&&
+                !IsCurrentResultScope(_lastRunProjectId,_lastRunEngineeringRevision);
+            if(!staleActive&&!staleHistory)return;
+            if(staleHistory)
+            {
+                _lastRunResultSummary=null;
+                _lastRunProjectId=Guid.Empty;
+                _lastRunEngineeringRevision=-1;
+            }
+            if(FlowResultPreview!=null)
+                FlowResultPreview.Text="当前工程/Revision无可查看的运行结果";
+            if(FlowTraceList!=null)
+                FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
+        }
         private void RefreshScene()
         {
+            InvalidateStaleRunPresentation();
             if(!object.ReferenceEquals(_renderAssetSession,_viewModel.ProjectSession))
             {
                 _renderAssetSession=_viewModel.ProjectSession;
@@ -2289,6 +2311,14 @@ namespace CxVisual.Studio
                 long cursor=0;
                 Action update=()=>
                 {
+                    // Do not repopulate another project's trace after an engineering
+                    // edit or project switch, even if the old Flow is still executing.
+                    if(!IsCurrentResultScope(_activeFlowProjectId,
+                        _activeFlowEngineeringRevision))
+                    {
+                        InvalidateStaleRunPresentation();
+                        return;
+                    }
                     var changes=compiled.ReadTrace(_logicFlow,cursor);
                     cursor=changes.NextCursor;
                     if(changes.LostCount!=0)
