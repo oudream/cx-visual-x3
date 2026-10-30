@@ -428,3 +428,20 @@ Daemon 关闭时有限时收集本地回执，只有 WaitCompleted 才允许清�
 **证据等级**：相关源码、页面、测试和 CI 配置已提交 GitHub master（S）；本轮仍未取得固定 SHA 的主仓库三平台 Go/前端测试成功日志（G1 待核），现场部署、真实浏览器操作、进程树/业务 Ready 仍未验（G2/G3）。不要以页面显示信息替代安全授权或硬件验收。
 
 **残余风险与下阶段**：历史 PID 文件只在 EventStart 被 Daemon 消费后写入，子进程 Start 成功到凭证持久化的崩溃窗口仍在；必须继续推进 Worker 启动前意图与启动后代次证据持久化、OS 真实进程身份/退出回执对账。守护诊断文件不是可写控制或正式审计账本，S11 认证、授权、持久操作审计及受控解锁仍待实现。若 Monitor/Daemon 使用不同的工作目录或权限，UI 应显示来源不可用，不得假设它们自动共享数据。
+
+
+## 二十一、启动前持久意图与Crash窗口保守隔离（2026-10-30）
+
+**S02/S08 最新实际源码**：internal/launchjournal/journal.go 新增每 Program 独立的启动尝试凭证（version、十进制 ProgramId、随机 AttemptID、intent/started、PID、UTC 时间和原配置路径）；cmd/daemon/workers.go 只在正式守护 Worker 装配 launchjournal.New，daemonc/daemon.go 新增可选 LaunchRecorder 依赖反转合同和 RunProgramContextWithLaunchEvidence，原 RunProgramContextWithStop/RunProgramContextWithTerminal 签名、EventStart/EventExit 的 UDP 消息及现有 Program SQLite 不变。
+
+**必须遵守的时序**：Worker 在 exec.Cmd.Start 前调用 Begin 写入并同步落盘 stage=intent/PID=0；失败即不启动。原 Start 成功后立刻通过 Started 写入 stage=started 和 PID，**早于原 EventStart 消费及旧 PID 文件落盘**。原 Wait() 成功回收后，核对 AttemptID 并 Finished 清算；如果 Start 根本未成功，也可在错误返回后清算无子进程的意图。Started 写盘失败后仅使用自己的 cmd.Process 进行尝试停止/Wait，保留未清算的可核查证据。任何意图写盘/更新/删除失败通过原 Gate.failStorage 阻止后续新 Worker 和配置排队，不默许自动恢复。
+
+**Daemon 重启隔离**：cmd/daemon/scanUnreconciledPrograms 在受管程序启动前合并 legacy PID 文件与新 launch-attempts/<ProgramId>.json。即使旧 PID 文件不存在，上一代 Daemon 已完成 Begin 却因 SIGKILL 没有记录 PID，也会隔离该 Program；只有经原 Worker Wait 后成功清算才不留下凭证。坏/未知 ProgramId 的凭证仍不能静默忽略；无法归属的异常目录导致整个 Daemon 拒绝启动。不自动 Kill 残留子进程，不清除证据、不开放未经认证的解锁功能。
+
+**H5 投影**：仍复用原 cmd/daemon/orphan_observation.go → internal/guardview/report.go → 本机 GET /api/v1/guard → GuardView/DashboardView/ProgramsView。隔离原因中明确携带未清算启动凭证阶段和 PID。页面用“启动隔离（含凭证）”而非仅“遗留 PID”，显示本次扫描时刻、Program ID 和原始原因；文件源缺失仍是 unknown 而不是安全状态。
+
+**回归源码**：internal/launchjournal/journal_test.go 验证意图前后崩溃、跨进程重载、64 位 ProgramId、原 Worker Wait 清账、无子进程 Start 失败清账、损坏/篡改/软链接/重入拒绝；internal/daemonc/launch_evidence_test.go 利用自身真实子进程与未消费的 EventStart 验证启动凭证先于旧 PID 事件、坏盘不能启动；cmd/daemon/orphan_guard_test.go 验证无旧 PID 仍阻止、旧 PID+新凭证合并、未知文件拒启；workers_test.go 验证 journal 故障阻止全局新启动。supervision-migration.yml 的 Go 三平台构建/全量测试与 Linux Race 包含新包和上述用例。
+
+**证据等级**：正式源码、回归测试、H5 提示与 CI 规则已提交（S），但此轮没有固定 SHA 的 Go Windows/Linux/macOS CI 通过日志或现场浏览器／工控机长稳数据，**G1/G2/G3 均待验**。不能把新测试存在误称测试成功。
+
+**本期承诺边界**：针对 Daemon 进程级 SIGKILL，在文件系统正常工作条件下的 Start 前意图窗口进行保守封堵；AttemptID 并非 OS 原生 PID 创建时间，不能证明 PID 未复用、子孙进程树已退出、设备 Ready；突然断电时的磁盘元数据持久性、目录 ACL、只读挂载、跨平台文件系统差异仍待验证。后续是 OS 创建代次与归属验证、持久操作回执/对账及 S11 的可信认证授权审计。
