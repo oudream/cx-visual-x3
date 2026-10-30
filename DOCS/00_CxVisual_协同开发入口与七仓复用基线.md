@@ -324,3 +324,10 @@
 - [03数据契约§9](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——03图像数据与生命周期_V2.0.md)、[05算法契约§11](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——05算法能力与专业流程_V2.0.md)、[06结果契约§10](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——06结果测量与工程资源_V2.0.md)：像素/Frame/Mask/Artifact身份，MPM TypeId与MRK CLR Type映射，RunResult/ResultItem与MEM正式资源分离。
 - [Implementation§11](Implementation/CxVisual_专业视觉体系%23通用二维视觉工作台——V2.0实施源码与迁移台账.md)列出已有源码与先行工作包；[Testing§10](Testing/CxVisual_专业视觉体系%23通用二维视觉工作台——V2.0全类验收与测试矩阵.md)定义CASE-ARCH-01的20项正/反测试。
 - **状态警示**：本阶段仅更新总体架构、详细契约及UML/实施验收文档；候选FrameRef、VisionRunRecord、ResultItem和TypeId示例未被宣称已编码/已注册；没有本轮Windows CI或设备HIL通过的断言。
+
+## CxVisual Automation 专业体系 V1.1（2026-10-30）
+- **统一入口**：[Automation #00 总体架构与设计总纲 V1.1](Architecture/CxVisual_专业自动化体系%2300总体架构与设计总纲_V1.1.md)。其余 #01～#08 为专项正式规格；不得从 V1.0 历史提交恢复旧 Owner。
+- **能力全集**：以已读取的《01～03统一规格基线 V2.2》为可审查来源，18个专业方面：DeviceEngineering、PlcIoFieldbus、ScadaIcs、MotionCnc、FluidPowerActuation、RobotEngineering、MaterialHandlingSystems、ProcessControl、AcquisitionTrigger、XraySourceDetector、InstrumentationDaq、TestMeasurement、IndustrialConnectivity、IndustrialIoTEdge、RecipeParameterEngineering、CommissioningDiagnostics、AssetMaintenance、MachineSafetyIntegration。
+- **开发执行**：[Automation 实施与七仓成熟资产复用 V1.1](Implementation/CxVisual_专业自动化体系%23实施与成熟资产复用指南_V1.1.md)。开始任务前先对照现行 F17/MCN/MPA、MFM、MEM、MDS、M12/MRK 的唯一 Owner、ReferTo函数级来源和真实 .csproj，再挑垂直业务闭环。
+- **测试出口**：[Automation 全功能及工业HIL验收矩阵 V1.1](Testing/CxVisual_专业自动化体系%23全功能与工业验收矩阵_V1.1.md)，每个专业能力必须有正反例、实际窗口/API、现场设备证据和分级（G0～G3/T4）。
+- **待核**：当前 GitHub UTF-8 工具无法读取仓库内二进制 `DOCS/能力图/04Automation.png` 与 `DOCS/02～04` XLSX 原始Sheet，18项专业名称按已读V2.2冻结为审评输入，仍需对最新V4.9/V2.01/V6.4逐条校准P编号/FQN/Owner。此处不宣称软件实机已完成。
