@@ -78,8 +78,8 @@ func TestOrphanScanRejectsUncertainAndMalformedPIDFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := program.Program{ID: 9031, Path: exe}
-	for _, contents := range []string{"", "bad-pid", "0", "-1", "2147483648", strings.Repeat("1", 65), strconv.Itoa(os.Getpid())} {
-		t.Run(strconv.Itoa(len(contents))+"-"+strings.ReplaceAll(contents[:min(10,len(contents))], "/", "_"), func(t *testing.T) {
+	for i, contents := range []string{"", "bad-pid", "0", "-1", "2147483648", strings.Repeat("1", 65), strconv.Itoa(os.Getpid())} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			wd := t.TempDir()
 			createLegacyPIDForTest(t, wd, a, contents)
 			if _, ok := scanLegacyPIDFiles(wd, []program.Program{a})[a.ID]; !ok {
