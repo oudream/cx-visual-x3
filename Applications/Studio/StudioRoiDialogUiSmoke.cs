@@ -211,6 +211,15 @@ namespace CxVisual.Studio
             Task click=Task.Run(()=>Invoke(hwnd,buttonId));
             Task dialog=Task.Run(()=>ConfirmNativeFileDialog(title,file));
             Task pair=Task.WhenAll(click,dialog);
+            // WPF模态消息泵若无法调度原调用方的await继续执行，GUI内22秒
+            // 超时可能不被处理。独立线程30秒看门狗仅记录故障，不伪造
+            // Success，也不尝试越权关闭文件对话框；外层CI仍有120秒硬门禁。
+            Task.Run(async ()=>{
+                await Task.Delay(30000).ConfigureAwait(false);
+                if(!pair.IsCompleted)
+                    Mark("WARN: 原生文件框30秒未完成：Invoke="+click.Status+
+                        " Dialog="+dialog.Status+"；"+NativeWindowDiagnostics());
+            });
             if(await Task.WhenAny(pair,Task.Delay(22000))!=pair)
             {
                 // Click的InvokePattern若早已抛错，优先保留真实控件异常，
