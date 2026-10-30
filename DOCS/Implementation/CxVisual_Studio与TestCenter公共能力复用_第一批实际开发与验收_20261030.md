@@ -43,6 +43,14 @@
 - 后继工作流暴露 `Thickness(double,double)` 不存在及 `MRKCommandResponse QueryOperation()` 不可直接作为 `Action`（CS7036/CS0407），已修复为四参厚度与 Action lambda。
 - **修复本身未证明编译成功**。须以最新包含这两次修复的固定 SHA 工作流实际结果为准，并打开 GitHub Job Logs 检查下一层错误，直到 Windows 构建、Studio STA、TestCenter原有人工/正式回归通过。
 
+### 第一批 CI 实际证据更新（2026-10-30）
+
+- 提交 `ec3ae8df`：[Studio Windows S1 #41075147663](https://github.com/oudream/cx-visual-x3/actions/runs/41075147663) 已完成**全解决方案.NET48编译**并执行真实 WPF STA，日志明确 `PASS: CAT-06 Studio与TestCenter共用MNM/MRK WPF交互中心`。该项证明复用控件、Host注入、只读、订阅释放在固定SHA可用。
+- 同一次 Studio S1 后续的真实 Vision CPU 运行结果/Trace 断言失败（软件运行仍显示Plan Revision 189，未观察到预期结束），因此**整条 Studio S1 是 Failure**；不把 CAT-06 局部 PASS 夸大为 Studio 全绿。该问题归原 Vision/MRK 工作包排查，须记录同SHA复现，不得随意改测试为忽略。
+- 此后的 `ed393a17` 正式测试补充了真实 MNM 发布订阅、MRK软件型倍增 Handler、FDC JSON入参、Operation查询及 Host Detach，在 [Studio S1 #41075308993](https://github.com/oudream/cx-visual-x3/actions/runs/41075308993) 同样显示 `PASS: CAT-06`，整条工作流仍被后续 Vision CPU 断言阻断。
+- TestCenter 全量与命令专项若还在运行/未有最终结果，仍标注 **待固定SHA绿色**，不能引用旧SHA代替本批验收。
+- 额外修复全量解决方案 `Tests/ArchitectureSmoke/Integration/HmiScadaPipeTests.cs` 局部变量 `rejected` 与外层同名造成的 CS0136；只重命名局部，测试语义未变。
+
 ## 5. 未完成清单与后续按Owner推进
 
 | 工作包 | 明确尚未完成 | 下一验收门槛 |
