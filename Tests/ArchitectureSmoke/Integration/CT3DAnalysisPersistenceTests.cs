@@ -393,6 +393,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             using(var engineering=MEMEngineering.Open(path))
             {
+                try
+                {
                 var allCases=CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None);
                 Check(allCases.Count==2&&
                     allCases.All(c=>c.Kind==CT3DAnalysisKind.SurfaceSphere&&c.Source.Signature==source.Signature)&&
@@ -515,7 +517,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(CT3DAnalysisPersistence.OpenAll(engineering,folder,CancellationToken.None)
                     .Select(c=>c.Sphere.ResultId).SequenceEqual(updatedCases.Select(c=>c.Sphere.ResultId)),
                     "批量Data/Visual事务Redo应整体恢复两份新Sphere");
-                engineering.Close(true); // 测试撤销批量复算后显式丢弃未保存会话，不更改MEM保存合同。
+                }
+                finally {engineering.Close(true);} // 异常时保留最初的专业测试失败。
             }
             Reject<InvalidOperationException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,1,6,CancellationToken.None));
             Reject<ArgumentOutOfRangeException>(()=>CT3DAnalysisCase.AnalyzeSphere(folder,source,1000,0,4000,CancellationToken.None));
