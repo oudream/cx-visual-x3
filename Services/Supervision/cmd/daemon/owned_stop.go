@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gogo/internal/daemonc"
+	"gogo/internal/stopjournal"
 )
 
 // ownedStopOutcome is a Daemon-local receipt. No new HTTP/UDP control
@@ -30,6 +31,19 @@ func queueOwnedStop(id int64, pid int, action string, receipts chan<- ownedStopO
 	if controller == nil {
 		return false
 	}
+	// Persist requested BEFORE any signal can be emitted. A failure refuses
+	// the stop, leaving the managed child untouched and the result unknown.
+	request, err := stopjournal.NewRequest(id, pid, action)
+	if err != nil {
+		if _logger != nil { _logger.Printf("CRITICAL: invalid stop operation: %v", err) }
+		return false
+	}
+	if err := stopjournal.Append(*_workDir, request); err != nil {
+		if _logger != nil {
+			_logger.Printf("CRITICAL: refusing unjournaled stop Program=%d PID=%d: %v", id, pid, err)
+		}
+		return false
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), ownedStopWaitTimeout)
 		defer cancel()
@@ -37,10 +51,16 @@ func queueOwnedStop(id int64, pid int, action string, receipts chan<- ownedStopO
 			// A timed-out request is UNKNOWN, not the final truth. The
 			// original Worker's eventual Wait result is written even if
 			// the Daemon main loop is no longer reading stopReceipts.
+			if err := stopjournal.RecordReceipt(*_workDir, request, late.State, late.WaitCompleted, late.SignalError, late.WaitError); err != nil {
+				if _logger != nil { _logger.Printf("CRITICAL: lost durable late Wait receipt %s: %v", request.OperationID, err) }
+			}
 			writeOwnedStopLog(_logger, ownedStopOutcome{
 				Action: action + "/late", Receipt: late,
 			})
 		})
+		if err := stopjournal.RecordReceipt(*_workDir, request, result.State, result.WaitCompleted, result.SignalError, result.WaitError); err != nil {
+			if _logger != nil { _logger.Printf("CRITICAL: stop result not durable %s: %v", request.OperationID, err) }
+		}
 		outcome := ownedStopOutcome{Action: action, Receipt: result}
 		// The response queue is bounded and the Daemon owns the reader. If
 		// unavailable, a receipt must not be mistaken for success.
