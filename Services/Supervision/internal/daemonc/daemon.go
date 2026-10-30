@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gogo/common/utilities"
-	"gogo/internal/program"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"gogo/common/utilities"
+	"gogo/internal/program"
 )
 
 const EnvName = "APP_ID"
@@ -20,7 +21,9 @@ const EnvName = "APP_ID"
 // Main now additionally supplies a cancellable context to each worker.
 var DaemonRun atomic.Bool
 
-func init() { DaemonRun.Store(true) }
+func init() {
+	DaemonRun.Store(true)
+}
 
 var (
 	_titleDaemon = utilities.NewLoggerTitles("DAEMON")
@@ -75,7 +78,9 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 			logger.Printf(_titleDaemon.Info+"进程[%s](%d) 异常退出后，启动时需要等待时间( %d 毫秒)\n", a1.Path, a1.ID, a1.StartWaitTime)
 		}
 
-		if !DaemonRun.Load() || ctx.Err() != nil { return }
+		if !DaemonRun.Load() || ctx.Err() != nil {
+			return
+		}
 		// 启动时间戳
 		t = time.Now().Unix()
 
@@ -145,7 +150,13 @@ func RunProgramContext(ctx context.Context, a0 program.Program, programEvent cha
 		status.Pid = cmd.Process.Pid
 		status.IsRun = true
 		status.LastRunTime = utilities.TimeGetCurrentMsepoch()
-		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status}) { _ = cmd.Process.Kill(); _ = cmd.Wait(); return }
+		if !emitProgramEvent(ctx, programEvent, program.Event{Event: program.EventStart, Status: status}) {
+			// Start has already succeeded: cancellation must not leave an
+			// untracked child running if the main loop cannot receive it.
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return
+		}
 
 		// 父进程的守护协程阻塞: 等待子进程退出
 		err = cmd.Wait()
