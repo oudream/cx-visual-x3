@@ -143,7 +143,7 @@ flowchart LR
 **查询结果必须区分两个维度**：`SourceKind = System / TrustedProvider / Project / Package / Template / Draft`；`ResourceKind = Type / Definition / Instance / Capability`。这两个维度是 UI 筛选，不强制新增永久 enum/表。
 
 ## 08. 版本、Schema 指纹与冲突
-- `MPMTypeDescriptor.SameSchema` 当前核对 TypeId/Version/Properties/Ports/Aspects；建议统一生成稳定指纹（成员稳定排序、类型/约束/默认值/端口声明/必要 Aspect 版本），但具体算法与旧数据兼容归原 Owner 审核。
+- `MPMTypeDescriptor.SameSchema` **当前对 Properties/Ports/Aspects 按下标逐项比较，顺序敏感**，且无通用顺序无关哈希；新增规范化指纹（成员稳定排序、类型/约束/默认值/端口声明/必要 Aspect 版本）只是**目标设计**，实施前必须对历史 Schema 顺序/版本兼容进行回归，不得把未来设计当现有源码行为。详见 [#8 A06](CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)。
 - `MDCStaticCatalogSnapshot` 已提供 MOC 静态能力指纹基础，Symbol 不再自制另一个 Capability fingerprint。
 - 同一 TypeId/SchemaVersion 由不同 Provider 给出不同合同 → 错误而不是“最后注册者赢”。
 - 同 CapabilityId/Version 但运行 Resolver 签名/端口不同 → 构建/发布前拒绝；MOC/MRK 已有部分签名检查，应接入而非重做。
@@ -168,7 +168,7 @@ flowchart LR
 ## 11. 性能与一致性要求
 - 可信插件仅在初始化/重新装载时解析元数据，异步/批处理不阻塞 Studio UI；缓存以不可变快照形式保存并有显式过期规则。
 - 大批量 Provider 描述要有可配置上限和诊断，沿用 `MPMTypeDescriptor` 的 4096 成员预算与 MOC 当前目录能力上限；后续重定时先测量。
-- 注册集合的遍历顺序不同不影响 Schema 指纹/搜索排序；重复输入可重复加载但不得产生不确定 ID 或部分工程修改。
+- **目标**：不同注册集合遍历顺序不应改变规范化 Schema 指纹/目录搜索结果。**当前 `SameSchema` 顺序敏感**，D2 必须先解决归一化与历史兼容；不能靠重新排序已有工程 TypeItems 隐式修复。重复输入不可产生不确定 ID 或部分工程修改。
 - 工程安装冲突或 Revision stale 要重新 Preview，不能在同一 UI 流程吞异常再继续放置引用。
 - UI 读目录不得执行设备检查；可用性/Ready/授权是有成本的分级查询，用户明确触发并保存结果时间/作用域。
 

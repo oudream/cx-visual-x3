@@ -7,6 +7,7 @@
 2. Content 用来组织业务/逻辑/数据/协同，MOL/MOC/MRK/MDS 等保留既有职责；Symbol 不成为新执行引擎。
 3. Type / Capability / Module 是不同身份，类型注册和能力只读发现分别复用 MPM/MOC 真实 Owner；不增加第二 CapabilityCatalog。
 4. Studio 的 Symbol 中心已有工程/包/类型三来源基础，正式编辑由原 MEM/MTC/MTI 处理，不能出现 UI 私有持久仓。
+5. **新核实源码事实**：`MEMSymbol.References` 独立于 RootGroup；`CheckReference` 当前允许 Symbol 拥有 MRI 引用记录，但其复合执行/多级公开边界还需专门裁决与验收，见 [#8 C01](../Architecture/CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)。
 
 ## 02. 提请审批的新建议
 | 号 | 建议裁决 | 必须核对/前提 |
@@ -19,6 +20,7 @@
 | ADR-SYM-06 | Symbol 主要值为“可选语义”，不限制多个公开辅助端口；不创建新 Symbol 子类层次 | 当前类型/MPM 合同审查 |
 | ADR-SYM-07 | Script 分级 R0/R1（纯声明/受限规则）优先；R2 可信 Provider；R3 任意外部脚本在安全方案批准前禁用 | FCM/MHS/Host/专业授权；无空泛沙箱承诺 |
 | ADR-SYM-08 | 不自动替换运行中实例版本；定义/Capability/配置/Plan/Data 版本分别跟踪 | 发布与安全 Owner |
+| ADR-SYM-09 | 保留现有 `MEMSymbol.References` API；明确其仅为受约束资源引用声明，复杂 MOL 执行仍归 Content；对嵌套公开边界、复制/MTI、Scene/运行进行专项验证 | `CheckReference`/`CheckEndpointScope`、工程组织 V1.2 与 DOCS/04 |
 
 ## 03. 风险与取舍
 - **不用万能 Symbol**：实现路径更清晰，业务流程仍须明确 Content 组合；收益是不会出现同一逻辑两套执行结果。

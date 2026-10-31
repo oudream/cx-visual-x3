@@ -5,6 +5,7 @@
 
 ## 01. 核心价值与六条跨体系不变量
 - Symbol 为 Content/Workbench 提供“可见、可选、可操作、可绑定”的通用界面；**不要求业务模块依附 Symbol 才能被编排**。
+- **源码事实补充**：`MEMSymbol` 除 RootGroup 外还有 `References` 集合，当前 `CheckReference` 允许 Symbol owner 引用共享 Content/Symbol。该 MRI 声明不自动赋予业务调度/执行能力；Group 依然不能拥有 ContentRef。详见 [#8 C01](CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)。
 - Content 是业务复用、逻辑 Scope、输入/输出和数据协同的主要容器；Symbol 只通过 `MRIResourceReference` 加入 Content。
 - Symbol 与 Capability 是多对多的**显式关联**：一个复杂 Faceplate 可以请求多个已注册 Command/Capability；一个 Capability 可对应多个 Symbol/Content。
 - 公开 Port/Property 是唯一穿越定义边界的合法接口；不允许在画布拖一根线后直接穿透内部私有子 Element。

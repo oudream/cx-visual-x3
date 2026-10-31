@@ -17,7 +17,7 @@
 ## 02. 全类映射表：现有而必须复用
 | 类型/族 | 物理位置（最新已核实） | 核心方法/成员 | 状态与本体系职责 |
 |---|---|---|---|
-| `MEMProject/MEMPage/MEMContent/MEMSymbol` | `Mechanism/Core/Engineering/MEMNode.cs` | `RootContent/RootGroup`、资源拥有 | **现有**，共享定义唯一根 |
+| `MEMProject/MEMPage/MEMContent/MEMSymbol` | `Mechanism/Core/Engineering/MEMNode.cs` | `RootContent/RootGroup`、`MEMSymbol.References` 与资源拥有 | **现有**，共享定义唯一根；Symbol 的 MRI 引用记录不属于 RootGroup.Children |
 | `MRCVisualItem/MRCGroup/MRCElement` | `Mechanism/Core/Engineering/MRCVisualItem.cs` | Transform、Properties/Ports/Aspects | **现有**，Composite 实体 |
 | `MPMAspect/MPMAspectKind/IMPMDefinition` | `Mechanism/Core/Engineering/MPMDefinitionState.cs` | Visual/Logic/Data/Collaboration | **现有**，统一四方面 |
 | `MPMTypeDescriptor/IMPMTypeProvider` | `Mechanism/Core/Engineering/MPMTypeDescriptor.cs` | `DescribeTypes`、SchemaVersion、Properties/Ports | **现有**，Type 元数据 |
@@ -40,6 +40,8 @@
 | `PHMFaceplateAuthoring` | `Professional/HMI/PHMFaceplateAuthoring.cs` | `Place` 等 | **现有**，可作 Motor 黄金样本 |
 
 > 路径末尾 `*` 代表文件族，不是已宣称的单文件名。读旧版 `Mechanism/Orchestration` 文档时，应以当前 `Mechanism/Decision` 物理目录为准，不能回退“Logic/Orchestration 分立”旧假设。
+
+**必须补的源码边界**：`MEMEngineeringSession.CheckReference` 允许 `MEMContent` 与 `MEMSymbol` 拥有 MRI ResourceReference；`CheckEndpointScope` 对多级 InstancePath 直接连线拒绝。代码有此声明能力，不代表嵌套复合运行已验收。[#8 审计报告](CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)已将其列为 C01。`MPMTypeDescriptor.SameSchema` 当前顺序敏感；`ExposeProperty` 的 Text 内容映射仍存在真实缺口。
 
 ## 03. 候选最小增量类型/API（逐项设计，不全部立刻新建）
 | 候选名（非最终签名） | 首选 Owner | 是否需要独立类 | 现有可复用与职责 |

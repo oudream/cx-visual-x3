@@ -18,7 +18,7 @@
 
 ## 01. 本质定位与不是
 - **Group**：`MRCGroup` 是图元层次和空间变换组合，本身可带属性、端口和 Aspect，但不等于全局组件发布。
-- **Symbol**：`MEMSymbol` 是**共享、可独立编辑、可复用的视觉/状态/交互组件定义**，有唯一 `RootGroup`，可按需公开属性/端口、绑定数据、描述行为并**引用**专业能力。
+- **Symbol**：`MEMSymbol` 是**共享、可独立编辑、可复用的视觉/状态/交互组件定义**，有唯一 `RootGroup`，可按需公开属性/端口、绑定数据、描述行为并**引用**专业能力。**当前源码还支持 `MEMSymbol.References`（独立 MRI 引用集合），不可混同 RootGroup 子节点；参见 #8 C01，复合引用的完整生产语义待核。**
 - **Symbol 实例**：`MRIResourceReference` 是共享定义在 Page/Content 中的一次使用位置，拥有自己的参数覆写、布局和运行上下文；定义与实例不能同名即同一。
 - **Content**：组织业务、资源、数据、编排、子 Content 和 Symbol 引用；没有视觉也合法；复杂业务流程由 `MEMContent + MOL` 持定义，`MOC/Decision` 构建，`MRK` 执行。
 - **Capability**：对外行为/数据处理合同（`MOCCapabilityDescriptor`）；**Module**：五类实现载体（Connector/Driver/Compute/Simulation/Service），不应发明第六种 SymbolModule。
@@ -131,7 +131,7 @@ flowchart TB
 | [#6 治理](CxVisual_Symbol_06_资源版本安全与迁移_V2.0.md) | 库/依赖/版本/风险/迁移 | 绕过 MHS/Host 安全 |
 | [#7 API](CxVisual_Symbol_07_全类UML与API合同_V2.0.md) | 类清单/唯一 Owner/API 图/协作时序 | 未核对的公开接口实施声明 |
 
-阶段实装记录：[Implementation 台账](../Implementation/CxVisual_Symbol_实施任务与现状台账_V2.0.md)；证据与反例：[Testing 矩阵](../Testing/CxVisual_Symbol_完整测试与验收矩阵_V2.0.md)。旧 [V1.0 总设计](CxVisual_Symbol体系——总体架构_能力注册发现_Studio孵化与验收_V1.0.md) 保留历史资料，本文是新版入口。
+阶段实装记录：[Implementation 台账](../Implementation/CxVisual_Symbol_实施任务与现状台账_V2.0.md)；证据与反例：[Testing 矩阵](../Testing/CxVisual_Symbol_完整测试与验收矩阵_V2.0.md)。**深入实证与交付配套**：[ #8 真实源码审计与规格冲突](CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)、[#9 开发者使用手册及黄金案例](CxVisual_Symbol_09_开发者指南与黄金案例执行手册_V2.0.md)、[#10 需求→Owner→验收追溯检查表](CxVisual_Symbol_10_需求合同Owner验收追溯与架构检查表_V2.0.md)。它们不新增工程真源，用来避免目标设计与实际源码混淆。旧 [V1.0 总设计](CxVisual_Symbol体系——总体架构_能力注册发现_Studio孵化与验收_V1.0.md) 保留历史资料，本文是新版入口。
 
 ## 09. 六专业与横向跨专业能力合同
 | 专业 | 使用 Symbol 的真实意义 | 必保留的专业 Owner |

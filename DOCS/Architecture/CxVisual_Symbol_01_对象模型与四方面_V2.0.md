@@ -21,6 +21,7 @@ classDiagram
   MEMProject "1" *-- "0..*" MEMSymbol : shared definitions
   MEMPage "1" *-- "1" MEMContent : RootContent
   MEMContent "1" *-- "0..*" MRIResourceReference : uses
+  MEMSymbol "1" o-- "0..*" MRIResourceReference : References metadata
   MRIResourceReference ..> MEMSymbol : TargetId
   MRIResourceReference ..> MEMContent : TargetId
   MEMSymbol "1" *-- "1" MRCGroup : RootGroup
@@ -31,11 +32,11 @@ classDiagram
   MEMSymbol o-- MRCPublicMapping
   MPMTypeDescriptor ..> MEMSymbol : describes kind
 ```
-这是**持有与引用视图**而不是可直接编译的 C# 继承声明全集。准确的类密封与 Parent API 以现有代码为准；禁止将 `ContentRef/SymbolRef` 画成业务“拥有”子定义。
+这是**持有与引用视图**而不是可直接编译的 C# 继承声明全集。**`MEMSymbol.References` 与 RootGroup/Children 是不同存储：前者持独立 MRI 引用记录，后者只持视觉子图元**。`MEMEngineeringSession.CheckReference` 允许 Content 或 Symbol 作为引用 Owner，但不能据此推断 Symbol 现已拥有 MRK 子流程运行能力；生产复合语义见 [#8 C01](CxVisual_Symbol_08_真实源码审计与规格冲突_V2.0.md)。准确的类密封与 Parent API 以现有代码为准；禁止将 `ContentRef/SymbolRef` 画成业务“拥有”子定义。
 
 | 对象 | 原始身份 | 持有者 | 说明 |
 |---|---|---|---|
-| `MEMSymbol` | Guid Id, TypeId | Project 独立共享资源 | 一定义仅一个 RootGroup |
+| `MEMSymbol` | Guid Id, TypeId | Project 独立共享资源 | 一定义仅一个 RootGroup，另有独立 `References`（MRI）集合，不属于 RootGroup.Children |
 | `MRCGroup` | Guid Id | Symbol RootGroup 或其他 Group/Content | 属空间层级；不是业务执行容器 |
 | `MRCElement` | Guid Id | Group/Content | 形状/文字/图片/小控件/专业呈现占位 |
 | `MRIResourceReference` | Guid Id + TargetId + Kind | Content | 同一定义多实例；参照链是身份的一部分 |
@@ -66,8 +67,9 @@ classDiagram
 | Project 持独立 Symbol | 是 | ID 全工程唯一、稳定 TypeId |
 | Symbol 持一个 RootGroup | 必须且唯一 | RootGroup 不能任意删除/换 Parent |
 | Group 持 Element/Group | 是 | Parent 唯一、无持有环、变换合法 |
-| Group 持 ContentRef/SymbolRef | 当前不允许 | 需要业务嵌套用 Content |
+| Group 持 ContentRef/SymbolRef | 当前不允许 | Group 只能拥有视觉 MRCVisualItem；与 Symbol 自持 MRI References 不同 |
 | Content 持 SymbolRef | 是 | TargetId 存在且 Kind 正确，公开映射合法 |
+| Symbol 自持 MRI SymbolRef/ContentRef | 代码支持声明 | `CheckReference` 验共享目标和引用环；复合运行/公开边界完整行为仍待 ADR 与测试 |
 | Content 嵌套 Content | 是 | 拥有树无环；引用环单独校验 |
 | 一实例覆盖另一实例的私有值 | 否 | 只可通过正式公开可写成员 |
 | Symbol 内直接访问专业 CLR Delegate | 否 | 只有版本化 CapabilityRef/Host 可绑定 |

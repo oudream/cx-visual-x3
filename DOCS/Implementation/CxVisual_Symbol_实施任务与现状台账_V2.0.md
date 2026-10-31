@@ -39,7 +39,7 @@
 |---|---|
 | D0-1 | 读取最新 master `AGENTS`/Skill/00、工程组织 V1.2、Decision #3/#4、图元编辑 V1.2，并**逐 Sheet** 比对 DOCS/02～04 中 M01/M02/M03/M04/M05/M07/M38、Visual、Decision、专业对象 |
 | D0-2 | 固定当前 API/Member/Kind/Namespace、物理工程 DAG；建立“真实源码 vs 本系列候选”差异表 |
-| D0-3 | 明确 Type↔Capability 关联的正式持久归属、端点附着的 Core 最小 Schema、注册 Facade 放哪一个现有项目 |
+| D0-3 | 明确 Type↔Capability 关联的正式持久归属、端点附着的 Core 最小 Schema、注册 Facade 放哪一个现有项目；审议 `MEMSymbol.References` 与历史 Content 复合约束的 C01 差异 |
 | D0-4 | 运行现有工程/Visual/Studio/HMI/Decision 黄金回归并留固定 SHA 证据 |
 | 产物 | 本台账更新证据清单 + 决策记录 + 提议 API 签收/拒绝表 |
 | 完成门禁 | 不得在 Excel/现有代码未核实时新增 20 个类或新工程 |

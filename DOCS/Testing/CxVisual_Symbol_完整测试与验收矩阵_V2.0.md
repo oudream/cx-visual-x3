@@ -59,7 +59,7 @@
 | SYM-T31 | Windows | .NET48 x64 Build、Smoke/UIA/DPI | 固定 SHA 证据 | 纯 STA 不冒充 OS 注入 |
 | SYM-T32 | 工业 | 六专业真实 Provider/HIL | 各专业安全签收 | 模拟数据不能充当设备结果 |
 | SYM-T33 | Content | 一 Symbol 被两个不同 Content 引用 | 实例路径/作用域清晰 | 子流程同名不混淆 |
-| SYM-T34 | Content | 多重嵌套 Content + Symbol 公开映射 | 类型与引用链正确 | 私有路径访问拒绝 |
+| SYM-T34 | Content | 多重嵌套 Content + Symbol 公开映射；覆盖 Symbol 自持 MRI References 的合法引用与防环 | 类型与引用链正确、逐级公开 | 私有路径访问/多级 InstancePath 直连拒绝 |
 | SYM-T35 | MOC | Capability 版本锁、静态目录变更 | 旧 Stamp 拒绝 | 运行引用不会自动热更 |
 | SYM-T36 | 运行 | MOL Branch/Loop/Invoke Content 含 Symbol | SourceMap/Trace 精准实例定位 | 视觉位置不改变执行顺序 |
 | SYM-T37 | Vision | ROI→检测→报告/叠加 | SourceId/RunId/坐标一致 | 过期原图/ROI 不误绘 |
