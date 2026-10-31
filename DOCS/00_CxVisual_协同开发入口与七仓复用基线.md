@@ -37,7 +37,9 @@
 
 **Studio/TestCenter公共交互控件复用（2026-10-30）**：[《公共能力复用第一批开发与验收》](Implementation/CxVisual_Studio与TestCenter公共能力复用_第一批实际开发与验收_20261030.md)——MDS变量/运行数据/模块已有公共控件，新增MNM消息与MRK命令公共WPF，Studio双Host绑定/只读安全和TestCenter同Owner共用，详见编译实错及剩余缺口。
 
-**Symbol体系总设计（2026-10-31，新文档·待负责人审评）**：[《Symbol总体架构、能力注册发现、Studio孵化与完整验收 V1.0》](Architecture/CxVisual_Symbol体系——总体架构_能力注册发现_Studio孵化与验收_V1.0.md)——五类及以上孵化来源统一MEM/MPM/MOC描述、注解/入口函数/显式Provider一次注册、只读发现、Group→Symbol原子提升、固定/浮动/自由锚点、工业级32项验收。**目标设计，不等于SDK或浮动端口已实现。**
+**Symbol体系完整总设计 V2.0（2026-10-31，目标架构·待负责人审评）**：[#0 总体架构与完整需求](Architecture/CxVisual_Symbol_00_总体架构与完整需求_V2.0.md)；[#1 对象与四方面](Architecture/CxVisual_Symbol_01_对象模型与四方面_V2.0.md)、[#2 公开契约/数据/行为/连接点](Architecture/CxVisual_Symbol_02_公开契约与数据行为_V2.0.md)、[#3 能力注册与发现](Architecture/CxVisual_Symbol_03_能力注册与发现_V2.0.md)、[#4 Studio孵化](Architecture/CxVisual_Symbol_04_Studio孵化与创作流程_V2.0.md)、[#5 Content/专业/编排协同](Architecture/CxVisual_Symbol_05_Content专业编排协同_V2.0.md)、[#6 资源版本安全](Architecture/CxVisual_Symbol_06_资源版本安全与迁移_V2.0.md)、[#7 全类UML与API](Architecture/CxVisual_Symbol_07_全类UML与API合同_V2.0.md)；[实施任务与现状台账](Implementation/CxVisual_Symbol_实施任务与现状台账_V2.0.md)、[42项测试与验收矩阵](Testing/CxVisual_Symbol_完整测试与验收矩阵_V2.0.md)、[待审评ADR](Decisions/CxVisual_Symbol_V2_对象边界与注册孵化架构建议_20261031.md)。此系列是指导后续实际开发的目标合同；注解/入口函数SDK、无损Group提升、任意/浮动端点与完整专业HIL仍需实施与验收。旧V1.0保留历史参考，不再作为最新主入口。
+
+**Symbol体系 V1.0 历史初稿（2026-10-31，已由V2.0系列深化）**：[《Symbol总体架构、能力注册发现、Studio孵化与完整验收 V1.0》](Architecture/CxVisual_Symbol体系——总体架构_能力注册发现_Studio孵化与验收_V1.0.md)——五类及以上孵化来源统一MEM/MPM/MOC描述、注解/入口函数/显式Provider一次注册、只读发现、Group→Symbol原子提升、固定/浮动/自由锚点、工业级32项验收。**目标设计，不等于SDK或浮动端口已实现。**
 
 **Content / Symbol 双中心实际开发（2026-10-30）**：[《Studio Content与Symbol双管理中心——实现与验收》](Implementation/CxVisual_Studio_Content与Symbol双管理中心_实现与验收_20261030.md)——两个独立Dock中心、可信类型注册、包加载/导出、Page引用、实例二次配置与回归用例的实现状态和待验证边界。
 
