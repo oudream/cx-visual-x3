@@ -37,6 +37,8 @@
 
 **Studio/TestCenter公共交互控件复用（2026-10-30）**：[《公共能力复用第一批开发与验收》](Implementation/CxVisual_Studio与TestCenter公共能力复用_第一批实际开发与验收_20261030.md)——MDS变量/运行数据/模块已有公共控件，新增MNM消息与MRK命令公共WPF，Studio双Host绑定/只读安全和TestCenter同Owner共用，详见编译实错及剩余缺口。
 
+**Symbol体系总设计（2026-10-31，新文档·待负责人审评）**：[《Symbol总体架构、能力注册发现、Studio孵化与完整验收 V1.0》](Architecture/CxVisual_Symbol体系——总体架构_能力注册发现_Studio孵化与验收_V1.0.md)——五类及以上孵化来源统一MEM/MPM/MOC描述、注解/入口函数/显式Provider一次注册、只读发现、Group→Symbol原子提升、固定/浮动/自由锚点、工业级32项验收。**目标设计，不等于SDK或浮动端口已实现。**
+
 **Content / Symbol 双中心实际开发（2026-10-30）**：[《Studio Content与Symbol双管理中心——实现与验收》](Implementation/CxVisual_Studio_Content与Symbol双管理中心_实现与验收_20261030.md)——两个独立Dock中心、可信类型注册、包加载/导出、Page引用、实例二次配置与回归用例的实现状态和待验证边界。
 
 1. `DOCS/01_CxVisual_平台灵魂与架构宪法_V1.0_Review.md`：平台理念与高层约束；“Review”表明仍有待裁决项。
